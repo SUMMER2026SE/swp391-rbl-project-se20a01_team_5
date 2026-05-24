@@ -23,8 +23,18 @@ Implemented backend APIs for Driver and Bus Assistant features:
 
 ## Run
 
-Update SQL Server credentials in `src/main/resources/application.properties`, then run:
+Backend code is inside `backend/`.
+
+Update SQL Server credentials in `backend/src/main/resources/application.properties`, then run:
 
 ```bash
+cd backend
 mvn spring-boot:run
+```
+
+For local testing without SQL Server TCP setup:
+
+```bash
+cd backend
+mvn spring-boot:run -Dspring-boot.run.profiles=test
 ```
