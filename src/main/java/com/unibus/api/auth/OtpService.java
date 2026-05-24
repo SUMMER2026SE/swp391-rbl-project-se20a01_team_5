@@ -1,11 +1,9 @@
 package com.unibus.api.auth;
 
-import com.unibus.api.auth.model.VerificationCode;
-import com.unibus.api.auth.model.VerificationPurpose;
-import com.unibus.api.common.ApiException;
 import java.security.SecureRandom;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -14,60 +12,69 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.unibus.api.auth.model.VerificationCode;
+import com.unibus.api.auth.model.VerificationPurpose;
+import com.unibus.api.common.ApiException;
+
 @Service
 public class OtpService {
-   private static final Logger LOGGER = LoggerFactory.getLogger(OtpService.class);
-   private static final int MAX_ATTEMPTS = 5;
-   private final VerificationCodeRepository verificationCodeRepository;
-   private final HashingService hashingService;
-   private final SecureRandom secureRandom = new SecureRandom();
-   private final long expirationMinutes;
-   private final boolean logCode;
 
-   public OtpService(VerificationCodeRepository verificationCodeRepository, HashingService hashingService, @Value("${app.otp.expiration-minutes}") long expirationMinutes, @Value("${app.otp.log-code}") boolean logCode) {
-      this.verificationCodeRepository = verificationCodeRepository;
-      this.hashingService = hashingService;
-      this.expirationMinutes = expirationMinutes;
-      this.logCode = logCode;
-   }
+    private static final Logger LOGGER = LoggerFactory.getLogger(OtpService.class);
+    private static final int MAX_ATTEMPTS = 5;
 
-   @Transactional
-   public void issue(String rawEmail, VerificationPurpose purpose) {
-      String email = rawEmail.trim().toLowerCase();
-      String code = String.format("%06d", this.secureRandom.nextInt(1000000));
-      OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
-      VerificationCode verificationCode = new VerificationCode();
-      verificationCode.setEmail(email);
-      verificationCode.setPurpose(purpose);
-      verificationCode.setCodeHash(this.hashingService.hash(code));
-      verificationCode.setCreatedAt(now);
-      verificationCode.setExpiresAt(now.plusMinutes(this.expirationMinutes));
-      this.verificationCodeRepository.save(verificationCode);
-      if (this.logCode) {
-         LOGGER.info("DEV OTP purpose={} email={} code={}", new Object[]{purpose, email, code});
-      }
+    private final VerificationCodeRepository verificationCodeRepository;
+    private final HashingService hashingService;
+    private final SecureRandom secureRandom = new SecureRandom();
+    private final long expirationMinutes;
+    private final boolean logCode;
 
-   }
+    public OtpService(
+            VerificationCodeRepository verificationCodeRepository,
+            HashingService hashingService,
+            @Value("${app.otp.expiration-minutes}") long expirationMinutes,
+            @Value("${app.otp.log-code}") boolean logCode) {
+        this.verificationCodeRepository = verificationCodeRepository;
+        this.hashingService = hashingService;
+        this.expirationMinutes = expirationMinutes;
+        this.logCode = logCode;
+    }
 
-   @Transactional(
-      propagation = Propagation.REQUIRES_NEW,
-      noRollbackFor = {ApiException.class}
-   )
-   public void verify(String rawEmail, VerificationPurpose purpose, String code) {
-      String email = rawEmail.trim().toLowerCase();
-      VerificationCode verificationCode = (VerificationCode)this.verificationCodeRepository.findTopByEmailIgnoreCaseAndPurposeAndConsumedAtIsNullOrderByCreatedAtDesc(email, purpose).orElseThrow(() -> this.invalidOtp());
-      OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
-      verificationCode.setAttemptCount(verificationCode.getAttemptCount() + 1);
-      if (!verificationCode.getExpiresAt().isBefore(now) && verificationCode.getAttemptCount() <= 5 && verificationCode.getCodeHash().equals(this.hashingService.hash(code))) {
-         verificationCode.setConsumedAt(now);
-         this.verificationCodeRepository.save(verificationCode);
-      } else {
-         this.verificationCodeRepository.save(verificationCode);
-         throw this.invalidOtp();
-      }
-   }
+    @Transactional
+    public void issue(String rawEmail, VerificationPurpose purpose) {
+        String email = rawEmail.trim().toLowerCase();
+        String code = String.format("%06d", secureRandom.nextInt(1_000_000));
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        VerificationCode verificationCode = new VerificationCode();
+        verificationCode.setEmail(email);
+        verificationCode.setPurpose(purpose);
+        verificationCode.setCodeHash(hashingService.hash(code));
+        verificationCode.setCreatedAt(now);
+        verificationCode.setExpiresAt(now.plusMinutes(expirationMinutes));
+        verificationCodeRepository.save(verificationCode);
+        if (logCode) {
+            LOGGER.info("DEV OTP purpose={} email={} code={}", purpose, email, code);
+        }
+    }
 
-   private ApiException invalidOtp() {
-      return new ApiException(HttpStatus.BAD_REQUEST, "OTP is invalid or expired");
-   }
+    @Transactional(propagation = Propagation.REQUIRES_NEW, noRollbackFor = ApiException.class)
+    public void verify(String rawEmail, VerificationPurpose purpose, String code) {
+        String email = rawEmail.trim().toLowerCase();
+        VerificationCode verificationCode = verificationCodeRepository
+                .findTopByEmailIgnoreCaseAndPurposeAndConsumedAtIsNullOrderByCreatedAtDesc(email, purpose)
+                .orElseThrow(() -> invalidOtp());
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        verificationCode.setAttemptCount(verificationCode.getAttemptCount() + 1);
+        if (verificationCode.getExpiresAt().isBefore(now)
+                || verificationCode.getAttemptCount() > MAX_ATTEMPTS
+                || !verificationCode.getCodeHash().equals(hashingService.hash(code))) {
+            verificationCodeRepository.save(verificationCode);
+            throw invalidOtp();
+        }
+        verificationCode.setConsumedAt(now);
+        verificationCodeRepository.save(verificationCode);
+    }
+
+    private ApiException invalidOtp() {
+        return new ApiException(HttpStatus.BAD_REQUEST, "OTP is invalid or expired");
+    }
 }

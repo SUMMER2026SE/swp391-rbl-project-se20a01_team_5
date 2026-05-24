@@ -2,6 +2,7 @@ package com.unibus.api.common;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -14,29 +15,36 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
-   @ExceptionHandler({ApiException.class})
-   ResponseEntity<ApiResponse<Void>> handleApiException(ApiException exception) {
-      return ResponseEntity.status(exception.getStatus()).body(new ApiResponse(false, exception.getMessage(), (Object)null));
-   }
 
-   @ExceptionHandler({MethodArgumentNotValidException.class})
-   ResponseEntity<ApiResponse<Map<String, String>>> handleValidation(MethodArgumentNotValidException exception) {
-      Map<String, String> errors = new LinkedHashMap();
+    @ExceptionHandler(ApiException.class)
+    ResponseEntity<ApiResponse<Void>> handleApiException(ApiException exception) {
+        return ResponseEntity.status(exception.getStatus())
+                .body(new ApiResponse<>(false, exception.getMessage(), null));
+    }
 
-      for(FieldError error : exception.getBindingResult().getFieldErrors()) {
-         errors.putIfAbsent(error.getField(), error.getDefaultMessage());
-      }
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    ResponseEntity<ApiResponse<Map<String, String>>> handleValidation(MethodArgumentNotValidException exception) {
+        Map<String, String> errors = new LinkedHashMap<>();
+        for (FieldError error : exception.getBindingResult().getFieldErrors()) {
+            errors.putIfAbsent(error.getField(), error.getDefaultMessage());
+        }
+        return ResponseEntity.badRequest()
+                .body(new ApiResponse<>(false, "Request validation failed", errors));
+    }
 
-      return ResponseEntity.badRequest().body(new ApiResponse(false, "Request validation failed", errors));
-   }
+    @ExceptionHandler({
+            MissingServletRequestParameterException.class,
+            MethodArgumentTypeMismatchException.class,
+            HttpMessageNotReadableException.class
+    })
+    ResponseEntity<ApiResponse<Void>> handleMalformedRequest(Exception exception) {
+        return ResponseEntity.badRequest()
+                .body(new ApiResponse<>(false, "Request parameters or body are invalid", null));
+    }
 
-   @ExceptionHandler({MissingServletRequestParameterException.class, MethodArgumentTypeMismatchException.class, HttpMessageNotReadableException.class})
-   ResponseEntity<ApiResponse<Void>> handleMalformedRequest(Exception exception) {
-      return ResponseEntity.badRequest().body(new ApiResponse(false, "Request parameters or body are invalid", (Object)null));
-   }
-
-   @ExceptionHandler({Exception.class})
-   ResponseEntity<ApiResponse<Void>> handleUnexpected(Exception exception) {
-      return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiResponse(false, "An unexpected error occurred", (Object)null));
-   }
+    @ExceptionHandler(Exception.class)
+    ResponseEntity<ApiResponse<Void>> handleUnexpected(Exception exception) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new ApiResponse<>(false, "An unexpected error occurred", null));
+    }
 }

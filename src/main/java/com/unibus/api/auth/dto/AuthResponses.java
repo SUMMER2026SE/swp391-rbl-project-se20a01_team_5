@@ -1,15 +1,23 @@
 package com.unibus.api.auth.dto;
 
-import com.unibus.api.user.model.UserRole;
 import java.time.OffsetDateTime;
 
+import com.unibus.api.user.model.UserRole;
+
 public final class AuthResponses {
-   private AuthResponses() {
-   }
 
-   public static record RegisteredUser(Integer userId, String studentCode, String email, UserRole role) {
-   }
+    private AuthResponses() {
+    }
 
-   public static record TokenPair(String tokenType, String accessToken, OffsetDateTime accessTokenExpiresAt, String refreshToken, OffsetDateTime refreshTokenExpiresAt, UserRole role) {
-   }
+    public record RegisteredUser(Integer userId, String studentCode, String email, UserRole role) {
+    }
+
+    public record TokenPair(
+            String tokenType,
+            String accessToken,
+            OffsetDateTime accessTokenExpiresAt,
+            String refreshToken,
+            OffsetDateTime refreshTokenExpiresAt,
+            UserRole role) {
+    }
 }
