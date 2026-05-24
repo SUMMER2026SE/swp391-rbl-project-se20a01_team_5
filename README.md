@@ -4,6 +4,20 @@
 
 Backend implementation for the Iteration 1 use cases assigned to Nguyen Duc Hai.
 
+## Repository Layout
+
+```text
+project-root/
+|-- backend/
+|   |-- pom.xml
+|   |-- requests/
+|   `-- src/
+|-- README.md
+`-- .gitignore
+```
+
+The frontend can be added later under `frontend/` when its source is available.
+
 ## Implemented Use Cases
 
 - Authentication: register with development OTP, login, refresh token, logout, forgot password, role-based access.
@@ -40,7 +54,8 @@ committed; `dbauth.txt` is ignored locally.
 
 ### IntelliJ Run Configuration
 
-Open **Run > Edit Configurations > UnibusApiApplication > Environment variables** and define:
+Import `backend/pom.xml` as a Maven project, then open
+**Run > Edit Configurations > UnibusApiApplication > Environment variables** and define:
 
 ```text
 DB_URL=jdbc:postgresql://<endpoint>:<port>/<initialdb>?sslmode=require
@@ -84,7 +99,7 @@ switching new registrations to `PENDING`.
 
 ## Manual API Test
 
-Open `requests/iteration1.http` in IntelliJ after the application has started. Run the requests
+Open `backend/requests/iteration1.http` in IntelliJ after the application has started. Run the requests
 in order:
 
 1. Issue a registration OTP and copy the six-digit `DEV OTP` value from the application log.
@@ -92,5 +107,12 @@ in order:
 3. Log in and paste the returned access token into the `accessToken` variable.
 4. Run profile, stops, route search, registration, and travel-history requests as data becomes available.
 
-The automated verification is `mvn test`; it exercises authentication/session state, OTP attempt
-limits, route lookup, route registration rules, ETA, and travel history against an isolated H2 database.
+Run automated verification from the backend module:
+
+```powershell
+cd backend
+mvn test
+```
+
+It exercises authentication/session state, OTP attempt limits, route lookup, route registration
+rules, ETA, and travel history against an isolated H2 database.
