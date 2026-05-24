@@ -1,0 +1,10 @@
+# Local secrets
+dbauth.txt
+
+# Build output and scratch data
+target/
+.codex-tmp/
+
+# IDE settings
+.idea/
+*.iml
