@@ -24,7 +24,7 @@ Implemented backend APIs for Driver and Bus Assistant features:
 ## Run
 
 Backend code is inside `backend/`.
-JSP frontend pages are separated under `backend/src/main/webapp/frontend/WEB-INF/jsp/`.
+JSP frontend pages are inside root `frontend/`.
 
 Update SQL Server credentials in `backend/src/main/resources/application.properties`, then run:
 
