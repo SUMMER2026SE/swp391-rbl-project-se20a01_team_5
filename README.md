@@ -26,7 +26,7 @@ Implemented backend APIs for Driver and Bus Assistant features:
 Backend code is inside `backend/`.
 JSP frontend pages are inside root `frontend/`.
 
-Update SQL Server credentials in `backend/src/main/resources/application.properties`, then run:
+PostgreSQL RDS config is in `backend/src/main/resources/application.properties`, then run:
 
 ```bash
 cd backend
