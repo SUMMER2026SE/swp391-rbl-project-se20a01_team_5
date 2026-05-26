@@ -26,7 +26,13 @@ Implemented backend APIs for Driver and Bus Assistant features:
 Backend code is inside `backend/`.
 JSP frontend pages are inside root `frontend/`.
 
-PostgreSQL RDS config is in `backend/src/main/resources/application.properties`, then run:
+Set PostgreSQL credentials with environment variables, then run:
+
+```powershell
+$env:DB_URL="jdbc:postgresql://your-host:5432/your_database?sslmode=require"
+$env:DB_USERNAME="your_username"
+$env:DB_PASSWORD="your_password"
+```
 
 ```bash
 cd backend
