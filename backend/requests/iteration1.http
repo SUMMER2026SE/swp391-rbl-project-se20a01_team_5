@@ -2,8 +2,8 @@
 @email = student.test@example.com
 @password = Test-password-123
 @studentCode = TEST001
-@otp = replace-with-dev-log-otp
-@accessToken = replace-with-login-access-token
+@otp = 423639
+@accessToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsImVtYWlsIjoic3R1ZGVudC50ZXN0QGV4YW1wbGUuY29tIiwicm9sZSI6IlNUVURFTlQiLCJzaWQiOjEsInR5cCI6ImFjY2VzcyIsImlhdCI6MTc3OTYyNDI3NCwiZXhwIjoxNzc5NjI1MTc0fQ.wdsXcK2W3PAGzRmxA4sjMg6-vBP3JTPJoaKD3fNyJeQ
 @boardingStopId = 1
 @alightingStopId = 2
 @routeId = 1
