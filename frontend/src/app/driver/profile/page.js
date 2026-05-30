@@ -2,17 +2,28 @@
 
 import { useState } from 'react';
 import { UserCircle, Map, Clock, ShieldCheck, Mail, Phone, Award, CreditCard, Camera } from 'lucide-react';
+import ImageCropModal from '@/components/modals/ImageCropModal';
 
 export default function DriverProfilePage() {
+  const [isEditing, setIsEditing] = useState(false);
   const [avatar, setAvatar] = useState(null);
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [tempImageUrl, setTempImageUrl] = useState(null);
 
   const handleAvatarChange = (e) => {
     const file = e.target.files[0];
     if (file) {
       const imageUrl = URL.createObjectURL(file);
-      setAvatar(imageUrl);
-      window.dispatchEvent(new CustomEvent('avatarUpdated', { detail: imageUrl }));
+      setTempImageUrl(imageUrl);
+      setCropModalOpen(true);
     }
+    e.target.value = null;
+  };
+
+  const handleConfirmCrop = (croppedImageUrl) => {
+    setAvatar(croppedImageUrl);
+    window.dispatchEvent(new CustomEvent('avatarUpdated', { detail: croppedImageUrl }));
+    setCropModalOpen(false);
   };
 
   return (
@@ -141,6 +152,13 @@ export default function DriverProfilePage() {
         </div>
 
       </div>
+
+      <ImageCropModal 
+        isOpen={cropModalOpen}
+        imageUrl={tempImageUrl}
+        onClose={() => setCropModalOpen(false)}
+        onConfirm={handleConfirmCrop}
+      />
     </div>
   );
 }

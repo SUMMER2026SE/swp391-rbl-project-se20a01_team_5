@@ -5,7 +5,7 @@ import { UserCircle, Mail, Phone, MapPin, Building2, ShieldCheck, KeyRound, Save
 
 export default function AdminProfilePage() {
   const [formData, setFormData] = useState({
-    name: 'Quản Trị Viên Tối Cao',
+    name: 'Quản Trị Viên ',
     employeeId: 'ADMIN-001',
     phone: '1900 8888',
     email: 'admin@unibus.vn',

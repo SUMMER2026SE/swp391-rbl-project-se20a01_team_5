@@ -27,7 +27,7 @@ export default function ForgotPasswordPage() {
             <img 
               src="/logo.png" 
               alt="UniBus Logo" 
-              className="h-24 w-auto object-contain mb-6 drop-shadow-sm" 
+              className="h-16 w-auto object-contain mb-6 drop-shadow-sm rounded-3xl" 
             />
             <p className="text-lg text-brand-text/80 font-medium">
               Không thể đăng nhập? Đừng lo lắng, chúng tôi sẽ giúp bạn khôi phục lại quyền truy cập hệ thống ngay bây giờ.

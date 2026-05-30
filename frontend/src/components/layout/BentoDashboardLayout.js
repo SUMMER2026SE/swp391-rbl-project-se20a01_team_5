@@ -16,9 +16,13 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
 
   // Auth Guard: Redirect to login if no token
   useEffect(() => {
-    const token = localStorage.getItem('access_token');
+    const token = sessionStorage.getItem('access_token') || localStorage.getItem('access_token');
     if (!token) {
       router.replace('/login');
+    } else if (!sessionStorage.getItem('access_token')) {
+      // Sync from local to session if resuming from another tab
+      sessionStorage.setItem('access_token', token);
+      sessionStorage.setItem('user_role', localStorage.getItem('user_role'));
     }
 
     // Listen for avatar updates
@@ -44,11 +48,15 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
   }, [router, pathname, roleName]);
 
   const handleLogoutConfirm = (rememberPassword) => {
+    sessionStorage.removeItem('access_token');
+    sessionStorage.removeItem('user_role');
     localStorage.removeItem('access_token');
     localStorage.removeItem('user_role');
     
     if (rememberPassword) {
-      alert('Hệ thống đã ghi nhớ tài khoản của bạn trên thiết bị này!');
+      localStorage.setItem('remember_device', 'true');
+    } else {
+      localStorage.removeItem('remember_device');
     }
     
     setShowLogoutModal(false);
@@ -68,7 +76,7 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
                 <img 
                   src="/logo.png" 
                   alt="UniBus Logo" 
-                  className="h-12 w-auto object-contain" 
+                  className="h-12 w-auto object-contain rounded-xl" 
                 />
               </div>
             )}
@@ -78,7 +86,7 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
           </div>
 
           <nav className="flex-1 flex flex-col gap-2 overflow-y-auto custom-scrollbar pr-2 -mr-2">
-            <div className="text-xs font-bold text-brand-text/40 mb-2 uppercase tracking-wider pl-4">Menu Chính</div>
+            {isSidebarOpen && <div className="text-xs font-bold text-brand-text/40 mb-2 uppercase tracking-wider pl-4">Menu Chính</div>}
             
             {menuItems.map((item) => {
               const isActive = pathname === item.href;
@@ -88,15 +96,15 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
                   href={item.href}
                   className={`flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all font-medium ${isActive ? 'bg-brand-text text-white shadow-sm' : 'hover:bg-brand-surface text-brand-text/70 hover:text-brand-text'}`}
                 >
-                  <item.icon className="w-5 h-5" />
+                  <item.icon className="w-5 h-5 shrink-0" />
                   {isSidebarOpen && <span>{item.name}</span>}
                 </Link>
               )
             })}
 
-            <div className="text-xs font-bold text-brand-text/40 mt-8 mb-2 uppercase tracking-wider pl-4">Cá nhân</div>
+            {isSidebarOpen && <div className="text-xs font-bold text-brand-text/40 mt-8 mb-2 uppercase tracking-wider pl-4">Cá nhân</div>}
             <Link href={profileHref || "#"} className={`flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all font-medium ${pathname === profileHref ? 'bg-brand-text text-white shadow-sm' : 'hover:bg-brand-surface text-brand-text/70 hover:text-brand-text'}`}>
-              <UserCircle className="w-5 h-5" />
+              <UserCircle className="w-5 h-5 shrink-0" />
               {isSidebarOpen && <span>Hồ sơ cá nhân</span>}
             </Link>
 
@@ -106,7 +114,7 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
                 onClick={() => setShowLogoutModal(true)}
                 className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-2xl text-brand-danger font-bold hover:bg-brand-danger/10 transition-colors"
               >
-                <LogOut className="w-5 h-5" />
+                <LogOut className="w-5 h-5 shrink-0" />
                 {isSidebarOpen && <span>Đăng xuất</span>}
               </button>
             </div>

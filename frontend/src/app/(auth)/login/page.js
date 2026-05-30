@@ -14,19 +14,30 @@ export default function LoginPage() {
   const [showGoogleModal, setShowGoogleModal] = useState(false);
 
   const handleSelectAccount = (account) => {
-    localStorage.setItem('access_token', `mock_token_${account.role}`);
-    localStorage.setItem('user_role', account.role);
+    const token = `mock_token_${account.role}`;
+    const role = account.role;
+    
+    sessionStorage.setItem('access_token', token);
+    sessionStorage.setItem('user_role', role);
+    
+    if (localStorage.getItem('remember_device') === 'true') {
+      localStorage.setItem('access_token', token);
+      localStorage.setItem('user_role', role);
+    }
+    
     setShowGoogleModal(false);
     
-    if (account.role === 'STUDENT') {
+    if (role === 'STUDENT') {
       router.push('/student');
     } else {
-      router.push(`/${account.role.toLowerCase()}`);
+      router.push(`/${role.toLowerCase()}`);
     }
   };
 
   // Clear session if user navigates back to login page
   useEffect(() => {
+    sessionStorage.removeItem('access_token');
+    sessionStorage.removeItem('user_role');
     localStorage.removeItem('access_token');
     localStorage.removeItem('user_role');
   }, []);
@@ -49,8 +60,15 @@ export default function LoginPage() {
       computedRole = 'COORDINATOR';
     }
 
-    localStorage.setItem('access_token', `mock_${computedRole.toLowerCase()}_token`);
-    localStorage.setItem('user_role', computedRole);
+    const token = `mock_${computedRole.toLowerCase()}_token`;
+    sessionStorage.setItem('access_token', token);
+    sessionStorage.setItem('user_role', computedRole);
+
+    if (localStorage.getItem('remember_device') === 'true') {
+      localStorage.setItem('access_token', token);
+      localStorage.setItem('user_role', computedRole);
+    }
+    
     router.push(`/${computedRole.toLowerCase()}`);
   };
 
@@ -64,13 +82,21 @@ export default function LoginPage() {
 
     setError('');
     // Mặc định giả lập đăng nhập Google thành công cho Sinh viên
-    localStorage.setItem('access_token', 'mock_social_token');
-    localStorage.setItem('user_role', 'STUDENT'); 
+    const token = 'mock_social_token';
+    const role = 'STUDENT';
+    sessionStorage.setItem('access_token', token);
+    sessionStorage.setItem('user_role', role);
+    
+    if (localStorage.getItem('remember_device') === 'true') {
+      localStorage.setItem('access_token', token);
+      localStorage.setItem('user_role', role);
+    }
+    
     router.push('/student');
   };
 
   return (
-    <div className="min-h-screen p-4 md:p-8 flex items-center justify-center font-sans">
+    <div className="min-h-screen bg-brand-surface font-sans text-brand-text flex items-center justify-center p-4">
       <div className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
         
         {/* Branding Bento Block */}
@@ -80,7 +106,7 @@ export default function LoginPage() {
             <img 
               src="/logo.png" 
               alt="UniBus Logo" 
-              className="h-24 w-auto object-contain mb-6 drop-shadow-sm" 
+              className="h-16 w-auto object-contain mb-6 drop-shadow-sm rounded-3xl" 
             />
             <p className="text-lg text-brand-text/80 font-medium">
               Đăng nhập để quản lý lịch trình, theo dõi chuyến xe và mua vé tháng dễ dàng hơn.
