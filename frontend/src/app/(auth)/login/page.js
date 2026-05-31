@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Lock, LogIn, Mail } from 'lucide-react';
 import GoogleSignInButton from '@/components/auth/GoogleSignInButton';
-import { authApi, clearAuthSession, getDefaultRouteForRole, setAuthSession } from '@/services/api';
+import { authApi, getAuthSession, getDefaultRouteForRole, setAuthSession } from '@/services/api';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -16,8 +16,11 @@ export default function LoginPage() {
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
 
   useEffect(() => {
-    clearAuthSession();
-  }, []);
+    const session = getAuthSession();
+    if (session) {
+      router.replace(getDefaultRouteForRole(session.role, session.studentVerificationStatus));
+    }
+  }, [router]);
 
   const redirectAfterLogin = useCallback((tokenPair) => {
     setAuthSession(tokenPair);
@@ -147,9 +150,10 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={() => setError('Facebook login chưa được triển khai trong backend.')}
-              className="h-12 rounded-xl bg-brand-surface/50 border border-black/5 font-semibold text-sm hover:bg-white hover:border-brand-secondary/40 hover:shadow-sm transition-all"
+              className="h-12 rounded-xl bg-brand-surface/50 border border-black/5 px-4 font-semibold text-sm hover:bg-white hover:border-brand-secondary/40 hover:shadow-sm transition-all flex items-center justify-center gap-2"
             >
-              Facebook
+              <span className="text-[#1877F2] font-black leading-none">f</span>
+              <span className="whitespace-nowrap leading-none">Facebook</span>
             </button>
           </div>
 

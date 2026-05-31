@@ -9,7 +9,7 @@ export default function GoogleSignInButton({ onCredential, onError, text = 'sign
   const [isReady, setIsReady] = useState(false);
   const [isOpening, setIsOpening] = useState(false);
   const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-  const label = text === 'signup_with' ? 'Đăng ký bằng Google' : 'Đăng nhập bằng Google';
+  const actionLabel = text === 'signup_with' ? 'Đăng ký bằng Google' : 'Đăng nhập bằng Google';
 
   useEffect(() => {
     if (!clientId) return undefined;
@@ -74,12 +74,13 @@ export default function GoogleSignInButton({ onCredential, onError, text = 'sign
   return (
     <button
       type="button"
+      aria-label={actionLabel}
       onClick={handleClick}
       disabled={disabled || isOpening}
-      className="h-12 rounded-xl bg-brand-surface/50 border border-black/5 font-semibold text-sm hover:bg-white hover:border-brand-secondary/40 hover:shadow-sm transition-all flex items-center justify-center gap-3 disabled:opacity-60 disabled:cursor-not-allowed"
+      className="h-12 w-full rounded-xl bg-brand-surface/50 border border-black/5 px-4 font-semibold text-sm hover:bg-white hover:border-brand-secondary/40 hover:shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
     >
       <GoogleIcon />
-      <span>{isOpening ? 'Đang mở Google...' : label}</span>
+      <span className="whitespace-nowrap leading-none">{isOpening ? 'Đang mở...' : 'Google'}</span>
     </button>
   );
 }

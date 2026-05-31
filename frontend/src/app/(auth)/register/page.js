@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Lock, UserPlus, User, Mail, KeyRound } from 'lucide-react';
 import GoogleSignInButton from '@/components/auth/GoogleSignInButton';
-import { authApi, getDefaultRouteForRole, setAuthSession } from '@/services/api';
+import { authApi, getAuthSession, getDefaultRouteForRole, setAuthSession } from '@/services/api';
 
 const initialForm = {
   fullName: '',
@@ -24,6 +24,13 @@ export default function RegisterPage() {
   const [isRequestingOtp, setIsRequestingOtp] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
+
+  useEffect(() => {
+    const session = getAuthSession();
+    if (session) {
+      router.replace(getDefaultRouteForRole(session.role, session.studentVerificationStatus));
+    }
+  }, [router]);
 
   const updateField = (field, value) => {
     setFormData((current) => ({ ...current, [field]: value }));
@@ -251,9 +258,10 @@ export default function RegisterPage() {
             <button
               type="button"
               onClick={() => setError('Facebook register chưa được triển khai trong backend.')}
-              className="h-12 rounded-xl bg-brand-surface border border-black/5 font-bold text-sm hover:bg-white hover:border-brand-secondary/40 hover:shadow-sm transition-all"
+              className="h-12 rounded-xl bg-brand-surface border border-black/5 px-4 font-bold text-sm hover:bg-white hover:border-brand-secondary/40 hover:shadow-sm transition-all flex items-center justify-center gap-2"
             >
-              Facebook
+              <span className="text-[#1877F2] font-black leading-none">f</span>
+              <span className="whitespace-nowrap leading-none">Facebook</span>
             </button>
           </div>
 

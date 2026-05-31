@@ -1,7 +1,34 @@
+"use client";
+
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { ArrowRight, ShieldCheck, Map, Smartphone, Wallet, CheckCircle2, ChevronRight, Play } from 'lucide-react';
+import { getAuthSession, getDefaultRouteForRole } from '@/services/api';
 
 export default function Home() {
+  const router = useRouter();
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
+
+  useEffect(() => {
+    const session = getAuthSession();
+    if (session) {
+      router.replace(getDefaultRouteForRole(session.role, session.studentVerificationStatus));
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => setIsCheckingSession(false));
+    return () => window.cancelAnimationFrame(frame);
+  }, [router]);
+
+  if (isCheckingSession) {
+    return (
+      <div className="min-h-screen bg-brand-surface font-sans text-brand-text flex items-center justify-center">
+        <div className="text-sm font-bold text-brand-text/50">Đang kiểm tra phiên đăng nhập...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-brand-surface font-sans text-brand-text overflow-x-hidden selection:bg-brand-secondary selection:text-white">
 
