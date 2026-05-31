@@ -31,6 +31,11 @@ export default function RegisterPage() {
     setFormData((current) => ({ ...current, [field]: value }));
   };
 
+  const handleSocialRegister = (provider) => {
+    setError('');
+    setMessage(`${provider} register UI đang được giữ lại, nhưng backend OAuth chưa được triển khai.`);
+  };
+
   const handleRequestOtp = async () => {
     setError('');
     setMessage('');
@@ -255,6 +260,31 @@ export default function RegisterPage() {
               <UserPlus className="w-5 h-5" /> {isSubmitting ? 'Đang tạo tài khoản...' : 'Hoàn tất đăng ký'}
             </button>
           </form>
+
+          <div className="flex items-center gap-4 my-6">
+            <div className="h-px flex-1 bg-black/10"></div>
+            <span className="text-xs font-bold uppercase tracking-wider text-brand-text/40">Hoặc tiếp tục với</span>
+            <div className="h-px flex-1 bg-black/10"></div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => handleSocialRegister('Google')}
+              className="py-3 rounded-xl border border-black/10 bg-white text-sm font-bold text-brand-text hover:bg-brand-surface transition-colors flex items-center justify-center gap-2"
+            >
+              <span className="font-black text-red-500">G</span>
+              Google
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSocialRegister('Facebook')}
+              className="py-3 rounded-xl border border-black/10 bg-white text-sm font-bold text-brand-text hover:bg-brand-surface transition-colors flex items-center justify-center gap-2"
+            >
+              <span className="font-black text-blue-600">f</span>
+              Facebook
+            </button>
+          </div>
 
           <p className="text-center text-sm font-medium text-brand-text/60 mt-6">
             Đã có tài khoản? <Link href="/login" className="text-brand-secondary hover:text-brand-text font-bold ml-1 transition-colors">Đăng nhập ngay</Link>

@@ -11,6 +11,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -20,6 +21,7 @@ export default function LoginPage() {
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
+    setNotice('');
     setIsSubmitting(true);
 
     try {
@@ -31,6 +33,11 @@ export default function LoginPage() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSocialLogin = (provider) => {
+    setError('');
+    setNotice(`${provider} login UI đang được giữ lại, nhưng backend OAuth chưa được triển khai.`);
   };
 
   return (
@@ -62,6 +69,12 @@ export default function LoginPage() {
           {error && (
             <div className="mb-6 p-4 bg-brand-danger/10 border border-brand-danger/20 rounded-xl text-sm font-semibold text-brand-danger">
               {error}
+            </div>
+          )}
+
+          {notice && (
+            <div className="mb-6 p-4 bg-brand-secondary/10 border border-brand-secondary/20 rounded-xl text-sm font-semibold text-brand-text">
+              {notice}
             </div>
           )}
 
@@ -111,6 +124,31 @@ export default function LoginPage() {
               <LogIn className="w-5 h-5" /> {isSubmitting ? 'Đang đăng nhập...' : 'Đăng nhập'}
             </button>
           </form>
+
+          <div className="flex items-center gap-4 mb-5">
+            <div className="h-px flex-1 bg-black/10"></div>
+            <span className="text-xs font-bold uppercase tracking-wider text-brand-text/40">Hoặc tiếp tục với</span>
+            <div className="h-px flex-1 bg-black/10"></div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8">
+            <button
+              type="button"
+              onClick={() => handleSocialLogin('Google')}
+              className="py-3 rounded-xl border border-black/10 bg-white text-sm font-bold text-brand-text hover:bg-brand-surface transition-colors flex items-center justify-center gap-2"
+            >
+              <span className="font-black text-red-500">G</span>
+              Google
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSocialLogin('Facebook')}
+              className="py-3 rounded-xl border border-black/10 bg-white text-sm font-bold text-brand-text hover:bg-brand-surface transition-colors flex items-center justify-center gap-2"
+            >
+              <span className="font-black text-blue-600">f</span>
+              Facebook
+            </button>
+          </div>
 
           <p className="text-center text-sm font-medium text-brand-text/60">
             Chưa có tài khoản? <Link href="/register" className="text-brand-secondary hover:text-brand-text font-bold ml-1 transition-colors">Đăng ký ngay</Link>
