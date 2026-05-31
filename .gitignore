@@ -1,5 +1,7 @@
 # Local secrets
 dbauth.txt
+frontend/.env*.local
+backend/.env*.local
 
 # Build output and scratch data
 target/
