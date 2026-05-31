@@ -5,77 +5,108 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Lock, LogIn, User, Bus } from 'lucide-react';
 import GoogleLoginModal from '@/components/modals/GoogleLoginModal';
-import { authApi, getDefaultRouteForRole, setAuthSession } from '@/services/api';
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const [showGoogleModal, setShowGoogleModal] = useState(false);
 
   const handleSelectAccount = (account) => {
-    localStorage.setItem('access_token', `mock_token_${account.role}`);
-    localStorage.setItem('user_role', account.role);
+    const token = `mock_token_${account.role}`;
+    const role = account.role;
+
+    sessionStorage.setItem('access_token', token);
+    sessionStorage.setItem('user_role', role);
+
+    if (localStorage.getItem('remember_device') === 'true') {
+      localStorage.setItem('access_token', token);
+      localStorage.setItem('user_role', role);
+    }
+
     setShowGoogleModal(false);
-    
-    if (account.role === 'STUDENT') {
+
+    if (role === 'STUDENT') {
       router.push('/student');
     } else {
-      router.push(`/${account.role.toLowerCase()}`);
+      router.push(`/${role.toLowerCase()}`);
     }
   };
 
   // Clear session if user navigates back to login page
   useEffect(() => {
+    sessionStorage.removeItem('access_token');
+    sessionStorage.removeItem('user_role');
     localStorage.removeItem('access_token');
     localStorage.removeItem('user_role');
   }, []);
 
-  const handleLogin = async (e) => {
+  const handleLogin = (e) => {
     e.preventDefault();
     setError('');
-    setIsLoading(true);
 
-    try {
-      const tokenPair = await authApi.login({ email, password });
-      setAuthSession(tokenPair);
-      router.push(getDefaultRouteForRole(tokenPair.role));
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
+    // Giả lập backend kiểm tra Role dựa trên tên đăng nhập
+    let computedRole = 'STUDENT'; // Mặc định là sinh viên
+    const lowerUser = username.toLowerCase();
+
+    if (lowerUser.includes('admin')) {
+      computedRole = 'ADMIN';
+    } else if (lowerUser.includes('phuxe')) {
+      computedRole = 'ASSISTANT';
+    } else if (lowerUser.includes('taixe')) {
+      computedRole = 'DRIVER';
+    } else if (lowerUser.includes('dieuphoi')) {
+      computedRole = 'COORDINATOR';
     }
+
+    const token = `mock_${computedRole.toLowerCase()}_token`;
+    sessionStorage.setItem('access_token', token);
+    sessionStorage.setItem('user_role', computedRole);
+
+    if (localStorage.getItem('remember_device') === 'true') {
+      localStorage.setItem('access_token', token);
+      localStorage.setItem('user_role', computedRole);
+    }
+
+    router.push(`/${computedRole.toLowerCase()}`);
   };
 
   const handleSocialLogin = () => {
-    // Mock the backend rule that blocks management accounts from social login.
-    const lowerUser = email.toLowerCase();
+    // Giả lập backend chặn Admin/Điều phối dùng Google
+    const lowerUser = username.toLowerCase();
     if (lowerUser.includes('admin') || lowerUser.includes('dieuphoi')) {
       setError('Lỗi bảo mật: Tài khoản cấp Quản lý không được phép đăng nhập qua mạng xã hội. Vui lòng đăng nhập bằng mật khẩu nội bộ!');
       return;
     }
 
     setError('');
-    // Keep the social login demo as a student account until backend OAuth is available.
-    localStorage.setItem('access_token', 'mock_social_token');
-    localStorage.setItem('user_role', 'STUDENT'); 
+    // Mặc định giả lập đăng nhập Google thành công cho Sinh viên
+    const token = 'mock_social_token';
+    const role = 'STUDENT';
+    sessionStorage.setItem('access_token', token);
+    sessionStorage.setItem('user_role', role);
+
+    if (localStorage.getItem('remember_device') === 'true') {
+      localStorage.setItem('access_token', token);
+      localStorage.setItem('user_role', role);
+    }
+
     router.push('/student');
   };
 
   return (
-    <div className="min-h-screen p-4 md:p-8 flex items-center justify-center font-sans">
+    <div className="min-h-screen bg-brand-surface font-sans text-brand-text flex items-center justify-center p-4">
       <div className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-        
+
         {/* Branding Bento Block */}
         <div className="hidden lg:flex bg-brand-primary rounded-3xl p-12 shadow-sm flex-col justify-between relative overflow-hidden border border-black/5">
           <div className="absolute -bottom-10 -left-10 w-64 h-64 bg-white/30 rounded-full blur-3xl"></div>
           <div>
-            <img 
-              src="/logo.png" 
-              alt="UniBus Logo" 
-              className="h-24 w-auto object-contain mb-6 drop-shadow-sm" 
+            <img
+              src="/logo.png"
+              alt="UniBus Logo"
+              className="h-16 w-auto object-contain mb-6 drop-shadow-sm rounded-3xl"
             />
             <p className="text-lg text-brand-text/80 font-medium">
               Đăng nhập để quản lý lịch trình, theo dõi chuyến xe và mua vé tháng dễ dàng hơn.
@@ -101,24 +132,24 @@ export default function LoginPage() {
 
           <form onSubmit={handleLogin} className="space-y-5 mb-8">
             <div>
-              <label className="block text-sm font-semibold mb-2 ml-1">Email</label>
+              <label className="block text-sm font-semibold mb-2 ml-1">Tên đăng nhập</label>
               <div className="relative">
                 <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-brand-text/40" />
-                <input 
-                  type="email" 
+                <input
+                  type="text"
                   required
-                  placeholder="student.test@example.com"
+                  placeholder="Nhập tên đăng nhập"
                   className="w-full pl-12 pr-4 py-3.5 rounded-xl bg-brand-surface/50 border border-black/5 focus:bg-white focus:border-brand-secondary focus:ring-4 focus:ring-brand-secondary/20 outline-none transition-all font-mono text-sm"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
                 />
               </div>
             </div>
-            
+
             <div>
               <div className="flex justify-between items-center mb-2">
                 <label className="block text-sm font-semibold ml-1">Mật khẩu</label>
-                <Link 
+                <Link
                   href="/forgot-password"
                   className="text-sm font-bold text-brand-secondary hover:text-brand-text transition-colors"
                 >
@@ -127,8 +158,8 @@ export default function LoginPage() {
               </div>
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-brand-text/40" />
-                <input 
-                  type="password" 
+                <input
+                  type="password"
                   required
                   className="w-full pl-12 pr-4 py-3.5 rounded-xl bg-brand-surface/50 border border-black/5 focus:bg-white focus:border-brand-secondary focus:ring-4 focus:ring-brand-secondary/20 outline-none transition-all font-mono text-sm"
                   value={password}
@@ -137,12 +168,11 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <button 
-              type="submit" 
-              disabled={isLoading}
+            <button
+              type="submit"
               className="w-full py-4 mt-2 rounded-xl bg-brand-text text-white font-bold hover:bg-black transition-colors flex justify-center items-center gap-2 shadow-sm"
             >
-              <LogIn className="w-5 h-5" /> {isLoading ? 'Đang đăng nhập...' : 'Đăng Nhập'}
+              <LogIn className="w-5 h-5" /> Đăng Nhập
             </button>
           </form>
 
@@ -160,7 +190,7 @@ export default function LoginPage() {
               Facebook
             </button>
           </div>
-          
+
           <p className="text-center text-sm font-medium text-brand-text/60">
             Chưa có tài khoản? <Link href="/register" className="text-brand-secondary hover:text-brand-text font-bold ml-1 transition-colors">Đăng ký ngay</Link>
           </p>
@@ -168,9 +198,9 @@ export default function LoginPage() {
         </div>
 
       </div>
-      
-      <GoogleLoginModal 
-        isOpen={showGoogleModal} 
+
+      <GoogleLoginModal
+        isOpen={showGoogleModal}
         onClose={() => setShowGoogleModal(false)}
         onSelectAccount={handleSelectAccount}
       />

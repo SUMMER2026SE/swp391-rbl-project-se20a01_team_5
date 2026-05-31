@@ -4,18 +4,18 @@ import { useState, useEffect } from 'react';
 import { Wallet, Plus, CreditCard, ArrowDownToLine, ArrowUpRight, History, X, CheckCircle2 } from 'lucide-react';
 
 export default function StudentWalletPage() {
-  const [balance, setBalance] = useState(() => {
-    if (typeof window === 'undefined') {
-      return 150000;
-    }
-
-    const saved = localStorage.getItem('wallet_balance');
-    return saved ? parseInt(saved, 10) : 150000;
-  });
+  const [balance, setBalance] = useState(150000);
   const [isTopupModalOpen, setIsTopupModalOpen] = useState(false);
   const [topupAmount, setTopupAmount] = useState(50000);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('wallet_balance');
+    if (saved) {
+      setBalance(parseInt(saved));
+    }
+  }, []);
 
   const [transactions, setTransactions] = useState([
     { id: 'TXN-001', type: 'in', title: 'Nạp tiền từ Momo', amount: 200000, date: '25/05/2026 08:30' },
@@ -27,12 +27,12 @@ export default function StudentWalletPage() {
   const handleTopup = (e) => {
     e.preventDefault();
     setIsProcessing(true);
-    
+
     // Giả lập quá trình call API nạp tiền
     setTimeout(() => {
       setIsProcessing(false);
       setShowSuccess(true);
-      
+
       // Cập nhật số dư và lịch sử
       setBalance(prev => {
         const newBal = prev + topupAmount;
@@ -41,12 +41,12 @@ export default function StudentWalletPage() {
         return newBal;
       });
       setTransactions(prev => [
-        { 
-          id: `TXN-00${prev.length + 1}`, 
-          type: 'in', 
-          title: 'Nạp tiền từ Ngân hàng', 
-          amount: topupAmount, 
-          date: new Date().toLocaleString('vi-VN') 
+        {
+          id: `TXN-00${prev.length + 1}`,
+          type: 'in',
+          title: 'Nạp tiền từ Ngân hàng',
+          amount: topupAmount,
+          date: new Date().toLocaleString('vi-VN')
         },
         ...prev
       ]);
@@ -70,14 +70,14 @@ export default function StudentWalletPage() {
       </div>
 
       <div className="flex-1 grid grid-cols-1 xl:grid-cols-3 gap-6 overflow-y-auto custom-scrollbar pr-2 pb-6">
-        
+
         {/* Column 1: Wallet Card & Payment Methods */}
         <div className="flex flex-col gap-6">
-          
+
           {/* Digital Card */}
           <div className="bg-gradient-to-br from-brand-primary via-brand-primary to-[#ff9100] rounded-3xl p-8 shadow-md relative overflow-hidden text-brand-text">
             <div className="absolute top-0 right-0 w-64 h-64 bg-white/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
-            
+
             <div className="relative z-10 flex flex-col h-full justify-between min-h-[200px]">
               <div className="flex justify-between items-start">
                 <div>
@@ -90,7 +90,7 @@ export default function StudentWalletPage() {
               </div>
 
               <div className="flex gap-4 mt-8">
-                <button 
+                <button
                   onClick={() => setIsTopupModalOpen(true)}
                   className="flex-1 py-3 bg-brand-text text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-black transition-colors shadow-sm"
                 >
@@ -108,7 +108,7 @@ export default function StudentWalletPage() {
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
               <CreditCard className="w-5 h-5 text-brand-text/60" /> Nguồn tiền liên kết
             </h3>
-            
+
             <div className="flex flex-col gap-3">
               <div className="border-2 border-brand-primary bg-brand-primary/5 rounded-2xl p-4 flex items-center justify-between cursor-pointer">
                 <div className="flex items-center gap-4">
@@ -151,7 +151,7 @@ export default function StudentWalletPage() {
             <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
               <History className="w-6 h-6 text-brand-text/60" /> Lịch sử Giao dịch
             </h3>
-            
+
             <div className="flex-1 flex flex-col gap-4">
               {transactions.map((txn, idx) => (
                 <div key={idx} className="flex items-center justify-between p-4 bg-brand-surface/50 hover:bg-brand-surface rounded-2xl transition-colors border border-transparent hover:border-black/5">
@@ -178,7 +178,7 @@ export default function StudentWalletPage() {
       {isTopupModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl border border-black/5 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
-            
+
             {showSuccess ? (
               <div className="p-10 flex flex-col items-center justify-center text-center">
                 <CheckCircle2 className="w-24 h-24 text-brand-success mb-6 animate-bounce" />
@@ -189,20 +189,20 @@ export default function StudentWalletPage() {
               <>
                 <div className="p-6 border-b border-black/5 flex items-center justify-between">
                   <h2 className="text-xl font-bold">Nạp tiền vào Ví</h2>
-                  <button 
+                  <button
                     onClick={() => setIsTopupModalOpen(false)}
                     className="p-2 rounded-xl hover:bg-black/5 transition-colors"
                   >
                     <X className="w-5 h-5 text-brand-text/60" />
                   </button>
                 </div>
-                
+
                 <form onSubmit={handleTopup} className="p-6">
                   <div className="mb-6">
                     <label className="block text-sm font-bold text-brand-text/70 mb-3">Chọn số tiền nạp</label>
                     <div className="grid grid-cols-3 gap-3 mb-4">
                       {[20000, 50000, 100000, 200000, 500000].map(amt => (
-                        <button 
+                        <button
                           key={amt}
                           type="button"
                           onClick={() => setTopupAmount(amt)}
@@ -214,8 +214,8 @@ export default function StudentWalletPage() {
                     </div>
                     <div className="relative">
                       <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-brand-text/40">VNĐ</span>
-                      <input 
-                        type="number" 
+                      <input
+                        type="number"
                         value={topupAmount}
                         onChange={(e) => setTopupAmount(Number(e.target.value))}
                         className="w-full pl-14 pr-4 py-4 rounded-xl bg-brand-surface border border-transparent focus:bg-white focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/20 outline-none transition-all font-black text-xl text-right"
@@ -234,7 +234,7 @@ export default function StudentWalletPage() {
                     </div>
                   </div>
 
-                  <button 
+                  <button
                     type="submit"
                     disabled={isProcessing || topupAmount < 10000}
                     className="w-full py-4 bg-brand-text text-white rounded-xl font-bold text-lg hover:bg-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-md"
@@ -248,7 +248,7 @@ export default function StudentWalletPage() {
                 </form>
               </>
             )}
-            
+
           </div>
         </div>
       )}

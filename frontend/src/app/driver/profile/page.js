@@ -2,17 +2,28 @@
 
 import { useState } from 'react';
 import { UserCircle, Map, Clock, ShieldCheck, Mail, Phone, Award, CreditCard, Camera } from 'lucide-react';
+import ImageCropModal from '@/components/modals/ImageCropModal';
 
 export default function DriverProfilePage() {
+  const [isEditing, setIsEditing] = useState(false);
   const [avatar, setAvatar] = useState(null);
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [tempImageUrl, setTempImageUrl] = useState(null);
 
   const handleAvatarChange = (e) => {
     const file = e.target.files[0];
     if (file) {
       const imageUrl = URL.createObjectURL(file);
-      setAvatar(imageUrl);
-      window.dispatchEvent(new CustomEvent('avatarUpdated', { detail: imageUrl }));
+      setTempImageUrl(imageUrl);
+      setCropModalOpen(true);
     }
+    e.target.value = null;
+  };
+
+  const handleConfirmCrop = (croppedImageUrl) => {
+    setAvatar(croppedImageUrl);
+    window.dispatchEvent(new CustomEvent('avatarUpdated', { detail: croppedImageUrl }));
+    setCropModalOpen(false);
   };
 
   return (
@@ -23,28 +34,28 @@ export default function DriverProfilePage() {
       </div>
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 overflow-y-auto custom-scrollbar pr-2 pb-6">
-        
+
         {/* Column 1: Identity (Spans 1 col) */}
         <div className="flex flex-col gap-6">
           <div className="bg-white rounded-3xl p-8 shadow-sm border border-black/5 flex flex-col items-center text-center relative overflow-hidden">
             <div className="absolute top-0 w-full h-32 bg-brand-primary/20"></div>
-            
+
             <label className="w-32 h-32 rounded-full bg-white border-4 border-white shadow-sm flex items-center justify-center relative z-10 mt-8 mb-4 cursor-pointer group">
               {avatar ? (
                 <img src={avatar} alt="Avatar" className="w-full h-full rounded-full object-cover" />
               ) : (
                 <UserCircle className="w-32 h-32 text-brand-text/20" />
               )}
-              
+
               <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                 <Camera className="w-8 h-8 text-white" />
               </div>
               <input type="file" className="hidden" accept="image/*" onChange={handleAvatarChange} />
             </label>
-            
+
             <h2 className="text-2xl font-bold text-brand-text">Nguyễn Văn Tài</h2>
             <p className="text-brand-text/60 font-medium mb-6">Tài xế Hạng E</p>
-            
+
             <div className="w-full flex flex-col gap-3 text-left">
               <div className="flex items-center gap-3 p-3 bg-brand-surface rounded-xl">
                 <CreditCard className="w-5 h-5 text-brand-text/40" />
@@ -73,7 +84,7 @@ export default function DriverProfilePage() {
 
         {/* Column 2 & 3: Stats & Details (Spans 2 cols) */}
         <div className="lg:col-span-2 flex flex-col gap-6">
-          
+
           {/* Stats Bento */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="bg-white rounded-3xl p-6 shadow-sm border border-black/5 flex flex-col gap-4">
@@ -85,7 +96,7 @@ export default function DriverProfilePage() {
                 <div className="text-sm font-bold text-brand-text/40 uppercase tracking-wider">Chuyến đã đi</div>
               </div>
             </div>
-            
+
             <div className="bg-white rounded-3xl p-6 shadow-sm border border-black/5 flex flex-col gap-4">
               <div className="w-12 h-12 rounded-2xl bg-brand-secondary/20 flex items-center justify-center">
                 <Clock className="w-6 h-6 text-brand-secondary" />
@@ -112,7 +123,7 @@ export default function DriverProfilePage() {
             <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
               <Award className="w-6 h-6 text-brand-text" /> Bằng lái & Chứng chỉ
             </h3>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="border border-black/5 rounded-2xl p-4 flex items-start gap-4 hover:border-brand-primary transition-colors">
                 <div className="w-12 h-12 bg-brand-surface rounded-xl flex items-center justify-center shrink-0 font-black text-xl text-brand-primary">
@@ -136,11 +147,18 @@ export default function DriverProfilePage() {
                 </div>
               </div>
             </div>
-            
+
           </div>
         </div>
 
       </div>
+
+      <ImageCropModal
+        isOpen={cropModalOpen}
+        imageUrl={tempImageUrl}
+        onClose={() => setCropModalOpen(false)}
+        onConfirm={handleConfirmCrop}
+      />
     </div>
   );
 }
