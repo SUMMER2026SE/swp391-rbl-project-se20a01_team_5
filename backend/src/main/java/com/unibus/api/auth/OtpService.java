@@ -27,16 +27,19 @@ public class OtpService {
     private final SecureRandom secureRandom = new SecureRandom();
     private final long expirationMinutes;
     private final boolean logCode;
+    private final OtpEmailSender otpEmailSender;
 
     public OtpService(
             VerificationCodeRepository verificationCodeRepository,
             HashingService hashingService,
             @Value("${app.otp.expiration-minutes}") long expirationMinutes,
-            @Value("${app.otp.log-code}") boolean logCode) {
+            @Value("${app.otp.log-code}") boolean logCode,
+            OtpEmailSender otpEmailSender) {
         this.verificationCodeRepository = verificationCodeRepository;
         this.hashingService = hashingService;
         this.expirationMinutes = expirationMinutes;
         this.logCode = logCode;
+        this.otpEmailSender = otpEmailSender;
     }
 
     @Transactional
@@ -51,6 +54,7 @@ public class OtpService {
         verificationCode.setCreatedAt(now);
         verificationCode.setExpiresAt(now.plusMinutes(expirationMinutes));
         verificationCodeRepository.save(verificationCode);
+        otpEmailSender.send(email, purpose, code);
         if (logCode) {
             LOGGER.info("DEV OTP purpose={} email={} code={}", purpose, email, code);
         }

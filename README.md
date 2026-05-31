@@ -20,7 +20,7 @@ The frontend can be added later under `frontend/` when its source is available.
 
 ## Implemented Use Cases
 
-- Authentication: register with development OTP, login, refresh token, logout, forgot password, role-based access.
+- Authentication: register with OTP email, login, Google OAuth, refresh token, logout, forgot password, role-based access.
 - Student profile: retrieve and update the authenticated student's profile.
 - Transport lookup: list active stops, search valid routes between two ordered stops, retrieve ETA for running trips.
 - Route registration: register, view current registration, change route, and cancel registration.
@@ -47,10 +47,21 @@ JWT_ACCESS_MINUTES=15
 JWT_REFRESH_DAYS=14
 OTP_EXPIRATION_MINUTES=10
 OTP_LOG_CODE=true
+SMTP_ENABLED=false
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=<mailbox>
+SMTP_PASSWORD=<app-password>
+SMTP_FROM=<mailbox>
+SMTP_FROM_NAME=UniBus
+SMTP_TLS=true
+SMTP_AUTH=true
+GOOGLE_CLIENT_ID=<google-oauth-web-client-id>
 ```
 
-Set `OTP_LOG_CODE=false` outside a development environment. No database credentials should be
-committed; `dbauth.txt` is ignored locally.
+Set `SMTP_ENABLED=true` and `OTP_LOG_CODE=false` outside a development environment. For Gmail,
+use an App Password instead of the normal mailbox password. No database or SMTP credentials
+should be committed; `dbauth.txt` is ignored locally.
 
 ### IntelliJ Run Configuration
 
@@ -76,7 +87,7 @@ All endpoints use the `/api/v1` prefix. Protected endpoints require
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
-| POST | `/auth/register/otp` | Issue registration OTP; the development code is logged |
+| POST | `/auth/register/otp` | Issue registration OTP by email when SMTP is enabled |
 | POST | `/auth/register` | Create a student account after OTP verification |
 | POST | `/auth/login` | Issue access and refresh tokens |
 | POST | `/auth/refresh` | Rotate refresh token and issue a new access token |
@@ -102,7 +113,8 @@ switching new registrations to `PENDING`.
 Open `backend/requests/iteration1.http` in IntelliJ after the application has started. Run the requests
 in order:
 
-1. Issue a registration OTP and copy the six-digit `DEV OTP` value from the application log.
+1. Issue a registration OTP and copy the six-digit code from email. In local development with
+   `OTP_LOG_CODE=true`, the code is also available as `DEV OTP` in the application log.
 2. Paste the OTP into the registration request and create a new test student.
 3. Log in and paste the returned access token into the `accessToken` variable.
 4. Run profile, stops, route search, registration, and travel-history requests as data becomes available.
