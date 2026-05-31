@@ -111,8 +111,8 @@ public class AuthService {
     }
 
     @Transactional
-    public TokenPair loginWithGoogle(String idToken, String device, String ipAddress) {
-        GoogleAccount googleAccount = googleOAuthVerifier.verify(idToken);
+    public TokenPair loginWithGoogle(String idToken, String accessToken, String device, String ipAddress) {
+        GoogleAccount googleAccount = googleOAuthVerifier.verify(idToken, accessToken);
         String email = normalizeEmail(googleAccount.email());
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
 

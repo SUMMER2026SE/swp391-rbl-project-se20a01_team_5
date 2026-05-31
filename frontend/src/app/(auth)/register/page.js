@@ -98,12 +98,12 @@ export default function RegisterPage() {
     }
   };
 
-  const handleGoogleCredential = useCallback(async (idToken) => {
+  const handleGoogleCredential = useCallback(async (googleCredential) => {
     setError('');
     setMessage('');
     setIsGoogleSubmitting(true);
     try {
-      const tokenPair = await authApi.googleLogin({ idToken, device: 'web' });
+      const tokenPair = await authApi.googleLogin({ ...googleCredential, device: 'web' });
       redirectAfterLogin(tokenPair);
     } catch (err) {
       setError(err.message);
@@ -246,11 +246,12 @@ export default function RegisterPage() {
               text="signup_with"
               onCredential={handleGoogleCredential}
               onError={setError}
+              disabled={isSubmitting || isRequestingOtp || isGoogleSubmitting}
             />
             <button
               type="button"
               onClick={() => setError('Facebook register chưa được triển khai trong backend.')}
-              className="py-3 rounded-xl bg-brand-surface border border-black/5 font-bold text-sm hover:bg-black/5 transition-colors"
+              className="h-12 rounded-xl bg-brand-surface border border-black/5 font-bold text-sm hover:bg-white hover:border-brand-secondary/40 hover:shadow-sm transition-all"
             >
               Facebook
             </button>

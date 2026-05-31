@@ -39,11 +39,11 @@ export default function LoginPage() {
     }
   };
 
-  const handleGoogleCredential = useCallback(async (idToken) => {
+  const handleGoogleCredential = useCallback(async (googleCredential) => {
     setError('');
     setIsGoogleSubmitting(true);
     try {
-      const tokenPair = await authApi.googleLogin({ idToken, device: 'web' });
+      const tokenPair = await authApi.googleLogin({ ...googleCredential, device: 'web' });
       redirectAfterLogin(tokenPair);
     } catch (err) {
       setError(err.message);
@@ -142,11 +142,12 @@ export default function LoginPage() {
               text="signin_with"
               onCredential={handleGoogleCredential}
               onError={setError}
+              disabled={isSubmitting || isGoogleSubmitting}
             />
             <button
               type="button"
               onClick={() => setError('Facebook login chưa được triển khai trong backend.')}
-              className="py-3 rounded-xl bg-brand-surface/50 border border-black/5 font-semibold text-sm hover:bg-black/5 transition-colors"
+              className="h-12 rounded-xl bg-brand-surface/50 border border-black/5 font-semibold text-sm hover:bg-white hover:border-brand-secondary/40 hover:shadow-sm transition-all"
             >
               Facebook
             </button>

@@ -36,7 +36,8 @@ public final class AuthRequests {
     }
 
     public record GoogleLoginRequest(
-            @NotBlank String idToken,
+            String idToken,
+            String accessToken,
             @Size(max = 200) String device) {
     }
 

@@ -57,7 +57,11 @@ public class AuthController {
             HttpServletRequest servletRequest) {
         return ApiResponse.ok(
                 "Google login successful",
-                authService.loginWithGoogle(request.idToken(), request.device(), servletRequest.getRemoteAddr()));
+                authService.loginWithGoogle(
+                        request.idToken(),
+                        request.accessToken(),
+                        request.device(),
+                        servletRequest.getRemoteAddr()));
     }
 
     @PostMapping("/refresh")
