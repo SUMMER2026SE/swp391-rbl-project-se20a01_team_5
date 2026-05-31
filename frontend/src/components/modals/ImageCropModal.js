@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, RotateCw, Image as ImageIcon } from 'lucide-react';
 
 export default function ImageCropModal({ isOpen, imageUrl, onClose, onConfirm }) {
@@ -12,15 +12,19 @@ export default function ImageCropModal({ isOpen, imageUrl, onClose, onConfirm })
 
   // Reset states when new image is loaded
   useEffect(() => {
-    if (isOpen) {
+    if (!isOpen) return undefined;
+
+    const handle = window.setTimeout(() => {
       setZoom(100);
       setRotation(0);
       setPosition({ x: 0, y: 0 });
-    }
+    }, 0);
+
+    return () => window.clearTimeout(handle);
   }, [isOpen, imageUrl]);
 
   // Compute precise bounds based on actual image dimensions
-  const getBounds = () => {
+  const getBounds = useCallback(() => {
     if (!containerRef.current || !imageRef.current) return { maxX: 0, maxY: 0 };
 
     const containerW = containerRef.current.clientWidth;
@@ -42,20 +46,24 @@ export default function ImageCropModal({ isOpen, imageUrl, onClose, onConfirm })
     const maxY = Math.max(0, (finalH - containerH) / 2);
 
     return { maxX, maxY };
-  };
+  }, [rotation, zoom]);
 
   // Bound the position when zoom changes
   useEffect(() => {
-    const { maxX, maxY } = getBounds();
-    setPosition(prev => {
-      const newX = Math.min(Math.max(prev.x, -maxX), maxX);
-      const newY = Math.min(Math.max(prev.y, -maxY), maxY);
-      if (newX !== prev.x || newY !== prev.y) {
-        return { x: newX, y: newY };
-      }
-      return prev;
-    });
-  }, [zoom, rotation]);
+    const handle = window.setTimeout(() => {
+      const { maxX, maxY } = getBounds();
+      setPosition(prev => {
+        const newX = Math.min(Math.max(prev.x, -maxX), maxX);
+        const newY = Math.min(Math.max(prev.y, -maxY), maxY);
+        if (newX !== prev.x || newY !== prev.y) {
+          return { x: newX, y: newY };
+        }
+        return prev;
+      });
+    }, 0);
+
+    return () => window.clearTimeout(handle);
+  }, [getBounds]);
 
   if (!isOpen) return null;
 

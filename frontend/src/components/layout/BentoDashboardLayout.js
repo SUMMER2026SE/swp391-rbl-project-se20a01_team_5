@@ -3,62 +3,41 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Bus, Menu, Bell, Search, UserCircle, LogOut, Wallet } from 'lucide-react';
+import { Menu, Bell, Search, UserCircle, LogOut } from 'lucide-react';
 import LogoutConfirmModal from '@/components/modals/LogoutConfirmModal';
+import { authApi, clearAuthSession, getAuthSession } from '@/services/api';
 
 export default function BentoDashboardLayout({ children, menuItems, roleName, profileHref }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(null);
-  const [walletBalance, setWalletBalance] = useState(null);
   const pathname = usePathname();
   const router = useRouter();
 
-  // Auth Guard: Redirect to login if no token
   useEffect(() => {
-    const token = sessionStorage.getItem('access_token') || localStorage.getItem('access_token');
-    if (!token) {
+    const session = getAuthSession();
+    if (!session) {
       router.replace('/login');
-    } else if (!sessionStorage.getItem('access_token')) {
-      // Sync from local to session if resuming from another tab
-      sessionStorage.setItem('access_token', token);
-      sessionStorage.setItem('user_role', localStorage.getItem('user_role'));
     }
 
-    // Listen for avatar updates
     const handleAvatarUpdate = (e) => {
       setAvatarUrl(e.detail);
     };
     window.addEventListener('avatarUpdated', handleAvatarUpdate);
 
-    // Listen for wallet updates
-    if (roleName === 'Sinh viên') {
-       const saved = localStorage.getItem('wallet_balance');
-       setWalletBalance(saved ? parseInt(saved) : 150000);
-    }
-    const handleWalletUpdate = (e) => {
-      setWalletBalance(e.detail);
-    };
-    window.addEventListener('walletUpdated', handleWalletUpdate);
-
     return () => {
       window.removeEventListener('avatarUpdated', handleAvatarUpdate);
-      window.removeEventListener('walletUpdated', handleWalletUpdate);
     };
-  }, [router, pathname, roleName]);
+  }, [router, pathname]);
 
-  const handleLogoutConfirm = (rememberPassword) => {
-    sessionStorage.removeItem('access_token');
-    sessionStorage.removeItem('user_role');
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('user_role');
-
-    if (rememberPassword) {
-      localStorage.setItem('remember_device', 'true');
-    } else {
-      localStorage.removeItem('remember_device');
+  const handleLogoutConfirm = async () => {
+    try {
+      await authApi.logout();
+    } catch {
+      // The local session still needs to be cleared if the token is already invalid.
     }
 
+    clearAuthSession();
     setShowLogoutModal(false);
     router.push('/login');
   };
@@ -143,12 +122,6 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
           </div>
 
           <div className="flex items-center gap-4 md:gap-6">
-            {walletBalance !== null && (
-              <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-brand-primary/10 rounded-xl border border-brand-primary/20 text-brand-text font-bold shadow-sm">
-                <Wallet className="w-4 h-4 text-brand-primary" />
-                {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(walletBalance)}
-              </div>
-            )}
             <button className="p-3 rounded-2xl bg-brand-surface hover:bg-brand-surface/70 text-brand-text transition-all relative">
               <Bell className="w-5 h-5" />
               <span className="absolute top-3 right-3 w-2.5 h-2.5 bg-brand-danger rounded-full border-2 border-white"></span>

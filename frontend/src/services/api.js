@@ -30,6 +30,10 @@ function toApiError(error) {
   return new Error(message);
 }
 
+function isAuthEndpoint(url = '') {
+  return url.includes('/auth/login') || url.includes('/auth/refresh');
+}
+
 apiClient.interceptors.request.use((config) => {
   const token = readStorage(ACCESS_TOKEN_KEY);
   if (token) {
@@ -41,7 +45,33 @@ apiClient.interceptors.request.use((config) => {
 
 apiClient.interceptors.response.use(
   (response) => response,
-  (error) => Promise.reject(toApiError(error)),
+  async (error) => {
+    const originalRequest = error.config;
+    const refreshToken = readStorage(REFRESH_TOKEN_KEY);
+
+    if (
+      error.response?.status === 401 &&
+      refreshToken &&
+      originalRequest &&
+      !originalRequest._retry &&
+      !isAuthEndpoint(originalRequest.url)
+    ) {
+      originalRequest._retry = true;
+
+      try {
+        const refreshResponse = await axios.post(`${API_BASE_URL}/auth/refresh`, { refreshToken });
+        const tokenPair = unwrap(refreshResponse);
+        setAuthSession(tokenPair);
+        originalRequest.headers.Authorization = `Bearer ${tokenPair.accessToken}`;
+        return apiClient(originalRequest);
+      } catch (refreshError) {
+        clearAuthSession();
+        return Promise.reject(toApiError(refreshError));
+      }
+    }
+
+    return Promise.reject(toApiError(error));
+  },
 );
 
 export function setAuthSession(tokenPair) {
@@ -52,6 +82,27 @@ export function setAuthSession(tokenPair) {
   localStorage.setItem(ACCESS_TOKEN_KEY, tokenPair.accessToken);
   localStorage.setItem(REFRESH_TOKEN_KEY, tokenPair.refreshToken);
   localStorage.setItem(USER_ROLE_KEY, tokenPair.role);
+}
+
+export function getAuthSession() {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const accessToken = localStorage.getItem(ACCESS_TOKEN_KEY);
+  if (!accessToken) {
+    return null;
+  }
+
+  return {
+    accessToken,
+    refreshToken: localStorage.getItem(REFRESH_TOKEN_KEY),
+    role: localStorage.getItem(USER_ROLE_KEY),
+  };
+}
+
+export function getStoredRole() {
+  return readStorage(USER_ROLE_KEY);
 }
 
 export function clearAuthSession() {
@@ -112,6 +163,15 @@ export const authApi = {
 
   async resetPassword(payload) {
     const response = await apiClient.post('/auth/forgot-password/reset', payload);
+    return unwrap(response);
+  },
+};
+
+export const travelApi = {
+  async getHistory({ page = 0, size = 20 } = {}) {
+    const response = await apiClient.get('/students/me/travel-history', {
+      params: { page, size },
+    });
     return unwrap(response);
   },
 };
