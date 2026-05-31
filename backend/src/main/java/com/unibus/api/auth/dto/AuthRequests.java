@@ -19,8 +19,8 @@ public final class AuthRequests {
             @NotBlank @Size(min = 6, max = 6) String otp,
             @NotBlank @Size(min = 8, max = 100) String password,
             @NotBlank @Size(max = 100) String fullName,
-            @NotBlank @Size(max = 20) String studentCode,
-            @NotBlank @Size(max = 150) String university,
+            @Size(max = 20) String studentCode,
+            @Size(max = 150) String university,
             @Size(max = 100) String faculty,
             Integer academicYear,
             LocalDate dateOfBirth) {
@@ -33,6 +33,11 @@ public final class AuthRequests {
     }
 
     public record RefreshRequest(@NotBlank String refreshToken) {
+    }
+
+    public record GoogleLoginRequest(
+            @NotBlank String idToken,
+            @Size(max = 200) String device) {
     }
 
     public record ResetPasswordRequest(

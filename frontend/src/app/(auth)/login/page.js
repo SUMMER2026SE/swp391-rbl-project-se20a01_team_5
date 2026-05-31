@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Lock, LogIn, Mail } from 'lucide-react';
+import GoogleSignInButton from '@/components/auth/GoogleSignInButton';
 import { authApi, clearAuthSession, getDefaultRouteForRole, setAuthSession } from '@/services/api';
 
 export default function LoginPage() {
@@ -11,23 +12,26 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
 
   useEffect(() => {
     clearAuthSession();
   }, []);
 
+  const redirectAfterLogin = useCallback((tokenPair) => {
+    setAuthSession(tokenPair);
+    router.push(getDefaultRouteForRole(tokenPair.role, tokenPair.studentVerificationStatus));
+  }, [router]);
+
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
-    setNotice('');
     setIsSubmitting(true);
 
     try {
       const tokenPair = await authApi.login({ email, password, device: 'web' });
-      setAuthSession(tokenPair);
-      router.push(getDefaultRouteForRole(tokenPair.role));
+      redirectAfterLogin(tokenPair);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -35,10 +39,18 @@ export default function LoginPage() {
     }
   };
 
-  const handleSocialLogin = (provider) => {
+  const handleGoogleCredential = useCallback(async (idToken) => {
     setError('');
-    setNotice(`${provider} login UI đang được giữ lại, nhưng backend OAuth chưa được triển khai.`);
-  };
+    setIsGoogleSubmitting(true);
+    try {
+      const tokenPair = await authApi.googleLogin({ idToken, device: 'web' });
+      redirectAfterLogin(tokenPair);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsGoogleSubmitting(false);
+    }
+  }, [redirectAfterLogin]);
 
   return (
     <div className="min-h-screen bg-brand-surface font-sans text-brand-text flex items-center justify-center p-4">
@@ -52,7 +64,7 @@ export default function LoginPage() {
               className="h-16 w-auto object-contain mb-6 drop-shadow-sm rounded-3xl"
             />
             <p className="text-lg text-brand-text/80 font-medium">
-              Đăng nhập để quản lý lịch trình, theo dõi chuyến xe và sử dụng các dịch vụ UniBus.
+              Đăng nhập để quản lý lịch trình, theo dõi chuyến xe và mua vé tháng dễ dàng hơn.
             </p>
           </div>
           <div className="text-sm font-bold text-brand-text/40">
@@ -62,19 +74,13 @@ export default function LoginPage() {
 
         <div className="bg-white rounded-3xl p-8 md:p-12 shadow-sm border border-black/5 flex flex-col justify-center">
           <div className="mb-8">
-            <h2 className="text-3xl font-bold tracking-tight">Đăng nhập</h2>
-            <p className="text-brand-text/60 mt-2 text-sm">Sử dụng tài khoản đã được tạo trong hệ thống backend.</p>
+            <h2 className="text-3xl font-bold tracking-tight">Đăng Nhập</h2>
+            <p className="text-brand-text/60 mt-2 text-sm">Điền thông tin tài khoản của bạn để truy cập</p>
           </div>
 
           {error && (
             <div className="mb-6 p-4 bg-brand-danger/10 border border-brand-danger/20 rounded-xl text-sm font-semibold text-brand-danger">
               {error}
-            </div>
-          )}
-
-          {notice && (
-            <div className="mb-6 p-4 bg-brand-secondary/10 border border-brand-secondary/20 rounded-xl text-sm font-semibold text-brand-text">
-              {notice}
             </div>
           )}
 
@@ -118,34 +124,30 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || isGoogleSubmitting}
               className="w-full py-4 mt-2 rounded-xl bg-brand-text text-white font-bold hover:bg-black transition-colors flex justify-center items-center gap-2 shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              <LogIn className="w-5 h-5" /> {isSubmitting ? 'Đang đăng nhập...' : 'Đăng nhập'}
+              <LogIn className="w-5 h-5" /> {isSubmitting ? 'Đang đăng nhập...' : 'Đăng Nhập'}
             </button>
           </form>
 
-          <div className="flex items-center gap-4 mb-5">
-            <div className="h-px flex-1 bg-black/10"></div>
-            <span className="text-xs font-bold uppercase tracking-wider text-brand-text/40">Hoặc tiếp tục với</span>
-            <div className="h-px flex-1 bg-black/10"></div>
+          <div className="flex items-center gap-4 mb-8">
+            <div className="flex-1 h-px bg-black/5"></div>
+            <span className="text-brand-text/40 text-xs font-semibold uppercase tracking-wider">Hoặc đăng nhập qua</span>
+            <div className="flex-1 h-px bg-black/5"></div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8">
+          <div className="grid grid-cols-2 gap-4 mb-8">
+            <GoogleSignInButton
+              text="signin_with"
+              onCredential={handleGoogleCredential}
+              onError={setError}
+            />
             <button
               type="button"
-              onClick={() => handleSocialLogin('Google')}
-              className="py-3 rounded-xl border border-black/10 bg-white text-sm font-bold text-brand-text hover:bg-brand-surface transition-colors flex items-center justify-center gap-2"
+              onClick={() => setError('Facebook login chưa được triển khai trong backend.')}
+              className="py-3 rounded-xl bg-brand-surface/50 border border-black/5 font-semibold text-sm hover:bg-black/5 transition-colors"
             >
-              <span className="font-black text-red-500">G</span>
-              Google
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSocialLogin('Facebook')}
-              className="py-3 rounded-xl border border-black/10 bg-white text-sm font-bold text-brand-text hover:bg-brand-surface transition-colors flex items-center justify-center gap-2"
-            >
-              <span className="font-black text-blue-600">f</span>
               Facebook
             </button>
           </div>

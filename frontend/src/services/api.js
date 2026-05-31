@@ -3,6 +3,7 @@ import axios from 'axios';
 export const ACCESS_TOKEN_KEY = 'access_token';
 export const REFRESH_TOKEN_KEY = 'refresh_token';
 export const USER_ROLE_KEY = 'user_role';
+export const STUDENT_VERIFICATION_STATUS_KEY = 'student_verification_status';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080/api/v1';
 
@@ -31,7 +32,7 @@ function toApiError(error) {
 }
 
 function isAuthEndpoint(url = '') {
-  return url.includes('/auth/login') || url.includes('/auth/refresh');
+  return url.includes('/auth/login') || url.includes('/auth/oauth/google') || url.includes('/auth/refresh');
 }
 
 apiClient.interceptors.request.use((config) => {
@@ -82,6 +83,9 @@ export function setAuthSession(tokenPair) {
   localStorage.setItem(ACCESS_TOKEN_KEY, tokenPair.accessToken);
   localStorage.setItem(REFRESH_TOKEN_KEY, tokenPair.refreshToken);
   localStorage.setItem(USER_ROLE_KEY, tokenPair.role);
+  if (tokenPair.studentVerificationStatus) {
+    localStorage.setItem(STUDENT_VERIFICATION_STATUS_KEY, tokenPair.studentVerificationStatus);
+  }
 }
 
 export function getAuthSession() {
@@ -98,11 +102,16 @@ export function getAuthSession() {
     accessToken,
     refreshToken: localStorage.getItem(REFRESH_TOKEN_KEY),
     role: localStorage.getItem(USER_ROLE_KEY),
+    studentVerificationStatus: localStorage.getItem(STUDENT_VERIFICATION_STATUS_KEY),
   };
 }
 
 export function getStoredRole() {
   return readStorage(USER_ROLE_KEY);
+}
+
+export function getStoredStudentVerificationStatus() {
+  return readStorage(STUDENT_VERIFICATION_STATUS_KEY);
 }
 
 export function clearAuthSession() {
@@ -113,9 +122,14 @@ export function clearAuthSession() {
   localStorage.removeItem(ACCESS_TOKEN_KEY);
   localStorage.removeItem(REFRESH_TOKEN_KEY);
   localStorage.removeItem(USER_ROLE_KEY);
+  localStorage.removeItem(STUDENT_VERIFICATION_STATUS_KEY);
 }
 
-export function getDefaultRouteForRole(role) {
+export function getDefaultRouteForRole(role, studentVerificationStatus) {
+  if (role === 'STUDENT' && studentVerificationStatus !== 'VERIFIED') {
+    return '/student/verify';
+  }
+
   const routes = {
     STUDENT: '/student',
     DRIVER: '/driver',
@@ -146,6 +160,14 @@ export const authApi = {
     return unwrap(response);
   },
 
+  async googleLogin(payload) {
+    const response = await apiClient.post('/auth/oauth/google', {
+      ...payload,
+      device: payload.device || 'web',
+    });
+    return unwrap(response);
+  },
+
   async refresh(refreshToken) {
     const response = await apiClient.post('/auth/refresh', { refreshToken });
     return unwrap(response);
@@ -164,6 +186,58 @@ export const authApi = {
   async resetPassword(payload) {
     const response = await apiClient.post('/auth/forgot-password/reset', payload);
     return unwrap(response);
+  },
+};
+
+export const studentVerificationApi = {
+  async getCurrent() {
+    const response = await apiClient.get('/students/me/verification');
+    return unwrap(response);
+  },
+
+  async submit({ university, studentCode, cardImage }) {
+    const formData = new FormData();
+    formData.append('university', university);
+    formData.append('studentCode', studentCode);
+    if (cardImage) {
+      formData.append('cardImage', cardImage);
+    }
+
+    const response = await apiClient.post('/students/me/verification', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return unwrap(response);
+  },
+};
+
+export const adminVerificationApi = {
+  async list(status) {
+    const response = await apiClient.get('/admin/student-verifications', {
+      params: status && status !== 'ALL' ? { status } : undefined,
+    });
+    return unwrap(response);
+  },
+
+  async approve(verificationId) {
+    const response = await apiClient.post(`/admin/student-verifications/${verificationId}/approve`);
+    return unwrap(response);
+  },
+
+  async reject(verificationId, reason) {
+    const response = await apiClient.post(`/admin/student-verifications/${verificationId}/reject`, { reason });
+    return unwrap(response);
+  },
+
+  async requestResubmission(verificationId, reason) {
+    const response = await apiClient.post(`/admin/student-verifications/${verificationId}/request-resubmission`, { reason });
+    return unwrap(response);
+  },
+
+  async getCardImageBlob(verificationId) {
+    const response = await apiClient.get(`/student-verifications/${verificationId}/card-image`, {
+      responseType: 'blob',
+    });
+    return response.data;
   },
 };
 

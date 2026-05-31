@@ -4,6 +4,8 @@ dbauth.txt
 # Build output and scratch data
 target/
 backend/backend-run*.log
+backend/uploads/
+frontend/frontend-run*.log
 .codex-tmp/
 .understand-anything/intermediate/
 .understand-anything/tmp/

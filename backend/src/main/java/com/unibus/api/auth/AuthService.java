@@ -10,18 +10,21 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.unibus.api.auth.JwtTokenService.IssuedToken;
 import com.unibus.api.auth.JwtTokenService.TokenClaims;
+import com.unibus.api.auth.GoogleOAuthVerifier.GoogleAccount;
 import com.unibus.api.auth.dto.AuthRequests.LoginRequest;
 import com.unibus.api.auth.dto.AuthRequests.RegisterRequest;
 import com.unibus.api.auth.dto.AuthRequests.ResetPasswordRequest;
 import com.unibus.api.auth.dto.AuthResponses.RegisteredUser;
 import com.unibus.api.auth.dto.AuthResponses.TokenPair;
 import com.unibus.api.auth.model.LoginSession;
+import com.unibus.api.auth.model.AuthProvider;
+import com.unibus.api.auth.model.UserAuthProvider;
 import com.unibus.api.auth.model.VerificationPurpose;
 import com.unibus.api.common.ApiException;
 import com.unibus.api.security.CurrentUser;
+import com.unibus.api.student.model.StudentVerificationStatus;
 import com.unibus.api.user.StudentRepository;
 import com.unibus.api.user.UserRepository;
-import com.unibus.api.user.model.Student;
 import com.unibus.api.user.model.User;
 import com.unibus.api.user.model.UserRole;
 import com.unibus.api.user.model.UserStatus;
@@ -31,27 +34,33 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final StudentRepository studentRepository;
+    private final UserAuthProviderRepository userAuthProviderRepository;
     private final LoginSessionRepository loginSessionRepository;
     private final OtpService otpService;
     private final JwtTokenService jwtTokenService;
     private final HashingService hashingService;
     private final PasswordEncoder passwordEncoder;
+    private final GoogleOAuthVerifier googleOAuthVerifier;
 
     public AuthService(
             UserRepository userRepository,
             StudentRepository studentRepository,
+            UserAuthProviderRepository userAuthProviderRepository,
             LoginSessionRepository loginSessionRepository,
             OtpService otpService,
             JwtTokenService jwtTokenService,
             HashingService hashingService,
-            PasswordEncoder passwordEncoder) {
+            PasswordEncoder passwordEncoder,
+            GoogleOAuthVerifier googleOAuthVerifier) {
         this.userRepository = userRepository;
         this.studentRepository = studentRepository;
+        this.userAuthProviderRepository = userAuthProviderRepository;
         this.loginSessionRepository = loginSessionRepository;
         this.otpService = otpService;
         this.jwtTokenService = jwtTokenService;
         this.hashingService = hashingService;
         this.passwordEncoder = passwordEncoder;
+        this.googleOAuthVerifier = googleOAuthVerifier;
     }
 
     public void requestRegistrationOtp(String email) {
@@ -67,9 +76,6 @@ public class AuthService {
         if (userRepository.existsByEmailIgnoreCase(email)) {
             throw new ApiException(HttpStatus.CONFLICT, "Email is already registered");
         }
-        if (studentRepository.existsById(request.studentCode().trim())) {
-            throw new ApiException(HttpStatus.CONFLICT, "Student code is already registered");
-        }
         otpService.verify(email, VerificationPurpose.REGISTER, request.otp());
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         User user = new User();
@@ -78,18 +84,17 @@ public class AuthService {
         user.setFullName(request.fullName().trim());
         user.setRole(UserRole.STUDENT);
         user.setStatus(UserStatus.ACTIVE);
+        user.setEmailVerifiedAt(now);
+        user.setStudentVerificationStatus(StudentVerificationStatus.NOT_SUBMITTED);
         user.setCreatedAt(now);
         userRepository.save(user);
 
-        Student student = new Student();
-        student.setStudentCode(request.studentCode().trim());
-        student.setUser(user);
-        student.setUniversity(request.university().trim());
-        student.setFaculty(request.faculty());
-        student.setAcademicYear(request.academicYear());
-        student.setDateOfBirth(request.dateOfBirth());
-        studentRepository.save(student);
-        return new RegisteredUser(user.getId(), student.getStudentCode(), user.getEmail(), user.getRole());
+        return new RegisteredUser(
+                user.getId(),
+                null,
+                user.getEmail(),
+                user.getRole(),
+                user.getStudentVerificationStatus());
     }
 
     @Transactional
@@ -99,10 +104,38 @@ public class AuthService {
         if (user.getStatus() == UserStatus.LOCKED) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Account is locked");
         }
-        if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+        if (user.getPasswordHash() == null || !passwordEncoder.matches(request.password(), user.getPasswordHash())) {
             throw invalidCredentials();
         }
         return createSessionTokens(user, request.device(), ipAddress);
+    }
+
+    @Transactional
+    public TokenPair loginWithGoogle(String idToken, String device, String ipAddress) {
+        GoogleAccount googleAccount = googleOAuthVerifier.verify(idToken);
+        String email = normalizeEmail(googleAccount.email());
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+
+        UserAuthProvider linkedProvider = userAuthProviderRepository
+                .findByProviderAndProviderUserId(AuthProvider.GOOGLE, googleAccount.providerUserId())
+                .orElse(null);
+        User user = linkedProvider == null
+                ? userRepository.findByEmailIgnoreCase(email).orElseGet(() -> createGoogleUser(googleAccount, now))
+                : linkedProvider.getUser();
+
+        if (user.getStatus() == UserStatus.LOCKED) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Account is locked");
+        }
+        if (googleAccount.emailVerified() && user.getEmailVerifiedAt() == null) {
+            user.setEmailVerifiedAt(now);
+        }
+        if ((user.getAvatarUrl() == null || user.getAvatarUrl().isBlank()) && !googleAccount.avatarUrl().isBlank()) {
+            user.setAvatarUrl(googleAccount.avatarUrl());
+        }
+        user.setUpdatedAt(now);
+        userRepository.save(user);
+        upsertGoogleProvider(user, googleAccount, now);
+        return createSessionTokens(user, device, ipAddress);
     }
 
     @Transactional
@@ -118,7 +151,9 @@ public class AuthService {
         session.setExpiresAt(refresh.expiresAt());
         loginSessionRepository.save(session);
         return new TokenPair("Bearer", access.value(), access.expiresAt(),
-                refresh.value(), refresh.expiresAt(), session.getUser().getRole());
+                refresh.value(), refresh.expiresAt(),
+                session.getUser().getRole(),
+                session.getUser().getStudentVerificationStatus());
     }
 
     @Transactional
@@ -168,7 +203,41 @@ public class AuthService {
         session.setExpiresAt(refresh.expiresAt());
         loginSessionRepository.save(session);
         return new TokenPair("Bearer", access.value(), access.expiresAt(),
-                refresh.value(), refresh.expiresAt(), user.getRole());
+                refresh.value(), refresh.expiresAt(), user.getRole(), user.getStudentVerificationStatus());
+    }
+
+    private User createGoogleUser(GoogleAccount googleAccount, OffsetDateTime now) {
+        User user = new User();
+        user.setEmail(normalizeEmail(googleAccount.email()));
+        user.setPasswordHash(null);
+        user.setFullName(googleAccount.fullName().isBlank()
+                ? googleAccount.email()
+                : googleAccount.fullName().trim());
+        user.setAvatarUrl(googleAccount.avatarUrl().isBlank() ? null : googleAccount.avatarUrl());
+        user.setRole(UserRole.STUDENT);
+        user.setStatus(UserStatus.ACTIVE);
+        user.setEmailVerifiedAt(googleAccount.emailVerified() ? now : null);
+        user.setStudentVerificationStatus(StudentVerificationStatus.NOT_SUBMITTED);
+        user.setCreatedAt(now);
+        return userRepository.save(user);
+    }
+
+    private void upsertGoogleProvider(User user, GoogleAccount googleAccount, OffsetDateTime now) {
+        UserAuthProvider provider = userAuthProviderRepository
+                .findByUserIdAndProvider(user.getId(), AuthProvider.GOOGLE)
+                .orElseGet(UserAuthProvider::new);
+        provider.setUser(user);
+        provider.setProvider(AuthProvider.GOOGLE);
+        provider.setProviderUserId(googleAccount.providerUserId());
+        provider.setProviderEmail(normalizeEmail(googleAccount.email()));
+        provider.setProviderEmailVerified(googleAccount.emailVerified());
+        provider.setDisplayName(googleAccount.fullName().isBlank() ? null : googleAccount.fullName());
+        provider.setAvatarUrl(googleAccount.avatarUrl().isBlank() ? null : googleAccount.avatarUrl());
+        if (provider.getCreatedAt() == null) {
+            provider.setCreatedAt(now);
+        }
+        provider.setUpdatedAt(now);
+        userAuthProviderRepository.save(provider);
     }
 
     private LoginSession activeSession(Long sessionId, Integer userId) {

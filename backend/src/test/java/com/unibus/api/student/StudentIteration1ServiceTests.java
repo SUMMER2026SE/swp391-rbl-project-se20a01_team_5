@@ -17,6 +17,7 @@ import com.unibus.api.transport.model.RouteStop;
 import com.unibus.api.transport.model.Stop;
 import com.unibus.api.travel.TravelHistoryService;
 import com.unibus.api.travel.TravelHistoryRepository;
+import com.unibus.api.student.model.StudentVerificationStatus;
 import com.unibus.api.user.StudentRepository;
 import com.unibus.api.user.UserRepository;
 import com.unibus.api.user.model.Student;
@@ -85,6 +86,8 @@ class StudentIteration1ServiceTests {
       user.setFullName("Student A");
       user.setRole(UserRole.STUDENT);
       user.setStatus(UserStatus.ACTIVE);
+      user.setEmailVerifiedAt(OffsetDateTime.now(ZoneOffset.UTC));
+      user.setStudentVerificationStatus(StudentVerificationStatus.VERIFIED);
       user.setCreatedAt(OffsetDateTime.now(ZoneOffset.UTC));
       this.userRepository.save(user);
       Student student = new Student();

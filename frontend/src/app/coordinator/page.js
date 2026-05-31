@@ -64,7 +64,7 @@ export default function CoordinatorDashboard() {
             <Maximize className="w-5 h-5 text-brand-text" />
           </button>
 
-          {/* Macro Mock Map */}
+          {/* Fleet overview map */}
           <div className="flex-1 relative bg-[#EBEFE8] overflow-hidden">
             {/* Grid Pattern */}
             <div className="absolute inset-0 opacity-20"

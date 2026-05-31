@@ -9,10 +9,13 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+
+import com.unibus.api.student.model.StudentVerificationStatus;
 
 @Entity
 @Table(name = "users")
@@ -29,7 +32,7 @@ public class User {
     @Column(nullable = false, unique = true, length = 100)
     private String email;
 
-    @Column(name = "password_hash", nullable = false)
+    @Column(name = "password_hash")
     private String passwordHash;
 
     @Column(name = "full_name", nullable = false, length = 100)
@@ -42,6 +45,13 @@ public class User {
 
     @Column(name = "avatar_url", length = 500)
     private String avatarUrl;
+
+    @Column(name = "email_verified_at")
+    private OffsetDateTime emailVerifiedAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "student_verification_status", nullable = false, length = 30)
+    private StudentVerificationStatus studentVerificationStatus;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
@@ -59,4 +69,11 @@ public class User {
 
     @Column(name = "updated_at")
     private OffsetDateTime updatedAt;
+
+    @PrePersist
+    void applyDefaults() {
+        if (studentVerificationStatus == null) {
+            studentVerificationStatus = StudentVerificationStatus.NOT_SUBMITTED;
+        }
+    }
 }

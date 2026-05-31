@@ -3,10 +3,10 @@
 import { useState } from 'react';
 import { Users, Search, Filter, Lock, Unlock, ShieldAlert, CheckCircle2, User as UserIcon, MoreVertical, Plus, Save, X } from 'lucide-react';
 
-const usersFromBackend = [];
+const initialUsers = [];
 
 export default function AdminUsersPage() {
-  const [users] = useState(usersFromBackend);
+  const [users] = useState(initialUsers);
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [notice, setNotice] = useState('');
@@ -177,7 +177,7 @@ export default function AdminUsersPage() {
           </table>
         </div>
 
-        {/* Pagination Dummy */}
+        {/* Pagination */}
         <div className="p-4 md:px-8 border-t border-black/5 bg-white flex justify-between items-center text-sm font-bold text-brand-text/50">
           <span>Hiển thị 1 - {filteredUsers.length} trên tổng {users.length}</span>
           <div className="flex gap-2">

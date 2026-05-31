@@ -15,10 +15,13 @@ import com.unibus.api.registration.dto.RegistrationDtos.RegistrationRequest;
 import com.unibus.api.registration.model.RegistrationStatus;
 import com.unibus.api.registration.model.RouteRegistration;
 import com.unibus.api.security.CurrentUser;
+import com.unibus.api.student.model.StudentVerificationStatus;
 import com.unibus.api.transport.TransportService;
 import com.unibus.api.transport.TransportService.RouteSelection;
 import com.unibus.api.user.StudentRepository;
+import com.unibus.api.user.UserRepository;
 import com.unibus.api.user.model.Student;
+import com.unibus.api.user.model.User;
 
 @Service
 public class RouteRegistrationService {
@@ -28,14 +31,17 @@ public class RouteRegistrationService {
 
     private final RouteRegistrationRepository routeRegistrationRepository;
     private final StudentRepository studentRepository;
+    private final UserRepository userRepository;
     private final TransportService transportService;
 
     public RouteRegistrationService(
             RouteRegistrationRepository routeRegistrationRepository,
             StudentRepository studentRepository,
+            UserRepository userRepository,
             TransportService transportService) {
         this.routeRegistrationRepository = routeRegistrationRepository;
         this.studentRepository = studentRepository;
+        this.userRepository = userRepository;
         this.transportService = transportService;
     }
 
@@ -51,6 +57,7 @@ public class RouteRegistrationService {
 
     @Transactional
     public Registration register(CurrentUser currentUser, RegistrationRequest request) {
+        requireVerifiedStudent(currentUser);
         Student student = findStudent(currentUser);
         if (routeRegistrationRepository.findFirstByStudentStudentCodeAndStatusInOrderByRegisteredAtDesc(
                 student.getStudentCode(), ACTIVE_STATUSES).isPresent()) {
@@ -63,6 +70,7 @@ public class RouteRegistrationService {
 
     @Transactional
     public Registration change(CurrentUser currentUser, Integer registrationId, RegistrationRequest request) {
+        requireVerifiedStudent(currentUser);
         Student student = findStudent(currentUser);
         RouteRegistration existing = ownedRegistration(student, registrationId);
         requireActive(existing);
@@ -106,6 +114,14 @@ public class RouteRegistrationService {
     private Student findStudent(CurrentUser currentUser) {
         return studentRepository.findByUserId(currentUser.userId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Student profile not found"));
+    }
+
+    private void requireVerifiedStudent(CurrentUser currentUser) {
+        User user = userRepository.findById(currentUser.userId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "User not found"));
+        if (user.getStudentVerificationStatus() != StudentVerificationStatus.VERIFIED) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Student verification is required before route registration");
+        }
     }
 
     private RouteRegistration ownedRegistration(Student student, Integer registrationId) {

@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.unibus.api.auth.dto.AuthRequests.LoginRequest;
+import com.unibus.api.auth.dto.AuthRequests.GoogleLoginRequest;
 import com.unibus.api.auth.dto.AuthRequests.OtpRequest;
 import com.unibus.api.auth.dto.AuthRequests.RefreshRequest;
 import com.unibus.api.auth.dto.AuthRequests.RegisterRequest;
@@ -48,6 +49,15 @@ public class AuthController {
     @PostMapping("/login")
     ApiResponse<TokenPair> login(@Valid @RequestBody LoginRequest request, HttpServletRequest servletRequest) {
         return ApiResponse.ok("Login successful", authService.login(request, servletRequest.getRemoteAddr()));
+    }
+
+    @PostMapping("/oauth/google")
+    ApiResponse<TokenPair> googleLogin(
+            @Valid @RequestBody GoogleLoginRequest request,
+            HttpServletRequest servletRequest) {
+        return ApiResponse.ok(
+                "Google login successful",
+                authService.loginWithGoogle(request.idToken(), request.device(), servletRequest.getRemoteAddr()));
     }
 
     @PostMapping("/refresh")

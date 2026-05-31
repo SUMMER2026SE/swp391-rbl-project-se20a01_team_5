@@ -14,6 +14,7 @@ import com.unibus.api.student.dto.StudentDtos.UpdateProfileRequest;
 import com.unibus.api.user.StudentRepository;
 import com.unibus.api.user.UserRepository;
 import com.unibus.api.user.model.Student;
+import com.unibus.api.user.model.User;
 
 @Service
 public class StudentProfileService {
@@ -28,47 +29,51 @@ public class StudentProfileService {
 
     @Transactional(readOnly = true)
     public Profile getProfile(CurrentUser currentUser) {
-        return toProfile(findStudent(currentUser));
+        User user = findUser(currentUser);
+        return toProfile(user, studentRepository.findByUserId(currentUser.userId()).orElse(null));
     }
 
     @Transactional
     public Profile updateProfile(CurrentUser currentUser, UpdateProfileRequest request) {
-        Student student = findStudent(currentUser);
+        User user = findUser(currentUser);
+        Student student = studentRepository.findByUserId(currentUser.userId()).orElse(null);
         String email = nullableTrim(request.email());
-        if (email != null && !email.equalsIgnoreCase(student.getUser().getEmail())) {
+        if (email != null && !email.equalsIgnoreCase(user.getEmail())) {
             if (userRepository.existsByEmailIgnoreCase(email)) {
                 throw new ApiException(HttpStatus.CONFLICT, "Email is already registered");
             }
-            student.getUser().setEmail(email.toLowerCase());
+            user.setEmail(email.toLowerCase());
         }
         if (nullableTrim(request.fullName()) != null) {
-            student.getUser().setFullName(request.fullName().trim());
+            user.setFullName(request.fullName().trim());
         }
         if (request.phoneNumber() != null) {
-            student.getUser().setPhoneNumber(nullableTrim(request.phoneNumber()));
+            user.setPhoneNumber(nullableTrim(request.phoneNumber()));
         }
         if (request.address() != null) {
-            student.getUser().setAddress(nullableTrim(request.address()));
+            user.setAddress(nullableTrim(request.address()));
         }
         if (request.avatarUrl() != null) {
-            student.getUser().setAvatarUrl(nullableTrim(request.avatarUrl()));
+            user.setAvatarUrl(nullableTrim(request.avatarUrl()));
         }
-        student.getUser().setUpdatedAt(OffsetDateTime.now(ZoneOffset.UTC));
-        if (nullableTrim(request.university()) != null) {
+        user.setUpdatedAt(OffsetDateTime.now(ZoneOffset.UTC));
+        if (student != null && nullableTrim(request.university()) != null) {
             student.setUniversity(request.university().trim());
         }
-        if (request.faculty() != null) {
+        if (student != null && request.faculty() != null) {
             student.setFaculty(nullableTrim(request.faculty()));
         }
-        if (request.academicYear() != null) {
+        if (student != null && request.academicYear() != null) {
             student.setAcademicYear(request.academicYear());
         }
-        if (request.dateOfBirth() != null) {
+        if (student != null && request.dateOfBirth() != null) {
             student.setDateOfBirth(request.dateOfBirth());
         }
-        userRepository.save(student.getUser());
-        studentRepository.save(student);
-        return toProfile(student);
+        userRepository.save(user);
+        if (student != null) {
+            studentRepository.save(student);
+        }
+        return toProfile(user, student);
     }
 
     private Student findStudent(CurrentUser currentUser) {
@@ -76,19 +81,29 @@ public class StudentProfileService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Student profile not found"));
     }
 
-    private Profile toProfile(Student student) {
+    private User findUser(CurrentUser currentUser) {
+        return userRepository.findById(currentUser.userId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "User not found"));
+    }
+
+    private Profile toProfile(User user, Student student) {
         return new Profile(
-                student.getUser().getId(),
-                student.getStudentCode(),
-                student.getUser().getEmail(),
-                student.getUser().getFullName(),
-                student.getUser().getPhoneNumber(),
-                student.getUser().getAddress(),
-                student.getUser().getAvatarUrl(),
-                student.getUniversity(),
-                student.getFaculty(),
-                student.getAcademicYear(),
-                student.getDateOfBirth());
+                user.getId(),
+                student == null ? null : student.getStudentCode(),
+                user.getEmail(),
+                user.getFullName(),
+                user.getPhoneNumber(),
+                user.getAddress(),
+                user.getAvatarUrl(),
+                student == null ? null : student.getUniversity(),
+                student == null ? null : student.getFaculty(),
+                student == null ? null : student.getAcademicYear(),
+                student == null ? null : student.getDateOfBirth(),
+                user.getStudentVerificationStatus());
+    }
+
+    private Profile toProfile(Student student) {
+        return toProfile(student.getUser(), student);
     }
 
     private String nullableTrim(String value) {

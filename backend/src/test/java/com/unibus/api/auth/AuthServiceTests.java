@@ -6,6 +6,7 @@ import com.unibus.api.auth.model.VerificationCode;
 import com.unibus.api.auth.model.VerificationPurpose;
 import com.unibus.api.common.ApiException;
 import com.unibus.api.security.CurrentUser;
+import com.unibus.api.student.model.StudentVerificationStatus;
 import com.unibus.api.user.StudentRepository;
 import com.unibus.api.user.UserRepository;
 import com.unibus.api.user.model.UserRole;
@@ -57,7 +58,9 @@ class AuthServiceTests {
       this.saveOtp("student@example.com", VerificationPurpose.REGISTER, "123456");
       AuthResponses.RegisteredUser registered = this.authService.register(new AuthRequests.RegisterRequest("student@example.com", "123456", "strong-password", "Student A", "SE001", "UniBus University", (String)null, (Integer)null, (LocalDate)null));
       Assertions.assertThat(registered.role()).isEqualTo(UserRole.STUDENT);
+      Assertions.assertThat(registered.studentVerificationStatus()).isEqualTo(StudentVerificationStatus.NOT_SUBMITTED);
       AuthResponses.TokenPair tokenPair = this.authService.login(new AuthRequests.LoginRequest("student@example.com", "strong-password", "integration-test"), "127.0.0.1");
+      Assertions.assertThat(tokenPair.studentVerificationStatus()).isEqualTo(StudentVerificationStatus.NOT_SUBMITTED);
       JwtTokenService.TokenClaims claims = this.jwtTokenService.parseAccessToken(tokenPair.accessToken());
       Assertions.assertThat(claims.userId()).isEqualTo(registered.userId());
       Assertions.assertThat(this.loginSessionRepository.findByIdAndActiveTrue(claims.sessionId())).isPresent();
