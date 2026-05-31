@@ -1,48 +1,53 @@
 "use client";
 
-import { useState } from 'react';
-import { AlertTriangle, ShieldAlert, Flag, CheckCircle2, MessageSquare, Search, Filter, Lock, Send, XCircle } from 'lucide-react';
-
-const MOCK_REPORTS = [
-  { 
-    id: 'REP-001', 
-    type: 'violation', 
-    title: 'Tài xế vi phạm tốc độ', 
-    reporter: 'Hệ thống GPS', 
-    target: 'Tài xế Nguyễn Văn Tài (TX01)', 
-    time: '15 phút trước', 
-    content: 'Tài xế điều khiển xe 43B-123.45 vượt quá tốc độ cho phép (hơn 60km/h) tại đoạn đường Lê Duẩn.', 
-    status: 'pending',
-    severity: 'high'
-  },
-  { 
-    id: 'REP-002', 
-    type: 'complaint', 
-    title: 'Thái độ phụ xe không tốt', 
-    reporter: 'Sinh viên Trần Văn B (SV102)', 
-    target: 'Phụ xe Lê Thị C (PX02)', 
-    time: '2 giờ trước', 
-    content: 'Phụ xe tuyến số 2 vào lúc 8h sáng nay có thái độ cáu gắt và la mắng sinh viên khi lên xe.', 
-    status: 'pending',
-    severity: 'medium'
-  },
-  { 
-    id: 'REP-003', 
-    type: 'system', 
-    title: 'Lỗi nạp tiền ví điện tử', 
-    reporter: 'Nhiều sinh viên', 
-    target: 'Cổng thanh toán', 
-    time: '1 ngày trước', 
-    content: 'Nhiều giao dịch nạp tiền qua VNPay bị trừ tiền nhưng không cộng vào ví UniBus.', 
-    status: 'resolved',
-    severity: 'high'
-  },
-];
+import { useState, useEffect } from 'react';
+import { AlertTriangle, ShieldAlert, Flag, CheckCircle2, MessageSquare, Search, Filter, Lock, Send, XCircle, Loader2 } from 'lucide-react';
+import { adminReportsService } from '@/services/adminReports.service';
 
 export default function AdminReportsPage() {
-  const [reports, setReports] = useState(MOCK_REPORTS);
-  const [selectedReport, setSelectedReport] = useState(MOCK_REPORTS[0]);
+  const [reports, setReports] = useState([]);
+  const [selectedReport, setSelectedReport] = useState(null);
   const [replyText, setReplyText] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchReports = async () => {
+      try {
+        const data = await adminReportsService.getReports();
+        setReports(data);
+        if (data.length > 0) setSelectedReport(data[0]);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchReports();
+  }, []);
+
+  const handleResolve = async (id) => {
+    try {
+      await adminReportsService.updateStatus(id, 'resolved');
+      setReports(reports.map(r => r.id === id ? { ...r, status: 'resolved' } : r));
+      if (selectedReport?.id === id) {
+        setSelectedReport({ ...selectedReport, status: 'resolved' });
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleReject = async (id) => {
+    try {
+      await adminReportsService.updateStatus(id, 'rejected');
+      setReports(reports.map(r => r.id === id ? { ...r, status: 'rejected' } : r));
+      if (selectedReport?.id === id) {
+        setSelectedReport({ ...selectedReport, status: 'rejected' });
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const handleResolve = (id) => {
     setReports(reports.map(r => r.id === id ? { ...r, status: 'resolved' } : r));
@@ -88,37 +93,49 @@ export default function AdminReportsPage() {
           </div>
 
           <div className="flex-1 overflow-y-auto custom-scrollbar p-4 flex flex-col gap-3">
-            {reports.map((report) => (
-              <div 
-                key={report.id} 
-                onClick={() => setSelectedReport(report)}
-                className={`p-4 rounded-2xl border cursor-pointer transition-all ${selectedReport?.id === report.id ? 'border-brand-primary bg-brand-primary/5 shadow-sm' : 'border-black/5 bg-white hover:border-brand-primary/30'} ${report.status !== 'pending' ? 'opacity-60' : ''}`}
-              >
-                <div className="flex justify-between items-start mb-2">
-                  <div className="flex items-center gap-2">
-                    {report.severity === 'high' ? <ShieldAlert className="w-4 h-4 text-brand-danger" /> : <Flag className="w-4 h-4 text-brand-secondary" />}
-                    <span className="font-bold text-sm text-brand-text truncate w-32">{report.title}</span>
-                  </div>
-                  <span className="text-[10px] font-black text-brand-text/40">{report.time}</span>
-                </div>
-                <div className="text-xs font-bold text-brand-text/60 mb-2">
-                  Bị kiện: <span className="text-brand-text">{report.target}</span>
-                </div>
-                
-                <div className="flex justify-between items-center mt-3">
-                  <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${report.type === 'violation' ? 'bg-brand-danger/20 text-brand-danger' : report.type === 'complaint' ? 'bg-brand-secondary/20 text-brand-text' : 'bg-black/10 text-brand-text'}`}>
-                    {report.type === 'violation' ? 'Vi phạm' : report.type === 'complaint' ? 'Khiếu nại' : 'Hệ thống'}
-                  </span>
-                  {report.status === 'pending' ? (
-                    <span className="w-2 h-2 rounded-full bg-brand-danger animate-pulse"></span>
-                  ) : report.status === 'resolved' ? (
-                    <CheckCircle2 className="w-4 h-4 text-brand-success" />
-                  ) : (
-                    <XCircle className="w-4 h-4 text-brand-text/40" />
-                  )}
-                </div>
+            {isLoading ? (
+              <div className="flex flex-col items-center justify-center h-full text-brand-text/50">
+                <Loader2 className="w-8 h-8 animate-spin mb-4" />
+                <p className="font-bold">Đang tải báo cáo...</p>
               </div>
-            ))}
+            ) : reports.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-brand-text/50">
+                <ShieldAlert className="w-12 h-12 mb-4 opacity-20" />
+                <p className="font-bold">Không có báo cáo nào.</p>
+              </div>
+            ) : (
+              reports.map((report) => (
+                <div 
+                  key={report.id} 
+                  onClick={() => setSelectedReport(report)}
+                  className={`p-4 rounded-2xl border cursor-pointer transition-all ${selectedReport?.id === report.id ? 'border-brand-primary bg-brand-primary/5 shadow-sm' : 'border-black/5 bg-white hover:border-brand-primary/30'} ${report.status !== 'pending' ? 'opacity-60' : ''}`}
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="flex items-center gap-2">
+                      {report.severity === 'high' ? <ShieldAlert className="w-4 h-4 text-brand-danger" /> : <Flag className="w-4 h-4 text-brand-secondary" />}
+                      <span className="font-bold text-sm text-brand-text truncate w-32">{report.title}</span>
+                    </div>
+                    <span className="text-[10px] font-black text-brand-text/40">{report.time}</span>
+                  </div>
+                  <div className="text-xs font-bold text-brand-text/60 mb-2">
+                    Bị kiện: <span className="text-brand-text">{report.target}</span>
+                  </div>
+                  
+                  <div className="flex justify-between items-center mt-3">
+                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${report.type === 'violation' ? 'bg-brand-danger/20 text-brand-danger' : report.type === 'complaint' ? 'bg-brand-secondary/20 text-brand-text' : 'bg-black/10 text-brand-text'}`}>
+                      {report.type === 'violation' ? 'Vi phạm' : report.type === 'complaint' ? 'Khiếu nại' : 'Hệ thống'}
+                    </span>
+                    {report.status === 'pending' ? (
+                      <span className="w-2 h-2 rounded-full bg-brand-danger animate-pulse"></span>
+                    ) : report.status === 'resolved' ? (
+                      <CheckCircle2 className="w-4 h-4 text-brand-success" />
+                    ) : (
+                      <XCircle className="w-4 h-4 text-brand-text/40" />
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
 

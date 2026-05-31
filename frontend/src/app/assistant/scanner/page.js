@@ -1,20 +1,28 @@
 "use client";
 
 import { useState } from 'react';
-import { Camera, Zap, ZapOff, CheckCircle2, XCircle, Search } from 'lucide-react';
+import { Camera, Zap, ZapOff, CheckCircle2, XCircle, Search, Loader2 } from 'lucide-react';
+import { ticketScannerService } from '@/services/ticketScanner.service';
 
 export default function ScannerPage() {
   const [flashOn, setFlashOn] = useState(false);
   const [scanResult, setScanResult] = useState(null); // null, 'success', 'error'
+  const [isScanning, setIsScanning] = useState(false);
+  const [scannedData, setScannedData] = useState(null);
 
-  const mockScanSuccess = () => {
-    setScanResult('success');
-    setTimeout(() => setScanResult(null), 3000);
-  };
-
-  const mockScanError = () => {
-    setScanResult('error');
-    setTimeout(() => setScanResult(null), 3000);
+  const handleScan = async (code) => {
+    setIsScanning(true);
+    setScanResult(null);
+    try {
+      const res = await ticketScannerService.scanTicket(code);
+      setScannedData(res.ticket);
+      setScanResult('success');
+    } catch (err) {
+      setScanResult('error');
+    } finally {
+      setIsScanning(false);
+      setTimeout(() => setScanResult(null), 3000);
+    }
   };
 
   return (
@@ -61,12 +69,12 @@ export default function ScannerPage() {
           </div>
 
           {/* Scan Results Overlay */}
-          {scanResult === 'success' && (
+          {scanResult === 'success' && scannedData && (
             <div className="absolute inset-0 bg-brand-success/90 backdrop-blur-sm flex flex-col items-center justify-center text-white p-6 text-center animate-in fade-in duration-200">
               <CheckCircle2 className="w-24 h-24 mb-4" />
               <h2 className="text-3xl font-black mb-2">HỢP LỆ</h2>
-              <p className="text-lg font-medium opacity-90">Nguyễn Văn A - 102220001</p>
-              <p className="font-bold mt-2 bg-white/20 px-4 py-2 rounded-xl">Vé Tháng - Tuyến 01</p>
+              <p className="text-lg font-medium opacity-90">{scannedData.name} - {scannedData.studentId}</p>
+              <p className="font-bold mt-2 bg-white/20 px-4 py-2 rounded-xl">{scannedData.type} - {scannedData.route}</p>
             </div>
           )}
 
@@ -92,17 +100,19 @@ export default function ScannerPage() {
 
             <div className="flex flex-col gap-3 flex-1 justify-center">
               <button 
-                onClick={mockScanSuccess}
-                className="w-full py-4 bg-brand-success/10 text-brand-success hover:bg-brand-success hover:text-white border border-brand-success/20 rounded-2xl font-bold text-lg transition-colors flex items-center justify-center gap-2"
+                onClick={() => handleScan('VALID')}
+                disabled={isScanning}
+                className="w-full py-4 bg-brand-success/10 text-brand-success hover:bg-brand-success hover:text-white border border-brand-success/20 rounded-2xl font-bold text-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
               >
-                <CheckCircle2 className="w-6 h-6" /> Giả lập Quét Đúng
+                {isScanning ? <Loader2 className="w-6 h-6 animate-spin" /> : <CheckCircle2 className="w-6 h-6" />} Giả lập Quét Đúng
               </button>
               
               <button 
-                onClick={mockScanError}
-                className="w-full py-4 bg-brand-danger/10 text-brand-danger hover:bg-brand-danger hover:text-white border border-brand-danger/20 rounded-2xl font-bold text-lg transition-colors flex items-center justify-center gap-2"
+                onClick={() => handleScan('INVALID')}
+                disabled={isScanning}
+                className="w-full py-4 bg-brand-danger/10 text-brand-danger hover:bg-brand-danger hover:text-white border border-brand-danger/20 rounded-2xl font-bold text-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
               >
-                <XCircle className="w-6 h-6" /> Giả lập Quét Sai
+                {isScanning ? <Loader2 className="w-6 h-6 animate-spin" /> : <XCircle className="w-6 h-6" />} Giả lập Quét Sai
               </button>
             </div>
 

@@ -35,7 +35,7 @@ export default function Home() {
           <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-full max-w-2xl h-64 bg-brand-primary/30 rounded-full blur-[100px] -z-10"></div>
 
           <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-6 max-w-4xl leading-[1.1] animate-in fade-in slide-in-from-bottom-6 duration-700 delay-100">
-            Hành trình đến trường, <br className="hidden md:block" /> bắt đầu bằng sự an tâm.
+           Trải nghiệm UniBus,<br className="hidden md:block" /> An toàn, tiện lợi.
           </h1>
           
           <p className="text-lg md:text-xl text-brand-text/60 max-w-2xl mb-10 font-medium animate-in fade-in slide-in-from-bottom-6 duration-700 delay-200">

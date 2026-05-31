@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Lock, LogIn, User, Bus } from 'lucide-react';
+import { Lock, LogIn, User, Bus, Loader2 } from 'lucide-react';
 import GoogleLoginModal from '@/components/modals/GoogleLoginModal';
+import { authService } from '@/services/auth.service';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -13,24 +14,39 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [showGoogleModal, setShowGoogleModal] = useState(false);
 
-  const handleSelectAccount = (account) => {
-    const token = `mock_token_${account.role}`;
-    const role = account.role;
-    
-    sessionStorage.setItem('access_token', token);
-    sessionStorage.setItem('user_role', role);
-    
-    if (localStorage.getItem('remember_device') === 'true') {
-      localStorage.setItem('access_token', token);
-      localStorage.setItem('user_role', role);
-    }
-    
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleSelectAccount = async (account) => {
     setShowGoogleModal(false);
-    
-    if (role === 'STUDENT') {
-      router.push('/student');
-    } else {
-      router.push(`/${role.toLowerCase()}`);
+    await performLogin(() => authService.googleLogin(account.email)); // In mock mode, we pass email as fake token
+  };
+
+  const performLogin = async (loginPromise) => {
+    try {
+      setIsLoading(true);
+      setError('');
+      
+      const response = await loginPromise();
+      const { access_token, user } = response;
+      const role = user.role;
+
+      sessionStorage.setItem('access_token', access_token);
+      sessionStorage.setItem('user_role', role);
+      
+      if (localStorage.getItem('remember_device') === 'true') {
+        localStorage.setItem('access_token', access_token);
+        localStorage.setItem('user_role', role);
+      }
+      
+      if (role === 'STUDENT') {
+        window.location.href = '/student';
+      } else {
+        window.location.href = `/${role.toLowerCase()}`;
+      }
+    } catch (err) {
+      setError(err.message || 'Đăng nhập thất bại. Vui lòng thử lại.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -42,57 +58,14 @@ export default function LoginPage() {
     localStorage.removeItem('user_role');
   }, []);
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    setError('');
-    
-    // Giả lập backend kiểm tra Role dựa trên tên đăng nhập
-    let computedRole = 'STUDENT'; // Mặc định là sinh viên
-    const lowerUser = username.toLowerCase();
-    
-    if (lowerUser.includes('admin')) {
-      computedRole = 'ADMIN';
-    } else if (lowerUser.includes('phuxe')) {
-      computedRole = 'ASSISTANT';
-    } else if (lowerUser.includes('taixe')) {
-      computedRole = 'DRIVER';
-    } else if (lowerUser.includes('dieuphoi')) {
-      computedRole = 'COORDINATOR';
-    }
-
-    const token = `mock_${computedRole.toLowerCase()}_token`;
-    sessionStorage.setItem('access_token', token);
-    sessionStorage.setItem('user_role', computedRole);
-
-    if (localStorage.getItem('remember_device') === 'true') {
-      localStorage.setItem('access_token', token);
-      localStorage.setItem('user_role', computedRole);
-    }
-    
-    router.push(`/${computedRole.toLowerCase()}`);
+    await performLogin(() => authService.login(username, password));
   };
 
-  const handleSocialLogin = () => {
-    // Giả lập backend chặn Admin/Điều phối dùng Google
-    const lowerUser = username.toLowerCase();
-    if (lowerUser.includes('admin') || lowerUser.includes('dieuphoi')) {
-      setError('Lỗi bảo mật: Tài khoản cấp Quản lý không được phép đăng nhập qua mạng xã hội. Vui lòng đăng nhập bằng mật khẩu nội bộ!');
-      return;
-    }
-
-    setError('');
-    // Mặc định giả lập đăng nhập Google thành công cho Sinh viên
-    const token = 'mock_social_token';
-    const role = 'STUDENT';
-    sessionStorage.setItem('access_token', token);
-    sessionStorage.setItem('user_role', role);
-    
-    if (localStorage.getItem('remember_device') === 'true') {
-      localStorage.setItem('access_token', token);
-      localStorage.setItem('user_role', role);
-    }
-    
-    router.push('/student');
+  const handleSocialLogin = async () => {
+    // Fake Facebook login using Google login mock under the hood for now
+    await performLogin(() => authService.googleLogin('facebook_fake_token'));
   };
 
   return (
@@ -170,9 +143,11 @@ export default function LoginPage() {
 
             <button 
               type="submit" 
-              className="w-full py-4 mt-2 rounded-xl bg-brand-text text-white font-bold hover:bg-black transition-colors flex justify-center items-center gap-2 shadow-sm"
+              disabled={isLoading}
+              className="w-full py-4 mt-2 rounded-xl bg-brand-text text-white font-bold hover:bg-black transition-colors flex justify-center items-center gap-2 shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"
             >
-              <LogIn className="w-5 h-5" /> Đăng Nhập
+              {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <LogIn className="w-5 h-5" />}
+              {isLoading ? 'Đang xử lý...' : 'Đăng Nhập'}
             </button>
           </form>
 
@@ -183,10 +158,10 @@ export default function LoginPage() {
           </div>
 
           <div className="grid grid-cols-2 gap-4 mb-8">
-            <button onClick={(e) => { e.preventDefault(); setShowGoogleModal(true); }} className="py-3 rounded-xl bg-brand-surface/50 border border-black/5 font-semibold text-sm hover:bg-black/5 transition-colors">
+            <button disabled={isLoading} onClick={(e) => { e.preventDefault(); setShowGoogleModal(true); }} className="py-3 rounded-xl bg-brand-surface/50 border border-black/5 font-semibold text-sm hover:bg-black/5 transition-colors disabled:opacity-50">
               Google
             </button>
-            <button onClick={handleSocialLogin} className="py-3 rounded-xl bg-brand-surface/50 border border-black/5 font-semibold text-sm hover:bg-black/5 transition-colors">
+            <button disabled={isLoading} onClick={handleSocialLogin} className="py-3 rounded-xl bg-brand-surface/50 border border-black/5 font-semibold text-sm hover:bg-black/5 transition-colors disabled:opacity-50">
               Facebook
             </button>
           </div>

@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Lock, UserPlus, User, Mail, CreditCard } from 'lucide-react';
+import { Lock, UserPlus, User, Mail, CreditCard, Loader2 } from 'lucide-react';
+import { authService } from '@/services/auth.service';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -15,8 +16,10 @@ export default function RegisterPage() {
     confirmPassword: ''
   });
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSocialLoading, setIsSocialLoading] = useState(false);
 
-  const handleRegister = (e) => {
+  const handleRegister = async (e) => {
     e.preventDefault();
     setError('');
 
@@ -25,20 +28,39 @@ export default function RegisterPage() {
       return;
     }
 
-    // Giả lập backend đăng ký thành công
-    alert('Đăng ký tài khoản sinh viên thành công!');
-    
-    // Đăng nhập tự động sau khi đăng ký
-    localStorage.setItem('access_token', 'mock_student_token');
-    localStorage.setItem('user_role', 'STUDENT');
-    router.push('/student');
+    try {
+      setIsLoading(true);
+      const res = await authService.register(
+        formData.fullName, 
+        formData.studentId, 
+        formData.email, 
+        formData.password
+      );
+      
+      localStorage.setItem('access_token', res.access_token);
+      localStorage.setItem('user_role', res.user.role);
+      
+      alert('Đăng ký tài khoản sinh viên thành công!');
+      router.push('/student');
+    } catch (err) {
+      setError(err.message || 'Lỗi đăng ký, vui lòng thử lại.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleSocialRegister = () => {
-    // Mặc định giả lập đăng nhập/đăng ký Google thành công cho Sinh viên
-    localStorage.setItem('access_token', 'mock_social_token');
-    localStorage.setItem('user_role', 'STUDENT'); 
-    router.push('/student');
+  const handleSocialRegister = async () => {
+    try {
+      setIsSocialLoading(true);
+      const res = await authService.googleLogin('fake_google_token_register');
+      localStorage.setItem('access_token', res.access_token);
+      localStorage.setItem('user_role', res.user.role);
+      router.push(`/${res.user.role.toLowerCase()}`);
+    } catch (err) {
+      setError(err.message || 'Lỗi đăng nhập bằng mạng xã hội.');
+    } finally {
+      setIsSocialLoading(false);
+    }
   };
 
   return (
@@ -156,9 +178,11 @@ export default function RegisterPage() {
 
             <button 
               type="submit" 
-              className="w-full py-4 mt-4 rounded-xl bg-brand-text text-white font-bold hover:bg-black transition-colors flex justify-center items-center gap-2 shadow-sm"
+              disabled={isLoading || isSocialLoading}
+              className="w-full py-4 mt-4 rounded-xl bg-brand-text text-white font-bold hover:bg-black transition-colors flex justify-center items-center gap-2 shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"
             >
-              <UserPlus className="w-5 h-5" /> Hoàn tất Đăng ký
+              {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <UserPlus className="w-5 h-5" />} 
+              {isLoading ? 'Đang xử lý...' : 'Hoàn tất Đăng ký'}
             </button>
           </form>
 
@@ -169,11 +193,21 @@ export default function RegisterPage() {
           </div>
 
           <div className="grid grid-cols-2 gap-4 mb-8">
-            <button onClick={handleSocialRegister} className="py-3 rounded-xl bg-brand-surface border border-black/5 font-bold text-sm hover:bg-black/5 transition-colors">
-              Google
+            <button 
+              type="button"
+              onClick={handleSocialRegister} 
+              disabled={isLoading || isSocialLoading}
+              className="py-3 rounded-xl bg-brand-surface border border-black/5 font-bold text-sm hover:bg-black/5 transition-colors disabled:opacity-50"
+            >
+              {isSocialLoading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Google'}
             </button>
-            <button onClick={handleSocialRegister} className="py-3 rounded-xl bg-brand-surface border border-black/5 font-bold text-sm hover:bg-black/5 transition-colors">
-              Facebook
+            <button 
+              type="button"
+              onClick={handleSocialRegister} 
+              disabled={isLoading || isSocialLoading}
+              className="py-3 rounded-xl bg-brand-surface border border-black/5 font-bold text-sm hover:bg-black/5 transition-colors disabled:opacity-50"
+            >
+              {isSocialLoading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Facebook'}
             </button>
           </div>
           

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Bus, Menu, Bell, Search, UserCircle, LogOut, Wallet } from 'lucide-react';
 import LogoutConfirmModal from '@/components/modals/LogoutConfirmModal';
+import { walletService } from '@/services/wallet.service';
 
 export default function BentoDashboardLayout({ children, menuItems, roleName, profileHref }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -33,8 +34,7 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
 
     // Listen for wallet updates
     if (roleName === 'Sinh viên') {
-       const saved = localStorage.getItem('wallet_balance');
-       setWalletBalance(saved ? parseInt(saved) : 150000);
+      walletService.getBalance().then(res => setWalletBalance(res.balance)).catch(() => setWalletBalance(0));
     }
     const handleWalletUpdate = (e) => {
       setWalletBalance(e.detail);

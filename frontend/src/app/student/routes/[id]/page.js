@@ -1,26 +1,36 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Clock, MapPin, BusFront, ShieldCheck, Navigation } from 'lucide-react';
+import { ArrowLeft, Clock, MapPin, BusFront, ShieldCheck, Navigation, Loader2, Info } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-
-const STOPS = [
-  { id: 1, name: 'KTX Tập trung Đà Nẵng', passed: true, time: '07:00' },
-  { id: 2, name: 'Ngã Ba Huế', passed: true, time: '07:15' },
-  { id: 3, name: 'Đại học Bách Khoa', passed: false, time: '07:30', isCurrent: true, eta: '5 phút' },
-  { id: 4, name: 'Đại học Sư Phạm', passed: false, time: '07:45' },
-  { id: 5, name: 'Bến xe Trung tâm', passed: false, time: '08:00' }
-];
+import { routeDetailService } from '@/services/routeDetail.service';
 
 export default function RouteTrackingPage() {
   const params = useParams();
   const routeId = params.id;
   
+  const [routeData, setRouteData] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+
   // Animation state for the bus on the mock map
   const [busPosition, setBusPosition] = useState(30); // percentage
 
   useEffect(() => {
+    const fetchDetail = async () => {
+      try {
+        setIsLoading(true);
+        const data = await routeDetailService.getRouteDetail(routeId);
+        setRouteData(data);
+      } catch (err) {
+        setError(err.message || 'Lỗi tải thông tin chi tiết tuyến xe');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchDetail();
+
     // Simulate bus moving slowly
     const interval = setInterval(() => {
       setBusPosition(prev => {
@@ -29,7 +39,7 @@ export default function RouteTrackingPage() {
       });
     }, 2000);
     return () => clearInterval(interval);
-  }, []);
+  }, [routeId]);
 
   return (
     <div className="h-full flex flex-col gap-6 font-sans">
@@ -51,19 +61,23 @@ export default function RouteTrackingPage() {
         <div className="xl:col-span-2 bg-brand-surface/30 rounded-3xl shadow-sm border border-black/5 relative overflow-hidden flex flex-col">
           
           {/* Map Overlay Badges */}
-          <div className="absolute top-6 left-6 z-20 flex flex-col gap-3">
-            <div className="bg-white/90 backdrop-blur-md px-4 py-3 rounded-2xl shadow-sm border border-black/5 flex items-center gap-3">
-              <span className="w-3 h-3 rounded-full bg-brand-success animate-pulse"></span>
-              <span className="font-bold text-sm">Đang hoạt động (Biển số: 43B-123.45)</span>
+          {routeData && (
+            <div className="absolute top-6 left-6 z-20 flex flex-col gap-3">
+              <div className="bg-white/90 backdrop-blur-md px-4 py-3 rounded-2xl shadow-sm border border-black/5 flex items-center gap-3">
+                <span className="w-3 h-3 rounded-full bg-brand-success animate-pulse"></span>
+                <span className="font-bold text-sm">Đang hoạt động (Biển số: {routeData.busPlate})</span>
+              </div>
             </div>
-          </div>
+          )}
           
-          <div className="absolute top-6 right-6 z-20">
-            <div className="bg-brand-text text-white px-5 py-3 rounded-2xl shadow-sm flex flex-col items-center">
-              <span className="text-[10px] font-bold uppercase text-white/70">Tốc độ</span>
-              <span className="font-black text-lg">45 km/h</span>
+          {routeData && (
+            <div className="absolute top-6 right-6 z-20">
+              <div className="bg-brand-text text-white px-5 py-3 rounded-2xl shadow-sm flex flex-col items-center">
+                <span className="text-[10px] font-bold uppercase text-white/70">Tốc độ</span>
+                <span className="font-black text-lg">{routeData.speed}</span>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Mock Map Background (CSS Grid/Lines) */}
           <div className="flex-1 relative bg-[#EBEFE8]">
@@ -132,40 +146,52 @@ export default function RouteTrackingPage() {
             <div className="absolute left-6 top-6 bottom-6 w-1 bg-brand-surface rounded-full"></div>
 
             <div className="flex flex-col gap-6 relative z-10">
-              {STOPS.map((stop, index) => (
-                <div key={stop.id} className="flex gap-6 items-start">
-                  
-                  {/* Timeline Node */}
-                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm border-2 ${
-                    stop.passed ? 'bg-brand-success/10 border-brand-success text-brand-success' : 
-                    stop.isCurrent ? 'bg-brand-primary border-brand-primary text-brand-text animate-pulse' : 
-                    'bg-white border-brand-surface text-brand-text/30'
-                  }`}>
-                    {stop.passed ? <ShieldCheck className="w-6 h-6" /> : <MapPin className="w-6 h-6" />}
-                  </div>
-
-                  {/* Stop Details */}
-                  <div className={`flex-1 pt-1 ${stop.passed ? 'opacity-60' : 'opacity-100'}`}>
-                    <h3 className={`font-bold ${stop.isCurrent ? 'text-lg text-brand-primary' : 'text-base text-brand-text'}`}>
-                      {stop.name}
-                    </h3>
+              {isLoading ? (
+                <div className="flex flex-col items-center justify-center py-20 text-brand-text/40">
+                  <Loader2 className="w-10 h-10 animate-spin mb-4" />
+                  <p className="font-bold text-lg">Đang tải trạm dừng...</p>
+                </div>
+              ) : error ? (
+                <div className="flex flex-col items-center justify-center py-20 text-brand-danger/60">
+                  <Info className="w-10 h-10 mb-4" />
+                  <p className="font-bold text-lg">{error}</p>
+                </div>
+              ) : (
+                routeData?.stops.map((stop, index) => (
+                  <div key={stop.id} className="flex gap-6 items-start">
                     
-                    <div className="flex items-center gap-4 mt-2">
-                      <div className="flex items-center gap-1 text-xs font-bold text-brand-text/50">
-                        <Clock className="w-3.5 h-3.5" /> 
-                        {stop.passed ? `Đã qua lúc ${stop.time}` : `Dự kiến: ${stop.time}`}
+                    {/* Timeline Node */}
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm border-2 ${
+                      stop.passed ? 'bg-brand-success/10 border-brand-success text-brand-success' : 
+                      stop.isCurrent ? 'bg-brand-primary border-brand-primary text-brand-text animate-pulse' : 
+                      'bg-white border-brand-surface text-brand-text/30'
+                    }`}>
+                      {stop.passed ? <ShieldCheck className="w-6 h-6" /> : <MapPin className="w-6 h-6" />}
+                    </div>
+
+                    {/* Stop Details */}
+                    <div className={`flex-1 pt-1 ${stop.passed ? 'opacity-60' : 'opacity-100'}`}>
+                      <h3 className={`font-bold ${stop.isCurrent ? 'text-lg text-brand-primary' : 'text-base text-brand-text'}`}>
+                        {stop.name}
+                      </h3>
+                      
+                      <div className="flex items-center gap-4 mt-2">
+                        <div className="flex items-center gap-1 text-xs font-bold text-brand-text/50">
+                          <Clock className="w-3.5 h-3.5" /> 
+                          {stop.passed ? `Đã qua lúc ${stop.time}` : `Dự kiến: ${stop.time}`}
+                        </div>
+                        
+                        {stop.isCurrent && (
+                          <div className="flex items-center gap-1 text-xs font-black text-brand-danger bg-brand-danger/10 px-2 py-1 rounded-md">
+                            Xe sắp đến ({stop.eta})
+                          </div>
+                        )}
                       </div>
                       
-                      {stop.isCurrent && (
-                        <div className="flex items-center gap-1 text-xs font-black text-brand-danger bg-brand-danger/10 px-2 py-1 rounded-md">
-                          Xe sắp đến ({stop.eta})
-                        </div>
-                      )}
                     </div>
-                    
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
 
           </div>

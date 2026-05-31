@@ -1,18 +1,31 @@
 "use client";
 
-import { useState } from 'react';
-import { History, Star, AlertCircle, MapPin, MessageSquare, Clock, BusFront, ShieldAlert, X, Send } from 'lucide-react';
-
-const MOCK_TRIPS = [
-  { id: 'TRP-101', date: '24/05/2026 14:30', route: 'Tuyến 1: KTX ⇄ ĐH Bách Khoa', driver: 'Nguyễn Văn Tài', status: 'Hoàn thành' },
-  { id: 'TRP-098', date: '23/05/2026 07:15', route: 'Tuyến 2: Ngã ba Huế ⇄ ĐH Kinh Tế', driver: 'Trần Văn B', status: 'Hoàn thành' },
-  { id: 'TRP-054', date: '20/05/2026 17:00', route: 'Tuyến 1: KTX ⇄ ĐH Bách Khoa', driver: 'Lê Hoàng C', status: 'Hoàn thành' },
-];
+import { useState, useEffect } from 'react';
+import { History, Star, AlertCircle, MapPin, MessageSquare, Clock, BusFront, ShieldAlert, X, Send, Loader2, Info } from 'lucide-react';
+import { historyService } from '@/services/history.service';
 
 export default function TripHistoryPage() {
   const [activeModal, setActiveModal] = useState(null); // 'rate', 'lostItem', or null
   const [selectedTrip, setSelectedTrip] = useState(null);
   const [rating, setRating] = useState(0);
+  const [trips, setTrips] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        setIsLoading(true);
+        const res = await historyService.getHistory();
+        setTrips(res.trips);
+      } catch (err) {
+        setError(err.message || 'Lỗi tải lịch sử chuyến đi');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchHistory();
+  }, []);
 
   const openModal = (type, trip) => {
     setActiveModal(type);
@@ -60,54 +73,71 @@ export default function TripHistoryPage() {
           </h2>
 
           <div className="flex flex-col gap-4">
-            {MOCK_TRIPS.map((trip) => (
-              <div key={trip.id} className="border border-black/5 rounded-2xl p-6 flex flex-col lg:flex-row gap-6 justify-between hover:border-brand-primary/50 transition-colors group">
-                
-                {/* Trip Info */}
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 bg-brand-surface rounded-xl flex items-center justify-center shrink-0">
-                    <BusFront className="w-6 h-6 text-brand-text/50" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-3 mb-1">
-                      <h3 className="font-bold text-lg">{trip.route}</h3>
-                      <span className="px-2 py-0.5 bg-brand-success/10 text-brand-success text-[10px] font-black uppercase tracking-wider rounded-md">
-                        {trip.status}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-4 text-sm font-medium text-brand-text/60">
-                      <div className="flex items-center gap-1">
-                        <Clock className="w-4 h-4" /> {trip.date}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <MapPin className="w-4 h-4" /> {trip.id}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <div className="w-4 h-4 bg-brand-text text-white rounded-full flex items-center justify-center text-[8px] font-bold">TX</div> 
-                        {trip.driver}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Actions */}
-                <div className="flex items-center gap-3 shrink-0 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-                  <button 
-                    onClick={() => openModal('rate', trip)}
-                    className="flex-1 lg:flex-none px-4 py-2.5 bg-brand-secondary/10 text-brand-secondary font-bold text-sm rounded-xl hover:bg-brand-secondary hover:text-brand-text transition-colors flex items-center justify-center gap-2"
-                  >
-                    <Star className="w-4 h-4" /> Đánh giá
-                  </button>
-                  <button 
-                    onClick={() => openModal('lostItem', trip)}
-                    className="flex-1 lg:flex-none px-4 py-2.5 bg-brand-danger/10 text-brand-danger font-bold text-sm rounded-xl hover:bg-brand-danger hover:text-white transition-colors flex items-center justify-center gap-2"
-                  >
-                    <AlertCircle className="w-4 h-4" /> Báo mất đồ
-                  </button>
-                </div>
-
+            {isLoading ? (
+              <div className="flex flex-col items-center justify-center py-20 text-brand-text/40">
+                <Loader2 className="w-10 h-10 animate-spin mb-4" />
+                <p className="font-bold text-lg">Đang tải lịch sử...</p>
               </div>
-            ))}
+            ) : error ? (
+              <div className="flex flex-col items-center justify-center py-20 text-brand-danger/60">
+                <Info className="w-10 h-10 mb-4" />
+                <p className="font-bold text-lg">{error}</p>
+              </div>
+            ) : trips.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-brand-text/40">
+                <History className="w-16 h-16 mb-4 opacity-50" />
+                <p className="font-bold text-lg">Chưa có chuyến đi nào.</p>
+              </div>
+            ) : (
+              trips.map((trip) => (
+                <div key={trip.id} className="border border-black/5 rounded-2xl p-6 flex flex-col lg:flex-row gap-6 justify-between hover:border-brand-primary/50 transition-colors group">
+                  
+                  {/* Trip Info */}
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 bg-brand-surface rounded-xl flex items-center justify-center shrink-0">
+                      <BusFront className="w-6 h-6 text-brand-text/50" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-3 mb-1">
+                        <h3 className="font-bold text-lg">{trip.route}</h3>
+                        <span className="px-2 py-0.5 bg-brand-success/10 text-brand-success text-[10px] font-black uppercase tracking-wider rounded-md">
+                          {trip.status}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-4 text-sm font-medium text-brand-text/60">
+                        <div className="flex items-center gap-1">
+                          <Clock className="w-4 h-4" /> {trip.date}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <MapPin className="w-4 h-4" /> {trip.id}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <div className="w-4 h-4 bg-brand-text text-white rounded-full flex items-center justify-center text-[8px] font-bold">TX</div> 
+                          {trip.driver}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-3 shrink-0 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+                    <button 
+                      onClick={() => openModal('rate', trip)}
+                      className="flex-1 lg:flex-none px-4 py-2.5 bg-brand-secondary/10 text-brand-secondary font-bold text-sm rounded-xl hover:bg-brand-secondary hover:text-brand-text transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Star className="w-4 h-4" /> Đánh giá
+                    </button>
+                    <button 
+                      onClick={() => openModal('lostItem', trip)}
+                      className="flex-1 lg:flex-none px-4 py-2.5 bg-brand-danger/10 text-brand-danger font-bold text-sm rounded-xl hover:bg-brand-danger hover:text-white transition-colors flex items-center justify-center gap-2"
+                    >
+                      <AlertCircle className="w-4 h-4" /> Báo mất đồ
+                    </button>
+                  </div>
+
+                </div>
+              ))
+            )}
           </div>
           
           <div className="mt-6 flex justify-center">

@@ -1,32 +1,33 @@
 "use client";
 
-import { useState } from 'react';
-import { CalendarDays, Clock, Map, Users, BusFront, CheckCircle2, AlertCircle, ChevronDown, Save } from 'lucide-react';
-
-const MOCK_DRIVERS = [
-  { id: 'TX01', name: 'Nguyễn Văn Tài', status: 'available' },
-  { id: 'TX02', name: 'Trần Văn B', status: 'busy' },
-  { id: 'TX03', name: 'Lê Thị C', status: 'available' },
-  { id: 'TX04', name: 'Phạm Văn D', status: 'off' },
-];
-
-const MOCK_BUSES = [
-  { id: '43B-123.45', type: '45 chỗ', status: 'available' },
-  { id: '43B-888.99', type: '29 chỗ', status: 'busy' },
-  { id: '43B-555.22', type: '45 chỗ', status: 'maintenance' },
-  { id: '43B-777.11', type: '29 chỗ', status: 'available' },
-];
-
-const INITIAL_SHIFTS = [
-  { id: 'S1', route: 'Tuyến 1: KTX ⇄ ĐH Bách Khoa', time: '06:00 - 08:00', driver: 'TX01', bus: '43B-123.45', status: 'assigned' },
-  { id: 'S2', route: 'Tuyến 2: Ngã ba Huế ⇄ ĐH Kinh Tế', time: '06:30 - 08:30', driver: '', bus: '', status: 'unassigned' },
-  { id: 'S3', route: 'Tuyến 1: KTX ⇄ ĐH Bách Khoa', time: '08:30 - 10:30', driver: '', bus: '', status: 'unassigned' },
-  { id: 'S4', route: 'Tuyến 3: Cầu Rồng ⇄ ĐH Ngoại Ngữ', time: '07:00 - 09:00', driver: 'TX02', bus: '43B-888.99', status: 'assigned' },
-];
+import { useState, useEffect } from 'react';
+import { CalendarDays, Clock, Map, Users, BusFront, CheckCircle2, AlertCircle, ChevronDown, Save, Loader2, Info } from 'lucide-react';
+import { scheduleService } from '@/services/schedule.service';
 
 export default function CoordinatorSchedulesPage() {
-  const [shifts, setShifts] = useState(INITIAL_SHIFTS);
+  const [shifts, setShifts] = useState([]);
+  const [drivers, setDrivers] = useState([]);
+  const [buses, setBuses] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setIsLoading(true);
+        const data = await scheduleService.getScheduleData();
+        setDrivers(data.drivers);
+        setBuses(data.buses);
+        setShifts(data.shifts);
+      } catch (err) {
+        setError(err.message || 'Lỗi tải dữ liệu phân công');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
 
   const handleAssign = (shiftId, field, value) => {
     setShifts(shifts.map(shift => {
@@ -44,16 +45,20 @@ export default function CoordinatorSchedulesPage() {
     }));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setIsSaving(true);
-    setTimeout(() => {
-      setIsSaving(false);
+    try {
+      await scheduleService.saveShifts(shifts);
       alert('Đã lưu lịch phân công thành công!');
-    }, 800);
+    } catch (err) {
+      alert('Lỗi lưu phân công: ' + err.message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const availableDrivers = MOCK_DRIVERS.filter(d => d.status === 'available').length;
-  const availableBuses = MOCK_BUSES.filter(b => b.status === 'available').length;
+  const availableDrivers = drivers.filter(d => d.status === 'available').length;
+  const availableBuses = buses.filter(b => b.status === 'available').length;
 
   return (
     <div className="h-full flex flex-col gap-6 font-sans relative">
@@ -98,7 +103,17 @@ export default function CoordinatorSchedulesPage() {
 
           <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
             <div className="flex flex-col gap-4">
-              {shifts.map(shift => (
+              {isLoading ? (
+                <div className="flex flex-col items-center justify-center py-20 text-brand-text/40">
+                  <Loader2 className="w-10 h-10 animate-spin mb-4" />
+                  <p className="font-bold text-lg">Đang tải lịch trình...</p>
+                </div>
+              ) : error ? (
+                <div className="flex flex-col items-center justify-center py-20 text-brand-danger/60">
+                  <Info className="w-10 h-10 mb-4" />
+                  <p className="font-bold text-lg">{error}</p>
+                </div>
+              ) : shifts.map(shift => (
                 <div key={shift.id} className={`border rounded-2xl p-5 flex flex-col xl:flex-row xl:items-center gap-6 transition-colors ${shift.status === 'unassigned' ? 'border-brand-danger/30 bg-brand-danger/5' : 'border-black/5 hover:border-brand-primary/50'}`}>
                   
                   <div className="flex-1">
@@ -129,7 +144,7 @@ export default function CoordinatorSchedulesPage() {
                           className={`w-full appearance-none rounded-xl p-3 pr-10 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-brand-primary/50 border transition-colors ${!shift.driver ? 'bg-white border-brand-danger/50 text-brand-danger' : 'bg-brand-surface border-transparent text-brand-text'}`}
                         >
                           <option value="">-- Chưa gán --</option>
-                          {MOCK_DRIVERS.map(d => (
+                          {drivers.map(d => (
                             <option key={d.id} value={d.id} disabled={d.status !== 'available' && shift.driver !== d.id}>
                               {d.name} ({d.id}) {d.status !== 'available' && '- Bận'}
                             </option>
@@ -151,7 +166,7 @@ export default function CoordinatorSchedulesPage() {
                           className={`w-full appearance-none rounded-xl p-3 pr-10 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-brand-primary/50 border transition-colors ${!shift.bus ? 'bg-white border-brand-danger/50 text-brand-danger' : 'bg-brand-surface border-transparent text-brand-text'}`}
                         >
                           <option value="">-- Chưa gán --</option>
-                          {MOCK_BUSES.map(b => (
+                          {buses.map(b => (
                             <option key={b.id} value={b.id} disabled={b.status !== 'available' && shift.bus !== b.id}>
                               {b.id} ({b.type}) {b.status !== 'available' && '- Bận'}
                             </option>
@@ -182,7 +197,7 @@ export default function CoordinatorSchedulesPage() {
               <span className="text-3xl font-black text-brand-primary">{availableDrivers}</span>
             </div>
             <div className="w-full bg-brand-text/10 rounded-full h-2 mb-6">
-              <div className="bg-brand-primary h-2 rounded-full" style={{width: `${(availableDrivers/MOCK_DRIVERS.length)*100}%`}}></div>
+              <div className="bg-brand-primary h-2 rounded-full" style={{width: `${drivers.length ? (availableDrivers/drivers.length)*100 : 0}%`}}></div>
             </div>
 
             <div className="flex justify-between items-end mb-2">
@@ -190,7 +205,7 @@ export default function CoordinatorSchedulesPage() {
               <span className="text-3xl font-black text-brand-primary">{availableBuses}</span>
             </div>
             <div className="w-full bg-brand-text/10 rounded-full h-2">
-              <div className="bg-brand-primary h-2 rounded-full" style={{width: `${(availableBuses/MOCK_BUSES.length)*100}%`}}></div>
+              <div className="bg-brand-primary h-2 rounded-full" style={{width: `${buses.length ? (availableBuses/buses.length)*100 : 0}%`}}></div>
             </div>
           </div>
 
@@ -198,7 +213,7 @@ export default function CoordinatorSchedulesPage() {
           <div className="bg-white rounded-3xl p-6 shadow-sm border border-black/5">
             <h3 className="font-bold mb-4">Danh sách Tài xế</h3>
             <div className="flex flex-col gap-2">
-              {MOCK_DRIVERS.map(d => (
+              {drivers.map(d => (
                 <div key={d.id} className="flex justify-between items-center p-2 rounded-lg hover:bg-brand-surface">
                   <div className="flex flex-col">
                     <span className="font-bold text-sm">{d.name}</span>

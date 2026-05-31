@@ -1,34 +1,52 @@
 "use client";
 
-import { useState } from 'react';
-import { Users, Search, Filter, Lock, Unlock, ShieldAlert, CheckCircle2, User as UserIcon, MoreVertical, Plus, Save, X } from 'lucide-react';
-
-const MOCK_USERS = [
-  { id: '102220001', name: 'Nguyễn Văn A', email: 'nguyenvana@gmail.com', role: 'Sinh viên', status: 'active', joined: '12/05/2026' },
-  { id: 'TX01', name: 'Nguyễn Văn Tài', email: 'tai.nguyen@unibus.vn', role: 'Tài xế', status: 'active', joined: '01/01/2026' },
-  { id: '102220099', name: 'Trần Văn Vi Phạm', email: 'vipham@gmail.com', role: 'Sinh viên', status: 'locked', joined: '10/05/2026' },
-  { id: 'DP01', name: 'Lê Thị Điều Phối', email: 'dieuphoi@unibus.vn', role: 'Điều phối', status: 'active', joined: '15/02/2026' },
-  { id: 'TX02', name: 'Phạm Văn B', email: 'vanb@unibus.vn', role: 'Tài xế', status: 'active', joined: '20/03/2026' },
-];
+import { useState, useEffect } from 'react';
+import { Users, Search, Filter, Lock, Unlock, ShieldAlert, CheckCircle2, User as UserIcon, MoreVertical, Plus, Save, X, Loader2 } from 'lucide-react';
+import { adminUsersService } from '@/services/adminUsers.service';
 
 export default function AdminUsersPage() {
-  const [users, setUsers] = useState(MOCK_USERS);
+  const [users, setUsers] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
+  const [isLoading, setIsLoading] = useState(true);
   
   // Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newAccount, setNewAccount] = useState({ name: '', email: '', role: 'Tài xế' });
+  const [isAdding, setIsAdding] = useState(false);
 
-  const handleToggleLock = (id) => {
-    setUsers(users.map(user => {
-      if (user.id === id) {
-        const newStatus = user.status === 'active' ? 'locked' : 'active';
-        alert(`Đã ${newStatus === 'locked' ? 'KHÓA' : 'MỞ KHÓA'} tài khoản của ${user.name}`);
-        return { ...user, status: newStatus };
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const data = await adminUsersService.getUsers();
+        setUsers(data);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setIsLoading(false);
       }
-      return user;
-    }));
+    };
+    fetchUsers();
+  }, []);
+
+  const handleToggleLock = async (id) => {
+    const userToToggle = users.find(u => u.id === id);
+    if (!userToToggle) return;
+    
+    const newStatus = userToToggle.status === 'active' ? 'locked' : 'active';
+    try {
+      await adminUsersService.toggleLock(id, newStatus);
+      setUsers(users.map(user => {
+        if (user.id === id) {
+          alert(`Đã ${newStatus === 'locked' ? 'KHÓA' : 'MỞ KHÓA'} tài khoản của ${user.name}`);
+          return { ...user, status: newStatus };
+        }
+        return user;
+      }));
+    } catch (err) {
+      console.error(err);
+      alert('Có lỗi xảy ra khi cập nhật trạng thái.');
+    }
   };
 
   const filteredUsers = users.filter(user => {
@@ -105,74 +123,81 @@ export default function AdminUsersPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredUsers.map((user) => (
-                <tr key={user.id} className={`border-b border-black/5 transition-colors hover:bg-brand-surface/30 ${user.status === 'locked' ? 'bg-brand-danger/5' : ''}`}>
-                  
-                  {/* User Info */}
-                  <td className="p-4 md:px-8 py-4">
-                    <div className="flex items-center gap-4">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${user.role === 'Sinh viên' ? 'bg-brand-primary/20 text-brand-primary' : user.role === 'Tài xế' ? 'bg-brand-text/10 text-brand-text' : 'bg-brand-secondary/20 text-brand-secondary'}`}>
-                        <UserIcon className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <div className="font-bold text-brand-text">{user.name}</div>
-                        <div className="text-xs font-bold text-brand-text/50">{user.id}</div>
-                      </div>
-                    </div>
+              {isLoading ? (
+                <tr>
+                  <td colSpan="5" className="p-16 text-center text-brand-text/50">
+                    <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />
+                    <p className="font-bold">Đang tải dữ liệu...</p>
                   </td>
-
-                  {/* Contact */}
-                  <td className="p-4 md:px-8 py-4">
-                    <div className="text-sm font-medium">{user.email}</div>
-                  </td>
-
-                  {/* Role */}
-                  <td className="p-4 md:px-8 py-4">
-                    <span className={`px-3 py-1 rounded-lg text-xs font-black uppercase tracking-wider ${user.role === 'Sinh viên' ? 'bg-brand-primary/10 text-brand-primary' : user.role === 'Tài xế' ? 'bg-brand-text/10 text-brand-text' : 'bg-brand-secondary/10 text-brand-secondary'}`}>
-                      {user.role}
-                    </span>
-                  </td>
-
-                  {/* Status */}
-                  <td className="p-4 md:px-8 py-4">
-                    {user.status === 'active' ? (
-                      <div className="flex items-center gap-1.5 text-brand-success text-sm font-bold">
-                        <CheckCircle2 className="w-4 h-4" /> Hoạt động
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1.5 text-brand-danger text-sm font-bold">
-                        <ShieldAlert className="w-4 h-4" /> Bị Khóa
-                      </div>
-                    )}
-                  </td>
-
-                  {/* Actions (Lock/Unlock) */}
-                  <td className="p-4 md:px-8 py-4 text-right">
-                    <div className="flex justify-end gap-2">
-                      <button className="px-4 py-2 bg-brand-surface text-brand-text font-bold text-xs rounded-xl hover:bg-black hover:text-white transition-colors">
-                        Xem
-                      </button>
-                      <button 
-                        onClick={() => handleToggleLock(user.id)}
-                        className={`px-4 py-2 font-bold text-xs rounded-xl transition-colors flex items-center gap-1.5 ${
-                          user.status === 'active' 
-                            ? 'bg-brand-danger/10 text-brand-danger hover:bg-brand-danger hover:text-white' 
-                            : 'bg-brand-success/10 text-brand-success hover:bg-brand-success hover:text-white'
-                        }`}
-                      >
-                        {user.status === 'active' ? (
-                          <><Lock className="w-3.5 h-3.5" /> Khóa</>
-                        ) : (
-                          <><Unlock className="w-3.5 h-3.5" /> Mở khóa</>
-                        )}
-                      </button>
-                    </div>
-                  </td>
-
                 </tr>
-              ))}
-              
-              {filteredUsers.length === 0 && (
+              ) : filteredUsers.length > 0 ? (
+                filteredUsers.map((user) => (
+                  <tr key={user.id} className={`border-b border-black/5 transition-colors hover:bg-brand-surface/30 ${user.status === 'locked' ? 'bg-brand-danger/5' : ''}`}>
+                    
+                    {/* User Info */}
+                    <td className="p-4 md:px-8 py-4">
+                      <div className="flex items-center gap-4">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${user.role === 'Sinh viên' ? 'bg-brand-primary/20 text-brand-primary' : user.role === 'Tài xế' ? 'bg-brand-text/10 text-brand-text' : 'bg-brand-secondary/20 text-brand-secondary'}`}>
+                          <UserIcon className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <div className="font-bold text-brand-text">{user.name}</div>
+                          <div className="text-xs font-bold text-brand-text/50">{user.id}</div>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Contact */}
+                    <td className="p-4 md:px-8 py-4">
+                      <div className="text-sm font-medium">{user.email}</div>
+                    </td>
+
+                    {/* Role */}
+                    <td className="p-4 md:px-8 py-4">
+                      <span className={`px-3 py-1 rounded-lg text-xs font-black uppercase tracking-wider ${user.role === 'Sinh viên' ? 'bg-brand-primary/10 text-brand-primary' : user.role === 'Tài xế' ? 'bg-brand-text/10 text-brand-text' : 'bg-brand-secondary/10 text-brand-secondary'}`}>
+                        {user.role}
+                      </span>
+                    </td>
+
+                    {/* Status */}
+                    <td className="p-4 md:px-8 py-4">
+                      {user.status === 'active' ? (
+                        <div className="flex items-center gap-1.5 text-brand-success text-sm font-bold">
+                          <CheckCircle2 className="w-4 h-4" /> Hoạt động
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 text-brand-danger text-sm font-bold">
+                          <ShieldAlert className="w-4 h-4" /> Bị Khóa
+                        </div>
+                      )}
+                    </td>
+
+                    {/* Actions (Lock/Unlock) */}
+                    <td className="p-4 md:px-8 py-4 text-right">
+                      <div className="flex justify-end gap-2">
+                        <button className="px-4 py-2 bg-brand-surface text-brand-text font-bold text-xs rounded-xl hover:bg-black hover:text-white transition-colors">
+                          Xem
+                        </button>
+                        <button 
+                          onClick={() => handleToggleLock(user.id)}
+                          className={`px-4 py-2 font-bold text-xs rounded-xl transition-colors flex items-center gap-1.5 ${
+                            user.status === 'active' 
+                              ? 'bg-brand-danger/10 text-brand-danger hover:bg-brand-danger hover:text-white' 
+                              : 'bg-brand-success/10 text-brand-success hover:bg-brand-success hover:text-white'
+                          }`}
+                        >
+                          {user.status === 'active' ? (
+                            <><Lock className="w-3.5 h-3.5" /> Khóa</>
+                          ) : (
+                            <><Unlock className="w-3.5 h-3.5" /> Mở khóa</>
+                          )}
+                        </button>
+                      </div>
+                    </td>
+
+                  </tr>
+                ))
+              ) : (
                 <tr>
                   <td colSpan="5" className="p-8 text-center text-brand-text/50 font-bold">
                     Không tìm thấy tài khoản nào khớp với bộ lọc.
@@ -207,8 +232,9 @@ export default function AdminUsersPage() {
             
             <h2 className="text-2xl font-black mb-6">Cấp Tài khoản Nhân sự</h2>
 
-            <form onSubmit={(e) => {
+            <form onSubmit={async (e) => {
               e.preventDefault();
+              setIsAdding(true);
               const newUser = {
                 id: `NV${Math.floor(Math.random() * 1000)}`,
                 name: newAccount.name,
@@ -217,10 +243,19 @@ export default function AdminUsersPage() {
                 status: 'active',
                 joined: new Date().toLocaleDateString('vi-VN')
               };
-              setUsers([newUser, ...users]);
-              setIsAddModalOpen(false);
-              setNewAccount({ name: '', email: '', role: 'Tài xế' });
-              alert('Đã cấp tài khoản thành công!');
+              
+              try {
+                const addedUser = await adminUsersService.addUser(newUser);
+                setUsers([addedUser.data, ...users]);
+                setIsAddModalOpen(false);
+                setNewAccount({ name: '', email: '', role: 'Tài xế' });
+                alert('Đã cấp tài khoản thành công!');
+              } catch (err) {
+                console.error(err);
+                alert('Lỗi tạo tài khoản.');
+              } finally {
+                setIsAdding(false);
+              }
             }} className="flex flex-col gap-4">
               <div>
                 <label className="block text-sm font-bold text-brand-text/70 mb-2">Họ và tên</label>
@@ -269,9 +304,11 @@ export default function AdminUsersPage() {
 
               <button 
                 type="submit"
-                className="w-full py-4 mt-2 bg-brand-text text-white font-bold rounded-2xl hover:bg-black transition-colors flex justify-center items-center gap-2 shadow-xl shadow-brand-text/20"
+                disabled={isAdding}
+                className="w-full py-4 mt-2 bg-brand-text text-white font-bold rounded-2xl hover:bg-black transition-colors flex justify-center items-center gap-2 shadow-xl shadow-brand-text/20 disabled:opacity-70"
               >
-                <Save className="w-5 h-5" /> Tạo Tài khoản
+                {isAdding ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />} 
+                {isAdding ? 'Đang tạo...' : 'Tạo Tài khoản'}
               </button>
             </form>
           </div>

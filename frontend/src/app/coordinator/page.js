@@ -1,18 +1,34 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { Activity, BusFront, Map, AlertTriangle, Users, Navigation, Radio, Maximize, Search } from 'lucide-react';
-
-const FLEET_DATA = [
-  { id: '43B-123.45', route: 'Tuyến 1', driver: 'Nguyễn Văn Tài', status: 'moving', speed: '45 km/h', location: 'Ngã ba Huế', x: 30, y: 40 },
-  { id: '43B-888.99', route: 'Tuyến 2', driver: 'Trần Văn B', status: 'stopped', speed: '0 km/h', location: 'KTX Bách Khoa', x: 70, y: 20 },
-  { id: '43B-555.22', route: 'Tuyến 1', driver: 'Lê Hoàng C', status: 'warning', speed: '15 km/h', location: 'Cầu Rồng', x: 50, y: 70 },
-];
+import { Activity, BusFront, Map, AlertTriangle, Users, Navigation, Radio, Maximize, Search, Loader2 } from 'lucide-react';
+import { fleetService } from '@/services/fleet.service';
 
 export default function CoordinatorDashboard() {
+  const [fleetData, setFleetData] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  
   // Simple animation hook to make the map feel alive
   const [pulse, setPulse] = useState(false);
   
+  useEffect(() => {
+    const fetchFleet = async () => {
+      try {
+        const data = await fleetService.getLiveFleetStatus();
+        setFleetData(data);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchFleet();
+    // Simulate real-time polling every 10 seconds
+    const interval = setInterval(fetchFleet, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
   useEffect(() => {
     const interval = setInterval(() => setPulse(p => !p), 1000);
     return () => clearInterval(interval);
@@ -84,7 +100,7 @@ export default function CoordinatorDashboard() {
             </svg>
 
             {/* Render Fleet Markers */}
-            {FLEET_DATA.map((bus) => (
+            {fleetData.map((bus) => (
               <div 
                 key={bus.id}
                 className="absolute z-10 w-12 h-12 -ml-6 -mt-6 flex flex-col items-center transition-all duration-1000"
@@ -126,32 +142,39 @@ export default function CoordinatorDashboard() {
           </div>
 
           <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 flex flex-col gap-3">
-            {FLEET_DATA.map((bus) => (
-              <div key={bus.id} className={`p-4 rounded-2xl border ${bus.status === 'warning' ? 'bg-brand-danger/5 border-brand-danger/30' : 'bg-white border-black/5 hover:border-brand-primary/50'} transition-colors cursor-pointer group`}>
-                <div className="flex justify-between items-start mb-2">
-                  <div className="font-black text-brand-text">{bus.id}</div>
-                  <div className={`text-[10px] font-black uppercase px-2 py-1 rounded-md ${
-                    bus.status === 'warning' ? 'bg-brand-danger text-white' : 
-                    bus.status === 'stopped' ? 'bg-brand-surface text-brand-text/60' : 
-                    'bg-brand-success/10 text-brand-success'
-                  }`}>
-                    {bus.speed}
-                  </div>
-                </div>
-                <div className="text-xs font-bold text-brand-text/60 mb-1 flex items-center gap-1">
-                  <Map className="w-3.5 h-3.5" /> {bus.route} - {bus.location}
-                </div>
-                <div className="text-xs font-medium text-brand-text/60 flex items-center gap-1">
-                  <Users className="w-3.5 h-3.5" /> TX: {bus.driver}
-                </div>
-                
-                {bus.status === 'warning' && (
-                  <div className="mt-3 text-xs font-bold text-brand-danger bg-white p-2 rounded-lg border border-brand-danger/20 flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 shrink-0" /> Phát hiện kẹt xe nghiêm trọng tại Cầu Rồng.
-                  </div>
-                )}
+            {isLoading ? (
+              <div className="flex flex-col items-center justify-center py-12 text-brand-text/50">
+                <Loader2 className="w-8 h-8 animate-spin mb-4" />
+                <p className="font-bold">Đang tải vị trí xe...</p>
               </div>
-            ))}
+            ) : (
+              fleetData.map((bus) => (
+                <div key={bus.id} className={`p-4 rounded-2xl border ${bus.status === 'warning' ? 'bg-brand-danger/5 border-brand-danger/30' : 'bg-white border-black/5 hover:border-brand-primary/50'} transition-colors cursor-pointer group`}>
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="font-black text-brand-text">{bus.id}</div>
+                    <div className={`text-[10px] font-black uppercase px-2 py-1 rounded-md ${
+                      bus.status === 'warning' ? 'bg-brand-danger text-white' : 
+                      bus.status === 'stopped' ? 'bg-brand-surface text-brand-text/60' : 
+                      'bg-brand-success/10 text-brand-success'
+                    }`}>
+                      {bus.speed}
+                    </div>
+                  </div>
+                  <div className="text-xs font-bold text-brand-text/60 mb-1 flex items-center gap-1">
+                    <Map className="w-3.5 h-3.5" /> {bus.route} - {bus.location}
+                  </div>
+                  <div className="text-xs font-medium text-brand-text/60 flex items-center gap-1">
+                    <Users className="w-3.5 h-3.5" /> TX: {bus.driver}
+                  </div>
+                  
+                  {bus.status === 'warning' && (
+                    <div className="mt-3 text-xs font-bold text-brand-danger bg-white p-2 rounded-lg border border-brand-danger/20 flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 shrink-0" /> Phát hiện kẹt xe nghiêm trọng tại Cầu Rồng.
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
           </div>
 
         </div>

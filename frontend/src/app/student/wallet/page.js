@@ -1,61 +1,67 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { Wallet, Plus, CreditCard, ArrowDownToLine, ArrowUpRight, History, X, CheckCircle2 } from 'lucide-react';
+import { Wallet, Plus, CreditCard, ArrowDownToLine, ArrowUpRight, History, X, CheckCircle2, Loader2, Info } from 'lucide-react';
+import { walletService } from '@/services/wallet.service';
 
 export default function StudentWalletPage() {
-  const [balance, setBalance] = useState(150000);
+  const [balance, setBalance] = useState(0);
+  const [transactions, setTransactions] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  
   const [isTopupModalOpen, setIsTopupModalOpen] = useState(false);
   const [topupAmount, setTopupAmount] = useState(50000);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
 
-  useEffect(() => {
-    const saved = localStorage.getItem('wallet_balance');
-    if (saved) {
-      setBalance(parseInt(saved));
+  const fetchWalletData = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const [balRes, txnRes] = await Promise.all([
+        walletService.getBalance(),
+        walletService.getTransactions()
+      ]);
+      setBalance(balRes.balance);
+      setTransactions(txnRes.transactions);
+    } catch (err) {
+      setError(err.message || 'Lỗi tải dữ liệu ví');
+    } finally {
+      setIsLoading(false);
     }
+  };
+
+  useEffect(() => {
+    fetchWalletData();
   }, []);
 
-  const [transactions, setTransactions] = useState([
-    { id: 'TXN-001', type: 'in', title: 'Nạp tiền từ Momo', amount: 200000, date: '25/05/2026 08:30' },
-    { id: 'TXN-002', type: 'out', title: 'Mua vé tháng Tuyến 01', amount: -150000, date: '25/05/2026 08:35' },
-    { id: 'TXN-003', type: 'in', title: 'Hoàn tiền vé lỗi', amount: 10000, date: '20/05/2026 14:20' },
-    { id: 'TXN-004', type: 'out', title: 'Mua vé lượt Tuyến 03', amount: -10000, date: '18/05/2026 07:15' },
-  ]);
-
-  const handleTopup = (e) => {
+  const handleTopup = async (e) => {
     e.preventDefault();
     setIsProcessing(true);
     
-    // Giả lập quá trình call API nạp tiền
-    setTimeout(() => {
-      setIsProcessing(false);
+    try {
+      const res = await walletService.topup(topupAmount, 'momo');
       setShowSuccess(true);
       
-      // Cập nhật số dư và lịch sử
-      setBalance(prev => {
-        const newBal = prev + topupAmount;
-        localStorage.setItem('wallet_balance', newBal.toString());
-        window.dispatchEvent(new CustomEvent('walletUpdated', { detail: newBal }));
-        return newBal;
-      });
-      setTransactions(prev => [
-        { 
-          id: `TXN-00${prev.length + 1}`, 
-          type: 'in', 
-          title: 'Nạp tiền từ Ngân hàng', 
-          amount: topupAmount, 
-          date: new Date().toLocaleString('vi-VN') 
-        },
-        ...prev
-      ]);
+      // Update local state instead of refetching to save network request
+      setBalance(res.balance);
+      if (res.transaction) {
+        setTransactions(prev => [res.transaction, ...prev]);
+      }
+      
+      // Update global context/event if necessary
+      window.dispatchEvent(new CustomEvent('walletUpdated', { detail: res.balance }));
 
       setTimeout(() => {
         setShowSuccess(false);
         setIsTopupModalOpen(false);
       }, 2000);
-    }, 1500);
+    } catch (err) {
+      alert('Nạp tiền thất bại: ' + err.message);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const formatCurrency = (amount) => {
@@ -82,7 +88,9 @@ export default function StudentWalletPage() {
               <div className="flex justify-between items-start">
                 <div>
                   <div className="text-sm font-bold uppercase tracking-wider mb-1 opacity-80">Số dư khả dụng</div>
-                  <div className="text-4xl font-black">{formatCurrency(balance)}</div>
+                  <div className="text-4xl font-black">
+                    {isLoading ? <span className="animate-pulse bg-white/20 text-transparent rounded w-32 inline-block">00000</span> : formatCurrency(balance)}
+                  </div>
                 </div>
                 <div className="w-12 h-12 bg-white/30 backdrop-blur-sm rounded-xl flex items-center justify-center border border-white/40">
                   <Wallet className="w-6 h-6" />
@@ -153,22 +161,39 @@ export default function StudentWalletPage() {
             </h3>
             
             <div className="flex-1 flex flex-col gap-4">
-              {transactions.map((txn, idx) => (
-                <div key={idx} className="flex items-center justify-between p-4 bg-brand-surface/50 hover:bg-brand-surface rounded-2xl transition-colors border border-transparent hover:border-black/5">
-                  <div className="flex items-center gap-4">
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 shadow-sm ${txn.type === 'in' ? 'bg-brand-success/10 text-brand-success' : 'bg-brand-danger/10 text-brand-danger'}`}>
-                      {txn.type === 'in' ? <ArrowDownToLine className="w-6 h-6" /> : <ArrowUpRight className="w-6 h-6" />}
-                    </div>
-                    <div>
-                      <div className="font-bold text-brand-text text-base">{txn.title}</div>
-                      <div className="text-xs font-medium text-brand-text/50 mt-1">{txn.date} • {txn.id}</div>
-                    </div>
-                  </div>
-                  <div className={`text-lg font-black ${txn.type === 'in' ? 'text-brand-success' : 'text-brand-text'}`}>
-                    {txn.type === 'in' ? '+' : ''}{formatCurrency(txn.amount)}
-                  </div>
+              {isLoading ? (
+                <div className="flex flex-col items-center justify-center py-10 text-brand-text/40">
+                  <Loader2 className="w-8 h-8 animate-spin mb-4" />
+                  <p className="font-semibold">Đang tải lịch sử...</p>
                 </div>
-              ))}
+              ) : error ? (
+                <div className="flex flex-col items-center justify-center py-10 text-brand-danger/60">
+                  <Info className="w-8 h-8 mb-4" />
+                  <p className="font-semibold">{error}</p>
+                </div>
+              ) : transactions.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10 text-brand-text/40">
+                  <History className="w-12 h-12 mb-4 opacity-50" />
+                  <p className="font-semibold">Chưa có giao dịch nào</p>
+                </div>
+              ) : (
+                transactions.map((txn, idx) => (
+                  <div key={idx} className="flex items-center justify-between p-4 bg-brand-surface/50 hover:bg-brand-surface rounded-2xl transition-colors border border-transparent hover:border-black/5">
+                    <div className="flex items-center gap-4">
+                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 shadow-sm ${txn.type === 'in' ? 'bg-brand-success/10 text-brand-success' : 'bg-brand-danger/10 text-brand-danger'}`}>
+                        {txn.type === 'in' ? <ArrowDownToLine className="w-6 h-6" /> : <ArrowUpRight className="w-6 h-6" />}
+                      </div>
+                      <div>
+                        <div className="font-bold text-brand-text text-base">{txn.title}</div>
+                        <div className="text-xs font-medium text-brand-text/50 mt-1">{txn.date} • {txn.id}</div>
+                      </div>
+                    </div>
+                    <div className={`text-lg font-black ${txn.type === 'in' ? 'text-brand-success' : 'text-brand-text'}`}>
+                      {txn.type === 'in' ? '+' : ''}{formatCurrency(txn.amount)}
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
