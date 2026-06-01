@@ -23,9 +23,7 @@ export default function Home() {
 
   if (isCheckingSession) {
     return (
-      <div className="min-h-screen bg-brand-surface font-sans text-brand-text flex items-center justify-center">
-        <div className="text-sm font-bold text-brand-text/50">Đang kiểm tra phiên đăng nhập...</div>
-      </div>
+      <div className="min-h-screen bg-brand-surface"></div>
     );
   }
 
