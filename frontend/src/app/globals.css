@@ -1,5 +1,5 @@
 @import "tailwindcss";
-
+@plugin "tailwindcss-animate";
 @theme inline {
   --color-brand-primary: #FAD4C0;
   --color-brand-secondary: #80A1C1;

@@ -77,24 +77,24 @@ public class OtpEmailSender {
 
     private String subject(VerificationPurpose purpose) {
         return switch (purpose) {
-            case REGISTER -> "Ma OTP dang ky UniBus";
-            case RESET_PASSWORD -> "Ma OTP dat lai mat khau UniBus";
+            case REGISTER -> "Mã OTP đăng ký UniBus";
+            case RESET_PASSWORD -> "Mã OTP đặt lại mật khẩu UniBus";
         };
     }
 
     private String actionText(VerificationPurpose purpose) {
         return switch (purpose) {
-            case REGISTER -> "hoan tat dang ky tai khoan";
-            case RESET_PASSWORD -> "dat lai mat khau";
+            case REGISTER -> "hoàn tất đăng ký tài khoản";
+            case RESET_PASSWORD -> "đặt lại mật khẩu";
         };
     }
 
     private String textBody(VerificationPurpose purpose, String code) {
         return """
-                Ma OTP UniBus cua ban la: %s
+                Mã OTP UniBus của bạn là: %s
 
-                Dung ma nay de %s. Ma co hieu luc trong %d phut.
-                Neu ban khong yeu cau ma nay, vui long bo qua email.
+                Dùng mã này để %s. Mã có hiệu lực trong %d phút.
+                Nếu bạn không yêu cầu mã này, vui lòng bỏ qua email.
                 """.formatted(code, actionText(purpose), expirationMinutes);
     }
 
@@ -107,35 +107,35 @@ public class OtpEmailSender {
                     <meta charset="utf-8">
                     <meta name="viewport" content="width=device-width, initial-scale=1">
                   </head>
-                  <body style="margin:0;background:#fff5e6;font-family:Inter,Segoe UI,Arial,sans-serif;color:#111827;">
-                    <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" style="background:#fff5e6;padding:32px 16px;">
+                  <body style="margin:0;background:#f9fafb;font-family:Inter,Segoe UI,Arial,sans-serif;color:#111827;">
+                    <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" style="background:#f9fafb;padding:32px 16px;">
                       <tr>
                         <td align="center">
-                          <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" style="max-width:520px;background:#ffffff;border:1px solid #f1e4d3;border-radius:22px;overflow:hidden;box-shadow:0 18px 45px rgba(17,24,39,0.08);">
+                          <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" style="max-width:520px;background:#ffffff;border:1px solid #e5e7eb;border-radius:24px;overflow:hidden;box-shadow:0 10px 25px rgba(0,0,0,0.05);">
                             <tr>
-                              <td style="background:#111827;padding:28px 32px;">
-                                <div style="font-size:13px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#fad4c0;">UniBus</div>
-                                <div style="margin-top:10px;font-size:26px;line-height:1.2;font-weight:900;color:#ffffff;">Ma xac thuc OTP</div>
-                                <div style="margin-top:8px;font-size:14px;line-height:1.6;color:#d1d5db;">Dung ma ben duoi de %s.</div>
+                              <td style="background:#111827;padding:32px;">
+                                <div style="font-size:13px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#9ca3af;">UniBus</div>
+                                <div style="margin-top:10px;font-size:26px;line-height:1.2;font-weight:900;color:#ffffff;">Mã xác thực OTP</div>
+                                <div style="margin-top:8px;font-size:14px;line-height:1.6;color:#d1d5db;">Dùng mã bên dưới để %s.</div>
                               </td>
                             </tr>
                             <tr>
                               <td style="padding:32px;">
-                                <div style="font-size:14px;line-height:1.7;color:#4b5563;">Ma xac thuc cua ban la</div>
-                                <div style="margin:16px 0 20px;padding:18px 20px;border-radius:18px;background:#fff5e6;border:1px solid #f4dfc7;text-align:center;">
-                                  <span style="font-family:JetBrains Mono,Consolas,monospace;font-size:34px;letter-spacing:0.24em;font-weight:900;color:#111827;">%s</span>
+                                <div style="font-size:14px;line-height:1.7;color:#4b5563;font-weight:600;">Mã xác thực của bạn là:</div>
+                                <div style="margin:16px 0 20px;padding:24px;border-radius:16px;background:#f3f4f6;text-align:center;">
+                                  <span style="font-family:JetBrains Mono,Consolas,monospace;font-size:36px;letter-spacing:0.3em;font-weight:900;color:#111827;">%s</span>
                                 </div>
                                 <div style="font-size:14px;line-height:1.7;color:#4b5563;">
-                                  Ma nay co hieu luc trong <strong>%d phut</strong>. Khong chia se ma nay voi bat ky ai.
+                                  Mã này có hiệu lực trong <strong>%d phút</strong>. Vui lòng không chia sẻ mã này với bất kỳ ai để bảo mật tài khoản.
                                 </div>
-                                <div style="margin-top:22px;padding:14px 16px;border-radius:16px;background:#eef5fb;color:#304b66;font-size:13px;line-height:1.6;">
-                                  Neu ban khong yeu cau ma nay, ban co the bo qua email nay mot cach an toan.
+                                <div style="margin-top:24px;padding:16px;border-radius:12px;background:#fef2f2;color:#991b1b;font-size:13px;line-height:1.6;font-weight:500;">
+                                  Nếu bạn không yêu cầu mã này, bạn có thể bỏ qua email này một cách an toàn.
                                 </div>
                               </td>
                             </tr>
                             <tr>
-                              <td style="padding:20px 32px;background:#fafafa;border-top:1px solid #f3f4f6;color:#9ca3af;font-size:12px;line-height:1.5;">
-                                Email nay duoc gui tu he thong UniBus. Vui long khong tra loi truc tiep email nay.
+                              <td style="padding:20px 32px;background:#ffffff;border-top:1px solid #f3f4f6;color:#9ca3af;font-size:12px;line-height:1.5;">
+                                Email này được gửi tự động từ hệ thống UniBus. Vui lòng không trả lời email này.
                               </td>
                             </tr>
                           </table>

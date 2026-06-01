@@ -17,8 +17,8 @@ export default function Home() {
       return;
     }
 
-    const frame = window.requestAnimationFrame(() => setIsCheckingSession(false));
-    return () => window.cancelAnimationFrame(frame);
+    const handle = window.setTimeout(() => setIsCheckingSession(false), 0);
+    return () => window.clearTimeout(handle);
   }, [router]);
 
   if (isCheckingSession) {
@@ -34,14 +34,15 @@ export default function Home() {
 
       {/* 1. Navigation Bar */}
       <nav className="fixed top-0 left-0 w-full z-50 bg-brand-surface/80 backdrop-blur-md border-b border-black/5">
-        <div className="max-w-7xl mx-auto px-4 md:px-8 h-20 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 md:px-8 h-28 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <img
-              src="/logo.png"
-              alt="UniBus Logo"
-              className="h-10 w-auto object-contain rounded-xl"
-            />
-            <span className="font-bold text-xl tracking-tight hidden sm:block">UniBus</span>
+            <Link href="/" className="inline-block transition-transform hover:scale-105 active:scale-95">
+              <img
+                src="/logo.png"
+                alt="UniBus Logo"
+                className="h-32 w-auto object-contain rounded-xl scale-110 origin-left"
+              />
+            </Link>
           </div>
           <div className="flex items-center gap-3 md:gap-4">
             <Link href="/login" className="px-5 py-2.5 rounded-full font-semibold text-brand-text hover:bg-black/5 transition-colors text-sm">
@@ -54,22 +55,22 @@ export default function Home() {
         </div>
       </nav>
 
-      <main className="pt-20">
+      <main className="pt-28">
 
         {/* 2. Hero Section */}
         <section className="relative max-w-7xl mx-auto px-4 md:px-8 pt-20 pb-32 flex flex-col items-center text-center">
           {/* Decorative Gradients */}
           <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-full max-w-2xl h-64 bg-brand-primary/30 rounded-full blur-[100px] -z-10"></div>
 
-          <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-6 max-w-4xl leading-[1.1] animate-in fade-in slide-in-from-bottom-6 duration-700 delay-100">
-           Trải nghiệm UniBus,<br className="hidden md:block" /> An toàn, tiện lợi.
+          <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-6 max-w-4xl leading-[1.1]">
+            Xe buýt thông minh, <br className="hidden md:block" /> dành riêng cho sinh viên.
           </h1>
 
-          <p className="text-lg md:text-xl text-brand-text/60 max-w-2xl mb-10 font-medium animate-in fade-in slide-in-from-bottom-6 duration-700 delay-200">
-            Hệ thống xe buýt thông minh dành cho sinh viên Đà Nẵng. Theo dõi lộ trình trực tiếp, nạp ví tiện lợi.
+          <p className="text-lg md:text-xl text-brand-text/60 max-w-2xl mb-10 font-medium">
+            Hệ thống xe buýt thông minh dành cho sinh viên Đà Nẵng. Theo dõi lộ trình trực tiếp, thanh toán tiện lợi.
           </p>
 
-          <div className="flex flex-col sm:flex-row items-center gap-4 animate-in fade-in slide-in-from-bottom-6 duration-700 delay-300">
+          <div className="flex flex-col sm:flex-row items-center gap-4">
             <Link href="/register" className="px-8 py-4 rounded-full font-bold bg-brand-primary text-brand-text hover:brightness-95 transition-all shadow-sm text-lg flex items-center gap-2 w-full sm:w-auto justify-center hover:scale-105 active:scale-95">
               Bắt đầu ngay <ArrowRight className="w-5 h-5" />
             </Link>
@@ -153,17 +154,17 @@ export default function Home() {
           <div className="max-w-7xl mx-auto px-4 md:px-8">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-12 text-center">
               <div>
-                <div className="text-5xl font-black text-brand-primary mb-4 drop-shadow-sm">Rẻ hơn</div>
+                <div className="text-4xl font-extrabold text-brand-text mb-4 tracking-tight">Rẻ hơn.</div>
                 <h4 className="text-xl font-bold mb-2">Chi phí hợp lý cho sinh viên</h4>
                 <p className="text-brand-text/60">Các gói vé tháng trợ giá giúp bạn tiết kiệm tối đa chi phí đi lại hàng tháng.</p>
               </div>
               <div>
-                <div className="text-5xl font-black text-brand-secondary mb-4 drop-shadow-sm">Rộng hơn</div>
+                <div className="text-4xl font-extrabold text-brand-text mb-4 tracking-tight">Rộng hơn.</div>
                 <h4 className="text-xl font-bold mb-2">Mạng lưới bao phủ</h4>
                 <p className="text-brand-text/60">Tuyến đường chạy qua hầu hết các điểm nóng khu trọ và khuôn viên trường.</p>
               </div>
               <div>
-                <div className="text-5xl font-black text-brand-success mb-4 drop-shadow-sm">Nhanh hơn</div>
+                <div className="text-4xl font-extrabold text-brand-text mb-4 tracking-tight">Nhanh hơn.</div>
                 <h4 className="text-xl font-bold mb-2">Lên xe 1 chạm</h4>
                 <p className="text-brand-text/60">Công nghệ quét mã vạch tốc độ cao giảm thiểu thời gian chờ đợi ở cửa xe.</p>
               </div>
@@ -186,7 +187,7 @@ export default function Home() {
       <footer className="bg-white border-t border-black/5 py-12">
         <div className="max-w-7xl mx-auto px-4 md:px-8 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <img src="/logo.png" alt="UniBus Logo" className="h-8 w-auto grayscale opacity-50" />
+            <img src="/logo.png" alt="UniBus Logo" className="h-14 w-auto object-contain grayscale opacity-50" />
             <span className="font-bold text-brand-text/50">© 2026 UniBus System</span>
           </div>
           <div className="flex items-center gap-6 text-sm font-semibold text-brand-text/50">

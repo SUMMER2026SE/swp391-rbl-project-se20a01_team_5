@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { X, AlertTriangle } from 'lucide-react';
 
 export default function LogoutConfirmModal({ isOpen, onClose, onConfirm }) {
@@ -21,6 +22,9 @@ export default function LogoutConfirmModal({ isOpen, onClose, onConfirm }) {
           <h3 className="text-xl font-bold text-center">Xác nhận đăng xuất</h3>
           <p className="text-center text-sm text-brand-text/60 mt-1">Bạn có chắc chắn muốn thoát khỏi ứng dụng?</p>
         </div>
+        
+
+
         <div className="p-4 flex gap-3">
           <button 
             onClick={onClose}
@@ -29,7 +33,7 @@ export default function LogoutConfirmModal({ isOpen, onClose, onConfirm }) {
             Hủy
           </button>
           <button 
-            onClick={onConfirm}
+            onClick={() => onConfirm()}
             className="flex-1 py-3 rounded-xl bg-brand-danger text-white font-bold hover:bg-red-600 transition-colors"
           >
             Đăng xuất

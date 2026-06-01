@@ -58,19 +58,34 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-brand-surface font-sans text-brand-text flex items-center justify-center p-4">
       <div className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-        <div className="hidden lg:flex bg-brand-primary rounded-3xl p-12 shadow-sm flex-col justify-between relative overflow-hidden border border-black/5">
-          <div className="absolute -bottom-10 -left-10 w-64 h-64 bg-white/30 rounded-full blur-3xl"></div>
-          <div>
-            <img
-              src="/logo.png"
-              alt="UniBus Logo"
-              className="h-16 w-auto object-contain mb-6 drop-shadow-sm rounded-3xl"
-            />
-            <p className="text-lg text-brand-text/80 font-medium">
-              Đăng nhập để quản lý lịch trình, theo dõi chuyến xe và mua vé tháng dễ dàng hơn.
+        <div className="hidden lg:flex bg-gradient-to-br from-brand-primary via-[#ffecd2] to-brand-primary rounded-3xl p-12 shadow-sm flex-col justify-between relative overflow-hidden border border-black/5">
+          {/* Decorative Grid Pattern */}
+          <div className="absolute inset-0 bg-[linear-gradient(to_right,#0000000a_1px,transparent_1px),linear-gradient(to_bottom,#0000000a_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none"></div>
+          
+          {/* Decorative Blobs */}
+          <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-white/40 rounded-full blur-[80px] pointer-events-none"></div>
+          <div className="absolute -top-24 -right-24 w-96 h-96 bg-white/40 rounded-full blur-[80px] pointer-events-none"></div>
+
+          <div className="relative z-10">
+            <Link href="/" className="inline-block transition-transform hover:scale-105 active:scale-95 mb-10">
+              <div className="bg-white/50 backdrop-blur-md p-4 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/60">
+                <img
+                  src="/logo.png"
+                  alt="UniBus Logo"
+                  className="h-20 w-auto object-contain drop-shadow-sm"
+                />
+              </div>
+            </Link>
+            
+            <h1 className="text-4xl font-black mb-6 tracking-tight leading-[1.1] text-brand-text">
+              Chào mừng<br/>trở lại!
+            </h1>
+            <p className="text-lg text-brand-text/70 font-medium leading-relaxed max-w-sm">
+              Đăng nhập ngay để quản lý lịch trình, theo dõi chuyến xe theo thời gian thực và mua vé tháng dễ dàng hơn bao giờ hết.
             </p>
           </div>
-          <div className="text-sm font-bold text-brand-text/40">
+
+          <div className="relative z-10 text-sm font-bold text-brand-text/40">
             © 2026 UniBus System
           </div>
         </div>
@@ -95,8 +110,9 @@ export default function LoginPage() {
                 <input
                   type="email"
                   required
+                  tabIndex={1}
                   placeholder="name@example.com"
-                  className="w-full pl-12 pr-4 py-3.5 rounded-xl bg-brand-surface/50 border border-black/5 focus:bg-white focus:border-brand-secondary focus:ring-4 focus:ring-brand-secondary/20 outline-none transition-all font-mono text-sm"
+                  className="w-full pl-12 pr-4 py-3.5 rounded-xl bg-brand-surface/50 border border-black/5 focus:bg-white focus:border-brand-secondary focus:ring-4 focus:ring-brand-secondary/20 outline-none transition-all font-medium text-sm"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
@@ -108,6 +124,7 @@ export default function LoginPage() {
                 <label className="block text-sm font-semibold ml-1">Mật khẩu</label>
                 <Link
                   href="/forgot-password"
+                  tabIndex={4}
                   className="text-sm font-bold text-brand-secondary hover:text-brand-text transition-colors"
                 >
                   Quên mật khẩu?
@@ -118,6 +135,7 @@ export default function LoginPage() {
                 <input
                   type="password"
                   required
+                  tabIndex={2}
                   className="w-full pl-12 pr-4 py-3.5 rounded-xl bg-brand-surface/50 border border-black/5 focus:bg-white focus:border-brand-secondary focus:ring-4 focus:ring-brand-secondary/20 outline-none transition-all font-mono text-sm"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -127,6 +145,7 @@ export default function LoginPage() {
 
             <button
               type="submit"
+              tabIndex={3}
               disabled={isSubmitting || isGoogleSubmitting}
               className="w-full py-4 mt-2 rounded-xl bg-brand-text text-white font-bold hover:bg-black transition-colors flex justify-center items-center gap-2 shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
             >
@@ -140,21 +159,13 @@ export default function LoginPage() {
             <div className="flex-1 h-px bg-black/5"></div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 mb-8">
+          <div className="flex justify-center mb-8">
             <GoogleSignInButton
               text="signin_with"
               onCredential={handleGoogleCredential}
               onError={setError}
               disabled={isSubmitting || isGoogleSubmitting}
             />
-            <button
-              type="button"
-              onClick={() => setError('Facebook login chưa được triển khai trong backend.')}
-              className="h-12 rounded-xl bg-brand-surface/50 border border-black/5 px-4 font-semibold text-sm hover:bg-white hover:border-brand-secondary/40 hover:shadow-sm transition-all flex items-center justify-center gap-2"
-            >
-              <span className="text-[#1877F2] font-black leading-none">f</span>
-              <span className="whitespace-nowrap leading-none">Facebook</span>
-            </button>
           </div>
 
           <p className="text-center text-sm font-medium text-brand-text/60">

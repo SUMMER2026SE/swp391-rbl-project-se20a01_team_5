@@ -11,7 +11,6 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
-  const [showNotifications, setShowNotifications] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(null);
   const [displayName, setDisplayName] = useState('Người dùng');
   const pathname = usePathname();
@@ -25,12 +24,13 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
     }
 
     let cancelled = false;
-    userApi.getProfile()
-      .then((profile) => {
-        if (cancelled) return;
-        setDisplayName(profile.fullName || profile.email || 'Người dùng');
-        setAvatarUrl(toApiAssetUrl(profile.avatarUrl) || null);
-      })
+      userApi.getProfile()
+        .then((profile) => {
+          if (cancelled) return;
+          const name = profile.fullName || profile.email || 'Người dùng';
+          setDisplayName(name);
+          setAvatarUrl(toApiAssetUrl(profile.avatarUrl) || null);
+        })
       .catch(() => {
         // Header stays usable even if profile fetch fails.
       });
@@ -60,8 +60,8 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
 
   return (
     <div className="min-h-screen bg-brand-surface font-sans text-brand-text p-3 md:p-6 flex gap-4 md:gap-6">
-      <aside className={`${isSidebarOpen ? 'w-72' : 'w-22'} shrink-0 transition-all duration-300 hidden md:flex flex-col`}>
-        <div className={`bg-white rounded-3xl shadow-sm border border-black/5 flex-1 flex flex-col h-fit max-h-[calc(100vh-3rem)] sticky top-6 transition-all duration-300 ${isSidebarOpen ? 'p-6' : 'px-4 py-6'}`}>
+      <aside className={`${isSidebarOpen ? 'w-72' : 'w-24'} shrink-0 transition-all duration-300 hidden md:flex flex-col`}>
+        <div className="bg-white rounded-3xl p-6 shadow-sm border border-black/5 flex-1 flex flex-col h-fit max-h-[calc(100vh-3rem)] sticky top-6">
           <SidebarHeader isSidebarOpen={isSidebarOpen} onToggle={() => setIsSidebarOpen((current) => !current)} />
           <SidebarNav
             menuItems={menuItems}
@@ -82,7 +82,9 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
           />
           <aside className="absolute left-3 top-3 bottom-3 w-[min(20rem,calc(100vw-1.5rem))] bg-white rounded-3xl p-5 shadow-2xl border border-black/10 flex flex-col">
             <div className="flex items-center justify-between mb-6">
-              <img src="/logo.png" alt="UniBus Logo" className="h-10 w-auto object-contain rounded-xl" />
+              <Link href="/" className="transition-transform hover:scale-105 active:scale-95">
+                <img src="/logo.png" alt="UniBus Logo" className="h-16 w-auto object-contain rounded-xl" />
+              </Link>
               <button
                 type="button"
                 onClick={() => setIsMobileMenuOpen(false)}
@@ -93,12 +95,12 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
               </button>
             </div>
             <SidebarNav
-              menuItems={menuItems}
-              pathname={pathname}
-              isSidebarOpen
-              onNavigate={() => setIsMobileMenuOpen(false)}
-              onLogout={() => setShowLogoutModal(true)}
-            />
+            menuItems={menuItems}
+            pathname={pathname}
+            isSidebarOpen
+            onNavigate={() => setIsMobileMenuOpen(false)}
+            onLogout={() => setShowLogoutModal(true)}
+          />
           </aside>
         </div>
       )}
@@ -125,47 +127,21 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
           </div>
 
           <div className="flex items-center gap-3 md:gap-6">
-            <div className="relative">
-              <button 
-                onClick={() => setShowNotifications(!showNotifications)}
-                className="p-3 rounded-2xl bg-brand-surface hover:bg-brand-surface/70 text-brand-text transition-all relative"
-              >
-                <Bell className="w-5 h-5" />
-                <span className="absolute top-3 right-3 w-2.5 h-2.5 bg-brand-danger rounded-full border-2 border-white"></span>
-              </button>
-
-              {showNotifications && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)}></div>
-                  <div className="absolute top-full right-0 mt-2 w-80 bg-white rounded-3xl shadow-xl border border-black/5 p-4 z-50 animate-in fade-in slide-in-from-top-2">
-                    <div className="flex justify-between items-center mb-4">
-                      <h3 className="font-bold text-lg">Thông báo</h3>
-                      <span className="text-xs font-bold text-brand-primary bg-brand-primary/10 px-2 py-1 rounded-lg">1 mới</span>
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <div className="p-4 bg-brand-surface rounded-2xl cursor-pointer hover:bg-brand-primary/5 transition-colors border border-transparent hover:border-brand-primary/20">
-                        <div className="flex items-center gap-2 mb-1">
-                          <div className="w-2 h-2 bg-brand-danger rounded-full"></div>
-                          <p className="text-sm font-bold text-brand-text">Chào mừng bạn!</p>
-                        </div>
-                        <p className="text-xs text-brand-text/60 font-medium pl-4">Hệ thống UniBus đang được cập nhật thêm nhiều tính năng mới.</p>
-                      </div>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
+            <button className="p-3 rounded-2xl bg-brand-surface hover:bg-brand-surface/70 text-brand-text transition-all relative">
+              <Bell className="w-5 h-5" />
+              <span className="absolute top-3 right-3 w-2.5 h-2.5 bg-brand-danger rounded-full border-2 border-white"></span>
+            </button>
             <div className="h-8 w-px bg-black/5 hidden md:block"></div>
             <Link
               href={profileHref || '#'}
-              className={`flex items-center gap-3 rounded-2xl px-2 py-2 transition-colors ${pathname === profileHref ? 'bg-brand-surface' : 'hover:bg-brand-surface'}`}
+              className={`flex items-center gap-3 rounded-full pl-4 pr-1.5 py-1.5 transition-colors ${pathname === profileHref ? 'bg-brand-surface shadow-sm border border-black/5' : 'hover:bg-brand-surface'}`}
               aria-label="Mở hồ sơ cá nhân"
             >
               <div className="text-right hidden md:block max-w-40">
                 <p className="text-sm font-bold text-brand-text truncate">{displayName}</p>
                 <p className="text-xs text-brand-text/50 font-medium">{roleName}</p>
               </div>
-              <div className="w-11 h-11 md:w-12 md:h-12 rounded-2xl bg-brand-primary flex items-center justify-center text-brand-text font-bold text-lg border border-black/5 overflow-hidden">
+              <div className="w-11 h-11 md:w-12 md:h-12 rounded-full bg-brand-primary flex items-center justify-center text-brand-text font-bold text-lg border border-black/5 overflow-hidden">
                 {avatarUrl ? (
                   <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
                 ) : (
@@ -192,18 +168,15 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
 
 function SidebarHeader({ isSidebarOpen, onToggle }) {
   return (
-    <div className={`flex items-center mb-8 ${isSidebarOpen ? 'justify-between' : 'justify-center'}`}>
+    <div className={`flex items-center ${isSidebarOpen ? 'justify-between' : 'justify-center'} mb-10`}>
       {isSidebarOpen && (
         <div className="flex items-center justify-center w-full px-2">
-          <img src="/logo.png" alt="UniBus Logo" className="h-12 w-auto object-contain rounded-xl" />
+          <Link href="/" className="transition-transform hover:scale-105 active:scale-95">
+            <img src="/logo.png" alt="UniBus Logo" className="h-24 w-auto object-contain rounded-xl" />
+          </Link>
         </div>
       )}
-      <button
-        type="button"
-        onClick={onToggle}
-        className="w-12 h-12 rounded-2xl flex items-center justify-center hover:bg-brand-surface text-brand-text/60 transition-colors"
-        aria-label={isSidebarOpen ? 'Thu gọn menu' : 'Mở rộng menu'}
-      >
+      <button onClick={onToggle} className="p-2 rounded-xl hover:bg-black/5 text-brand-text/60 transition-colors">
         <Menu className="w-5 h-5" />
       </button>
     </div>
@@ -212,7 +185,7 @@ function SidebarHeader({ isSidebarOpen, onToggle }) {
 
 function SidebarNav({ menuItems, pathname, isSidebarOpen, onNavigate, onLogout }) {
   return (
-    <nav className={`flex-1 flex flex-col overflow-y-auto custom-scrollbar ${isSidebarOpen ? 'gap-2 pr-2 -mr-2' : 'items-center gap-3 overflow-visible'}`}>
+    <nav className="flex-1 flex flex-col gap-2 overflow-y-auto custom-scrollbar pr-2 -mr-2">
       {isSidebarOpen && <div className="text-xs font-bold text-brand-text/40 mb-2 uppercase tracking-wider pl-4">Menu chính</div>}
 
       {menuItems.map((item) => {
@@ -222,9 +195,7 @@ function SidebarNav({ menuItems, pathname, isSidebarOpen, onNavigate, onLogout }
             key={item.name}
             href={item.href}
             onClick={onNavigate}
-            title={!isSidebarOpen ? item.name : undefined}
-            aria-label={item.name}
-            className={`flex items-center rounded-2xl transition-all font-medium ${isSidebarOpen ? 'w-full gap-4 px-4 py-3.5' : 'w-12 h-12 justify-center'} ${isActive ? 'bg-brand-text text-white shadow-sm' : 'hover:bg-brand-surface text-brand-text/70 hover:text-brand-text'}`}
+            className={`flex items-center py-3.5 rounded-2xl transition-all font-medium ${isSidebarOpen ? 'gap-4 px-4' : 'justify-center'} ${isActive ? 'bg-brand-text text-white shadow-sm' : 'hover:bg-brand-surface text-brand-text/70 hover:text-brand-text'}`}
           >
             <item.icon className="w-5 h-5 shrink-0" />
             {isSidebarOpen && <span>{item.name}</span>}
@@ -232,13 +203,10 @@ function SidebarNav({ menuItems, pathname, isSidebarOpen, onNavigate, onLogout }
         );
       })}
 
-      <div className={`${isSidebarOpen ? 'pt-6 mt-8 border-t border-black/5' : 'w-full pt-6 mt-6 border-t border-black/5 flex justify-center'}`}>
+      <div className="pt-6 mt-8 border-t border-black/5">
         <button
-          type="button"
           onClick={onLogout}
-          className={`flex items-center justify-center rounded-2xl text-brand-danger font-bold hover:bg-brand-danger/10 transition-colors ${isSidebarOpen ? 'w-full gap-3 py-3 px-4' : 'w-12 h-12'}`}
-          title={!isSidebarOpen ? 'Đăng xuất' : undefined}
-          aria-label="Đăng xuất"
+          className={`w-full flex items-center justify-center py-3 rounded-2xl text-brand-danger font-bold hover:bg-brand-danger/10 transition-colors ${isSidebarOpen ? 'gap-3 px-4' : ''}`}
         >
           <LogOut className="w-5 h-5 shrink-0" />
           {isSidebarOpen && <span>Đăng xuất</span>}

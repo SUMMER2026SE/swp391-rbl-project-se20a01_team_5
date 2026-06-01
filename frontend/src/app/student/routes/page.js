@@ -5,9 +5,34 @@ import Link from 'next/link';
 import { Search, Map, Clock, ArrowRight, BusFront, MapPin, Activity, CheckCircle2 } from 'lucide-react';
 import { registrationApi, transportApi } from '@/services/api';
 
+const mockPopularRoutes = [
+  {
+    routeId: 1,
+    routeName: 'Tuyến số 1',
+    stops: [{ stopName: 'Ký túc xá DMC' }, { stopName: 'Đại học FPT' }],
+    estimatedMinutes: 45,
+    distanceKm: 12.5,
+  },
+  {
+    routeId: 2,
+    routeName: 'Tuyến số 2',
+    stops: [{ stopName: 'Ngã Ba Huế' }, { stopName: 'Đại học Bách Khoa' }],
+    estimatedMinutes: 30,
+    distanceKm: 8.2,
+  },
+  {
+    routeId: 3,
+    routeName: 'Tuyến số 3',
+    stops: [{ stopName: 'Bến xe Nam' }, { stopName: 'Cầu Rồng' }],
+    estimatedMinutes: 50,
+    distanceKm: 15.0,
+  }
+];
+
 export default function StudentRoutesPage() {
   const [stops, setStops] = useState([]);
-  const [routes, setRoutes] = useState([]);
+  const [routes, setRoutes] = useState(mockPopularRoutes);
+  const [hasSearched, setHasSearched] = useState(false);
   const [currentRegistration, setCurrentRegistration] = useState(null);
   const [boardingStopId, setBoardingStopId] = useState('');
   const [alightingStopId, setAlightingStopId] = useState('');
@@ -71,10 +96,12 @@ export default function StudentRoutesPage() {
     try {
       const results = await transportApi.searchRoutes(Number(boardingStopId), Number(alightingStopId));
       setRoutes(results || []);
+      setHasSearched(true);
       setMessage(results?.length ? `Tìm thấy ${results.length} tuyến phù hợp.` : 'Không có tuyến phù hợp với hai trạm đã chọn.');
     } catch (err) {
       setError(err.message);
       setRoutes([]);
+      setHasSearched(true);
     } finally {
       setIsSearching(false);
     }
@@ -120,7 +147,6 @@ export default function StudentRoutesPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight text-brand-text mb-2">Tìm tuyến xe</h1>
-          <p className="text-brand-text/60 font-medium">Chọn điểm lên/xuống để tra cứu tuyến từ backend.</p>
         </div>
       </div>
 
@@ -162,6 +188,11 @@ export default function StudentRoutesPage() {
       </form>
 
       <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 pb-6">
+        {!hasSearched && filteredRoutes.length > 0 && (
+          <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+            <Activity className="w-5 h-5 text-brand-secondary" /> Các tuyến xe phổ biến
+          </h2>
+        )}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           {filteredRoutes.map((route) => {
             const isCurrent = currentRegistration?.routeId === route.routeId;
@@ -220,7 +251,7 @@ export default function StudentRoutesPage() {
           {!filteredRoutes.length && (
             <div className="col-span-full flex flex-col items-center justify-center py-20 text-brand-text/40 bg-white rounded-3xl border border-black/5">
               <Map className="w-16 h-16 mb-4 opacity-50" />
-              <p className="font-bold text-lg">Chưa có kết quả tuyến xe.</p>
+              <p className="font-bold text-lg">{hasSearched ? 'Không tìm thấy tuyến phù hợp.' : 'Chưa có dữ liệu tuyến.'}</p>
             </div>
           )}
         </div>
@@ -230,23 +261,49 @@ export default function StudentRoutesPage() {
 }
 
 function StopSelect({ label, value, onChange, stops, disabled }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const selectedStop = stops.find((s) => String(s.stopId) === String(value));
+
   return (
-    <label className="block">
+    <div className="block relative">
       <span className="block text-xs font-black text-brand-text/40 uppercase mb-2">{label}</span>
-      <select
-        value={value}
+      <button
+        type="button"
         disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-brand-surface border border-black/5 rounded-2xl py-3.5 px-4 text-sm font-bold focus:outline-none focus:border-brand-primary transition-all"
+        onClick={() => setIsOpen(!isOpen)}
+        onBlur={() => setTimeout(() => setIsOpen(false), 200)}
+        className={`w-full bg-brand-surface border border-black/5 rounded-2xl py-3.5 px-4 text-sm font-bold flex items-center justify-between focus:outline-none focus:border-brand-primary transition-all text-left ${isOpen ? 'border-brand-primary ring-2 ring-brand-primary/20 bg-white' : ''}`}
       >
-        <option value="">{disabled ? 'Đang tải trạm...' : 'Chọn trạm'}</option>
-        {stops.map((stop) => (
-          <option key={stop.stopId} value={stop.stopId}>
-            {stop.stopName}
-          </option>
-        ))}
-      </select>
-    </label>
+        <span className={value ? 'text-brand-text' : 'text-brand-text/50'}>
+          {disabled ? 'Đang tải trạm...' : selectedStop ? selectedStop.stopName : 'Chọn trạm'}
+        </span>
+        <svg className={`w-4 h-4 text-brand-text/40 transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {isOpen && !disabled && (
+        <div className="absolute z-50 w-full mt-2 bg-white border border-black/5 rounded-2xl shadow-2xl max-h-60 overflow-y-auto py-2 custom-scrollbar">
+          <button
+            type="button"
+            onClick={() => { onChange(''); setIsOpen(false); }}
+            className={`w-full text-left px-4 py-3 text-sm font-bold hover:bg-brand-surface transition-colors ${!value ? 'text-brand-text bg-brand-primary/20' : 'text-brand-text/50'}`}
+          >
+            Chọn trạm
+          </button>
+          {stops.map((stop) => (
+            <button
+              key={stop.stopId}
+              type="button"
+              onClick={() => { onChange(String(stop.stopId)); setIsOpen(false); }}
+              className={`w-full text-left px-4 py-3 text-sm font-bold hover:bg-brand-surface transition-colors ${String(stop.stopId) === String(value) ? 'text-brand-text bg-brand-primary/20' : 'text-brand-text'}`}
+            >
+              {stop.stopName}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

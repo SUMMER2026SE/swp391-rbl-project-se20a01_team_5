@@ -62,6 +62,8 @@ export default function StudentVerifyPage() {
     return universities.filter((university) => normalize(university).includes(keyword));
   }, [universities, universitySearch]);
 
+
+
   const loadVerification = async () => {
     setIsLoading(true);
     setError('');
@@ -172,6 +174,27 @@ export default function StudentVerifyPage() {
         </div>
       )}
 
+      {currentStatus === 'VERIFIED' ? (
+        <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-3xl border border-black/5 shadow-sm p-8 text-center min-h-[400px]">
+          <div className="w-24 h-24 rounded-full bg-brand-success/10 flex items-center justify-center mb-6">
+            <CheckCircle2 className="w-12 h-12 text-brand-success" />
+          </div>
+          <h2 className="text-3xl font-extrabold text-brand-text mb-4">Hồ sơ đã được duyệt!</h2>
+          <p className="text-brand-text/70 font-medium max-w-md mx-auto">
+            Chúc mừng! Tài khoản sinh viên của bạn đã được xác minh thành công. Bây giờ bạn đã có thể mua vé tháng và đăng ký tuyến xe.
+          </p>
+        </div>
+      ) : currentStatus === 'PENDING_REVIEW' ? (
+        <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-3xl border border-black/5 shadow-sm p-8 text-center min-h-[400px]">
+          <div className="w-24 h-24 rounded-full bg-brand-secondary/10 flex items-center justify-center mb-6">
+            <Clock className="w-12 h-12 text-brand-secondary" />
+          </div>
+          <h2 className="text-3xl font-extrabold text-brand-text mb-4">Đang chờ xét duyệt</h2>
+          <p className="text-brand-text/70 font-medium max-w-md mx-auto">
+            Hồ sơ của bạn đã được gửi thành công và đang chờ ban quản trị xét duyệt. Bạn vui lòng quay lại sau nhé.
+          </p>
+        </div>
+      ) : (
       <div className="flex-1 grid grid-cols-1 xl:grid-cols-3 gap-6 overflow-y-auto custom-scrollbar pr-2 pb-6">
         <div className="xl:col-span-1 flex flex-col gap-6">
           <div className={`rounded-3xl p-6 border shadow-sm ${status.tone}`}>
@@ -202,13 +225,9 @@ export default function StudentVerifyPage() {
           </div>
         </div>
 
-        {canSubmit ? (
         <form onSubmit={handleSubmit} className="xl:col-span-2 bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-black/5 flex flex-col gap-6">
           <div>
             <h2 className="text-2xl font-bold mb-2">Hồ sơ xác minh</h2>
-            <p className="text-sm font-medium text-brand-text/60">
-              Chọn đúng trường, nhập mã sinh viên và tải ảnh thẻ rõ nét để gửi hồ sơ.
-            </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -294,6 +313,8 @@ export default function StudentVerifyPage() {
             </label>
           </div>
 
+
+
           <button
             type="submit"
             disabled={!canSubmit || isSubmitting}
@@ -302,10 +323,8 @@ export default function StudentVerifyPage() {
             {isSubmitting ? 'Đang gửi hồ sơ...' : 'Gửi hồ sơ xác minh'}
           </button>
         </form>
-        ) : (
-          <ReviewStatusPanel verification={verification} currentStatus={currentStatus} />
-        )}
       </div>
+      )}
     </div>
   );
 }
@@ -332,40 +351,7 @@ function Step({ done, label }) {
   );
 }
 
-function ReviewStatusPanel({ verification, currentStatus }) {
-  const isVerified = currentStatus === 'VERIFIED';
 
-  return (
-    <div className="xl:col-span-2 bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-black/5 flex flex-col justify-center">
-      <div className="max-w-xl mx-auto text-center">
-        <div className={`mx-auto mb-6 w-20 h-20 rounded-3xl flex items-center justify-center border ${isVerified ? 'bg-brand-success/10 border-brand-success/20 text-brand-success' : 'bg-brand-secondary/10 border-brand-secondary/20 text-brand-text'}`}>
-          {isVerified ? <BadgeCheck className="w-10 h-10" /> : <Clock className="w-10 h-10" />}
-        </div>
-        <h2 className="text-3xl font-black text-brand-text mb-3">
-          {isVerified ? 'Hồ sơ đã được xác minh' : 'Đã nhận hồ sơ xác minh'}
-        </h2>
-        <p className="text-brand-text/60 font-medium leading-relaxed mb-6">
-          {isVerified
-            ? 'Tài khoản sinh viên của bạn đã được mở khóa để mua vé và đăng ký tuyến.'
-            : 'Hồ sơ của bạn đã được gửi thành công và đang chờ admin kiểm tra. UniBus sẽ cập nhật trạng thái sau khi xét duyệt.'}
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
-          <SummaryItem label="Trường học" value={verification?.university} />
-          <SummaryItem label="Mã sinh viên" value={verification?.studentCode} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SummaryItem({ label, value }) {
-  return (
-    <div className="rounded-2xl bg-brand-surface/70 border border-black/5 p-4">
-      <div className="text-[11px] font-black uppercase text-brand-text/40 mb-1">{label}</div>
-      <div className="font-bold text-brand-text">{value || '--'}</div>
-    </div>
-  );
-}
 
 function normalize(value) {
   return (value || '')
@@ -377,3 +363,4 @@ function normalize(value) {
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
 }
+
