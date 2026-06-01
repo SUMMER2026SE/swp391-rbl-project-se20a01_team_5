@@ -62,20 +62,6 @@ export default function StudentVerifyPage() {
     return universities.filter((university) => normalize(university).includes(keyword));
   }, [universities, universitySearch]);
 
-  const ocrWarnings = useMemo(() => {
-    if (!verification?.ocrRawText || verification.ocrConfidenceScore === 0) return [];
-    const warnings = [];
-    if (verification.ocrStudentCode && verification.studentCode
-      && normalize(verification.ocrStudentCode) !== normalize(verification.studentCode)) {
-      warnings.push(`Mã sinh viên OCR (${verification.ocrStudentCode}) khác mã đã gửi (${verification.studentCode}).`);
-    }
-    if (verification.ocrUniversity && verification.university
-      && normalize(verification.ocrUniversity) !== normalize(verification.university)) {
-      warnings.push(`Trường OCR (${verification.ocrUniversity}) khác trường đã chọn (${verification.university}).`);
-    }
-    return warnings;
-  }, [verification]);
-
   const loadVerification = async () => {
     setIsLoading(true);
     setError('');
@@ -216,11 +202,12 @@ export default function StudentVerifyPage() {
           </div>
         </div>
 
+        {canSubmit ? (
         <form onSubmit={handleSubmit} className="xl:col-span-2 bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-black/5 flex flex-col gap-6">
           <div>
             <h2 className="text-2xl font-bold mb-2">Hồ sơ xác minh</h2>
             <p className="text-sm font-medium text-brand-text/60">
-              OCR chỉ hỗ trợ admin đọc hồ sơ, quyết định cuối cùng vẫn do admin duyệt.
+              Chọn đúng trường, nhập mã sinh viên và tải ảnh thẻ rõ nét để gửi hồ sơ.
             </p>
           </div>
 
@@ -307,32 +294,6 @@ export default function StudentVerifyPage() {
             </label>
           </div>
 
-          {verification?.ocrRawText && (
-            <div className="rounded-2xl bg-brand-surface/60 border border-black/5 p-4 text-sm font-medium text-brand-text/70">
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                <div className="text-xs font-black uppercase text-brand-text/40">OCR Google Vision</div>
-                <div className="text-xs font-black text-brand-text/50">
-                  Confidence: {formatPercent(verification.ocrConfidenceScore)}
-                </div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-                <OcrField label="Tên" value={verification.ocrFullName} />
-                <OcrField label="Mã SV" value={verification.ocrStudentCode} />
-                <OcrField label="Trường" value={verification.ocrUniversity} />
-              </div>
-              {ocrWarnings.length > 0 && (
-                <div className="mb-4 rounded-xl bg-brand-warning/10 border border-brand-warning/20 p-3 text-xs font-bold text-brand-warning">
-                  {ocrWarnings.map((warning) => (
-                    <div key={warning}>{warning}</div>
-                  ))}
-                </div>
-              )}
-              <pre className="max-h-44 overflow-auto whitespace-pre-wrap rounded-xl bg-white/70 p-3 text-xs leading-relaxed text-brand-text/60">
-                {verification.ocrRawText}
-              </pre>
-            </div>
-          )}
-
           <button
             type="submit"
             disabled={!canSubmit || isSubmitting}
@@ -341,6 +302,9 @@ export default function StudentVerifyPage() {
             {isSubmitting ? 'Đang gửi hồ sơ...' : 'Gửi hồ sơ xác minh'}
           </button>
         </form>
+        ) : (
+          <ReviewStatusPanel verification={verification} currentStatus={currentStatus} />
+        )}
       </div>
     </div>
   );
@@ -368,11 +332,37 @@ function Step({ done, label }) {
   );
 }
 
-function OcrField({ label, value }) {
+function ReviewStatusPanel({ verification, currentStatus }) {
+  const isVerified = currentStatus === 'VERIFIED';
+
   return (
-    <div className="rounded-xl bg-white/70 border border-black/5 p-3">
-      <div className="text-[10px] font-black uppercase text-brand-text/35">{label}</div>
-      <div className="mt-1 text-xs font-black text-brand-text">{value || '--'}</div>
+    <div className="xl:col-span-2 bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-black/5 flex flex-col justify-center">
+      <div className="max-w-xl mx-auto text-center">
+        <div className={`mx-auto mb-6 w-20 h-20 rounded-3xl flex items-center justify-center border ${isVerified ? 'bg-brand-success/10 border-brand-success/20 text-brand-success' : 'bg-brand-secondary/10 border-brand-secondary/20 text-brand-text'}`}>
+          {isVerified ? <BadgeCheck className="w-10 h-10" /> : <Clock className="w-10 h-10" />}
+        </div>
+        <h2 className="text-3xl font-black text-brand-text mb-3">
+          {isVerified ? 'Hồ sơ đã được xác minh' : 'Đã nhận hồ sơ xác minh'}
+        </h2>
+        <p className="text-brand-text/60 font-medium leading-relaxed mb-6">
+          {isVerified
+            ? 'Tài khoản sinh viên của bạn đã được mở khóa để mua vé và đăng ký tuyến.'
+            : 'Hồ sơ của bạn đã được gửi thành công và đang chờ admin kiểm tra. UniBus sẽ cập nhật trạng thái sau khi xét duyệt.'}
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
+          <SummaryItem label="Trường học" value={verification?.university} />
+          <SummaryItem label="Mã sinh viên" value={verification?.studentCode} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SummaryItem({ label, value }) {
+  return (
+    <div className="rounded-2xl bg-brand-surface/70 border border-black/5 p-4">
+      <div className="text-[11px] font-black uppercase text-brand-text/40 mb-1">{label}</div>
+      <div className="font-bold text-brand-text">{value || '--'}</div>
     </div>
   );
 }
@@ -386,10 +376,4 @@ function normalize(value) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
-}
-
-function formatPercent(value) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return '0%';
-  return `${Math.round(number * 100)}%`;
 }
