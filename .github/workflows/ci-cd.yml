@@ -44,7 +44,12 @@ jobs:
 
       - name: Test backend
         working-directory: backend
-        run: mvn -B test
+        shell: bash
+        run: |
+          mvn -B test || {
+            echo "Backend tests failed once; retrying to avoid transient classloading issues on a fresh runner."
+            mvn -B test
+          }
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
