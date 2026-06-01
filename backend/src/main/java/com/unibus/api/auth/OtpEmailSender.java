@@ -100,6 +100,9 @@ public class OtpEmailSender {
 
     private String htmlBody(VerificationPurpose purpose, String code) {
         String action = actionText(purpose);
+        // Insert spaces between characters for the UNiDAYS look (e.g., "1 2 3 4 5 6")
+        String spacedCode = String.join(" ", code.split(""));
+        
         return """
                 <!doctype html>
                 <html lang="vi">
@@ -107,43 +110,47 @@ public class OtpEmailSender {
                     <meta charset="utf-8">
                     <meta name="viewport" content="width=device-width, initial-scale=1">
                   </head>
-                  <body style="margin:0;background:#f9fafb;font-family:Inter,Segoe UI,Arial,sans-serif;color:#111827;">
-                    <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" style="background:#f9fafb;padding:32px 16px;">
+                  <body style="margin:0;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#000000;text-align:center;">
+                    <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" style="background:#ffffff;">
                       <tr>
-                        <td align="center">
-                          <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" style="max-width:520px;background:#ffffff;border:1px solid #e5e7eb;border-radius:24px;overflow:hidden;box-shadow:0 10px 25px rgba(0,0,0,0.05);">
-                            <tr>
-                              <td style="background:#111827;padding:32px;">
-                                <div style="font-size:13px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#9ca3af;">UniBus</div>
-                                <div style="margin-top:10px;font-size:26px;line-height:1.2;font-weight:900;color:#ffffff;">Mã xác thực OTP</div>
-                                <div style="margin-top:8px;font-size:14px;line-height:1.6;color:#d1d5db;">Dùng mã bên dưới để %s.</div>
-                              </td>
-                            </tr>
-                            <tr>
-                              <td style="padding:32px;">
-                                <div style="font-size:14px;line-height:1.7;color:#4b5563;font-weight:600;">Mã xác thực của bạn là:</div>
-                                <div style="margin:16px 0 20px;padding:24px;border-radius:16px;background:#f3f4f6;text-align:center;">
-                                  <span style="font-family:JetBrains Mono,Consolas,monospace;font-size:36px;letter-spacing:0.3em;font-weight:900;color:#111827;">%s</span>
-                                </div>
-                                <div style="font-size:14px;line-height:1.7;color:#4b5563;">
-                                  Mã này có hiệu lực trong <strong>%d phút</strong>. Vui lòng không chia sẻ mã này với bất kỳ ai để bảo mật tài khoản.
-                                </div>
-                                <div style="margin-top:24px;padding:16px;border-radius:12px;background:#fef2f2;color:#991b1b;font-size:13px;line-height:1.6;font-weight:500;">
-                                  Nếu bạn không yêu cầu mã này, bạn có thể bỏ qua email này một cách an toàn.
-                                </div>
-                              </td>
-                            </tr>
-                            <tr>
-                              <td style="padding:20px 32px;background:#ffffff;border-top:1px solid #f3f4f6;color:#9ca3af;font-size:12px;line-height:1.5;">
-                                Email này được gửi tự động từ hệ thống UniBus. Vui lòng không trả lời email này.
-                              </td>
-                            </tr>
-                          </table>
+                        <td align="center" style="padding:60px 20px;">
+                          <div style="max-width:600px;margin:0 auto;">
+                            <!-- Logo / Brand -->
+                            <div style="font-size:32px;font-weight:900;letter-spacing:-0.02em;margin-bottom:24px;color:#000000;">
+                              UniBus
+                            </div>
+                            
+                            <!-- Title -->
+                            <div style="font-size:22px;font-weight:700;margin-bottom:40px;color:#000000;">
+                              Mã xác thực OTP
+                            </div>
+                            
+                            <!-- Code -->
+                            <div style="font-size:48px;font-weight:500;color:#1d4ed8;margin:40px 0;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;letter-spacing:4px;">
+                              %s
+                            </div>
+                            
+                            <!-- Instructions -->
+                            <div style="font-size:16px;color:#4b5563;line-height:1.6;margin-bottom:40px;">
+                              Dùng mã này để %s.<br>
+                              Mã sẽ hết hạn trong %d phút.
+                            </div>
+                            
+                            <!-- Divider -->
+                            <hr style="border:none;border-top:1px solid #e5e7eb;margin:40px auto;max-width:400px;">
+                            
+                            <!-- Footer -->
+                            <div style="font-size:14px;color:#6b7280;line-height:1.6;">
+                              Nếu bạn cần hỗ trợ về tài khoản UniBus, vui lòng liên hệ <a href="mailto:support@unibus.vn" style="color:#1d4ed8;text-decoration:underline;">bộ phận hỗ trợ</a>.
+                              <br><br>
+                              <span style="font-size:12px;color:#9ca3af;">Nếu bạn không yêu cầu mã này, vui lòng bỏ qua email một cách an toàn.</span>
+                            </div>
+                          </div>
                         </td>
                       </tr>
                     </table>
                   </body>
                 </html>
-                """.formatted(action, code, expirationMinutes);
+                """.formatted(spacedCode, action, expirationMinutes);
     }
 }
