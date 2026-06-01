@@ -162,7 +162,6 @@ export default function StudentProfilePage() {
     <div className="h-full flex flex-col gap-6 font-sans relative">
       <div>
         <h1 className="text-3xl font-extrabold tracking-tight text-brand-text mb-2">Hồ sơ cá nhân</h1>
-        <p className="text-brand-text/60 font-medium">Thông tin được tải trực tiếp từ backend.</p>
       </div>
 
       {error && (

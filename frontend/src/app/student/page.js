@@ -62,11 +62,11 @@ export default function StudentDashboard() {
           <div className="bg-white rounded-3xl p-8 shadow-sm border border-black/5 flex flex-col items-center text-center relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-brand-primary/40 to-transparent"></div>
 
-            <div className="w-16 h-16 rounded-full bg-brand-primary flex items-center justify-center text-2xl font-bold text-brand-text border-4 border-white shadow-sm z-10 mb-4 mt-6 overflow-hidden">
+            <div className="w-24 h-24 rounded-full bg-brand-primary flex items-center justify-center text-2xl font-bold text-brand-text border-4 border-white shadow-sm z-10 mb-4 mt-6 overflow-hidden">
               {profile?.avatarUrl ? (
                 <img src={toApiAssetUrl(profile.avatarUrl)} alt="Avatar" className="w-full h-full object-cover" />
               ) : (
-                <UserCircle className="w-10 h-10" />
+                <UserCircle className="w-14 h-14 text-brand-text/50" />
               )}
             </div>
 
@@ -79,9 +79,6 @@ export default function StudentDashboard() {
               </div>
             </div>
 
-            <p className="text-xs font-bold text-brand-text/40 uppercase tracking-widest relative z-10">
-              QR thật cần backend vé/soát vé
-            </p>
           </div>
 
           <div className="bg-white rounded-3xl p-6 border border-black/5 flex items-center justify-between">
@@ -118,7 +115,15 @@ export default function StudentDashboard() {
                   <MapPin className="w-4 h-4 text-brand-secondary" />
                   {registration.boardingStopName} → {registration.alightingStopName}
                 </p>
-                <div className="mt-4 text-xs font-black text-brand-success uppercase">{registration.status}</div>
+                <div className="mt-4 flex flex-col gap-3">
+                  <div className="text-xs font-black text-brand-success uppercase">{registration.status}</div>
+                  <Link 
+                    href={`/student/routes/${registration.routeId}?boardingStopId=${registration.boardingStopId}&alightingStopId=${registration.alightingStopId}`}
+                    className="w-full py-3.5 bg-brand-text text-white font-extrabold text-sm rounded-xl hover:bg-black transition-colors flex items-center justify-center gap-2 shadow-sm"
+                  >
+                    <Navigation className="w-4 h-4" /> Theo dõi xe & ETA
+                  </Link>
+                </div>
               </div>
             ) : (
               <div className="bg-white rounded-3xl p-6 shadow-sm relative z-10 border border-white/50">
@@ -170,7 +175,7 @@ function DashboardSkeleton() {
       <div className="flex-1 grid grid-cols-1 xl:grid-cols-3 gap-6 overflow-y-auto custom-scrollbar pr-2 pb-6">
         <div className="flex flex-col gap-6 xl:col-span-1">
           <div className="bg-white rounded-3xl p-8 shadow-sm border border-black/5 flex flex-col items-center text-center">
-            <div className="w-16 h-16 rounded-full bg-brand-surface mb-4 mt-6"></div>
+            <div className="w-24 h-24 rounded-full bg-brand-surface mb-4 mt-6"></div>
             <div className="h-6 w-32 bg-brand-surface rounded-lg mb-2"></div>
             <div className="h-4 w-24 bg-brand-surface rounded-lg mb-6"></div>
             <div className="bg-brand-surface p-4 rounded-3xl border border-black/5 mb-6 w-full flex justify-center">

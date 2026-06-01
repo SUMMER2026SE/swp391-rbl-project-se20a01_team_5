@@ -62,19 +62,7 @@ export default function StudentVerifyPage() {
     return universities.filter((university) => normalize(university).includes(keyword));
   }, [universities, universitySearch]);
 
-  const ocrWarnings = useMemo(() => {
-    if (!verification?.ocrRawText || verification.ocrConfidenceScore === 0) return [];
-    const warnings = [];
-    if (verification.ocrStudentCode && verification.studentCode
-      && normalize(verification.ocrStudentCode) !== normalize(verification.studentCode)) {
-      warnings.push(`Mã sinh viên OCR (${verification.ocrStudentCode}) khác mã đã gửi (${verification.studentCode}).`);
-    }
-    if (verification.ocrUniversity && verification.university
-      && normalize(verification.ocrUniversity) !== normalize(verification.university)) {
-      warnings.push(`Trường OCR (${verification.ocrUniversity}) khác trường đã chọn (${verification.university}).`);
-    }
-    return warnings;
-  }, [verification]);
+
 
   const loadVerification = async () => {
     setIsLoading(true);
@@ -186,6 +174,27 @@ export default function StudentVerifyPage() {
         </div>
       )}
 
+      {currentStatus === 'VERIFIED' ? (
+        <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-3xl border border-black/5 shadow-sm p-8 text-center min-h-[400px]">
+          <div className="w-24 h-24 rounded-full bg-brand-success/10 flex items-center justify-center mb-6">
+            <CheckCircle2 className="w-12 h-12 text-brand-success" />
+          </div>
+          <h2 className="text-3xl font-extrabold text-brand-text mb-4">Hồ sơ đã được duyệt!</h2>
+          <p className="text-brand-text/70 font-medium max-w-md mx-auto">
+            Chúc mừng! Tài khoản sinh viên của bạn đã được xác minh thành công. Bây giờ bạn đã có thể mua vé tháng và đăng ký tuyến xe.
+          </p>
+        </div>
+      ) : currentStatus === 'PENDING_REVIEW' ? (
+        <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-3xl border border-black/5 shadow-sm p-8 text-center min-h-[400px]">
+          <div className="w-24 h-24 rounded-full bg-brand-secondary/10 flex items-center justify-center mb-6">
+            <Clock className="w-12 h-12 text-brand-secondary" />
+          </div>
+          <h2 className="text-3xl font-extrabold text-brand-text mb-4">Đang chờ xét duyệt</h2>
+          <p className="text-brand-text/70 font-medium max-w-md mx-auto">
+            Hồ sơ của bạn đã được gửi thành công và đang chờ ban quản trị xét duyệt. Bạn vui lòng quay lại sau nhé.
+          </p>
+        </div>
+      ) : (
       <div className="flex-1 grid grid-cols-1 xl:grid-cols-3 gap-6 overflow-y-auto custom-scrollbar pr-2 pb-6">
         <div className="xl:col-span-1 flex flex-col gap-6">
           <div className={`rounded-3xl p-6 border shadow-sm ${status.tone}`}>
@@ -219,9 +228,6 @@ export default function StudentVerifyPage() {
         <form onSubmit={handleSubmit} className="xl:col-span-2 bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-black/5 flex flex-col gap-6">
           <div>
             <h2 className="text-2xl font-bold mb-2">Hồ sơ xác minh</h2>
-            <p className="text-sm font-medium text-brand-text/60">
-              OCR chỉ hỗ trợ admin đọc hồ sơ, quyết định cuối cùng vẫn do admin duyệt.
-            </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -307,31 +313,7 @@ export default function StudentVerifyPage() {
             </label>
           </div>
 
-          {verification?.ocrRawText && (
-            <div className="rounded-2xl bg-brand-surface/60 border border-black/5 p-4 text-sm font-medium text-brand-text/70">
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                <div className="text-xs font-black uppercase text-brand-text/40">OCR Google Vision</div>
-                <div className="text-xs font-black text-brand-text/50">
-                  Confidence: {formatPercent(verification.ocrConfidenceScore)}
-                </div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-                <OcrField label="Tên" value={verification.ocrFullName} />
-                <OcrField label="Mã SV" value={verification.ocrStudentCode} />
-                <OcrField label="Trường" value={verification.ocrUniversity} />
-              </div>
-              {ocrWarnings.length > 0 && (
-                <div className="mb-4 rounded-xl bg-brand-warning/10 border border-brand-warning/20 p-3 text-xs font-bold text-brand-warning">
-                  {ocrWarnings.map((warning) => (
-                    <div key={warning}>{warning}</div>
-                  ))}
-                </div>
-              )}
-              <pre className="max-h-44 overflow-auto whitespace-pre-wrap rounded-xl bg-white/70 p-3 text-xs leading-relaxed text-brand-text/60">
-                {verification.ocrRawText}
-              </pre>
-            </div>
-          )}
+
 
           <button
             type="submit"
@@ -342,6 +324,7 @@ export default function StudentVerifyPage() {
           </button>
         </form>
       </div>
+      )}
     </div>
   );
 }
@@ -368,14 +351,7 @@ function Step({ done, label }) {
   );
 }
 
-function OcrField({ label, value }) {
-  return (
-    <div className="rounded-xl bg-white/70 border border-black/5 p-3">
-      <div className="text-[10px] font-black uppercase text-brand-text/35">{label}</div>
-      <div className="mt-1 text-xs font-black text-brand-text">{value || '--'}</div>
-    </div>
-  );
-}
+
 
 function normalize(value) {
   return (value || '')
@@ -388,8 +364,3 @@ function normalize(value) {
     .trim();
 }
 
-function formatPercent(value) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return '0%';
-  return `${Math.round(number * 100)}%`;
-}

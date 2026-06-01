@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Ticket, MapPin, Receipt, XCircle, RefreshCw, Calendar, AlertCircle } from 'lucide-react';
+import { Ticket, MapPin, Receipt, XCircle, RefreshCw, Calendar, AlertCircle, Navigation } from 'lucide-react';
 import { registrationApi } from '@/services/api';
 
 export default function PassesPage() {
@@ -116,17 +116,25 @@ export default function PassesPage() {
                   <Info label="Hiệu lực" value={registration.effectiveDate || 'Chưa đặt'} icon={Calendar} />
                   <Info label="Trạng thái" value={registration.status} icon={Ticket} />
                 </div>
-                <div className="flex flex-col md:flex-row gap-3">
-                  <Link href="/student/routes" className="flex-1 py-3 bg-brand-surface font-bold text-sm rounded-xl hover:bg-brand-primary transition-colors text-center">
-                    Đổi tuyến
-                  </Link>
-                  <button
-                    onClick={cancelRegistration}
-                    disabled={isCancelling}
-                    className="flex-1 py-3 bg-brand-danger/10 text-brand-danger font-bold text-sm rounded-xl hover:bg-brand-danger hover:text-white transition-colors disabled:opacity-60"
+                <div className="flex flex-col gap-3">
+                  <Link 
+                    href={`/student/routes/${registration.routeId}?boardingStopId=${registration.boardingStopId}&alightingStopId=${registration.alightingStopId}`}
+                    className="w-full py-3.5 bg-brand-text text-white font-extrabold text-sm rounded-xl hover:bg-black transition-colors flex items-center justify-center gap-2 shadow-sm"
                   >
-                    {isCancelling ? 'Đang hủy...' : 'Hủy đăng ký'}
-                  </button>
+                    <Navigation className="w-5 h-5" /> Theo dõi xe & ETA
+                  </Link>
+                  <div className="flex flex-col md:flex-row gap-3">
+                    <Link href="/student/routes" className="flex-1 py-3 bg-brand-surface font-bold text-sm rounded-xl hover:bg-black/5 transition-colors text-center">
+                      Đổi tuyến
+                    </Link>
+                    <button
+                      onClick={cancelRegistration}
+                      disabled={isCancelling}
+                      className="flex-1 py-3 bg-brand-danger/10 text-brand-danger font-bold text-sm rounded-xl hover:bg-brand-danger hover:text-white transition-colors disabled:opacity-60"
+                    >
+                      {isCancelling ? 'Đang hủy...' : 'Hủy đăng ký'}
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : (
