@@ -15,6 +15,9 @@ public interface StudentVerificationRepository extends JpaRepository<StudentVeri
     Optional<StudentVerification> findFirstByUserIdAndCurrentTrueOrderBySubmittedAtDesc(Integer userId);
 
     @EntityGraph(attributePaths = {"user", "reviewer"})
+    Optional<StudentVerification> findFirstByStudentCodeAndCurrentTrueOrderBySubmittedAtDesc(String studentCode);
+
+    @EntityGraph(attributePaths = {"user", "reviewer"})
     List<StudentVerification> findAllByStatusOrderBySubmittedAtAsc(StudentVerificationStatus status);
 
     @EntityGraph(attributePaths = {"user", "reviewer"})

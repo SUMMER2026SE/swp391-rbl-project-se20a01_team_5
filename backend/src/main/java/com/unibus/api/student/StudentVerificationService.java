@@ -80,6 +80,7 @@ public class StudentVerificationService {
                     verificationRepository.save(existing);
                     verificationRepository.flush();
                 });
+        requireStudentCodeAvailable(user, normalizedStudentCode);
 
         OffsetDateTime timestamp = now();
         StudentCardOcrService.Result ocrResult = studentCardOcrService.extract(
@@ -201,6 +202,19 @@ public class StudentVerificationService {
         verification.getUser().setUpdatedAt(timestamp);
         userRepository.save(verification.getUser());
         return toView(verificationRepository.save(verification));
+    }
+
+    private void requireStudentCodeAvailable(User user, String studentCode) {
+        studentRepository.findById(studentCode)
+                .filter(existing -> !existing.getUser().getId().equals(user.getId()))
+                .ifPresent(existing -> {
+                    throw new ApiException(HttpStatus.CONFLICT, "Student code is already assigned to another user");
+                });
+        verificationRepository.findFirstByStudentCodeAndCurrentTrueOrderBySubmittedAtDesc(studentCode)
+                .filter(existing -> !existing.getUser().getId().equals(user.getId()))
+                .ifPresent(existing -> {
+                    throw new ApiException(HttpStatus.CONFLICT, "Student code is already used by another verification request");
+                });
     }
 
     private StudentVerification requireVerification(Long verificationId) {
