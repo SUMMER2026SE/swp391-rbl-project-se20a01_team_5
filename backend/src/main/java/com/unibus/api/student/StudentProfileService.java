@@ -104,7 +104,8 @@ public class StudentProfileService {
                 student == null ? null : student.getFaculty(),
                 student == null ? null : student.getAcademicYear(),
                 student == null ? null : student.getDateOfBirth(),
-                user.getStudentVerificationStatus());
+                user.getStudentVerificationStatus(),
+                user.getPasswordHash() != null && !user.getPasswordHash().isBlank());
     }
 
     private Profile toProfile(Student student) {
