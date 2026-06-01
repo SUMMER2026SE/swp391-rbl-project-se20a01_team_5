@@ -46,7 +46,7 @@ export default function StudentDashboard() {
   return (
     <div className="h-full flex flex-col gap-6 font-sans">
       <div>
-        <h1 className="text-3xl font-extrabold tracking-tight text-brand-text mb-2">
+        <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-brand-text mb-2">
           Xin chào, {profile?.fullName || 'sinh viên'}!
         </h1>
       </div>
@@ -59,10 +59,10 @@ export default function StudentDashboard() {
 
       <div className="flex-1 grid grid-cols-1 xl:grid-cols-3 gap-6 overflow-y-auto custom-scrollbar pr-2 pb-6">
         <div className="flex flex-col gap-6 xl:col-span-1">
-          <div className="bg-white rounded-3xl p-8 shadow-sm border border-black/5 flex flex-col items-center text-center relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-brand-primary/40 to-transparent"></div>
+          <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-black/5 flex flex-col items-center text-center relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-28 bg-gradient-to-b from-brand-primary/40 to-transparent"></div>
 
-            <div className="w-24 h-24 rounded-full bg-brand-primary flex items-center justify-center text-2xl font-bold text-brand-text border-4 border-white shadow-sm z-10 mb-4 mt-6 overflow-hidden">
+            <div className="w-24 h-24 rounded-full bg-brand-primary flex items-center justify-center text-2xl font-bold text-brand-text border-4 border-white shadow-sm z-10 mb-4 mt-4 overflow-hidden">
               {profile?.avatarUrl ? (
                 <img src={toApiAssetUrl(profile.avatarUrl)} alt="Avatar" className="w-full h-full object-cover" />
               ) : (
@@ -70,11 +70,11 @@ export default function StudentDashboard() {
               )}
             </div>
 
-            <h2 className="text-xl font-bold mb-1 relative z-10">{profile?.fullName || 'Chưa có tên'}</h2>
+            <h2 className="text-xl md:text-2xl font-bold mb-1 relative z-10">{profile?.fullName || 'Chưa có tên'}</h2>
             <p className="text-brand-text/50 font-mono text-sm mb-6 relative z-10">{profile?.studentCode || 'Chưa có mã sinh viên'}</p>
 
-            <div className="bg-brand-surface p-4 rounded-3xl border border-black/5 mb-6 w-full flex justify-center relative z-10">
-              <div className="w-48 h-48 bg-white rounded-xl p-2 shadow-sm border border-black/5 flex items-center justify-center relative">
+            <div className="bg-brand-surface p-4 rounded-3xl border border-black/5 mb-4 w-full flex justify-center relative z-10">
+              <div className="w-32 h-32 md:w-40 md:h-40 bg-white rounded-xl p-2 shadow-sm border border-black/5 flex items-center justify-center relative transition-transform hover:scale-105">
                 <QrCode className="w-full h-full text-brand-text/40" strokeWidth={1} />
               </div>
             </div>
@@ -100,20 +100,20 @@ export default function StudentDashboard() {
             <div className="absolute -right-10 -top-10 w-64 h-64 bg-white/20 rounded-full blur-3xl"></div>
 
             <div className="flex flex-wrap items-center justify-between mb-8 relative z-10 gap-4">
-              <h3 className="text-2xl font-bold flex items-center gap-2">
-                <Navigation className="w-7 h-7" /> Tuyến đã đăng ký
+              <h3 className="text-xl md:text-2xl font-bold flex items-center gap-2">
+                <Navigation className="w-6 h-6 md:w-7 md:h-7" /> Tuyến đã đăng ký
               </h3>
-              <Link href="/student/routes" className="px-4 py-2 bg-white/30 text-brand-text font-bold text-xs rounded-xl uppercase tracking-widest backdrop-blur-sm shadow-sm border border-white/20">
+              <Link href="/student/routes" className="px-4 py-2 bg-white/30 text-brand-text font-bold text-xs rounded-xl uppercase tracking-widest backdrop-blur-sm shadow-sm border border-white/20 transition-transform hover:scale-105">
                 Tìm tuyến
               </Link>
             </div>
 
             {registration ? (
-              <div className="bg-white rounded-3xl p-6 shadow-sm relative z-10 border border-white/50">
-                <h4 className="text-xl font-bold text-brand-text">{registration.routeName}</h4>
+              <div className="bg-white rounded-3xl p-5 md:p-6 shadow-sm relative z-10 border border-white/50">
+                <h4 className="text-lg md:text-xl font-bold text-brand-text">{registration.routeName}</h4>
                 <p className="text-sm font-medium text-brand-text/60 flex items-center gap-1.5 mt-2">
-                  <MapPin className="w-4 h-4 text-brand-secondary" />
-                  {registration.boardingStopName} → {registration.alightingStopName}
+                  <MapPin className="w-4 h-4 text-brand-secondary shrink-0" />
+                  <span className="truncate">{registration.boardingStopName} → {registration.alightingStopName}</span>
                 </p>
                 <div className="mt-4 flex flex-col gap-3">
                   <div className="text-xs font-black text-brand-success uppercase">{registration.status}</div>
@@ -141,9 +141,9 @@ export default function StudentDashboard() {
             {recentTrips.length ? (
               <div className="space-y-3">
                 {recentTrips.map((trip) => (
-                  <div key={trip.travelHistoryId} className="p-4 bg-brand-surface rounded-2xl border border-black/5">
-                    <p className="text-sm font-bold text-brand-text mb-1">{trip.routeName}</p>
-                    <p className="text-xs font-medium text-brand-text/60 leading-relaxed flex items-center gap-1">
+                  <div key={trip.travelHistoryId} className="p-4 md:p-5 bg-brand-surface rounded-2xl border border-black/5 flex flex-col md:flex-row md:items-center justify-between gap-2 md:gap-4 transition-colors hover:bg-black/[0.02]">
+                    <p className="text-sm font-bold text-brand-text truncate">{trip.routeName}</p>
+                    <p className="text-xs font-medium text-brand-text/60 shrink-0 flex items-center gap-1">
                       <Clock className="w-3.5 h-3.5" /> {formatDate(trip.serviceDate)}
                     </p>
                   </div>
