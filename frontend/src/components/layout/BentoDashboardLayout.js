@@ -185,25 +185,27 @@ function SidebarHeader({ isSidebarOpen, onToggle, logoHref }) {
 
 function SidebarNav({ menuItems, pathname, isSidebarOpen, onNavigate, onLogout }) {
   return (
-    <nav className="flex-1 flex flex-col gap-2 overflow-y-auto custom-scrollbar pr-2 -mr-2">
-      {isSidebarOpen && <div className="text-xs font-bold text-brand-text/40 mb-2 uppercase tracking-wider pl-4">Menu chính</div>}
+    <div className="flex-1 flex flex-col min-h-0">
+      <nav className="flex-1 flex flex-col gap-2 overflow-y-auto custom-scrollbar pr-2 -mr-2 overscroll-contain pb-4">
+        {isSidebarOpen && <div className="text-xs font-bold text-brand-text/40 mb-2 uppercase tracking-wider pl-4">Menu chính</div>}
 
-      {menuItems.map((item) => {
-        const isActive = pathname === item.href;
-        return (
-          <Link
-            key={item.name}
-            href={item.href}
-            onClick={onNavigate}
-            className={`flex items-center py-3.5 rounded-2xl transition-all font-medium ${isSidebarOpen ? 'gap-4 px-4' : 'justify-center'} ${isActive ? 'bg-brand-text text-white shadow-sm' : 'hover:bg-brand-surface text-brand-text/70 hover:text-brand-text'}`}
-          >
-            <item.icon className="w-5 h-5 shrink-0" />
-            {isSidebarOpen && <span>{item.name}</span>}
-          </Link>
-        );
-      })}
+        {menuItems.map((item) => {
+          const isActive = pathname === item.href;
+          return (
+            <Link
+              key={item.name}
+              href={item.href}
+              onClick={onNavigate}
+              className={`flex items-center py-3.5 rounded-2xl transition-all font-medium ${isSidebarOpen ? 'gap-4 px-4' : 'justify-center'} ${isActive ? 'bg-brand-text text-white shadow-sm' : 'hover:bg-brand-surface text-brand-text/70 hover:text-brand-text'}`}
+            >
+              <item.icon className="w-5 h-5 shrink-0" />
+              {isSidebarOpen && <span>{item.name}</span>}
+            </Link>
+          );
+        })}
+      </nav>
 
-      <div className="pt-6 mt-8 border-t border-black/5">
+      <div className="pt-4 border-t border-black/5 mt-auto shrink-0">
         <button
           onClick={onLogout}
           className={`w-full flex items-center justify-center py-3 rounded-2xl text-brand-danger font-bold hover:bg-brand-danger/10 transition-colors ${isSidebarOpen ? 'gap-3 px-4' : ''}`}
@@ -212,6 +214,6 @@ function SidebarNav({ menuItems, pathname, isSidebarOpen, onNavigate, onLogout }
           {isSidebarOpen && <span>Đăng xuất</span>}
         </button>
       </div>
-    </nav>
+    </div>
   );
 }
