@@ -80,15 +80,20 @@ public class UserProfileService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Password confirmation does not match");
         }
         User user = requireUser(currentUser.userId());
-        if (user.getPasswordHash() == null || user.getPasswordHash().isBlank()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "This account does not have a password login yet");
+        boolean hasExistingPassword = user.getPasswordHash() != null && !user.getPasswordHash().isBlank();
+
+        if (hasExistingPassword) {
+            if (request.currentPassword() == null || request.currentPassword().isBlank()) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Current password is required");
+            }
+            if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Current password is incorrect");
+            }
+            if (passwordEncoder.matches(request.newPassword(), user.getPasswordHash())) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "New password must be different from the current password");
+            }
         }
-        if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Current password is incorrect");
-        }
-        if (passwordEncoder.matches(request.newPassword(), user.getPasswordHash())) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "New password must be different from the current password");
-        }
+
         user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
         user.setUpdatedAt(now());
         userRepository.save(user);
@@ -167,7 +172,8 @@ public class UserProfileService {
                 user.getAvatarUrl(),
                 user.getRole(),
                 user.getStatus(),
-                user.getStudentVerificationStatus());
+                user.getStudentVerificationStatus(),
+                user.getPasswordHash() != null && !user.getPasswordHash().isBlank());
     }
 
     private String extension(String contentType, String originalFilename) {
