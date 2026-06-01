@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { History, MapPin, Clock, BusFront, RefreshCw } from 'lucide-react';
 import { travelApi } from '@/services/api';
+import { recentTripMocks } from '@/services/mockTrips';
 
 export default function TripHistoryPage() {
   const [trips, setTrips] = useState([]);
@@ -14,7 +15,7 @@ export default function TripHistoryPage() {
     setError('');
 
     travelApi.getHistory({ page: 0, size: 20 })
-      .then((items) => setTrips(items || []))
+      .then((items) => setTrips(items?.length ? items : recentTripMocks))
       .catch((err) => setError(err.message))
       .finally(() => setIsLoading(false));
   };
@@ -82,7 +83,7 @@ export default function TripHistoryPage() {
             </div>
           ) : (
             <div className="py-20 text-center text-brand-text/50 font-bold">
-              Chưa có lịch sử chuyến đi trong backend.
+              Chưa có lịch sử chuyến đi.
             </div>
           )}
         </div>

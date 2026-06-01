@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { UserCircle, Mail, Phone, MapPin, GraduationCap, KeyRound, Save, Camera } from 'lucide-react';
 import ImageCropModal from '@/components/modals/ImageCropModal';
+import ChangePasswordModal from '@/components/modals/ChangePasswordModal';
 import { studentApi, studentVerificationApi, toApiAssetUrl } from '@/services/api';
 
 const emptyProfile = {
@@ -29,6 +30,7 @@ export default function StudentProfilePage() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [universities, setUniversities] = useState([]);
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,10 +82,25 @@ export default function StudentProfilePage() {
     e.target.value = null;
   };
 
-  const handleConfirmCrop = (croppedImageUrl) => {
+  const handleConfirmCrop = async (croppedImageUrl) => {
+    setError('');
+    setMessage('');
     setAvatar(croppedImageUrl);
     window.dispatchEvent(new CustomEvent('avatarUpdated', { detail: croppedImageUrl }));
     setCropModalOpen(false);
+    setIsSaving(true);
+    try {
+      const avatarProfile = await studentApi.uploadAvatar(dataUrlToFile(croppedImageUrl, 'avatar.jpg'));
+      const nextAvatarUrl = avatarProfile.avatarUrl || '';
+      setFormData((current) => ({ ...current, avatarUrl: nextAvatarUrl }));
+      setAvatar(toApiAssetUrl(nextAvatarUrl) || null);
+      window.dispatchEvent(new CustomEvent('avatarUpdated', { detail: toApiAssetUrl(nextAvatarUrl) }));
+      setMessage('Cập nhật ảnh đại diện thành công.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleChange = (e) => {
@@ -111,11 +128,6 @@ export default function StudentProfilePage() {
 
       const profile = await studentApi.updateProfile(payload);
       let avatarUrl = profile.avatarUrl || '';
-      if (avatar?.startsWith('data:image/')) {
-        const avatarProfile = await studentApi.uploadAvatar(dataUrlToFile(avatar, 'avatar.jpg'));
-        avatarUrl = avatarProfile.avatarUrl || avatarUrl;
-        window.dispatchEvent(new CustomEvent('avatarUpdated', { detail: toApiAssetUrl(avatarUrl) }));
-      }
       setFormData({
         fullName: profile.fullName || '',
         studentCode: profile.studentCode || '',
@@ -230,6 +242,25 @@ export default function StudentProfilePage() {
               </div>
             </div>
           </form>
+
+          <div className="bg-white rounded-3xl p-6 shadow-sm border border-black/5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-brand-surface flex items-center justify-center">
+                <KeyRound className="w-6 h-6 text-brand-text/60" />
+              </div>
+              <div>
+                <h3 className="font-bold">Mật khẩu đăng nhập</h3>
+                <p className="text-sm font-medium text-brand-text/60">Đổi mật khẩu tài khoản sinh viên.</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPasswordModalOpen(true)}
+              className="px-6 py-3 bg-brand-surface font-bold text-sm rounded-xl hover:bg-black hover:text-white transition-colors w-full md:w-auto"
+            >
+              Đổi mật khẩu
+            </button>
+          </div>
         </div>
       </div>
 
@@ -239,6 +270,7 @@ export default function StudentProfilePage() {
         onClose={() => setCropModalOpen(false)}
         onConfirm={handleConfirmCrop}
       />
+      <ChangePasswordModal isOpen={passwordModalOpen} onClose={() => setPasswordModalOpen(false)} />
     </div>
   );
 }

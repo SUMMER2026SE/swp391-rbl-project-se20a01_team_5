@@ -1,7 +1,8 @@
 "use client";
 
-import { UserCircle, Map, Clock, ShieldCheck, Mail, Phone, Award, CreditCard, Camera, Save, MapPin } from 'lucide-react';
+import { UserCircle, Map, Clock, ShieldCheck, Mail, Phone, Award, CreditCard, Camera, Save, MapPin, KeyRound } from 'lucide-react';
 import ImageCropModal from '@/components/modals/ImageCropModal';
+import ChangePasswordModal from '@/components/modals/ChangePasswordModal';
 import useProfileEditor from '@/components/profile/useProfileEditor';
 
 export default function DriverProfilePage() {
@@ -15,6 +16,8 @@ export default function DriverProfilePage() {
     tempImageUrl,
     isLoading,
     isSaving,
+    passwordModalOpen,
+    setPasswordModalOpen,
     error,
     message,
     handleAvatarChange,
@@ -101,6 +104,25 @@ export default function DriverProfilePage() {
             </div>
           </form>
 
+          <div className="bg-white rounded-3xl p-6 shadow-sm border border-black/5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-brand-surface flex items-center justify-center">
+                <KeyRound className="w-6 h-6 text-brand-text/60" />
+              </div>
+              <div>
+                <h3 className="font-bold">Mật khẩu đăng nhập</h3>
+                <p className="text-sm font-medium text-brand-text/60">Đổi mật khẩu tài khoản tài xế.</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPasswordModalOpen(true)}
+              className="px-6 py-3 bg-brand-surface font-bold text-sm rounded-xl hover:bg-black hover:text-white transition-colors w-full md:w-auto"
+            >
+              Đổi mật khẩu
+            </button>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <StatCard icon={Map} color="bg-brand-primary/20 text-brand-primary" value="--" label="Chuyến đã đi" />
             <StatCard icon={Clock} color="bg-brand-secondary/20 text-brand-secondary" value="--" label="Giờ lái (Tháng này)" />
@@ -125,6 +147,7 @@ export default function DriverProfilePage() {
         onClose={() => setCropModalOpen(false)}
         onConfirm={handleConfirmCrop}
       />
+      <ChangePasswordModal isOpen={passwordModalOpen} onClose={() => setPasswordModalOpen(false)} />
     </div>
   );
 }

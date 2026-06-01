@@ -5,6 +5,8 @@ import com.unibus.api.user.model.UserRole;
 import com.unibus.api.user.model.UserStatus;
 
 import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 public final class UserProfileDtos {
@@ -30,5 +32,15 @@ public final class UserProfileDtos {
             @Size(max = 15) String phoneNumber,
             @Size(max = 255) String address,
             @Size(max = 500) String avatarUrl) {
+    }
+
+    public record ChangePasswordRequest(
+            @NotBlank String currentPassword,
+            @NotBlank
+            @Size(min = 8, max = 72)
+            @Pattern(regexp = ".*[A-Za-z].*", message = "New password must include a letter")
+            @Pattern(regexp = ".*\\d.*", message = "New password must include a number")
+            String newPassword,
+            @NotBlank String confirmPassword) {
     }
 }

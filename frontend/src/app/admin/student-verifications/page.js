@@ -138,9 +138,9 @@ export default function AdminStudentVerificationsPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight text-brand-text mb-2 flex items-center gap-3">
-            <BadgeCheck className="w-8 h-8 text-brand-primary" /> Duyệt Sinh viên
+            <BadgeCheck className="w-8 h-8 text-brand-primary" /> Xác minh sinh viên
           </h1>
-          <p className="text-brand-text/60 font-medium">Duyệt hồ sơ xác minh trước khi sinh viên mua vé hoặc đăng ký tuyến.</p>
+          <p className="text-brand-text/60 font-medium">Kiểm tra hồ sơ xác minh trước khi sinh viên mua vé hoặc đăng ký tuyến.</p>
         </div>
         <button
           type="button"
@@ -316,7 +316,7 @@ export default function AdminStudentVerificationsPage() {
                       onClick={() => handleReview('approve')}
                       className="py-3 rounded-2xl bg-brand-success text-white font-black hover:bg-green-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
                     >
-                      <CheckCircle2 className="w-5 h-5" /> Duyệt
+                      <CheckCircle2 className="w-5 h-5" /> Xác nhận
                     </button>
                     <button
                       type="button"

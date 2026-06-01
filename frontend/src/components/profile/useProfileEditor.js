@@ -19,6 +19,7 @@ export default function useProfileEditor() {
   const [tempImageUrl, setTempImageUrl] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
@@ -60,10 +61,26 @@ export default function useProfileEditor() {
     event.target.value = null;
   };
 
-  const handleConfirmCrop = (croppedImageUrl) => {
+  const handleConfirmCrop = async (croppedImageUrl) => {
+    setError('');
+    setMessage('');
     setAvatar(croppedImageUrl);
     window.dispatchEvent(new CustomEvent('avatarUpdated', { detail: croppedImageUrl }));
     setCropModalOpen(false);
+    setIsSaving(true);
+    try {
+      const nextProfile = await userApi.uploadAvatar(dataUrlToFile(croppedImageUrl, 'avatar.jpg'));
+      const nextAvatar = toApiAssetUrl(nextProfile.avatarUrl) || null;
+      setAvatar(nextAvatar);
+      if (nextAvatar) {
+        window.dispatchEvent(new CustomEvent('avatarUpdated', { detail: nextAvatar }));
+      }
+      setMessage('Cập nhật ảnh đại diện thành công.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleChange = (event) => {
@@ -84,9 +101,6 @@ export default function useProfileEditor() {
         address: formData.address.trim() || null,
       });
       let nextProfile = profile;
-      if (avatar?.startsWith('data:image/')) {
-        nextProfile = await userApi.uploadAvatar(dataUrlToFile(avatar, 'avatar.jpg'));
-      }
       const nextAvatar = toApiAssetUrl(nextProfile.avatarUrl) || null;
       setFormData({
         name: nextProfile.fullName || '',
@@ -118,6 +132,8 @@ export default function useProfileEditor() {
     tempImageUrl,
     isLoading,
     isSaving,
+    passwordModalOpen,
+    setPasswordModalOpen,
     error,
     message,
     handleAvatarChange,

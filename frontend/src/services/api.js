@@ -5,10 +5,21 @@ export const REFRESH_TOKEN_KEY = 'refresh_token';
 export const USER_ROLE_KEY = 'user_role';
 export const STUDENT_VERIFICATION_STATUS_KEY = 'student_verification_status';
 
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080/api/v1';
+function resolveApiBaseUrl() {
+  if (process.env.NEXT_PUBLIC_API_BASE_URL) {
+    return process.env.NEXT_PUBLIC_API_BASE_URL;
+  }
+  if (typeof window !== 'undefined') {
+    return `${window.location.protocol}//${window.location.hostname}:8080/api/v1`;
+  }
+  return 'http://localhost:8080/api/v1';
+}
+
+export const API_BASE_URL = resolveApiBaseUrl();
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
+  timeout: 12000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -282,6 +293,11 @@ export const studentApi = {
     const response = await apiClient.post('/users/me/avatar', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
+    return unwrap(response);
+  },
+
+  async changePassword(payload) {
+    const response = await apiClient.patch('/users/me/password', payload);
     return unwrap(response);
   },
 };

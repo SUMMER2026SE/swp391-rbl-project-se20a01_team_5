@@ -2,6 +2,7 @@
 
 import { UserCircle, Mail, Phone, MapPin, Building2, ShieldCheck, KeyRound, Save, Server, Camera } from 'lucide-react';
 import ImageCropModal from '@/components/modals/ImageCropModal';
+import ChangePasswordModal from '@/components/modals/ChangePasswordModal';
 import useProfileEditor from '@/components/profile/useProfileEditor';
 
 export default function AdminProfilePage() {
@@ -15,6 +16,8 @@ export default function AdminProfilePage() {
     tempImageUrl,
     isLoading,
     isSaving,
+    passwordModalOpen,
+    setPasswordModalOpen,
     error,
     message,
     handleAvatarChange,
@@ -197,10 +200,14 @@ export default function AdminProfilePage() {
 
             <div className="flex flex-col md:flex-row gap-4 items-center justify-between p-4 border border-black/5 rounded-2xl mb-4">
               <div>
-                <h4 className="font-bold">Mật khẩu Root</h4>
-                <p className="text-sm font-medium text-brand-text/60">Đăng nhập bằng thông tin xác thực backend.</p>
+                <h4 className="font-bold">Mật khẩu đăng nhập</h4>
+                <p className="text-sm font-medium text-brand-text/60">Cập nhật mật khẩu tài khoản quản trị hiện tại.</p>
               </div>
-              <button className="px-6 py-3 bg-brand-surface font-bold text-sm rounded-xl hover:bg-brand-danger hover:text-white transition-colors w-full md:w-auto">
+              <button
+                type="button"
+                onClick={() => setPasswordModalOpen(true)}
+                className="px-6 py-3 bg-brand-surface font-bold text-sm rounded-xl hover:bg-brand-danger hover:text-white transition-colors w-full md:w-auto"
+              >
                 Đổi mật khẩu
               </button>
             </div>
@@ -229,6 +236,7 @@ export default function AdminProfilePage() {
         onClose={() => setCropModalOpen(false)}
         onConfirm={handleConfirmCrop}
       />
+      <ChangePasswordModal isOpen={passwordModalOpen} onClose={() => setPasswordModalOpen(false)} />
     </div>
   );
 }

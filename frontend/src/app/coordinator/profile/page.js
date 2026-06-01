@@ -2,6 +2,7 @@
 
 import { UserCircle, Mail, Phone, MapPin, Building2, ShieldCheck, KeyRound, Save, BadgeCheck, Camera } from 'lucide-react';
 import ImageCropModal from '@/components/modals/ImageCropModal';
+import ChangePasswordModal from '@/components/modals/ChangePasswordModal';
 import useProfileEditor from '@/components/profile/useProfileEditor';
 
 export default function CoordinatorProfilePage() {
@@ -15,6 +16,8 @@ export default function CoordinatorProfilePage() {
     tempImageUrl,
     isLoading,
     isSaving,
+    passwordModalOpen,
+    setPasswordModalOpen,
     error,
     message,
     handleAvatarChange,
@@ -132,10 +135,14 @@ export default function CoordinatorProfilePage() {
 
             <div className="flex flex-col md:flex-row gap-4 items-center justify-between p-4 border border-black/5 rounded-2xl">
               <div>
-                <h4 className="font-bold">Mật khẩu hệ thống</h4>
-                <p className="text-sm font-medium text-brand-text/60">Đăng nhập bằng thông tin xác thực backend.</p>
+                <h4 className="font-bold">Mật khẩu đăng nhập</h4>
+                <p className="text-sm font-medium text-brand-text/60">Bảo vệ tài khoản điều phối đang sử dụng.</p>
               </div>
-              <button className="px-6 py-3 bg-brand-surface font-bold text-sm rounded-xl hover:bg-black hover:text-white transition-colors w-full md:w-auto">
+              <button
+                type="button"
+                onClick={() => setPasswordModalOpen(true)}
+                className="px-6 py-3 bg-brand-surface font-bold text-sm rounded-xl hover:bg-black hover:text-white transition-colors w-full md:w-auto"
+              >
                 Đổi mật khẩu
               </button>
             </div>
@@ -149,6 +156,7 @@ export default function CoordinatorProfilePage() {
         onClose={() => setCropModalOpen(false)}
         onConfirm={handleConfirmCrop}
       />
+      <ChangePasswordModal isOpen={passwordModalOpen} onClose={() => setPasswordModalOpen(false)} />
     </div>
   );
 }

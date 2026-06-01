@@ -15,6 +15,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.annotation.DirtiesContext.ClassMode;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
@@ -56,6 +57,17 @@ class AuthHttpIntegrationTests {
       this.saveOtp("http.student@example.com", "123456");
       this.mockMvc.perform(((MockHttpServletRequestBuilder)MockMvcRequestBuilders.post("/api/v1/auth/register", new Object[0]).contentType(MediaType.APPLICATION_JSON)).content("{\n  \"email\": \"http.student@example.com\",\n  \"otp\": \"123456\",\n  \"password\": \"strong-password\",\n  \"fullName\": \"HTTP Student\"\n}\n")).andExpect(MockMvcResultMatchers.status().isCreated()).andExpect(MockMvcResultMatchers.jsonPath("$.data.studentVerificationStatus", new Object[0]).value("NOT_SUBMITTED"));
       this.mockMvc.perform(((MockHttpServletRequestBuilder)MockMvcRequestBuilders.post("/api/v1/auth/login", new Object[0]).contentType(MediaType.APPLICATION_JSON)).content("{\n  \"email\": \"http.student@example.com\",\n  \"password\": \"strong-password\",\n  \"device\": \"mockmvc\"\n}\n")).andExpect(MockMvcResultMatchers.status().isOk()).andExpect(MockMvcResultMatchers.jsonPath("$.data.tokenType", new Object[0]).value("Bearer")).andExpect(MockMvcResultMatchers.jsonPath("$.data.accessToken", new Object[0]).isNotEmpty()).andExpect(MockMvcResultMatchers.jsonPath("$.data.refreshToken", new Object[0]).isNotEmpty());
+   }
+
+   @Test
+   void changesPasswordThroughHttpContract() throws Exception {
+      this.saveOtp("password.student@example.com", "123456");
+      this.mockMvc.perform(((MockHttpServletRequestBuilder)MockMvcRequestBuilders.post("/api/v1/auth/register", new Object[0]).contentType(MediaType.APPLICATION_JSON)).content("{\n  \"email\": \"password.student@example.com\",\n  \"otp\": \"123456\",\n  \"password\": \"old-password1\",\n  \"fullName\": \"Password Student\"\n}\n")).andExpect(MockMvcResultMatchers.status().isCreated());
+      MvcResult login = this.mockMvc.perform(((MockHttpServletRequestBuilder)MockMvcRequestBuilders.post("/api/v1/auth/login", new Object[0]).contentType(MediaType.APPLICATION_JSON)).content("{\n  \"email\": \"password.student@example.com\",\n  \"password\": \"old-password1\",\n  \"device\": \"mockmvc\"\n}\n")).andExpect(MockMvcResultMatchers.status().isOk()).andReturn();
+      String accessToken = login.getResponse().getContentAsString().replaceAll(".*\"accessToken\"\\s*:\\s*\"([^\"]+)\".*", "$1");
+      this.mockMvc.perform(((MockHttpServletRequestBuilder)MockMvcRequestBuilders.patch("/api/v1/users/me/password", new Object[0]).contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer " + accessToken)).content("{\n  \"currentPassword\": \"old-password1\",\n  \"newPassword\": \"new-password2\",\n  \"confirmPassword\": \"new-password2\"\n}\n")).andExpect(MockMvcResultMatchers.status().isOk());
+      this.mockMvc.perform(((MockHttpServletRequestBuilder)MockMvcRequestBuilders.post("/api/v1/auth/login", new Object[0]).contentType(MediaType.APPLICATION_JSON)).content("{\n  \"email\": \"password.student@example.com\",\n  \"password\": \"old-password1\",\n  \"device\": \"mockmvc\"\n}\n")).andExpect(MockMvcResultMatchers.status().isUnauthorized());
+      this.mockMvc.perform(((MockHttpServletRequestBuilder)MockMvcRequestBuilders.post("/api/v1/auth/login", new Object[0]).contentType(MediaType.APPLICATION_JSON)).content("{\n  \"email\": \"password.student@example.com\",\n  \"password\": \"new-password2\",\n  \"device\": \"mockmvc\"\n}\n")).andExpect(MockMvcResultMatchers.status().isOk());
    }
 
    private void saveOtp(String email, String rawCode) {

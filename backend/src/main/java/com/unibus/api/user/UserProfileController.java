@@ -19,6 +19,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.unibus.api.common.ApiResponse;
 import com.unibus.api.security.CurrentUser;
+import com.unibus.api.user.dto.UserProfileDtos.ChangePasswordRequest;
 import com.unibus.api.user.dto.UserProfileDtos.UpdateUserProfileRequest;
 import com.unibus.api.user.dto.UserProfileDtos.UserProfile;
 
@@ -45,6 +46,14 @@ public class UserProfileController {
             @AuthenticationPrincipal CurrentUser currentUser,
             @Valid @RequestBody UpdateUserProfileRequest request) {
         return ApiResponse.ok("Profile updated", userProfileService.updateCurrent(currentUser, request));
+    }
+
+    @PatchMapping("/me/password")
+    ApiResponse<Void> changePassword(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @Valid @RequestBody ChangePasswordRequest request) {
+        userProfileService.changePassword(currentUser, request);
+        return ApiResponse.ok("Password changed", null);
     }
 
     @PostMapping(path = "/me/avatar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

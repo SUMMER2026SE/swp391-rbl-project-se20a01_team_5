@@ -196,7 +196,7 @@ export default function RegisterPage() {
                 disabled={otpRequested}
               />
               <PasswordField
-                label="Xác nhận MK"
+                label="Xác nhận mật khẩu"
                 value={formData.confirmPassword}
                 onChange={(value) => updateField('confirmPassword', value)}
                 disabled={otpRequested}

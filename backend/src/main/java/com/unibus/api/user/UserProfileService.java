@@ -9,12 +9,16 @@ import java.util.Locale;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.unibus.api.auth.LoginSessionRepository;
+import com.unibus.api.auth.model.LoginSession;
 import com.unibus.api.common.ApiException;
 import com.unibus.api.security.CurrentUser;
+import com.unibus.api.user.dto.UserProfileDtos.ChangePasswordRequest;
 import com.unibus.api.user.dto.UserProfileDtos.UpdateUserProfileRequest;
 import com.unibus.api.user.dto.UserProfileDtos.UserProfile;
 import com.unibus.api.user.model.User;
@@ -23,12 +27,18 @@ import com.unibus.api.user.model.User;
 public class UserProfileService {
 
     private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final LoginSessionRepository loginSessionRepository;
     private final Path avatarDir;
 
     public UserProfileService(
             UserRepository userRepository,
+            PasswordEncoder passwordEncoder,
+            LoginSessionRepository loginSessionRepository,
             @Value("${app.upload.profile-avatar-dir:uploads/profile-avatars}") String avatarDir) {
         this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.loginSessionRepository = loginSessionRepository;
         this.avatarDir = Path.of(avatarDir);
     }
 
@@ -62,6 +72,27 @@ public class UserProfileService {
         }
         user.setUpdatedAt(now());
         return toProfile(userRepository.save(user));
+    }
+
+    @Transactional
+    public void changePassword(CurrentUser currentUser, ChangePasswordRequest request) {
+        if (!request.newPassword().equals(request.confirmPassword())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Password confirmation does not match");
+        }
+        User user = requireUser(currentUser.userId());
+        if (user.getPasswordHash() == null || user.getPasswordHash().isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "This account does not have a password login yet");
+        }
+        if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Current password is incorrect");
+        }
+        if (passwordEncoder.matches(request.newPassword(), user.getPasswordHash())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "New password must be different from the current password");
+        }
+        user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        user.setUpdatedAt(now());
+        userRepository.save(user);
+        revokeOtherSessions(user.getId(), currentUser.sessionId());
     }
 
     @Transactional
@@ -106,6 +137,17 @@ public class UserProfileService {
             Path file = base.resolve("user-" + userId + extension).normalize();
             if (file.startsWith(base)) {
                 Files.deleteIfExists(file);
+            }
+        }
+    }
+
+    private void revokeOtherSessions(Integer userId, Long currentSessionId) {
+        OffsetDateTime signedOutAt = now();
+        for (LoginSession session : loginSessionRepository.findAllByUserIdAndActiveTrue(userId)) {
+            if (!session.getId().equals(currentSessionId)) {
+                session.setActive(false);
+                session.setSignedOutAt(signedOutAt);
+                loginSessionRepository.save(session);
             }
         }
     }

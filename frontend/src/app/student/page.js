@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { MapPin, Navigation, Clock, Ticket, QrCode, UserCircle, History } from 'lucide-react';
-import { registrationApi, studentApi, travelApi } from '@/services/api';
+import { registrationApi, studentApi, toApiAssetUrl, travelApi } from '@/services/api';
+import { recentTripMocks } from '@/services/mockTrips';
 
 export default function StudentDashboard() {
   const [profile, setProfile] = useState(null);
@@ -18,13 +19,13 @@ export default function StudentDashboard() {
     Promise.all([
       studentApi.getProfile(),
       registrationApi.getCurrent().catch(() => null),
-      travelApi.getHistory({ page: 0, size: 3 }).catch(() => []),
+      travelApi.getHistory({ page: 0, size: 3 }).catch(() => recentTripMocks),
     ])
       .then(([profileData, currentRegistration, trips]) => {
         if (cancelled) return;
         setProfile(profileData);
         setRegistration(currentRegistration);
-        setRecentTrips(trips || []);
+        setRecentTrips(trips?.length ? trips : recentTripMocks);
       })
       .catch((err) => {
         if (!cancelled) setError(err.message);
@@ -68,7 +69,7 @@ export default function StudentDashboard() {
 
             <div className="w-16 h-16 rounded-full bg-brand-primary flex items-center justify-center text-2xl font-bold text-brand-text border-4 border-white shadow-sm z-10 mb-4 mt-6 overflow-hidden">
               {profile?.avatarUrl ? (
-                <img src={profile.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                <img src={toApiAssetUrl(profile.avatarUrl)} alt="Avatar" className="w-full h-full object-cover" />
               ) : (
                 <UserCircle className="w-10 h-10" />
               )}

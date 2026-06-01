@@ -7,7 +7,7 @@ export default function AdminLayout({ children }) {
   const menus = [
     { name: 'Tổng quan Hệ thống', href: '/admin', icon: PieChart },
     { name: 'Quản lý Tài khoản', href: '/admin/users', icon: Users },
-    { name: 'Duyệt Sinh viên', href: '/admin/student-verifications', icon: BadgeCheck },
+    { name: 'Xác minh sinh viên', href: '/admin/student-verifications', icon: BadgeCheck },
     { name: 'Khiếu nại & Vi phạm', href: '/admin/reports', icon: AlertTriangle },
     { name: 'Cấu hình & Thông báo', href: '/admin/settings', icon: Settings },
   ];

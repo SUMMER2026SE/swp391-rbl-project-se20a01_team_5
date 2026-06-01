@@ -210,7 +210,7 @@ export default function StudentVerifyPage() {
             <div className="space-y-3 text-sm font-medium text-brand-text/70">
               <Step done label="Tạo tài khoản và xác thực email" />
               <Step done={currentStatus !== 'NOT_SUBMITTED'} label="Gửi trường, mã sinh viên và ảnh thẻ" />
-              <Step done={currentStatus === 'VERIFIED'} label="Admin duyệt hồ sơ" />
+              <Step done={currentStatus === 'VERIFIED'} label="Hồ sơ được xác nhận" />
               <Step done={currentStatus === 'VERIFIED'} label="Mở khóa mua vé và đăng ký tuyến" />
             </div>
           </div>
