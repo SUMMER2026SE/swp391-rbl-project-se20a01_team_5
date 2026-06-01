@@ -59,8 +59,8 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
 
   return (
     <div className="min-h-screen bg-brand-surface font-sans text-brand-text p-3 md:p-6 flex gap-4 md:gap-6">
-      <aside className={`${isSidebarOpen ? 'w-72' : 'w-24'} shrink-0 transition-all duration-300 hidden md:flex flex-col`}>
-        <div className="bg-white rounded-3xl p-6 shadow-sm border border-black/5 flex-1 flex flex-col h-fit max-h-[calc(100vh-3rem)] sticky top-6">
+      <aside className={`${isSidebarOpen ? 'w-72' : 'w-22'} shrink-0 transition-all duration-300 hidden md:flex flex-col`}>
+        <div className={`bg-white rounded-3xl shadow-sm border border-black/5 flex-1 flex flex-col h-fit max-h-[calc(100vh-3rem)] sticky top-6 transition-all duration-300 ${isSidebarOpen ? 'p-6' : 'px-4 py-6'}`}>
           <SidebarHeader isSidebarOpen={isSidebarOpen} onToggle={() => setIsSidebarOpen((current) => !current)} />
           <SidebarNav
             menuItems={menuItems}
@@ -92,12 +92,12 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
               </button>
             </div>
             <SidebarNav
-            menuItems={menuItems}
-            pathname={pathname}
-            isSidebarOpen
-            onNavigate={() => setIsMobileMenuOpen(false)}
-            onLogout={() => setShowLogoutModal(true)}
-          />
+              menuItems={menuItems}
+              pathname={pathname}
+              isSidebarOpen
+              onNavigate={() => setIsMobileMenuOpen(false)}
+              onLogout={() => setShowLogoutModal(true)}
+            />
           </aside>
         </div>
       )}
@@ -165,13 +165,18 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
 
 function SidebarHeader({ isSidebarOpen, onToggle }) {
   return (
-    <div className="flex items-center justify-between mb-10">
+    <div className={`flex items-center mb-8 ${isSidebarOpen ? 'justify-between' : 'justify-center'}`}>
       {isSidebarOpen && (
         <div className="flex items-center justify-center w-full px-2">
           <img src="/logo.png" alt="UniBus Logo" className="h-12 w-auto object-contain rounded-xl" />
         </div>
       )}
-      <button onClick={onToggle} className="p-2 rounded-xl hover:bg-black/5 text-brand-text/60 transition-colors">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-12 h-12 rounded-2xl flex items-center justify-center hover:bg-brand-surface text-brand-text/60 transition-colors"
+        aria-label={isSidebarOpen ? 'Thu gọn menu' : 'Mở rộng menu'}
+      >
         <Menu className="w-5 h-5" />
       </button>
     </div>
@@ -180,7 +185,7 @@ function SidebarHeader({ isSidebarOpen, onToggle }) {
 
 function SidebarNav({ menuItems, pathname, isSidebarOpen, onNavigate, onLogout }) {
   return (
-    <nav className="flex-1 flex flex-col gap-2 overflow-y-auto custom-scrollbar pr-2 -mr-2">
+    <nav className={`flex-1 flex flex-col overflow-y-auto custom-scrollbar ${isSidebarOpen ? 'gap-2 pr-2 -mr-2' : 'items-center gap-3 overflow-visible'}`}>
       {isSidebarOpen && <div className="text-xs font-bold text-brand-text/40 mb-2 uppercase tracking-wider pl-4">Menu chính</div>}
 
       {menuItems.map((item) => {
@@ -190,7 +195,9 @@ function SidebarNav({ menuItems, pathname, isSidebarOpen, onNavigate, onLogout }
             key={item.name}
             href={item.href}
             onClick={onNavigate}
-            className={`flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all font-medium ${isActive ? 'bg-brand-text text-white shadow-sm' : 'hover:bg-brand-surface text-brand-text/70 hover:text-brand-text'}`}
+            title={!isSidebarOpen ? item.name : undefined}
+            aria-label={item.name}
+            className={`flex items-center rounded-2xl transition-all font-medium ${isSidebarOpen ? 'w-full gap-4 px-4 py-3.5' : 'w-12 h-12 justify-center'} ${isActive ? 'bg-brand-text text-white shadow-sm' : 'hover:bg-brand-surface text-brand-text/70 hover:text-brand-text'}`}
           >
             <item.icon className="w-5 h-5 shrink-0" />
             {isSidebarOpen && <span>{item.name}</span>}
@@ -198,10 +205,13 @@ function SidebarNav({ menuItems, pathname, isSidebarOpen, onNavigate, onLogout }
         );
       })}
 
-      <div className="pt-6 mt-8 border-t border-black/5">
+      <div className={`${isSidebarOpen ? 'pt-6 mt-8 border-t border-black/5' : 'w-full pt-6 mt-6 border-t border-black/5 flex justify-center'}`}>
         <button
+          type="button"
           onClick={onLogout}
-          className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-2xl text-brand-danger font-bold hover:bg-brand-danger/10 transition-colors"
+          className={`flex items-center justify-center rounded-2xl text-brand-danger font-bold hover:bg-brand-danger/10 transition-colors ${isSidebarOpen ? 'w-full gap-3 py-3 px-4' : 'w-12 h-12'}`}
+          title={!isSidebarOpen ? 'Đăng xuất' : undefined}
+          aria-label="Đăng xuất"
         >
           <LogOut className="w-5 h-5 shrink-0" />
           {isSidebarOpen && <span>Đăng xuất</span>}
