@@ -61,7 +61,7 @@ export default function ForgotPasswordPage() {
 
   return (
     <div className="min-h-screen p-4 md:p-8 flex items-center justify-center font-sans">
-      <div className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+      <div className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-[0.9fr_1fr] gap-4 md:gap-6">
         <div className="hidden lg:flex bg-brand-primary rounded-3xl p-12 shadow-sm flex-col justify-between relative overflow-hidden border border-black/5">
           <div className="absolute -bottom-10 -left-10 w-64 h-64 bg-white/30 rounded-full blur-3xl"></div>
           <div>
@@ -79,12 +79,9 @@ export default function ForgotPasswordPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-3xl p-8 md:p-12 shadow-sm border border-black/5 flex flex-col justify-center">
-          <div className="mb-8">
-            <h2 className="text-3xl font-extrabold tracking-tight mb-2">Đặt lại mật khẩu</h2>
-            <p className="text-brand-text/60 font-medium text-sm">
-              Nhập email, lấy OTP, rồi tạo mật khẩu mới.
-            </p>
+        <div className="bg-white rounded-3xl p-7 md:p-10 shadow-sm border border-black/5 flex flex-col justify-center">
+          <div className="mb-7">
+            <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight">Đặt lại mật khẩu</h2>
           </div>
 
           {error && (
@@ -99,50 +96,55 @@ export default function ForgotPasswordPage() {
             </div>
           )}
 
-          <form onSubmit={requestOtp} className="flex flex-col gap-5 mb-8">
-            <div>
-              <label className="block text-sm font-semibold mb-2 ml-1">Email</label>
-              <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-brand-text/40" />
-                <input
-                  type="email"
-                  required
-                  placeholder="name@example.com"
-                  className="w-full pl-12 pr-4 py-3.5 rounded-xl bg-brand-surface/50 border border-black/5 focus:bg-white focus:border-brand-secondary focus:ring-4 focus:ring-brand-secondary/20 outline-none transition-all font-mono text-sm"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
+          <form onSubmit={requestOtp} className="mb-7">
+            <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-end">
+              <div>
+                <label className="block text-sm font-semibold mb-2 ml-1">Email</label>
+                <div className="relative">
+                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-brand-text/40" />
+                  <input
+                    type="email"
+                    required
+                    placeholder="name@example.com"
+                    className="w-full h-14 pl-12 pr-4 rounded-xl bg-brand-surface/50 border border-black/5 focus:bg-white focus:border-brand-secondary focus:ring-4 focus:ring-brand-secondary/20 outline-none transition-all font-mono text-sm"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </div>
               </div>
-            </div>
 
-            <button
-              type="submit"
-              disabled={isRequestingOtp}
-              className="w-full py-4 rounded-xl bg-brand-text text-white font-bold hover:bg-black transition-colors flex justify-center items-center gap-2 shadow-sm disabled:opacity-60"
-            >
-              <Send className="w-5 h-5" /> {isRequestingOtp ? 'Đang gửi OTP...' : 'Gửi OTP'}
-            </button>
+              <button
+                type="submit"
+                disabled={isRequestingOtp}
+                className="h-14 px-6 rounded-xl bg-brand-text text-white font-bold hover:bg-black transition-colors flex justify-center items-center gap-2 shadow-sm disabled:opacity-60 disabled:cursor-not-allowed sm:min-w-36"
+              >
+                <Send className="w-5 h-5" /> {isRequestingOtp ? 'Đang gửi...' : 'Gửi OTP'}
+              </button>
+            </div>
           </form>
 
-          <form onSubmit={resetPassword} className="flex flex-col gap-5">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <InputWithIcon label="OTP" icon={KeyRound}>
-                <input
-                  type="text"
-                  required
-                  minLength={6}
-                  maxLength={6}
-                  className="form-input"
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value)}
-                />
-              </InputWithIcon>
+          <form onSubmit={resetPassword} className="flex flex-col gap-4">
+            <InputWithIcon label="OTP" icon={KeyRound}>
+              <input
+                type="text"
+                required
+                minLength={6}
+                maxLength={6}
+                inputMode="numeric"
+                placeholder="Nhập mã OTP"
+                className="form-input"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value)}
+              />
+            </InputWithIcon>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <InputWithIcon label="Mật khẩu mới" icon={Lock}>
                 <input
                   type="password"
                   required
                   minLength={8}
+                  placeholder="Tối thiểu 8 ký tự"
                   className="form-input"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
@@ -155,6 +157,7 @@ export default function ForgotPasswordPage() {
                 type="password"
                 required
                 minLength={8}
+                placeholder="Nhập lại mật khẩu"
                 className="form-input"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
@@ -164,13 +167,13 @@ export default function ForgotPasswordPage() {
             <button
               type="submit"
               disabled={isResetting}
-              className="w-full py-4 rounded-xl bg-brand-primary text-brand-text font-bold hover:bg-brand-text hover:text-white transition-colors flex justify-center items-center gap-2 shadow-sm disabled:opacity-60"
+              className="w-full h-14 mt-2 rounded-xl bg-brand-text text-white font-bold hover:bg-black transition-colors flex justify-center items-center gap-2 shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <Lock className="w-5 h-5" /> {isResetting ? 'Đang đổi mật khẩu...' : 'Đổi mật khẩu'}
             </button>
           </form>
 
-          <div className="mt-8 pt-6 border-t border-black/5 text-center">
+          <div className="mt-7 pt-5 border-t border-black/5 text-center">
             <Link href="/login" className="inline-flex items-center gap-2 text-sm font-bold text-brand-secondary hover:text-brand-text transition-colors">
               <ArrowLeft className="w-4 h-4" /> Quay lại đăng nhập
             </Link>
@@ -185,7 +188,7 @@ function InputWithIcon({ label, icon: Icon, children }) {
   return (
     <label className="block">
       <span className="block text-sm font-semibold mb-2 ml-1">{label}</span>
-      <div className="relative [&_.form-input]:w-full [&_.form-input]:pl-12 [&_.form-input]:pr-4 [&_.form-input]:py-3.5 [&_.form-input]:rounded-xl [&_.form-input]:bg-brand-surface/50 [&_.form-input]:border [&_.form-input]:border-black/5 [&_.form-input]:focus:bg-white [&_.form-input]:focus:border-brand-secondary [&_.form-input]:focus:ring-4 [&_.form-input]:focus:ring-brand-secondary/20 [&_.form-input]:outline-none [&_.form-input]:transition-all [&_.form-input]:font-mono [&_.form-input]:text-sm">
+      <div className="relative [&_.form-input]:w-full [&_.form-input]:h-14 [&_.form-input]:pl-12 [&_.form-input]:pr-4 [&_.form-input]:rounded-xl [&_.form-input]:bg-brand-surface/50 [&_.form-input]:border [&_.form-input]:border-black/5 [&_.form-input]:focus:bg-white [&_.form-input]:focus:border-brand-secondary [&_.form-input]:focus:ring-4 [&_.form-input]:focus:ring-brand-secondary/20 [&_.form-input]:outline-none [&_.form-input]:transition-all [&_.form-input]:font-mono [&_.form-input]:text-sm">
         <Icon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-brand-text/40" />
         {children}
       </div>
