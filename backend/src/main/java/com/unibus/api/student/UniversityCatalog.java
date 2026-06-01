@@ -1,6 +1,7 @@
 package com.unibus.api.student;
 
 import java.text.Normalizer;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
@@ -52,6 +53,7 @@ public class UniversityCatalog {
     public String detectInText(String text) {
         String normalizedText = normalize(text);
         return DA_NANG_UNIVERSITIES.stream()
+                .sorted(Comparator.comparingInt(String::length).reversed())
                 .filter(university -> normalizedText.contains(normalize(university)))
                 .findFirst()
                 .orElse("");

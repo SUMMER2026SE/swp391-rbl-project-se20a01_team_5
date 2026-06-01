@@ -22,6 +22,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
@@ -35,6 +36,7 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
 @Service
+@ConditionalOnProperty(name = "app.ocr.provider", havingValue = "google", matchIfMissing = true)
 public class GoogleVisionStudentCardOcrService implements StudentCardOcrService {
 
     private static final Pattern DIACRITICS = Pattern.compile("\\p{M}+");
