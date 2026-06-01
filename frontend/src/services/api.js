@@ -38,7 +38,31 @@ function unwrap(response) {
 }
 
 function toApiError(error) {
-  const message = error.response?.data?.message || error.message || 'Không thể kết nối máy chủ';
+  let message = error.response?.data?.message || error.message || 'Không thể kết nối máy chủ';
+  
+  if (message === 'Request validation failed' && error.response?.data?.data) {
+    const errors = error.response.data.data;
+    const firstKey = Object.keys(errors)[0];
+    if (firstKey) {
+      if (firstKey === 'otp') message = 'Mã OTP không hợp lệ hoặc chưa đủ 6 số';
+      else if (firstKey === 'password') message = 'Mật khẩu phải có ít nhất 8 ký tự';
+      else if (firstKey === 'email') message = 'Địa chỉ email không hợp lệ';
+      else if (firstKey === 'fullName') message = 'Họ và tên không hợp lệ';
+      else message = 'Dữ liệu nhập vào không hợp lệ';
+    } else {
+      message = 'Dữ liệu không hợp lệ';
+    }
+  } else {
+    const msgMap = {
+      'OTP is invalid or expired': 'Mã OTP không chính xác hoặc đã hết hạn',
+      'Email is already registered': 'Email này đã được đăng ký',
+      'Email or password is incorrect': 'Email hoặc mật khẩu không chính xác',
+      'Account is locked': 'Tài khoản đã bị khóa',
+      'Session is no longer active': 'Phiên đăng nhập đã hết hạn',
+    };
+    if (msgMap[message]) message = msgMap[message];
+  }
+
   return new Error(message);
 }
 

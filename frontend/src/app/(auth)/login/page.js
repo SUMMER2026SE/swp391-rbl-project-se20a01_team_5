@@ -110,8 +110,9 @@ export default function LoginPage() {
                 <input
                   type="email"
                   required
+                  tabIndex={1}
                   placeholder="name@example.com"
-                  className="w-full pl-12 pr-4 py-3.5 rounded-xl bg-brand-surface/50 border border-black/5 focus:bg-white focus:border-brand-secondary focus:ring-4 focus:ring-brand-secondary/20 outline-none transition-all font-mono text-sm"
+                  className="w-full pl-12 pr-4 py-3.5 rounded-xl bg-brand-surface/50 border border-black/5 focus:bg-white focus:border-brand-secondary focus:ring-4 focus:ring-brand-secondary/20 outline-none transition-all font-medium text-sm"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
@@ -123,6 +124,7 @@ export default function LoginPage() {
                 <label className="block text-sm font-semibold ml-1">Mật khẩu</label>
                 <Link
                   href="/forgot-password"
+                  tabIndex={4}
                   className="text-sm font-bold text-brand-secondary hover:text-brand-text transition-colors"
                 >
                   Quên mật khẩu?
@@ -133,6 +135,7 @@ export default function LoginPage() {
                 <input
                   type="password"
                   required
+                  tabIndex={2}
                   className="w-full pl-12 pr-4 py-3.5 rounded-xl bg-brand-surface/50 border border-black/5 focus:bg-white focus:border-brand-secondary focus:ring-4 focus:ring-brand-secondary/20 outline-none transition-all font-mono text-sm"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -142,6 +145,7 @@ export default function LoginPage() {
 
             <button
               type="submit"
+              tabIndex={3}
               disabled={isSubmitting || isGoogleSubmitting}
               className="w-full py-4 mt-2 rounded-xl bg-brand-text text-white font-bold hover:bg-black transition-colors flex justify-center items-center gap-2 shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
             >
@@ -155,21 +159,13 @@ export default function LoginPage() {
             <div className="flex-1 h-px bg-black/5"></div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 mb-8">
+          <div className="flex justify-center mb-8">
             <GoogleSignInButton
               text="signin_with"
               onCredential={handleGoogleCredential}
               onError={setError}
               disabled={isSubmitting || isGoogleSubmitting}
             />
-            <button
-              type="button"
-              onClick={() => setError('Facebook login chưa được triển khai trong backend.')}
-              className="h-12 rounded-xl bg-brand-surface/50 border border-black/5 px-4 font-semibold text-sm hover:bg-white hover:border-brand-secondary/40 hover:shadow-sm transition-all flex items-center justify-center gap-2"
-            >
-              <span className="text-[#1877F2] font-black leading-none">f</span>
-              <span className="whitespace-nowrap leading-none">Facebook</span>
-            </button>
           </div>
 
           <p className="text-center text-sm font-medium text-brand-text/60">

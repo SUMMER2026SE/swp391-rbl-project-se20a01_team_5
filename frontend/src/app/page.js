@@ -61,15 +61,15 @@ export default function Home() {
           {/* Decorative Gradients */}
           <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-full max-w-2xl h-64 bg-brand-primary/30 rounded-full blur-[100px] -z-10"></div>
 
-          <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-6 max-w-4xl leading-[1.1] animate-in fade-in slide-in-from-bottom-2 duration-1000 ease-out">
-            Chạm là đi, <br className="hidden md:block" /> an tâm là đến.
+          <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-6 max-w-4xl leading-[1.1]">
+            Xe buýt thông minh, <br className="hidden md:block" /> dành riêng cho sinh viên.
           </h1>
 
-          <p className="text-lg md:text-xl text-brand-text/60 max-w-2xl mb-10 font-medium animate-in fade-in slide-in-from-bottom-6 duration-700 delay-200">
+          <p className="text-lg md:text-xl text-brand-text/60 max-w-2xl mb-10 font-medium">
             Hệ thống xe buýt thông minh dành cho sinh viên Đà Nẵng. Theo dõi lộ trình trực tiếp, thanh toán tiện lợi.
           </p>
 
-          <div className="flex flex-col sm:flex-row items-center gap-4 animate-in fade-in slide-in-from-bottom-6 duration-700 delay-300">
+          <div className="flex flex-col sm:flex-row items-center gap-4">
             <Link href="/register" className="px-8 py-4 rounded-full font-bold bg-brand-primary text-brand-text hover:brightness-95 transition-all shadow-sm text-lg flex items-center gap-2 w-full sm:w-auto justify-center hover:scale-105 active:scale-95">
               Bắt đầu ngay <ArrowRight className="w-5 h-5" />
             </Link>
@@ -153,17 +153,17 @@ export default function Home() {
           <div className="max-w-7xl mx-auto px-4 md:px-8">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-12 text-center">
               <div>
-                <div className="text-5xl font-black text-brand-primary mb-4 drop-shadow-sm">Rẻ hơn</div>
+                <div className="text-4xl font-extrabold text-brand-text mb-4 tracking-tight">Rẻ hơn.</div>
                 <h4 className="text-xl font-bold mb-2">Chi phí hợp lý cho sinh viên</h4>
                 <p className="text-brand-text/60">Các gói vé tháng trợ giá giúp bạn tiết kiệm tối đa chi phí đi lại hàng tháng.</p>
               </div>
               <div>
-                <div className="text-5xl font-black text-brand-secondary mb-4 drop-shadow-sm">Rộng hơn</div>
+                <div className="text-4xl font-extrabold text-brand-text mb-4 tracking-tight">Rộng hơn.</div>
                 <h4 className="text-xl font-bold mb-2">Mạng lưới bao phủ</h4>
                 <p className="text-brand-text/60">Tuyến đường chạy qua hầu hết các điểm nóng khu trọ và khuôn viên trường.</p>
               </div>
               <div>
-                <div className="text-5xl font-black text-brand-success mb-4 drop-shadow-sm">Nhanh hơn</div>
+                <div className="text-4xl font-extrabold text-brand-text mb-4 tracking-tight">Nhanh hơn.</div>
                 <h4 className="text-xl font-bold mb-2">Lên xe 1 chạm</h4>
                 <p className="text-brand-text/60">Công nghệ quét mã vạch tốc độ cao giảm thiểu thời gian chờ đợi ở cửa xe.</p>
               </div>
