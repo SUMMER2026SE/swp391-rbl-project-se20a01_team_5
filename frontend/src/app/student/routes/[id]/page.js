@@ -199,7 +199,7 @@ export default function RouteTrackingPage() {
               <div className="relative z-10 w-full">
                 <div className="text-xs font-bold text-brand-secondary/80 mb-2 uppercase tracking-widest">Xe {activeBus.id} đang tới</div>
                 <div className="text-5xl font-extrabold text-brand-text font-mono mb-4">
-                  {Math.max(0, Math.ceil((activeBus.eta.getTime() - Date.now()) / 1000))}s
+                  {activeBus.remainingSeconds}s
                 </div>
                 <div className="inline-flex items-center gap-2 bg-white text-brand-text px-4 py-2 rounded-xl text-sm font-bold shadow-sm border border-black/5">
                   <div className="w-2 h-2 rounded-full bg-brand-success animate-ping"></div>
@@ -264,6 +264,7 @@ function useMockBusTracking(stops, boardingStopId) {
         toIndex: currentIndex + 1,
         progress,
         eta: mockEta,
+        remainingSeconds: mockEta ? Math.max(0, Math.ceil((mockEta.getTime() - Date.now()) / 1000)) : 0,
       });
     }, 50);
 

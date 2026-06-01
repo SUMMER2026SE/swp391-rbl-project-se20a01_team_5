@@ -7,6 +7,7 @@ import java.time.ZoneOffset;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -72,6 +73,7 @@ public class JwtTokenService {
             payload.put("typ", type);
             payload.put("iat", OffsetDateTime.now(ZoneOffset.UTC).toEpochSecond());
             payload.put("exp", expiration.toEpochSecond());
+            payload.put("jti", UUID.randomUUID().toString());
 
             String unsigned = encode(HEADER) + "." + encode(objectMapper.writeValueAsString(payload));
             return new IssuedToken(unsigned + "." + sign(unsigned), expiration);

@@ -17,7 +17,8 @@ export default function Home() {
       return;
     }
 
-    setIsCheckingSession(false);
+    const handle = window.setTimeout(() => setIsCheckingSession(false), 0);
+    return () => window.clearTimeout(handle);
   }, [router]);
 
   if (isCheckingSession) {
