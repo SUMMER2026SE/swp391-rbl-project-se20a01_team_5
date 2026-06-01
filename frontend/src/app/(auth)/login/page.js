@@ -58,19 +58,34 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-brand-surface font-sans text-brand-text flex items-center justify-center p-4">
       <div className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-        <div className="hidden lg:flex bg-brand-primary rounded-3xl p-12 shadow-sm flex-col justify-between relative overflow-hidden border border-black/5">
-          <div className="absolute -bottom-10 -left-10 w-64 h-64 bg-white/30 rounded-full blur-3xl"></div>
-          <div>
-            <img
-              src="/logo.png"
-              alt="UniBus Logo"
-              className="h-16 w-auto object-contain mb-6 drop-shadow-sm rounded-3xl"
-            />
-            <p className="text-lg text-brand-text/80 font-medium">
-              Đăng nhập để quản lý lịch trình, theo dõi chuyến xe và mua vé tháng dễ dàng hơn.
+        <div className="hidden lg:flex bg-gradient-to-br from-brand-primary via-[#ffecd2] to-brand-primary rounded-3xl p-12 shadow-sm flex-col justify-between relative overflow-hidden border border-black/5">
+          {/* Decorative Grid Pattern */}
+          <div className="absolute inset-0 bg-[linear-gradient(to_right,#0000000a_1px,transparent_1px),linear-gradient(to_bottom,#0000000a_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none"></div>
+          
+          {/* Decorative Blobs */}
+          <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-white/40 rounded-full blur-[80px] pointer-events-none"></div>
+          <div className="absolute -top-24 -right-24 w-96 h-96 bg-white/40 rounded-full blur-[80px] pointer-events-none"></div>
+
+          <div className="relative z-10">
+            <Link href="/" className="inline-block transition-transform hover:scale-105 active:scale-95 mb-10">
+              <div className="bg-white/50 backdrop-blur-md p-4 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/60">
+                <img
+                  src="/logo.png"
+                  alt="UniBus Logo"
+                  className="h-20 w-auto object-contain drop-shadow-sm"
+                />
+              </div>
+            </Link>
+            
+            <h1 className="text-4xl font-black mb-6 tracking-tight leading-[1.1] text-brand-text">
+              Chào mừng<br/>trở lại!
+            </h1>
+            <p className="text-lg text-brand-text/70 font-medium leading-relaxed max-w-sm">
+              Đăng nhập ngay để quản lý lịch trình, theo dõi chuyến xe theo thời gian thực và mua vé tháng dễ dàng hơn bao giờ hết.
             </p>
           </div>
-          <div className="text-sm font-bold text-brand-text/40">
+
+          <div className="relative z-10 text-sm font-bold text-brand-text/40">
             © 2026 UniBus System
           </div>
         </div>

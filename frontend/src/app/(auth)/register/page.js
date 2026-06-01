@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Lock, UserPlus, User, Mail, KeyRound } from 'lucide-react';
+import { Lock, UserPlus, User, Mail, KeyRound, ArrowRight } from 'lucide-react';
 import GoogleSignInButton from '@/components/auth/GoogleSignInButton';
 import { authApi, getAuthSession, getDefaultRouteForRole, setAuthSession } from '@/services/api';
 
@@ -20,7 +20,7 @@ export default function RegisterPage() {
   const [formData, setFormData] = useState(initialForm);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [otpRequested, setOtpRequested] = useState(false);
+  const [step, setStep] = useState(1);
   const [isRequestingOtp, setIsRequestingOtp] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
@@ -63,8 +63,8 @@ export default function RegisterPage() {
     setIsRequestingOtp(true);
     try {
       await authApi.requestRegistrationOtp(formData.email.trim());
-      setOtpRequested(true);
-      setMessage('Mã OTP đã được gửi tới email. Nhập mã để hoàn tất tạo tài khoản.');
+      setStep(2);
+      setMessage('Mã OTP đã được gửi tới email.');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -156,54 +156,72 @@ export default function RegisterPage() {
             </div>
           )}
 
-          <form onSubmit={otpRequested ? handleRegister : handleRequestOtp} className="space-y-4 mb-8">
-            <div>
-              <label className="block text-xs font-bold text-brand-text/60 mb-2 ml-1 uppercase">Họ và Tên</label>
-              <div className="relative">
-                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-text/40" />
-                <input
-                  type="text"
-                  required
-                  placeholder="Nguyễn Văn A"
-                  className="w-full pl-10 pr-4 py-3 rounded-xl bg-brand-surface border border-black/5 focus:bg-white focus:border-brand-text focus:ring-2 focus:ring-brand-text/20 outline-none transition-all font-medium text-sm"
-                  value={formData.fullName}
-                  onChange={(e) => updateField('fullName', e.target.value)}
+          {step === 1 ? (
+            <form onSubmit={handleRequestOtp} className="space-y-4 mb-8">
+              <div>
+                <label className="block text-xs font-bold text-brand-text/60 mb-2 ml-1 uppercase">Họ và Tên</label>
+                <div className="relative">
+                  <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-text/40" />
+                  <input
+                    type="text"
+                    required
+                    placeholder="Nguyễn Văn A"
+                    className="w-full pl-10 pr-4 py-3 rounded-xl bg-brand-surface border border-black/5 focus:bg-white focus:border-brand-text focus:ring-2 focus:ring-brand-text/20 outline-none transition-all font-medium text-sm"
+                    value={formData.fullName}
+                    onChange={(e) => updateField('fullName', e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-brand-text/60 mb-2 ml-1 uppercase">Email</label>
+                <div className="relative">
+                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-text/40" />
+                  <input
+                    type="email"
+                    required
+                    placeholder="name@example.com"
+                    className="w-full pl-10 pr-4 py-3 rounded-xl bg-brand-surface border border-black/5 focus:bg-white focus:border-brand-text focus:ring-2 focus:ring-brand-text/20 outline-none transition-all font-mono text-sm"
+                    value={formData.email}
+                    onChange={(e) => updateField('email', e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <PasswordField
+                  label="Mật khẩu"
+                  value={formData.password}
+                  onChange={(value) => updateField('password', value)}
+                />
+                <PasswordField
+                  label="Xác nhận mật khẩu"
+                  value={formData.confirmPassword}
+                  onChange={(value) => updateField('confirmPassword', value)}
                 />
               </div>
-            </div>
 
-            <div>
-              <label className="block text-xs font-bold text-brand-text/60 mb-2 ml-1 uppercase">Email</label>
-              <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-text/40" />
-                <input
-                  type="email"
-                  required
-                  placeholder="name@example.com"
-                  className="w-full pl-10 pr-4 py-3 rounded-xl bg-brand-surface border border-black/5 focus:bg-white focus:border-brand-text focus:ring-2 focus:ring-brand-text/20 outline-none transition-all font-mono text-sm"
-                  value={formData.email}
-                  onChange={(e) => updateField('email', e.target.value)}
-                  disabled={otpRequested}
-                />
+              <button
+                type="submit"
+                disabled={isRequestingOtp || isGoogleSubmitting}
+                className="w-full py-4 mt-4 rounded-xl bg-brand-text text-white font-bold hover:bg-black transition-colors flex justify-center items-center gap-2 shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <ArrowRight className="w-5 h-5" />
+                {isRequestingOtp ? 'Đang xử lý...' : 'Tiếp tục'}
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleRegister} className="space-y-4 mb-8 animate-in fade-in slide-in-from-right-12 duration-500 ease-out">
+              <div className="p-4 bg-brand-surface/50 rounded-xl mb-2 border border-black/5 flex justify-between items-center">
+                <div>
+                  <span className="text-xs font-bold text-brand-text/50 uppercase block mb-0.5">Email nhận mã</span>
+                  <span className="text-sm font-mono font-medium">{formData.email}</span>
+                </div>
+                <button type="button" onClick={() => setStep(1)} className="text-sm font-bold text-brand-secondary hover:text-brand-text transition-colors">
+                  Thay đổi
+                </button>
               </div>
-            </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <PasswordField
-                label="Mật khẩu"
-                value={formData.password}
-                onChange={(value) => updateField('password', value)}
-                disabled={otpRequested}
-              />
-              <PasswordField
-                label="Xác nhận mật khẩu"
-                value={formData.confirmPassword}
-                onChange={(value) => updateField('confirmPassword', value)}
-                disabled={otpRequested}
-              />
-            </div>
-
-            {otpRequested && (
               <div>
                 <label className="block text-xs font-bold text-brand-text/60 mb-2 ml-1 uppercase">Mã OTP</label>
                 <div className="relative">
@@ -228,23 +246,21 @@ export default function RegisterPage() {
                   {isRequestingOtp ? 'Đang gửi lại...' : 'Gửi lại mã OTP'}
                 </button>
               </div>
-            )}
 
-            <button
-              type="submit"
-              disabled={isSubmitting || isRequestingOtp || isGoogleSubmitting}
-              className="w-full py-4 mt-4 rounded-xl bg-brand-text text-white font-bold hover:bg-black transition-colors flex justify-center items-center gap-2 shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              <UserPlus className="w-5 h-5" />
-              {otpRequested
-                ? (isSubmitting ? 'Đang tạo tài khoản...' : 'Xác thực OTP & tạo tài khoản')
-                : (isRequestingOtp ? 'Đang gửi OTP...' : 'Gửi mã OTP')}
-            </button>
-          </form>
+              <button
+                type="submit"
+                disabled={isSubmitting || isGoogleSubmitting}
+                className="w-full py-4 mt-4 rounded-xl bg-brand-text text-white font-bold hover:bg-black transition-colors flex justify-center items-center gap-2 shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <ArrowRight className="w-5 h-5" />
+                {isSubmitting ? 'Đang xử lý...' : 'Hoàn tất'}
+              </button>
+            </form>
+          )}
 
           <div className="flex items-center gap-4 mb-6">
             <div className="flex-1 h-px bg-black/5"></div>
-            <span className="text-brand-text/40 text-xs font-bold uppercase tracking-wider">Hoặc đăng ký siêu tốc</span>
+            <span className="text-brand-text/40 text-xs font-bold uppercase tracking-wider">Hoặc đăng ký nhanh qua</span>
             <div className="flex-1 h-px bg-black/5"></div>
           </div>
 

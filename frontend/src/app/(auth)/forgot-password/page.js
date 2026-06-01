@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Mail, ArrowLeft, KeyRound, Lock, Send } from 'lucide-react';
+import { Mail, ArrowLeft, ArrowRight, KeyRound, Lock, Send } from 'lucide-react';
 import { authApi } from '@/services/api';
 
 export default function ForgotPasswordPage() {
@@ -16,6 +16,7 @@ export default function ForgotPasswordPage() {
   const [error, setError] = useState('');
   const [isRequestingOtp, setIsRequestingOtp] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [step, setStep] = useState(1);
 
   const requestOtp = async (e) => {
     e.preventDefault();
@@ -25,7 +26,8 @@ export default function ForgotPasswordPage() {
 
     try {
       await authApi.requestPasswordResetOtp(email.trim());
-      setMessage('Nếu email tồn tại trong hệ thống, OTP đã được tạo. Hãy xem log backend khi OTP_LOG_CODE=true.');
+      setMessage('Nếu có tài khoản khớp với thông tin đã nhập, mã xác thực sẽ được gửi.');
+      setStep(2);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -65,13 +67,15 @@ export default function ForgotPasswordPage() {
         <div className="hidden lg:flex bg-brand-primary rounded-3xl p-12 shadow-sm flex-col justify-between relative overflow-hidden border border-black/5">
           <div className="absolute -bottom-10 -left-10 w-64 h-64 bg-white/30 rounded-full blur-3xl"></div>
           <div>
-            <img
-              src="/logo.png"
-              alt="UniBus Logo"
-              className="h-16 w-auto object-contain mb-6 drop-shadow-sm rounded-3xl"
-            />
+            <Link href="/" className="inline-block transition-transform hover:scale-105 active:scale-95">
+              <img
+                src="/logo.png"
+                alt="UniBus Logo"
+                className="h-28 w-auto object-contain mb-6 drop-shadow-sm rounded-3xl"
+              />
+            </Link>
             <p className="text-lg text-brand-text/80 font-medium">
-              Khôi phục mật khẩu bằng OTP được cấp trực tiếp từ backend UniBus.
+              Lấy lại quyền truy cập tài khoản nhanh chóng và an toàn qua mã xác thực OTP.
             </p>
           </div>
           <div className="text-sm font-bold text-brand-text/40">
@@ -82,9 +86,6 @@ export default function ForgotPasswordPage() {
         <div className="bg-white rounded-3xl p-8 md:p-12 shadow-sm border border-black/5 flex flex-col justify-center">
           <div className="mb-8">
             <h2 className="text-3xl font-extrabold tracking-tight mb-2">Đặt lại mật khẩu</h2>
-            <p className="text-brand-text/60 font-medium text-sm">
-              Nhập email, lấy OTP, rồi tạo mật khẩu mới.
-            </p>
           </div>
 
           {error && (
@@ -99,76 +100,109 @@ export default function ForgotPasswordPage() {
             </div>
           )}
 
-          <form onSubmit={requestOtp} className="flex flex-col gap-5 mb-8">
-            <div>
-              <label className="block text-sm font-semibold mb-2 ml-1">Email</label>
-              <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-brand-text/40" />
-                <input
-                  type="email"
-                  required
-                  placeholder="name@example.com"
-                  className="w-full pl-12 pr-4 py-3.5 rounded-xl bg-brand-surface/50 border border-black/5 focus:bg-white focus:border-brand-secondary focus:ring-4 focus:ring-brand-secondary/20 outline-none transition-all font-mono text-sm"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
+          {step === 1 && (
+            <form onSubmit={requestOtp} className="flex flex-col gap-5">
+              <div>
+                <label className="block text-sm font-semibold mb-2 ml-1">Email của bạn</label>
+                <div className="relative">
+                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-brand-text/40" />
+                  <input
+                    type="email"
+                    required
+                    placeholder="name@example.com"
+                    className="w-full pl-12 pr-4 py-3.5 rounded-xl bg-brand-surface/50 border border-black/5 focus:bg-white focus:border-brand-secondary focus:ring-4 focus:ring-brand-secondary/20 outline-none transition-all font-mono text-sm"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </div>
               </div>
-            </div>
 
-            <button
-              type="submit"
-              disabled={isRequestingOtp}
-              className="w-full py-4 rounded-xl bg-brand-text text-white font-bold hover:bg-black transition-colors flex justify-center items-center gap-2 shadow-sm disabled:opacity-60"
-            >
-              <Send className="w-5 h-5" /> {isRequestingOtp ? 'Đang gửi OTP...' : 'Gửi OTP'}
-            </button>
-          </form>
+              <button
+                type="submit"
+                disabled={isRequestingOtp}
+                className="w-full py-4 mt-2 rounded-xl bg-brand-text text-white font-bold hover:bg-black transition-colors flex justify-center items-center gap-2 shadow-sm disabled:opacity-60"
+              >
+                <ArrowRight className="w-5 h-5" /> {isRequestingOtp ? 'Đang xử lý...' : 'Tiếp tục'}
+              </button>
+            </form>
+          )}
 
-          <form onSubmit={resetPassword} className="flex flex-col gap-5">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <InputWithIcon label="OTP" icon={KeyRound}>
+          {step === 2 && (
+            <form onSubmit={(e) => { e.preventDefault(); if(otp.length === 6) setStep(3); else setError('Mã OTP phải gồm 6 chữ số'); }} className="flex flex-col gap-5 animate-in fade-in slide-in-from-right-12 duration-500 ease-out">
+              <div className="p-4 bg-brand-surface/50 rounded-xl mb-2 border border-black/5 flex justify-between items-center">
+                <div>
+                  <span className="text-xs font-bold text-brand-text/50 uppercase block mb-0.5">Mã đã được gửi đến</span>
+                  <span className="text-sm font-mono font-medium">{email}</span>
+                </div>
+                <button type="button" onClick={() => setStep(1)} className="text-sm font-bold text-brand-secondary hover:text-brand-text transition-colors">
+                  Sửa email
+                </button>
+              </div>
+
+              <InputWithIcon label="Nhập mã xác thực OTP" icon={KeyRound}>
                 <input
                   type="text"
                   required
                   minLength={6}
                   maxLength={6}
-                  className="form-input"
+                  placeholder="000000"
+                  className="form-input tracking-[0.4em]"
                   value={otp}
                   onChange={(e) => setOtp(e.target.value)}
                 />
               </InputWithIcon>
+
+              <button
+                type="submit"
+                className="w-full py-4 mt-2 rounded-xl bg-brand-text text-white font-bold hover:bg-black transition-colors flex justify-center items-center gap-2 shadow-sm"
+              >
+                Tiếp tục <ArrowRight className="w-5 h-5" />
+              </button>
+            </form>
+          )}
+
+          {step === 3 && (
+            <form onSubmit={resetPassword} className="flex flex-col gap-5 animate-in fade-in slide-in-from-right-12 duration-500 ease-out">
+              <div className="text-center mb-2">
+                <span className="inline-block px-4 py-1.5 rounded-full bg-brand-success/10 text-brand-success text-sm font-bold mb-2">
+                  Xác thực thành công
+                </span>
+                <p className="text-sm font-medium text-brand-text/60">Vui lòng tạo mật khẩu mới cho tài khoản của bạn.</p>
+              </div>
 
               <InputWithIcon label="Mật khẩu mới" icon={Lock}>
                 <input
                   type="password"
                   required
                   minLength={8}
+                  placeholder="Ít nhất 8 ký tự"
                   className="form-input"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                 />
               </InputWithIcon>
-            </div>
 
-            <InputWithIcon label="Xác nhận mật khẩu mới" icon={Lock}>
-              <input
-                type="password"
-                required
-                minLength={8}
-                className="form-input"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-              />
-            </InputWithIcon>
+              <InputWithIcon label="Xác nhận mật khẩu mới" icon={Lock}>
+                <input
+                  type="password"
+                  required
+                  minLength={8}
+                  placeholder="Nhập lại mật khẩu mới"
+                  className="form-input"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                />
+              </InputWithIcon>
 
-            <button
-              type="submit"
-              disabled={isResetting}
-              className="w-full py-4 rounded-xl bg-brand-primary text-brand-text font-bold hover:bg-brand-text hover:text-white transition-colors flex justify-center items-center gap-2 shadow-sm disabled:opacity-60"
-            >
-              <Lock className="w-5 h-5" /> {isResetting ? 'Đang đổi mật khẩu...' : 'Đổi mật khẩu'}
-            </button>
-          </form>
+              <button
+                type="submit"
+                disabled={isResetting}
+                className="w-full py-4 mt-2 rounded-xl bg-brand-text text-white font-bold hover:bg-black transition-colors flex justify-center items-center gap-2 shadow-sm disabled:opacity-60"
+              >
+                <ArrowRight className="w-5 h-5" /> {isResetting ? 'Đang xử lý...' : 'Hoàn tất'}
+              </button>
+            </form>
+          )}
 
           <div className="mt-8 pt-6 border-t border-black/5 text-center">
             <Link href="/login" className="inline-flex items-center gap-2 text-sm font-bold text-brand-secondary hover:text-brand-text transition-colors">

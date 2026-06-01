@@ -24,12 +24,13 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
     }
 
     let cancelled = false;
-    userApi.getProfile()
-      .then((profile) => {
-        if (cancelled) return;
-        setDisplayName(profile.fullName || profile.email || 'Người dùng');
-        setAvatarUrl(toApiAssetUrl(profile.avatarUrl) || null);
-      })
+      userApi.getProfile()
+        .then((profile) => {
+          if (cancelled) return;
+          const name = profile.fullName || profile.email || 'Người dùng';
+          setDisplayName(name);
+          setAvatarUrl(toApiAssetUrl(profile.avatarUrl) || null);
+        })
       .catch(() => {
         // Header stays usable even if profile fetch fails.
       });
@@ -81,7 +82,9 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
           />
           <aside className="absolute left-3 top-3 bottom-3 w-[min(20rem,calc(100vw-1.5rem))] bg-white rounded-3xl p-5 shadow-2xl border border-black/10 flex flex-col">
             <div className="flex items-center justify-between mb-6">
-              <img src="/logo.png" alt="UniBus Logo" className="h-10 w-auto object-contain rounded-xl" />
+              <Link href="/" className="transition-transform hover:scale-105 active:scale-95">
+                <img src="/logo.png" alt="UniBus Logo" className="h-16 w-auto object-contain rounded-xl" />
+              </Link>
               <button
                 type="button"
                 onClick={() => setIsMobileMenuOpen(false)}
@@ -131,7 +134,7 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
             <div className="h-8 w-px bg-black/5 hidden md:block"></div>
             <Link
               href={profileHref || '#'}
-              className={`flex items-center gap-3 rounded-2xl px-2 py-2 transition-colors ${pathname === profileHref ? 'bg-brand-surface' : 'hover:bg-brand-surface'}`}
+              className={`flex items-center gap-3 rounded-full pl-4 pr-1.5 py-1.5 transition-colors ${pathname === profileHref ? 'bg-brand-surface shadow-sm border border-black/5' : 'hover:bg-brand-surface'}`}
               aria-label="Mở hồ sơ cá nhân"
             >
               <div className="text-right hidden md:block max-w-40">
@@ -168,7 +171,9 @@ function SidebarHeader({ isSidebarOpen, onToggle }) {
     <div className={`flex items-center ${isSidebarOpen ? 'justify-between' : 'justify-center'} mb-10`}>
       {isSidebarOpen && (
         <div className="flex items-center justify-center w-full px-2">
-          <img src="/logo.png" alt="UniBus Logo" className="h-12 w-auto object-contain rounded-xl" />
+          <Link href="/" className="transition-transform hover:scale-105 active:scale-95">
+            <img src="/logo.png" alt="UniBus Logo" className="h-24 w-auto object-contain rounded-xl" />
+          </Link>
         </div>
       )}
       <button onClick={onToggle} className="p-2 rounded-xl hover:bg-black/5 text-brand-text/60 transition-colors">
