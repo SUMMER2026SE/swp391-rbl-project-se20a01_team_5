@@ -138,7 +138,7 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
                 <p className="text-sm font-bold text-brand-text truncate">{displayName}</p>
                 <p className="text-xs text-brand-text/50 font-medium">{roleName}</p>
               </div>
-              <div className="w-11 h-11 md:w-12 md:h-12 rounded-2xl bg-brand-primary flex items-center justify-center text-brand-text font-bold text-lg border border-black/5 overflow-hidden">
+              <div className="w-11 h-11 md:w-12 md:h-12 rounded-full bg-brand-primary flex items-center justify-center text-brand-text font-bold text-lg border border-black/5 overflow-hidden">
                 {avatarUrl ? (
                   <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
                 ) : (
@@ -165,7 +165,7 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
 
 function SidebarHeader({ isSidebarOpen, onToggle }) {
   return (
-    <div className="flex items-center justify-between mb-10">
+    <div className={`flex items-center ${isSidebarOpen ? 'justify-between' : 'justify-center'} mb-10`}>
       {isSidebarOpen && (
         <div className="flex items-center justify-center w-full px-2">
           <img src="/logo.png" alt="UniBus Logo" className="h-12 w-auto object-contain rounded-xl" />
@@ -190,7 +190,7 @@ function SidebarNav({ menuItems, pathname, isSidebarOpen, onNavigate, onLogout }
             key={item.name}
             href={item.href}
             onClick={onNavigate}
-            className={`flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all font-medium ${isActive ? 'bg-brand-text text-white shadow-sm' : 'hover:bg-brand-surface text-brand-text/70 hover:text-brand-text'}`}
+            className={`flex items-center py-3.5 rounded-2xl transition-all font-medium ${isSidebarOpen ? 'gap-4 px-4' : 'justify-center'} ${isActive ? 'bg-brand-text text-white shadow-sm' : 'hover:bg-brand-surface text-brand-text/70 hover:text-brand-text'}`}
           >
             <item.icon className="w-5 h-5 shrink-0" />
             {isSidebarOpen && <span>{item.name}</span>}
@@ -201,7 +201,7 @@ function SidebarNav({ menuItems, pathname, isSidebarOpen, onNavigate, onLogout }
       <div className="pt-6 mt-8 border-t border-black/5">
         <button
           onClick={onLogout}
-          className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-2xl text-brand-danger font-bold hover:bg-brand-danger/10 transition-colors"
+          className={`w-full flex items-center justify-center py-3 rounded-2xl text-brand-danger font-bold hover:bg-brand-danger/10 transition-colors ${isSidebarOpen ? 'gap-3 px-4' : ''}`}
         >
           <LogOut className="w-5 h-5 shrink-0" />
           {isSidebarOpen && <span>Đăng xuất</span>}

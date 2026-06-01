@@ -1,0 +1,61 @@
+PROJECT TRACKING,Unnamed: 1,Unnamed: 2,Unnamed: 3,Unnamed: 4,Unnamed: 5,Unnamed: 6,Unnamed: 7,Unnamed: 8,Unnamed: 9
+Team Size: 5 members | | Total Use Cases: 52,,,,,,,,,
+No.,Screen/Function,Feature,Actor,Screen/Function Description,In Charge,Status,Actual,Updated,Update Details
+  >>  AUTHENTICATION,,,,,,,,,
+1,Đăng nhập,Đăng nhập hệ thống,Tất cả,"Người dùng (Sinh viên, Tài xế, Phụ xe, Điều phối, Admin) đăng nhập bằng email và mật khẩu.",Nguyễn Đức Hải,Completed,iter1,,20
+2,Đăng ký tài khoản,Đăng ký tài khoản sinh viên,Sinh viên,"Sinh viên tạo tài khoản bằng email trường, xác thực OTP, thiết lập mật khẩu.",Nguyễn Đức Hải,Completed,iter1,,20
+3,Đăng xuất,Đăng xuất khỏi hệ thống,Tất cả,"Người dùng đăng xuất an toàn, hệ thống hủy session và access token.",Nguyễn Đức Hải,Completed,iter1,,20
+4,Quên mật khẩu,Đặt lại mật khẩu qua email,Tất cả,"Người dùng yêu cầu đặt lại mật khẩu, nhận OTP qua email, xác thực và đặt mật khẩu mới.",Nguyễn Đức Hải,Completed,iter1,,20
+5,Phân quyền,Điều hướng theo vai trò sau đăng nhập,Tất cả,Hệ thống xác định vai trò và điều hướng đến màn hình tương ứng (Sinh viên / Tài xế / Phụ xe / Điều phối / Admin).,Nguyễn Đức Hải,Completed,iter1,,20
+  >>  SINH VIÊN,,,,,,,,,
+6,Hồ sơ cá nhân,Cập nhật hồ sơ cá nhân,Sinh viên,"Sinh viên có thể cập nhật thông tin cá nhân: họ tên, SĐT, email, ảnh đại diện, địa chỉ.",Nguyễn Đức Hải,Not Started,iter1,20,20
+7,Trạm dừng,Xem danh sách trạm dừng,Sinh viên,"Hiển thị danh sách các trạm dừng trên bản đồ và dạng list, bao gồm tên trạm, vị trí, tuyến đi qua.",Nguyễn Đức Hải,Not Started,iter1,20,20
+8,Tìm tuyến xe,Tìm tuyến xe phù hợp,Sinh viên,"Sinh viên nhập điểm đi - điểm đến, hệ thống gợi ý tuyến xe phù hợp nhất.",Nguyễn Đức Hải,Not Started,iter1,20,20
+9,Thời gian xe đến,Xem thời gian xe đến,Sinh viên,Hiển thị thời gian dự kiến xe đến trạm dừng mà sinh viên chọn (ETA).,Nguyễn Đức Hải,Not Started,iter1,20,20
+10,Theo dõi xe,Theo dõi vị trí xe theo thời gian thực,Sinh viên,"Hiển thị vị trí xe trên bản đồ realtime bằng GPS, cập nhật liên tục.",Nguyễn Tấn Phú,Not Started,iter1,20,20
+11,Đăng ký tuyến xe,Đăng ký sử dụng tuyến xe,Sinh viên,"Sinh viên chọn tuyến xe và đăng ký sử dụng, hệ thống xác nhận và lưu thông tin.",Nguyễn Đức Hải,Not Started,iter1,20,20
+12,Quản lý tuyến xe,Đổi tuyến xe / Hủy tuyến xe,Sinh viên,Sinh viên có thể đổi sang tuyến khác hoặc hủy đăng ký tuyến xe hiện tại.,Nguyễn Đức Hải,Not Started,iter1,20,20
+13,Lịch sử chuyến đi,Xem lịch sử chuyến đi,Sinh viên,"Hiển thị danh sách các chuyến đi đã thực hiện, bao gồm ngày, tuyến, giờ lên/xuống xe.",Nguyễn Đức Hải,Not Started,iter1,20,20
+14,Thông báo,Nhận thông báo,Sinh viên,"Sinh viên nhận thông báo từ hệ thống: thay đổi lịch trình, tuyến, thông tin khẩn cấp.",Nguyễn Đức Hải,Not Started,iter2,20,20
+15,Phản hồi chuyến xe,Gửi phản hồi về chuyến xe,Sinh viên,"Sinh viên gửi phản hồi, góp ý về chất lượng chuyến xe (sạch sẽ, đúng giờ, thái độ).",Nguyễn Đức Hải,Not Started,iter2,20,20
+16,Đánh giá tài xế,Đánh giá tài xế,Sinh viên,Sinh viên đánh giá tài xế bằng sao (1-5) và nhận xét sau mỗi chuyến đi.,Nguyễn Tấn Phú,Not Started,iter2,20,20
+17,Báo mất đồ,Báo mất đồ trên xe,Sinh viên,"Sinh viên tạo báo cáo mất đồ, mô tả vật phẩm, thời gian, tuyến xe để hệ thống xử lý.",Nguyễn Tấn Phú,Not Started,iter2,20,20
+18,Thanh toán,Thanh toán phí dịch vụ,Sinh viên,Sinh viên thanh toán phí sử dụng dịch vụ xe đưa đón qua ví điện tử hoặc chuyển khoản.,Nguyễn Tấn Phú,Not Started,iter2,20,20
+19,Hóa đơn,Xem hóa đơn thanh toán,Sinh viên,"Hiển thị lịch sử hóa đơn, chi tiết thanh toán, trạng thái (đã thanh toán / chưa).",Nguyễn Tấn Phú,Not Started,iter2,20,20
+20,Mua vé tháng,Mua vé tháng,Sinh viên,"Sinh viên mua vé tháng cho tuyến xe đã đăng ký, hệ thống tạo QR vé tháng.",Nguyễn Tấn Phú,Not Started,iter2,20,20
+21,AI gợi ý tuyến,AI hỗ trợ gợi ý tuyến xe phù hợp nhất theo địa điểm,Sinh viên,"AI phân tích vị trí sinh viên và gợi ý tuyến xe tối ưu nhất (thời gian, khoảng cách, chi phí).",Nguyễn Tấn Phú,Not Started,iter3,20,20
+22,Chatbot tra cứu,Dùng chatbot để tra cứu tuyến xe với giá vé phù hợp,Sinh viên,"Chatbot hỗ trợ sinh viên tra cứu thông tin tuyến xe, giá vé, lịch trình bằng ngôn ngữ tự nhiên.",Nguyễn Tấn Phú,Not Started,iter3,20,20
+  >>  NHÂN VIÊN ĐIỀU PHỐI,,,,,,,,,
+23,Lịch trình xe,Chỉnh sửa lịch trình xe,Nhân viên điều phối,"Điều phối viên chỉnh sửa lịch trình chạy xe: giờ xuất phát, giờ kết thúc, tần suất.",Nguyễn Tri Hòa,Not Started,iter2,20,20
+24,Phân công tài xế,Phân công tài xế,Nhân viên điều phối,Điều phối viên phân công tài xế cho từng chuyến xe / tuyến đường cụ thể.,Nguyễn Tri Hòa,Not Started,iter2,20,20
+25,Phân công xe bus,Phân công xe bus,Nhân viên điều phối,"Điều phối viên chọn xe bus phù hợp cho từng tuyến (theo sức chứa, tình trạng xe).",Nguyễn Tri Hòa,Not Started,iter2,20,20
+26,Điều chỉnh tuyến đường,Điều chỉnh tuyến đường,Nhân viên điều phối,"Thay đổi lộ trình tuyến đường: thêm/bớt trạm, đổi đường đi khi có sự cố giao thông.",Nguyễn Tri Hòa,Not Started,iter2,20,20
+27,Theo dõi tất cả xe,Theo dõi vị trí tất cả xe,Nhân viên điều phối,"Dashboard hiển thị vị trí tất cả xe trên bản đồ realtime, trạng thái từng xe.",Nguyễn Tri Hòa,Not Started,iter2,20,20
+28,Xử lý phản hồi,Xử lý phản hồi sinh viên,Nhân viên điều phối,"Xem, phân loại và phản hồi các góp ý, khiếu nại từ sinh viên về dịch vụ.",Nguyễn Tri Hòa,Not Started,iter2,20,20
+29,Gửi thông báo (ĐP),Gửi thông báo,Nhân viên điều phối,"Điều phối viên gửi thông báo đến sinh viên, tài xế về thay đổi lịch trình, sự cố.",Nguyễn Tri Hòa,Not Started,iter2,20,20
+30,Quản lý trạm dừng,Thêm trạm dừng,Nhân viên điều phối,"Thêm trạm dừng mới vào hệ thống: tên trạm, tọa độ GPS, mô tả vị trí.",Nguyễn Tri Hòa,Not Started,iter2,20,20
+31,Quản lý trạm dừng,Chỉnh sửa thông tin trạm,Nhân viên điều phối,"Chỉnh sửa thông tin trạm dừng hiện có: tên, vị trí, trạng thái hoạt động.",Nguyễn Tri Hòa,Not Started,iter2,20,20
+32,Quản lý trạm dừng,Xóa trạm dừng,Nhân viên điều phối,Xóa trạm dừng khỏi hệ thống khi không còn sử dụng.,Nguyễn Tri Hòa,Not Started,iter2,20,20
+33,Danh sách trạm (ĐP),Xem danh sách trạm dừng,Nhân viên điều phối,"Xem toàn bộ danh sách trạm dừng trong hệ thống, lọc theo tuyến, trạng thái.",Nguyễn Tri Hòa,Not Started,iter2,20,20
+  >>  TÀI XẾ,,,,,,,,,
+34,Lịch chạy xe,Xem lịch chạy xe,Tài xế,"Tài xế xem lịch chạy xe trong ngày/tuần: tuyến đường, giờ xuất phát, xe được phân công.",Nguyễn Trường Phúc,Not Started,iter2,20,20
+35,Bắt đầu chuyến,Bắt đầu chuyến xe,Tài xế,"Tài xế xác nhận bắt đầu chuyến xe, hệ thống bắt đầu tracking GPS và gửi thông báo.",Nguyễn Trường Phúc,Not Started,iter2,20,20
+36,Kết thúc chuyến,Kết thúc chuyến xe,Tài xế,"Tài xế xác nhận kết thúc chuyến, hệ thống ghi nhận thời gian và cập nhật trạng thái.",Nguyễn Trường Phúc,Not Started,iter2,20,20
+37,Tuyến đường phân công,Xem tuyến đường được phân công,Tài xế,"Hiển thị chi tiết tuyến đường: các trạm dừng, bản đồ lộ trình, thứ tự trạm.",Nguyễn Trường Phúc,Not Started,iter2,20,20
+38,Liên hệ điều phối,Liên hệ điều phối viên,Tài xế,Tài xế gọi điện hoặc nhắn tin cho điều phối viên khi có sự cố hoặc cần hỗ trợ.,Nguyễn Trường Phúc,Not Started,iter2,20,20
+  >>  QUẢN TRỊ VIÊN,,,,,,,,,
+39,Quản lý tài khoản,Khóa tài khoản / Mở tài khoản,Quản trị viên,"Admin khóa hoặc mở khóa tài khoản người dùng (sinh viên, tài xế) khi vi phạm hoặc yêu cầu.",Phạm Gia Huy,Not Started,iter2,20,20
+40,Xử lý khiếu nại,Xử lý khiếu nại,Quản trị viên,"Admin xem xét, phân loại và giải quyết các khiếu nại từ sinh viên và tài xế.",Phạm Gia Huy,Not Started,iter2,20,20
+41,Báo cáo vi phạm,Xem báo cáo vi phạm,Quản trị viên,"Hiển thị danh sách các vi phạm được báo cáo: loại vi phạm, người vi phạm, trạng thái xử lý.",Phạm Gia Huy,Not Started,iter2,20,20
+42,Xem tài khoản,Xem thông tin tài khoản (View account),Quản trị viên,Admin xem chi tiết thông tin tài khoản của bất kỳ người dùng nào trong hệ thống.,Phạm Gia Huy,Not Started,iter2,20,20
+43,Tìm kiếm tài khoản,Tìm kiếm tài khoản (Search account),Quản trị viên,"Admin tìm kiếm tài khoản theo tên, email, SĐT, vai trò trong hệ thống.",Phạm Gia Huy,Not Started,iter2,20,20
+44,Thống kê hệ thống,"Xem thống kê hệ thống (doanh thu, SL sinh viên, tài xế)",Quản trị viên,"Dashboard thống kê tổng quan: doanh thu, số lượng sinh viên, tài xế, chuyến xe theo thời gian.",Phạm Gia Huy,Not Started,iter3,20,20
+45,Thông báo hệ thống,Gửi thông báo hệ thống,Quản trị viên,"Admin gửi thông báo toàn hệ thống: bảo trì, thay đổi chính sách, thông tin quan trọng.",Phạm Gia Huy,Not Started,iter2,20,20
+46,Điều chỉnh giá vé,Điều chỉnh giá vé,Quản trị viên,"Admin thiết lập và điều chỉnh giá vé cho từng tuyến, vé lượt, vé tháng.",Phạm Gia Huy,Not Started,iter3,20,20
+  >>  PHỤ XE,,,,,,,,,
+47,Chuyến xe phân công,Xem chuyến xe được phân công,Phụ xe,"Phụ xe xem danh sách chuyến xe được phân công: tuyến, giờ, tài xế, xe bus.",Nguyễn Trường Phúc,Not Started,iter3,20,20
+48,Quét QR vé,Quét mã QR vé / thẻ sinh viên,Phụ xe,Phụ xe dùng camera quét mã QR trên vé hoặc thẻ sinh viên để xác nhận lên xe.,Nguyễn Trường Phúc,Not Started,iter3,20,20
+49,Kiểm tra vé tháng,Kiểm tra vé tháng của sinh viên,Phụ xe,"Phụ xe kiểm tra tình trạng vé tháng của sinh viên: còn hạn, hết hạn, tuyến đăng ký.",Nguyễn Trường Phúc,Not Started,iter3,20,20
+50,Hỗ trợ báo mất đồ (PX),Hỗ trợ báo mất đồ,Phụ xe,"Phụ xe tiếp nhận và tạo báo cáo mất đồ từ sinh viên, ghi nhận thông tin vật phẩm.",Nguyễn Trường Phúc,Not Started,iter3,20,20
+51,Báo cáo sự cố,"Báo cáo sự cố trên chuyến xe (Quá tải, khẩn cấp)",Phụ xe,"Phụ xe báo cáo sự cố: quá tải hành khách, tình huống khẩn cấp, hư hỏng xe.",Nguyễn Trường Phúc,Not Started,iter3,20,20
+52,Liên hệ (PX),Liên hệ tài xế / điều phối viên,Phụ xe,Phụ xe liên hệ nhanh với tài xế hoặc điều phối viên qua chat/gọi khi cần hỗ trợ.,Nguyễn Trường Phúc,Not Started,iter3,20,20

@@ -40,11 +40,7 @@ export default function StudentDashboard() {
   }, []);
 
   if (isLoading) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div className="text-sm font-bold text-brand-text/50">Đang tải tổng quan...</div>
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   return (
@@ -53,7 +49,6 @@ export default function StudentDashboard() {
         <h1 className="text-3xl font-extrabold tracking-tight text-brand-text mb-2">
           Xin chào, {profile?.fullName || 'sinh viên'}!
         </h1>
-        <p className="text-brand-text/60 font-medium">Dữ liệu tổng quan được lấy từ backend hiện có.</p>
       </div>
 
       {error && (
@@ -162,4 +157,66 @@ export default function StudentDashboard() {
 function formatDate(value) {
   if (!value) return 'Chưa có ngày';
   return new Intl.DateTimeFormat('vi-VN').format(new Date(value));
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="h-full flex flex-col gap-6 font-sans relative animate-pulse">
+      <div>
+        <div className="h-9 w-64 bg-brand-surface rounded-xl mb-3"></div>
+        <div className="h-5 w-80 bg-brand-surface rounded-lg"></div>
+      </div>
+
+      <div className="flex-1 grid grid-cols-1 xl:grid-cols-3 gap-6 overflow-y-auto custom-scrollbar pr-2 pb-6">
+        <div className="flex flex-col gap-6 xl:col-span-1">
+          <div className="bg-white rounded-3xl p-8 shadow-sm border border-black/5 flex flex-col items-center text-center">
+            <div className="w-16 h-16 rounded-full bg-brand-surface mb-4 mt-6"></div>
+            <div className="h-6 w-32 bg-brand-surface rounded-lg mb-2"></div>
+            <div className="h-4 w-24 bg-brand-surface rounded-lg mb-6"></div>
+            <div className="bg-brand-surface p-4 rounded-3xl border border-black/5 mb-6 w-full flex justify-center">
+              <div className="w-48 h-48 bg-white/50 rounded-xl"></div>
+            </div>
+            <div className="h-3 w-40 bg-brand-surface rounded-md"></div>
+          </div>
+
+          <div className="bg-white rounded-3xl p-6 border border-black/5 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-brand-surface rounded-2xl"></div>
+              <div>
+                <div className="h-4 w-16 bg-brand-surface rounded-md mb-1.5"></div>
+                <div className="h-3 w-20 bg-brand-surface rounded-md"></div>
+              </div>
+            </div>
+            <div className="h-3 w-12 bg-brand-surface rounded-md"></div>
+          </div>
+        </div>
+
+        <div className="xl:col-span-2 flex flex-col gap-6">
+          <div className="bg-brand-surface rounded-3xl p-6 md:p-8 shadow-sm border border-black/5 flex flex-col justify-between">
+            <div className="flex flex-wrap items-center justify-between mb-8 gap-4">
+              <div className="h-8 w-48 bg-black/5 rounded-xl"></div>
+              <div className="h-8 w-24 bg-black/5 rounded-xl"></div>
+            </div>
+            <div className="bg-white/50 rounded-3xl p-6 shadow-sm border border-white/50">
+              <div className="h-6 w-40 bg-black/5 rounded-lg mb-3"></div>
+              <div className="h-4 w-56 bg-black/5 rounded-md mb-4"></div>
+              <div className="h-3 w-20 bg-black/5 rounded-md"></div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-3xl p-6 shadow-sm border border-black/5 flex-1">
+            <div className="h-5 w-40 bg-brand-surface rounded-lg mb-6"></div>
+            <div className="space-y-3">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="p-4 bg-brand-surface rounded-2xl border border-black/5">
+                  <div className="h-4 w-48 bg-black/5 rounded-md mb-2"></div>
+                  <div className="h-3 w-24 bg-black/5 rounded-md"></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }

@@ -21,7 +21,7 @@ const emptyProfile = {
 
 export default function StudentProfilePage() {
   const [formData, setFormData] = useState(emptyProfile);
-  const [isEditing, setIsEditing] = useState(false);
+  const [originalData, setOriginalData] = useState(emptyProfile);
   const [avatar, setAvatar] = useState(null);
   const [cropModalOpen, setCropModalOpen] = useState(false);
   const [tempImageUrl, setTempImageUrl] = useState(null);
@@ -54,6 +54,7 @@ export default function StudentProfilePage() {
           dateOfBirth: profile.dateOfBirth || '',
         };
         setFormData(nextProfile);
+        setOriginalData(nextProfile);
         setAvatar(toApiAssetUrl(profile.avatarUrl) || null);
         if (profile.avatarUrl) {
           window.dispatchEvent(new CustomEvent('avatarUpdated', { detail: toApiAssetUrl(profile.avatarUrl) }));
@@ -128,7 +129,7 @@ export default function StudentProfilePage() {
 
       const profile = await studentApi.updateProfile(payload);
       let avatarUrl = profile.avatarUrl || '';
-      setFormData({
+      const updatedProfile = {
         fullName: profile.fullName || '',
         studentCode: profile.studentCode || '',
         phoneNumber: profile.phoneNumber || '',
@@ -139,9 +140,10 @@ export default function StudentProfilePage() {
         faculty: profile.faculty || '',
         academicYear: profile.academicYear || '',
         dateOfBirth: profile.dateOfBirth || '',
-      });
+      };
+      setFormData(updatedProfile);
+      setOriginalData(updatedProfile);
       setAvatar(toApiAssetUrl(avatarUrl) || null);
-      setIsEditing(false);
       setMessage('Cập nhật thông tin cá nhân thành công.');
     } catch (err) {
       setError(err.message);
@@ -150,12 +152,10 @@ export default function StudentProfilePage() {
     }
   };
 
+  const isDirty = JSON.stringify(formData) !== JSON.stringify(originalData);
+
   if (isLoading) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div className="text-sm font-bold text-brand-text/50">Đang tải hồ sơ...</div>
-      </div>
-    );
+    return <ProfileSkeleton />;
   }
 
   return (
@@ -209,36 +209,26 @@ export default function StudentProfilePage() {
           <form onSubmit={handleSubmit} className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-black/5">
             <div className="flex items-center justify-between mb-8">
               <h3 className="text-xl font-bold">Thông tin liên lạc</h3>
-              {!isEditing ? (
-                <button
-                  type="button"
-                  onClick={() => setIsEditing(true)}
-                  className="text-sm font-bold text-brand-primary hover:text-brand-text transition-colors px-4 py-2 bg-brand-primary/10 rounded-xl"
-                >
-                  Chỉnh sửa
-                </button>
-              ) : (
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="text-sm font-bold text-white bg-brand-text hover:bg-black transition-colors px-4 py-2 rounded-xl flex items-center gap-2 disabled:opacity-60"
-                >
-                  <Save className="w-4 h-4" /> {isSaving ? 'Đang lưu...' : 'Lưu thay đổi'}
-                </button>
-              )}
+              <button
+                type="submit"
+                disabled={isSaving || !isDirty}
+                className={`text-sm font-bold transition-colors px-4 py-2 rounded-xl flex items-center gap-2 shadow-sm ${!isDirty && !isSaving ? 'bg-brand-surface text-brand-text/50 cursor-not-allowed border border-black/5' : 'bg-brand-text text-white hover:bg-black disabled:opacity-60'}`}
+              >
+                <Save className="w-4 h-4" /> {isSaving ? 'Đang lưu...' : 'Lưu thay đổi'}
+              </button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <ProfileInput icon={UserCircle} label="Họ và tên" name="fullName" value={formData.fullName} onChange={handleChange} disabled={!isEditing} />
+              <ProfileInput icon={UserCircle} label="Họ và tên" name="fullName" value={formData.fullName} onChange={handleChange} />
               <ProfileInput icon={UserCircle} label="Mã sinh viên" name="studentCode" value={formData.studentCode} onChange={handleChange} disabled />
-              <ProfileInput icon={Phone} label="Số điện thoại" name="phoneNumber" value={formData.phoneNumber} onChange={handleChange} disabled={!isEditing} />
-              <ProfileInput icon={Mail} label="Email" type="email" name="email" value={formData.email} onChange={handleChange} disabled={!isEditing} />
-              <ProfileSelect icon={GraduationCap} label="Trường" name="university" value={formData.university} onChange={handleChange} disabled={!isEditing} options={universities} />
-              <ProfileInput icon={GraduationCap} label="Khoa" name="faculty" value={formData.faculty} onChange={handleChange} disabled={!isEditing} />
-              <ProfileInput icon={KeyRound} label="Năm học" type="number" name="academicYear" value={formData.academicYear} onChange={handleChange} disabled={!isEditing} />
-              <ProfileInput icon={UserCircle} label="Ngày sinh" type="date" name="dateOfBirth" value={formData.dateOfBirth} onChange={handleChange} disabled={!isEditing} />
+              <ProfileInput icon={Phone} label="Số điện thoại" name="phoneNumber" value={formData.phoneNumber} onChange={handleChange} />
+              <ProfileInput icon={Mail} label="Email" type="email" name="email" value={formData.email} onChange={handleChange} />
+              <ProfileSelect icon={GraduationCap} label="Trường" name="university" value={formData.university} onChange={handleChange} options={universities} />
+              <ProfileInput icon={GraduationCap} label="Khoa" name="faculty" value={formData.faculty} onChange={handleChange} />
+              <ProfileInput icon={KeyRound} label="Năm học" type="number" name="academicYear" value={formData.academicYear} onChange={handleChange} />
+              <ProfileInput icon={UserCircle} label="Ngày sinh" type="date" name="dateOfBirth" value={formData.dateOfBirth} onChange={handleChange} />
               <div className="md:col-span-2">
-                <ProfileInput icon={MapPin} label="Địa chỉ thường trú" name="address" value={formData.address} onChange={handleChange} disabled={!isEditing} />
+                <ProfileInput icon={MapPin} label="Địa chỉ thường trú" name="address" value={formData.address} onChange={handleChange} />
               </div>
             </div>
           </form>
@@ -296,7 +286,7 @@ function ProfileInput({ icon: Icon, label, disabled, type = 'text', ...props }) 
       <input
         type={type}
         disabled={disabled}
-        className="w-full bg-brand-surface border border-transparent disabled:opacity-70 disabled:cursor-not-allowed rounded-2xl p-4 text-sm font-bold focus:outline-none focus:border-brand-primary focus:bg-white transition-all"
+        className="w-full bg-brand-surface border border-transparent disabled:bg-brand-surface/40 disabled:text-brand-text/80 rounded-2xl p-4 text-sm font-bold focus:outline-none focus:border-brand-primary focus:bg-white transition-all"
         {...props}
       />
     </label>
@@ -311,7 +301,7 @@ function ProfileSelect({ icon: Icon, label, disabled, options, ...props }) {
       </span>
       <select
         disabled={disabled}
-        className="w-full bg-brand-surface border border-transparent disabled:opacity-70 disabled:cursor-not-allowed rounded-2xl p-4 text-sm font-bold focus:outline-none focus:border-brand-primary focus:bg-white transition-all"
+        className="w-full bg-brand-surface border border-transparent disabled:bg-brand-surface/40 disabled:text-brand-text/80 rounded-2xl p-4 text-sm font-bold focus:outline-none focus:border-brand-primary focus:bg-white transition-all"
         {...props}
       >
         <option value="">Chọn trường</option>
@@ -332,4 +322,49 @@ function dataUrlToFile(dataUrl, fileName) {
     bytes[index] = binary.charCodeAt(index);
   }
   return new File([bytes], fileName, { type: mime });
+}
+
+function ProfileSkeleton() {
+  return (
+    <div className="h-full flex flex-col gap-6 font-sans relative animate-pulse">
+      <div>
+        <div className="h-9 w-64 bg-brand-surface rounded-xl mb-3"></div>
+        <div className="h-5 w-48 bg-brand-surface rounded-lg"></div>
+      </div>
+      <div className="flex-1 grid grid-cols-1 xl:grid-cols-3 gap-6 overflow-y-auto custom-scrollbar pr-2 pb-6">
+        <div className="flex flex-col gap-6">
+          <div className="bg-white rounded-3xl p-8 shadow-sm border border-black/5 flex flex-col items-center relative overflow-hidden">
+            <div className="absolute top-0 w-full h-32 bg-brand-surface/50"></div>
+            <div className="w-32 h-32 rounded-full bg-brand-surface border-4 border-white shadow-sm mb-6 mt-8 relative z-10"></div>
+            <div className="h-7 w-40 bg-brand-surface rounded-xl mb-3"></div>
+            <div className="h-5 w-24 bg-brand-surface rounded-lg mb-8"></div>
+            <div className="w-full flex flex-col gap-3">
+              <div className="h-16 w-full bg-brand-surface rounded-xl"></div>
+              <div className="h-16 w-full bg-brand-surface rounded-xl"></div>
+            </div>
+          </div>
+        </div>
+        <div className="xl:col-span-2 flex flex-col gap-6">
+          <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-black/5">
+            <div className="flex justify-between items-center mb-8">
+              <div className="h-7 w-48 bg-brand-surface rounded-xl"></div>
+              <div className="h-9 w-28 bg-brand-surface rounded-xl"></div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {[...Array(8)].map((_, i) => (
+                <div key={i}>
+                  <div className="h-5 w-32 bg-brand-surface rounded-lg mb-2"></div>
+                  <div className="h-14 w-full bg-brand-surface rounded-2xl"></div>
+                </div>
+              ))}
+              <div className="md:col-span-2">
+                <div className="h-5 w-32 bg-brand-surface rounded-lg mb-2"></div>
+                <div className="h-14 w-full bg-brand-surface rounded-2xl"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
