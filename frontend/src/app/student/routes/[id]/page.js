@@ -25,6 +25,10 @@ export default function RouteTrackingPage() {
         if (stored && !cancelled) {
           setRouteData(JSON.parse(stored));
         }
+        if (!stored) {
+          const route = await transportApi.getRoute(routeId);
+          if (!cancelled) setRouteData(route);
+        }
 
         if (boardingStopId) {
           const etaList = await transportApi.getEta(routeId, boardingStopId);

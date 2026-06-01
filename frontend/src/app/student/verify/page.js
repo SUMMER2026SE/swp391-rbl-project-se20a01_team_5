@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from 'react';
-import { BadgeCheck, Clock, Upload, XCircle, CheckCircle2, RefreshCw, AlertCircle } from 'lucide-react';
+import { BadgeCheck, Clock, Upload, XCircle, CheckCircle2, RefreshCw, AlertCircle, Search } from 'lucide-react';
 import { studentVerificationApi } from '@/services/api';
 
 const statusCopy = {
@@ -35,6 +35,9 @@ const statusCopy = {
 export default function StudentVerifyPage() {
   const [verification, setVerification] = useState(null);
   const [formData, setFormData] = useState({ university: '', studentCode: '' });
+  const [universities, setUniversities] = useState([]);
+  const [universitySearch, setUniversitySearch] = useState('');
+  const [isUniversityListOpen, setIsUniversityListOpen] = useState(false);
   const [cardImage, setCardImage] = useState(null);
   const [previewUrl, setPreviewUrl] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -53,16 +56,39 @@ export default function StudentVerifyPage() {
     return 'Chưa chọn ảnh thẻ sinh viên';
   }, [cardImage, verification]);
 
+  const filteredUniversities = useMemo(() => {
+    const keyword = normalize(universitySearch);
+    if (!keyword) return universities;
+    return universities.filter((university) => normalize(university).includes(keyword));
+  }, [universities, universitySearch]);
+
+  const ocrWarnings = useMemo(() => {
+    if (!verification?.ocrRawText || verification.ocrConfidenceScore === 0) return [];
+    const warnings = [];
+    if (verification.ocrStudentCode && verification.studentCode
+      && normalize(verification.ocrStudentCode) !== normalize(verification.studentCode)) {
+      warnings.push(`Mã sinh viên OCR (${verification.ocrStudentCode}) khác mã đã gửi (${verification.studentCode}).`);
+    }
+    if (verification.ocrUniversity && verification.university
+      && normalize(verification.ocrUniversity) !== normalize(verification.university)) {
+      warnings.push(`Trường OCR (${verification.ocrUniversity}) khác trường đã chọn (${verification.university}).`);
+    }
+    return warnings;
+  }, [verification]);
+
   const loadVerification = async () => {
     setIsLoading(true);
     setError('');
     try {
       const current = await studentVerificationApi.getCurrent();
+      const universityList = await studentVerificationApi.listDaNangUniversities();
       setVerification(current);
+      setUniversities(universityList || []);
       setFormData({
         university: current?.university || '',
         studentCode: current?.studentCode || '',
       });
+      setUniversitySearch(current?.university || '');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -98,6 +124,10 @@ export default function StudentVerifyPage() {
 
     if (!cardImage) {
       setError('Vui lòng tải ảnh thẻ sinh viên trước khi gửi hồ sơ.');
+      return;
+    }
+    if (!formData.university) {
+      setError('Vui lòng chọn trường từ danh sách Đà Nẵng.');
       return;
     }
 
@@ -196,15 +226,51 @@ export default function StudentVerifyPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <Field label="Trường học">
-              <input
-                type="text"
-                required
-                disabled={!canSubmit}
-                value={formData.university}
-                onChange={(e) => setFormData({ ...formData, university: e.target.value })}
-                className="field-input"
-                placeholder="Tên trường của bạn"
-              />
+              <div className="relative">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-brand-text/40 pointer-events-none" />
+                <input
+                  type="text"
+                  required
+                  disabled={!canSubmit}
+                  value={universitySearch}
+                  onFocus={() => setIsUniversityListOpen(true)}
+                  onChange={(e) => {
+                    setUniversitySearch(e.target.value);
+                    setFormData({ ...formData, university: '' });
+                    setIsUniversityListOpen(true);
+                  }}
+                  className="field-input !pl-12"
+                  placeholder="Tìm trường tại Đà Nẵng"
+                  autoComplete="off"
+                />
+                {canSubmit && isUniversityListOpen && (
+                  <div className="absolute z-20 mt-2 max-h-72 w-full overflow-y-auto rounded-2xl border border-black/5 bg-white shadow-xl">
+                    {filteredUniversities.map((university) => (
+                      <button
+                        type="button"
+                        key={university}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => {
+                          setFormData({ ...formData, university });
+                          setUniversitySearch(university);
+                          setIsUniversityListOpen(false);
+                        }}
+                        className="w-full px-4 py-3 text-left text-sm font-bold text-brand-text hover:bg-brand-surface"
+                      >
+                        {university}
+                      </button>
+                    ))}
+                    {!filteredUniversities.length && (
+                      <div className="px-4 py-5 text-sm font-bold text-brand-text/50">
+                        Không tìm thấy trường trong danh sách Đà Nẵng.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <p className="mt-2 text-xs font-bold text-brand-text/40">
+                Chọn từ danh sách để tránh lỗi validate hồ sơ.
+              </p>
             </Field>
             <Field label="Mã sinh viên">
               <input
@@ -243,8 +309,27 @@ export default function StudentVerifyPage() {
 
           {verification?.ocrRawText && (
             <div className="rounded-2xl bg-brand-surface/60 border border-black/5 p-4 text-sm font-medium text-brand-text/70">
-              <div className="text-xs font-black uppercase text-brand-text/40 mb-1">OCR</div>
-              {verification.ocrRawText}
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <div className="text-xs font-black uppercase text-brand-text/40">OCR Google Vision</div>
+                <div className="text-xs font-black text-brand-text/50">
+                  Confidence: {formatPercent(verification.ocrConfidenceScore)}
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                <OcrField label="Tên" value={verification.ocrFullName} />
+                <OcrField label="Mã SV" value={verification.ocrStudentCode} />
+                <OcrField label="Trường" value={verification.ocrUniversity} />
+              </div>
+              {ocrWarnings.length > 0 && (
+                <div className="mb-4 rounded-xl bg-brand-warning/10 border border-brand-warning/20 p-3 text-xs font-bold text-brand-warning">
+                  {ocrWarnings.map((warning) => (
+                    <div key={warning}>{warning}</div>
+                  ))}
+                </div>
+              )}
+              <pre className="max-h-44 overflow-auto whitespace-pre-wrap rounded-xl bg-white/70 p-3 text-xs leading-relaxed text-brand-text/60">
+                {verification.ocrRawText}
+              </pre>
             </div>
           )}
 
@@ -281,4 +366,30 @@ function Step({ done, label }) {
       <span>{label}</span>
     </div>
   );
+}
+
+function OcrField({ label, value }) {
+  return (
+    <div className="rounded-xl bg-white/70 border border-black/5 p-3">
+      <div className="text-[10px] font-black uppercase text-brand-text/35">{label}</div>
+      <div className="mt-1 text-xs font-black text-brand-text">{value || '--'}</div>
+    </div>
+  );
+}
+
+function normalize(value) {
+  return (value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function formatPercent(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '0%';
+  return `${Math.round(number * 100)}%`;
 }

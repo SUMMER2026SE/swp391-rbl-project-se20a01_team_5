@@ -32,16 +32,22 @@ public class StudentVerificationService {
     private final StudentVerificationRepository verificationRepository;
     private final UserRepository userRepository;
     private final StudentRepository studentRepository;
+    private final UniversityCatalog universityCatalog;
+    private final StudentCardOcrService studentCardOcrService;
     private final Path uploadDir;
 
     public StudentVerificationService(
             StudentVerificationRepository verificationRepository,
             UserRepository userRepository,
             StudentRepository studentRepository,
+            UniversityCatalog universityCatalog,
+            StudentCardOcrService studentCardOcrService,
             @Value("${app.upload.student-verification-dir}") String uploadDir) {
         this.verificationRepository = verificationRepository;
         this.userRepository = userRepository;
         this.studentRepository = studentRepository;
+        this.universityCatalog = universityCatalog;
+        this.studentCardOcrService = studentCardOcrService;
         this.uploadDir = Path.of(uploadDir);
     }
 
@@ -61,6 +67,8 @@ public class StudentVerificationService {
         if (cardImage == null || cardImage.isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Student card image is required");
         }
+        String allowedUniversity = universityCatalog.requireAllowed(university);
+        String normalizedStudentCode = studentCode.trim().toUpperCase();
 
         verificationRepository.findFirstByUserIdAndCurrentTrueOrderBySubmittedAtDesc(user.getId())
                 .ifPresent(existing -> {
@@ -74,16 +82,23 @@ public class StudentVerificationService {
                 });
 
         OffsetDateTime timestamp = now();
+        StudentCardOcrService.Result ocrResult = studentCardOcrService.extract(
+                cardImage,
+                user.getFullName(),
+                normalizedStudentCode,
+                allowedUniversity);
         StudentVerification verification = new StudentVerification();
         verification.setUser(user);
-        verification.setUniversity(university.trim());
-        verification.setStudentCode(studentCode.trim());
+        verification.setUniversity(allowedUniversity);
+        verification.setStudentCode(normalizedStudentCode);
         verification.setCardImageUrl(storeCardImage(user.getId(), cardImage));
-        verification.setOcrFullName(user.getFullName());
-        verification.setOcrStudentCode(studentCode.trim());
-        verification.setOcrUniversity(university.trim());
-        verification.setOcrRawText("OCR service is not configured; admin review must use the uploaded card image.");
-        verification.setOcrConfidenceScore(BigDecimal.ZERO);
+        verification.setOcrFullName(blankToNull(ocrResult.fullName()));
+        verification.setOcrStudentCode(blankToNull(ocrResult.studentCode()));
+        verification.setOcrUniversity(blankToNull(ocrResult.university()));
+        verification.setOcrRawText(blankToNull(ocrResult.rawText()));
+        verification.setOcrConfidenceScore(ocrResult.confidenceScore() == null
+                ? BigDecimal.ZERO
+                : ocrResult.confidenceScore());
         verification.setStatus(StudentVerificationStatus.PENDING_REVIEW);
         verification.setSubmittedAt(timestamp);
         verification.setCreatedAt(timestamp);
@@ -285,6 +300,10 @@ public class StudentVerificationService {
             return "";
         }
         return fileName.substring(dot).toLowerCase();
+    }
+
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private OffsetDateTime now() {

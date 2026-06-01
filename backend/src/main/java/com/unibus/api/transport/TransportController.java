@@ -37,6 +37,11 @@ public class TransportController {
         return ApiResponse.ok("Routes retrieved", transportService.searchRoutes(boardingStopId, alightingStopId));
     }
 
+    @GetMapping("/routes/{routeId}")
+    ApiResponse<RouteSuggestion> getRoute(@PathVariable Integer routeId) {
+        return ApiResponse.ok("Route retrieved", transportService.getRoute(routeId));
+    }
+
     @GetMapping("/routes/{routeId}/stops/{stopId}/eta")
     ApiResponse<List<Eta>> getEta(@PathVariable Integer routeId, @PathVariable Integer stopId) {
         return ApiResponse.ok("ETA retrieved", transportService.getEtas(routeId, stopId));

@@ -2,6 +2,9 @@
 dbauth.txt
 frontend/.env*.local
 backend/.env*.local
+unibus-vision-ocr.json
+*service-account*.json
+*credential*.json
 
 # Build output and scratch data
 target/

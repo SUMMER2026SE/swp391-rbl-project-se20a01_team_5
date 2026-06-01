@@ -190,6 +190,11 @@ export const authApi = {
 };
 
 export const studentVerificationApi = {
+  async listDaNangUniversities() {
+    const response = await apiClient.get('/universities/da-nang');
+    return unwrap(response);
+  },
+
   async getCurrent() {
     const response = await apiClient.get('/students/me/verification');
     return unwrap(response);
@@ -272,6 +277,11 @@ export const transportApi = {
     const response = await apiClient.get('/routes/search', {
       params: { boardingStopId, alightingStopId },
     });
+    return unwrap(response);
+  },
+
+  async getRoute(routeId) {
+    const response = await apiClient.get(`/routes/${routeId}`);
     return unwrap(response);
   },
 

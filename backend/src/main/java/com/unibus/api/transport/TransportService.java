@@ -67,6 +67,16 @@ public class TransportService {
     }
 
     @Transactional(readOnly = true)
+    public RouteSuggestion getRoute(Integer routeId) {
+        BusRoute route = busRouteRepository.findById(routeId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Route not found"));
+        if (route.getStatus() != RouteStatus.ACTIVE) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Route is not active");
+        }
+        return toRouteSuggestion(route);
+    }
+
+    @Transactional(readOnly = true)
     public List<Eta> getEtas(Integer routeId, Integer stopId) {
         BusRoute route = busRouteRepository.findById(routeId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Route not found"));
