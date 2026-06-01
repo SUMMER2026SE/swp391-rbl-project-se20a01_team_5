@@ -211,14 +211,16 @@ export default function StudentProfilePage() {
               <h3 className="text-xl font-bold">Thông tin liên lạc</h3>
               {!isEditing ? (
                 <button
+                  key="btn-edit"
                   type="button"
-                  onClick={() => setIsEditing(true)}
+                  onClick={(e) => { e.preventDefault(); setIsEditing(true); }}
                   className="text-sm font-bold text-brand-primary hover:text-brand-text transition-colors px-4 py-2 bg-brand-primary/10 rounded-xl"
                 >
                   Chỉnh sửa
                 </button>
               ) : (
                 <button
+                  key="btn-save"
                   type="submit"
                   disabled={isSaving}
                   className="text-sm font-bold text-white bg-brand-text hover:bg-black transition-colors px-4 py-2 rounded-xl flex items-center gap-2 disabled:opacity-60"

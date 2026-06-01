@@ -11,6 +11,7 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(null);
   const [displayName, setDisplayName] = useState('Người dùng');
   const pathname = usePathname();
@@ -124,10 +125,36 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
           </div>
 
           <div className="flex items-center gap-3 md:gap-6">
-            <button className="p-3 rounded-2xl bg-brand-surface hover:bg-brand-surface/70 text-brand-text transition-all relative">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-3 right-3 w-2.5 h-2.5 bg-brand-danger rounded-full border-2 border-white"></span>
-            </button>
+            <div className="relative">
+              <button 
+                onClick={() => setShowNotifications(!showNotifications)}
+                className="p-3 rounded-2xl bg-brand-surface hover:bg-brand-surface/70 text-brand-text transition-all relative"
+              >
+                <Bell className="w-5 h-5" />
+                <span className="absolute top-3 right-3 w-2.5 h-2.5 bg-brand-danger rounded-full border-2 border-white"></span>
+              </button>
+
+              {showNotifications && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)}></div>
+                  <div className="absolute top-full right-0 mt-2 w-80 bg-white rounded-3xl shadow-xl border border-black/5 p-4 z-50 animate-in fade-in slide-in-from-top-2">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="font-bold text-lg">Thông báo</h3>
+                      <span className="text-xs font-bold text-brand-primary bg-brand-primary/10 px-2 py-1 rounded-lg">1 mới</span>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <div className="p-4 bg-brand-surface rounded-2xl cursor-pointer hover:bg-brand-primary/5 transition-colors border border-transparent hover:border-brand-primary/20">
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className="w-2 h-2 bg-brand-danger rounded-full"></div>
+                          <p className="text-sm font-bold text-brand-text">Chào mừng bạn!</p>
+                        </div>
+                        <p className="text-xs text-brand-text/60 font-medium pl-4">Hệ thống UniBus đang được cập nhật thêm nhiều tính năng mới.</p>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
             <div className="h-8 w-px bg-black/5 hidden md:block"></div>
             <Link
               href={profileHref || '#'}
