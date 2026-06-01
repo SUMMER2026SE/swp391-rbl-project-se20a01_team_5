@@ -1,0 +1,95 @@
+@baseUrl = http://localhost:8080/api/v1
+@email = student.test@example.com
+@password = Test-password-123
+@studentCode = TEST001
+@otp = 423639
+@accessToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsImVtYWlsIjoic3R1ZGVudC50ZXN0QGV4YW1wbGUuY29tIiwicm9sZSI6IlNUVURFTlQiLCJzaWQiOjEsInR5cCI6ImFjY2VzcyIsImlhdCI6MTc3OTYyNDI3NCwiZXhwIjoxNzc5NjI1MTc0fQ.wdsXcK2W3PAGzRmxA4sjMg6-vBP3JTPJoaKD3fNyJeQ
+@boardingStopId = 1
+@alightingStopId = 2
+@routeId = 1
+@registrationId = 1
+
+### Issue registration OTP
+POST {{baseUrl}}/auth/register/otp
+Content-Type: application/json
+
+{
+  "email": "{{email}}"
+}
+
+### Register student after copying the DEV OTP from application logs
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "otp": "{{otp}}",
+  "password": "{{password}}",
+  "fullName": "API Test Student",
+  "studentCode": "{{studentCode}}",
+  "university": "UniBus Test University"
+}
+
+### Login and copy data.accessToken into the accessToken variable above
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}",
+  "device": "IntelliJ HTTP Client"
+}
+
+### View authenticated profile
+GET {{baseUrl}}/students/me/profile
+Authorization: Bearer {{accessToken}}
+
+### Update authenticated profile
+PATCH {{baseUrl}}/students/me/profile
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "phoneNumber": "0900000000",
+  "address": "Test address"
+}
+
+### List active stops and obtain real stop IDs for the following requests
+GET {{baseUrl}}/stops
+Authorization: Bearer {{accessToken}}
+
+### Search a route using stop IDs returned above
+GET {{baseUrl}}/routes/search?boardingStopId={{boardingStopId}}&alightingStopId={{alightingStopId}}
+Authorization: Bearer {{accessToken}}
+
+### Read ETA for a selected route and stop
+GET {{baseUrl}}/routes/{{routeId}}/stops/{{alightingStopId}}/eta
+Authorization: Bearer {{accessToken}}
+
+### Register a route
+POST {{baseUrl}}/students/me/route-registrations
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "routeId": {{routeId}},
+  "boardingStopId": {{boardingStopId}},
+  "alightingStopId": {{alightingStopId}}
+}
+
+### View current route registration
+GET {{baseUrl}}/students/me/route-registrations/current
+Authorization: Bearer {{accessToken}}
+
+### Cancel the route registration
+DELETE {{baseUrl}}/students/me/route-registrations/{{registrationId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "reason": "Manual API testing completed"
+}
+
+### View recent travel history
+GET {{baseUrl}}/students/me/travel-history?page=0&size=20
+Authorization: Bearer {{accessToken}}

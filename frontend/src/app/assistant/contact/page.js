@@ -3,29 +3,7 @@
 import { Phone, MessageSquare, PhoneCall, AlertCircle } from 'lucide-react';
 
 export default function AssistantContactPage() {
-  const contacts = [
-    {
-      role: 'Tài xế (Chuyến hiện tại)',
-      name: 'Nguyễn Văn Tài',
-      phone: '0905 123 456',
-      status: 'Đang lái xe',
-      isUrgent: false
-    },
-    {
-      role: 'Điều phối viên Trạm',
-      name: 'Phạm Thị Điều Phối',
-      phone: '0901 999 888',
-      status: 'Trực tổng đài',
-      isUrgent: false
-    },
-    {
-      role: 'Tổng đài Khẩn cấp (Cứu hộ)',
-      name: 'Trung tâm Vận hành UniBus',
-      phone: '1900 8888',
-      status: 'Trực 24/7',
-      isUrgent: true
-    }
-  ];
+  const contacts = [];
 
   return (
     <div className="h-full flex flex-col gap-6 font-sans">
@@ -35,7 +13,12 @@ export default function AssistantContactPage() {
       </div>
 
       <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 overflow-y-auto custom-scrollbar pr-2 pb-6">
-        
+        {contacts.length === 0 && (
+          <div className="md:col-span-2 lg:col-span-3 rounded-3xl border border-dashed border-black/10 bg-white p-8 text-center text-sm font-bold text-brand-text/50">
+            Chưa có danh bạ nội bộ từ backend.
+          </div>
+        )}
+
         {contacts.map((contact, idx) => (
           <div key={idx} className={`bg-white rounded-3xl p-6 md:p-8 shadow-sm border flex flex-col h-fit ${contact.isUrgent ? 'border-brand-danger shadow-brand-danger/10' : 'border-black/5'}`}>
             <div className="flex items-center gap-4 mb-6">

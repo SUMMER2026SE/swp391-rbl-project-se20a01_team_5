@@ -5,10 +5,11 @@ import { AlertTriangle, Package, Users, ShieldAlert, MessageSquare, Send, User, 
 
 export default function PassengerSupportPage() {
   const [incidentType, setIncidentType] = useState('other');
-  
+  const [notice, setNotice] = useState('');
+
   const handleSubmit = (e) => {
     e.preventDefault();
-    alert("Báo cáo sự cố đã được gửi về Trung tâm Điều hành thành công!");
+    setNotice('Chức năng gửi báo cáo sự cố chưa được kết nối với backend.');
   };
 
   return (
@@ -19,16 +20,16 @@ export default function PassengerSupportPage() {
       </div>
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 overflow-y-auto custom-scrollbar pr-2 pb-6">
-        
+
         {/* Column 1: Quick Actions */}
         <div className="flex flex-col gap-6">
           <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-black/5">
             <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
               <AlertTriangle className="w-6 h-6 text-brand-primary" /> Loại sự cố thường gặp
             </h3>
-            
+
             <div className="flex flex-col gap-4">
-              <button 
+              <button
                 onClick={() => setIncidentType('lost_item')}
                 className={`p-4 rounded-2xl border-2 text-left flex items-start gap-4 transition-all ${incidentType === 'lost_item' ? 'border-brand-primary bg-brand-primary/5 shadow-sm' : 'border-black/5 bg-brand-surface hover:border-brand-primary/50'}`}
               >
@@ -41,7 +42,7 @@ export default function PassengerSupportPage() {
                 </div>
               </button>
 
-              <button 
+              <button
                 onClick={() => setIncidentType('overload')}
                 className={`p-4 rounded-2xl border-2 text-left flex items-start gap-4 transition-all ${incidentType === 'overload' ? 'border-brand-secondary bg-brand-secondary/5 shadow-sm' : 'border-black/5 bg-brand-surface hover:border-brand-secondary/50'}`}
               >
@@ -54,7 +55,7 @@ export default function PassengerSupportPage() {
                 </div>
               </button>
 
-              <button 
+              <button
                 onClick={() => setIncidentType('emergency')}
                 className={`p-4 rounded-2xl border-2 text-left flex items-start gap-4 transition-all ${incidentType === 'emergency' ? 'border-brand-danger bg-brand-danger/5 shadow-sm' : 'border-black/5 bg-brand-surface hover:border-brand-danger/50'}`}
               >
@@ -67,7 +68,7 @@ export default function PassengerSupportPage() {
                 </div>
               </button>
 
-              <button 
+              <button
                 onClick={() => setIncidentType('other')}
                 className={`p-4 rounded-2xl border-2 text-left flex items-start gap-4 transition-all ${incidentType === 'other' ? 'border-brand-secondary bg-brand-secondary/5 shadow-sm' : 'border-black/5 bg-brand-surface hover:border-brand-secondary/50'}`}
               >
@@ -89,7 +90,13 @@ export default function PassengerSupportPage() {
             <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
               <Send className="w-6 h-6 text-brand-text/60" /> Chi tiết Báo cáo
             </h3>
-            
+
+            {notice && (
+              <div className="mb-4 rounded-2xl border border-brand-secondary/20 bg-brand-secondary/10 p-4 text-sm font-bold text-brand-text">
+                {notice}
+              </div>
+            )}
+
             <form onSubmit={handleSubmit} className="flex-1 flex flex-col">
               <div className="space-y-6 flex-1">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -97,8 +104,8 @@ export default function PassengerSupportPage() {
                     <label className="block text-sm font-bold text-brand-text/70 mb-2 flex items-center gap-2">
                       <User className="w-4 h-4" /> Tên hành khách (Tùy chọn)
                     </label>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       placeholder="Nhập tên nếu có"
                       className="w-full bg-brand-surface border border-transparent rounded-2xl p-4 text-sm font-bold focus:outline-none focus:border-brand-primary focus:bg-white transition-all"
                     />
@@ -107,8 +114,8 @@ export default function PassengerSupportPage() {
                     <label className="block text-sm font-bold text-brand-text/70 mb-2 flex items-center gap-2">
                       <AlertTriangle className="w-4 h-4" /> Vị trí ghế / Khu vực
                     </label>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       placeholder="VD: Hàng ghế cuối, Cửa lên xuống..."
                       className="w-full bg-brand-surface border border-transparent rounded-2xl p-4 text-sm font-bold focus:outline-none focus:border-brand-primary focus:bg-white transition-all"
                     />
@@ -119,7 +126,7 @@ export default function PassengerSupportPage() {
                   <label className="block text-sm font-bold text-brand-text/70 mb-2 flex items-center gap-2">
                     <MessageSquare className="w-4 h-4" /> Mô tả chi tiết sự cố
                   </label>
-                  <textarea 
+                  <textarea
                     required
                     rows="6"
                     placeholder="Hãy mô tả chi tiết những gì đã xảy ra..."
@@ -127,7 +134,7 @@ export default function PassengerSupportPage() {
                   ></textarea>
                 </div>
 
-                {/* Picture evidence (mock UI) */}
+                {/* Picture evidence UI kept until camera/upload backend is available. */}
                 <div>
                   <label className="block text-sm font-bold text-brand-text/70 mb-2">Đính kèm hình ảnh (Nếu có)</label>
                   <div className="w-full h-32 border-2 border-dashed border-black/10 rounded-2xl flex flex-col items-center justify-center text-brand-text/40 hover:bg-black/5 hover:border-brand-primary transition-all cursor-pointer">

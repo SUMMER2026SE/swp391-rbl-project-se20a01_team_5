@@ -1,18 +1,45 @@
+"use client";
+
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { ArrowRight, ShieldCheck, Map, Smartphone, Wallet, CheckCircle2, ChevronRight, Play } from 'lucide-react';
+import { getAuthSession, getDefaultRouteForRole } from '@/services/api';
 
 export default function Home() {
+  const router = useRouter();
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
+
+  useEffect(() => {
+    const session = getAuthSession();
+    if (session) {
+      router.replace(getDefaultRouteForRole(session.role, session.studentVerificationStatus));
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => setIsCheckingSession(false));
+    return () => window.cancelAnimationFrame(frame);
+  }, [router]);
+
+  if (isCheckingSession) {
+    return (
+      <div className="min-h-screen bg-brand-surface font-sans text-brand-text flex items-center justify-center">
+        <div className="text-sm font-bold text-brand-text/50">Đang kiểm tra phiên đăng nhập...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-brand-surface font-sans text-brand-text overflow-x-hidden selection:bg-brand-secondary selection:text-white">
-      
+
       {/* 1. Navigation Bar */}
       <nav className="fixed top-0 left-0 w-full z-50 bg-brand-surface/80 backdrop-blur-md border-b border-black/5">
         <div className="max-w-7xl mx-auto px-4 md:px-8 h-20 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <img 
-              src="/logo.png" 
-              alt="UniBus Logo" 
-              className="h-10 w-auto object-contain rounded-xl" 
+            <img
+              src="/logo.png"
+              alt="UniBus Logo"
+              className="h-10 w-auto object-contain rounded-xl"
             />
             <span className="font-bold text-xl tracking-tight hidden sm:block">UniBus</span>
           </div>
@@ -28,7 +55,7 @@ export default function Home() {
       </nav>
 
       <main className="pt-20">
-        
+
         {/* 2. Hero Section */}
         <section className="relative max-w-7xl mx-auto px-4 md:px-8 pt-20 pb-32 flex flex-col items-center text-center">
           {/* Decorative Gradients */}
@@ -37,11 +64,11 @@ export default function Home() {
           <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-6 max-w-4xl leading-[1.1] animate-in fade-in slide-in-from-bottom-6 duration-700 delay-100">
            Trải nghiệm UniBus,<br className="hidden md:block" /> An toàn, tiện lợi.
           </h1>
-          
+
           <p className="text-lg md:text-xl text-brand-text/60 max-w-2xl mb-10 font-medium animate-in fade-in slide-in-from-bottom-6 duration-700 delay-200">
             Hệ thống xe buýt thông minh dành cho sinh viên Đà Nẵng. Theo dõi lộ trình trực tiếp, nạp ví tiện lợi.
           </p>
-          
+
           <div className="flex flex-col sm:flex-row items-center gap-4 animate-in fade-in slide-in-from-bottom-6 duration-700 delay-300">
             <Link href="/register" className="px-8 py-4 rounded-full font-bold bg-brand-primary text-brand-text hover:brightness-95 transition-all shadow-sm text-lg flex items-center gap-2 w-full sm:w-auto justify-center hover:scale-105 active:scale-95">
               Bắt đầu ngay <ArrowRight className="w-5 h-5" />
@@ -60,7 +87,7 @@ export default function Home() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-fr">
-            
+
             {/* Feature 1: QR & Mobile Ticket (Large Box) */}
             <div className="lg:col-span-2 bg-white rounded-[2rem] p-8 md:p-12 shadow-sm border border-black/5 hover:shadow-md transition-shadow flex flex-col justify-between group overflow-hidden relative">
               <div className="absolute -bottom-20 -right-20 w-80 h-80 bg-brand-secondary/10 rounded-full blur-3xl group-hover:bg-brand-secondary/20 transition-colors duration-500"></div>
@@ -170,7 +197,7 @@ export default function Home() {
           </div>
         </div>
       </footer>
-      
+
     </div>
   );
 }

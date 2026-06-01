@@ -5,8 +5,8 @@ import { Settings, CreditCard, BellRing, Save, Send, ShieldAlert, Users } from '
 
 export default function AdminSettingsPage() {
   const [ticketPrices, setTicketPrices] = useState({
-    singleTicket: '5000',
-    monthlyPass: '120000',
+    singleTicket: '',
+    monthlyPass: '',
     discountStudent: '0'
   });
 
@@ -18,29 +18,26 @@ export default function AdminSettingsPage() {
 
   const [isSavingPricing, setIsSavingPricing] = useState(false);
   const [isSendingNotif, setIsSendingNotif] = useState(false);
+  const [notice, setNotice] = useState('');
 
   const handleSavePricing = (e) => {
     e.preventDefault();
     setIsSavingPricing(true);
-    setTimeout(() => {
-      setIsSavingPricing(false);
-      alert('Đã cập nhật bảng giá vé thành công! Áp dụng ngay trên toàn hệ thống.');
-    }, 800);
+    setIsSavingPricing(false);
+    setNotice('Chức năng cập nhật bảng giá chưa được kết nối với backend.');
   };
 
   const handleSendNotification = (e) => {
     e.preventDefault();
     setIsSendingNotif(true);
-    setTimeout(() => {
-      setIsSendingNotif(false);
-      setNotification({ target: 'all', title: '', content: '' });
-      alert('Đã phát đi Thông Báo Hệ Thống (Global Push) thành công!');
-    }, 1000);
+    setIsSendingNotif(false);
+    setNotification({ target: 'all', title: '', content: '' });
+    setNotice('Chức năng phát thông báo hệ thống chưa được kết nối với backend.');
   };
 
   return (
     <div className="h-full flex flex-col gap-6 font-sans relative">
-      
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -52,10 +49,15 @@ export default function AdminSettingsPage() {
       </div>
 
       <div className="flex-1 grid grid-cols-1 xl:grid-cols-2 gap-6 overflow-hidden pb-6">
-        
+        {notice && (
+          <div className="xl:col-span-2 rounded-2xl border border-brand-secondary/20 bg-brand-secondary/10 p-4 text-sm font-bold text-brand-text">
+            {notice}
+          </div>
+        )}
+
         {/* Column 1: Pricing Config */}
         <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-black/5 flex flex-col overflow-y-auto custom-scrollbar">
-          
+
           <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
             <CreditCard className="w-6 h-6 text-brand-primary" /> Điều chỉnh Bảng giá vé
           </h2>
@@ -64,13 +66,13 @@ export default function AdminSettingsPage() {
           </p>
 
           <form onSubmit={handleSavePricing} className="flex flex-col gap-6 flex-1">
-            
+
             <div className="p-5 border border-black/5 bg-brand-surface/30 rounded-2xl relative overflow-hidden">
               <div className="absolute top-0 left-0 w-2 h-full bg-brand-text"></div>
               <label className="block text-sm font-bold text-brand-text mb-2">Giá vé 1 lượt (VNĐ)</label>
               <div className="flex items-center gap-3">
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   required
                   value={ticketPrices.singleTicket}
                   onChange={(e) => setTicketPrices({...ticketPrices, singleTicket: e.target.value})}
@@ -84,8 +86,8 @@ export default function AdminSettingsPage() {
               <div className="absolute top-0 left-0 w-2 h-full bg-brand-primary"></div>
               <label className="block text-sm font-bold text-brand-text mb-2">Giá vé Tháng (VNĐ)</label>
               <div className="flex items-center gap-3">
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   required
                   value={ticketPrices.monthlyPass}
                   onChange={(e) => setTicketPrices({...ticketPrices, monthlyPass: e.target.value})}
@@ -97,7 +99,7 @@ export default function AdminSettingsPage() {
 
             <div className="p-5 border border-black/5 bg-brand-surface/30 rounded-2xl">
               <label className="block text-sm font-bold text-brand-text mb-2">Chính sách giảm giá HSSV (%)</label>
-              <select 
+              <select
                 value={ticketPrices.discountStudent}
                 onChange={(e) => setTicketPrices({...ticketPrices, discountStudent: e.target.value})}
                 className="w-full bg-white border border-black/10 rounded-xl p-3 text-sm font-bold focus:outline-none focus:border-brand-primary transition-all appearance-none"
@@ -109,7 +111,7 @@ export default function AdminSettingsPage() {
               </select>
             </div>
 
-            <button 
+            <button
               type="submit"
               disabled={isSavingPricing}
               className="w-full mt-auto py-4 bg-brand-text text-white font-bold rounded-2xl hover:bg-black transition-colors flex justify-center items-center gap-2 shadow-xl disabled:opacity-70 disabled:cursor-not-allowed"
@@ -122,7 +124,7 @@ export default function AdminSettingsPage() {
 
         {/* Column 2: System Notifications */}
         <div className="bg-brand-danger/5 rounded-3xl p-6 md:p-8 shadow-sm border border-brand-danger/20 flex flex-col">
-          
+
           <h2 className="text-xl font-bold mb-2 flex items-center gap-2 text-brand-danger">
             <ShieldAlert className="w-6 h-6" /> Phát Thông báo Toàn Hệ thống
           </h2>
@@ -131,12 +133,12 @@ export default function AdminSettingsPage() {
           </p>
 
           <form onSubmit={handleSendNotification} className="flex flex-col gap-6 flex-1">
-            
+
             <div>
               <label className="block text-sm font-bold text-brand-danger/80 mb-2 flex items-center gap-2">
                 <Users className="w-4 h-4" /> Đối tượng nhận Broadcast
               </label>
-              <select 
+              <select
                 value={notification.target}
                 onChange={(e) => setNotification({...notification, target: e.target.value})}
                 className="w-full bg-white border border-transparent rounded-2xl p-4 text-sm font-bold focus:outline-none focus:border-brand-danger transition-all text-brand-text"
@@ -149,8 +151,8 @@ export default function AdminSettingsPage() {
 
             <div>
               <label className="block text-sm font-bold text-brand-danger/80 mb-2">Tiêu đề (Header)</label>
-              <input 
-                type="text" 
+              <input
+                type="text"
                 required
                 value={notification.title}
                 onChange={(e) => setNotification({...notification, title: e.target.value})}
@@ -161,7 +163,7 @@ export default function AdminSettingsPage() {
 
             <div className="flex-1 flex flex-col">
               <label className="block text-sm font-bold text-brand-danger/80 mb-2">Nội dung chi tiết</label>
-              <textarea 
+              <textarea
                 required
                 value={notification.content}
                 onChange={(e) => setNotification({...notification, content: e.target.value})}
@@ -170,7 +172,7 @@ export default function AdminSettingsPage() {
               ></textarea>
             </div>
 
-            <button 
+            <button
               type="submit"
               disabled={isSendingNotif}
               className="w-full py-4 mt-auto bg-brand-danger text-white font-bold rounded-2xl hover:bg-brand-danger/80 transition-colors flex justify-center items-center gap-2 shadow-xl shadow-brand-danger/20 disabled:opacity-70 disabled:cursor-not-allowed"

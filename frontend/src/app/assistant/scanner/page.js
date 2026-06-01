@@ -1,29 +1,10 @@
 "use client";
 
 import { useState } from 'react';
-import { Camera, Zap, ZapOff, CheckCircle2, XCircle, Search, Loader2 } from 'lucide-react';
-import { ticketScannerService } from '@/services/ticketScanner.service';
+import { Camera, Zap, ZapOff, Search } from 'lucide-react';
 
 export default function ScannerPage() {
   const [flashOn, setFlashOn] = useState(false);
-  const [scanResult, setScanResult] = useState(null); // null, 'success', 'error'
-  const [isScanning, setIsScanning] = useState(false);
-  const [scannedData, setScannedData] = useState(null);
-
-  const handleScan = async (code) => {
-    setIsScanning(true);
-    setScanResult(null);
-    try {
-      const res = await ticketScannerService.scanTicket(code);
-      setScannedData(res.ticket);
-      setScanResult('success');
-    } catch (err) {
-      setScanResult('error');
-    } finally {
-      setIsScanning(false);
-      setTimeout(() => setScanResult(null), 3000);
-    }
-  };
 
   return (
     <div className="h-full flex flex-col font-sans">
@@ -32,8 +13,8 @@ export default function ScannerPage() {
           <h1 className="text-3xl font-extrabold tracking-tight text-brand-text mb-2">Quét mã QR</h1>
           <p className="text-brand-text/60 font-medium">Đưa mã QR vé của sinh viên vào khung hình để kiểm tra.</p>
         </div>
-        
-        <button 
+
+        <button
           onClick={() => setFlashOn(!flashOn)}
           className={`p-4 rounded-2xl transition-all shadow-sm ${flashOn ? 'bg-brand-primary text-brand-text' : 'bg-white text-brand-text/60 border border-black/5 hover:bg-black/5'}`}
         >
@@ -42,12 +23,11 @@ export default function ScannerPage() {
       </div>
 
       <div className="flex-1 flex flex-col lg:flex-row gap-6 h-full min-h-0">
-        
+
         {/* Camera Viewfinder */}
         <div className="flex-1 bg-black rounded-3xl relative overflow-hidden flex items-center justify-center shadow-lg group">
-          
-          {/* Mock Camera Feed Background */}
-          <div className="absolute inset-0 opacity-40 bg-[url('https://images.unsplash.com/photo-1570125909232-eb263c188f7e?q=80&w=2071&auto=format&fit=crop')] bg-cover bg-center"></div>
+
+          <div className="absolute inset-0 bg-black"></div>
 
           {/* Scanner Overlay UI */}
           <div className="absolute inset-0 flex items-center justify-center">
@@ -58,70 +38,34 @@ export default function ScannerPage() {
               <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-white/80 rounded-tr-lg"></div>
               <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-white/80 rounded-bl-lg"></div>
               <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-white/80 rounded-br-lg"></div>
-              
+
               {/* Scanning Laser Line */}
               <div className="absolute left-0 right-0 top-1/2 h-0.5 bg-brand-primary shadow-[0_0_10px_rgba(251,192,45,0.8)] animate-pulse"></div>
             </div>
           </div>
-          
+
           <div className="absolute bottom-6 left-1/2 -translate-x-1/2 text-white/60 font-medium text-sm bg-black/40 px-4 py-2 rounded-full backdrop-blur-md">
-            Mô phỏng Camera. Hãy dùng các nút bên dưới.
+            Camera scanner chưa được kết nối với backend/device API.
           </div>
-
-          {/* Scan Results Overlay */}
-          {scanResult === 'success' && scannedData && (
-            <div className="absolute inset-0 bg-brand-success/90 backdrop-blur-sm flex flex-col items-center justify-center text-white p-6 text-center animate-in fade-in duration-200">
-              <CheckCircle2 className="w-24 h-24 mb-4" />
-              <h2 className="text-3xl font-black mb-2">HỢP LỆ</h2>
-              <p className="text-lg font-medium opacity-90">{scannedData.name} - {scannedData.studentId}</p>
-              <p className="font-bold mt-2 bg-white/20 px-4 py-2 rounded-xl">{scannedData.type} - {scannedData.route}</p>
-            </div>
-          )}
-
-          {scanResult === 'error' && (
-            <div className="absolute inset-0 bg-brand-danger/90 backdrop-blur-sm flex flex-col items-center justify-center text-white p-6 text-center animate-in fade-in duration-200">
-              <XCircle className="w-24 h-24 mb-4" />
-              <h2 className="text-3xl font-black mb-2">KHÔNG HỢP LỆ</h2>
-              <p className="text-lg font-medium opacity-90">Vé đã hết hạn hoặc sai tuyến!</p>
-            </div>
-          )}
         </div>
 
-        {/* Action Panel for Testing */}
+        {/* Action Panel */}
         <div className="w-full lg:w-96 flex flex-col gap-6">
           <div className="bg-white rounded-3xl p-6 shadow-sm border border-black/5 h-full flex flex-col">
             <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-              <Camera className="w-5 h-5 text-brand-text/60" /> Test Môi trường
+              <Camera className="w-5 h-5 text-brand-text/60" /> Kiểm tra mã vé
             </h3>
-            
-            <p className="text-sm font-medium text-brand-text/60 mb-6">
-              Trên thiết bị thực tế, máy ảnh sẽ quét tự động. Để demo, hãy bấm các nút giả lập dưới đây:
-            </p>
 
-            <div className="flex flex-col gap-3 flex-1 justify-center">
-              <button 
-                onClick={() => handleScan('VALID')}
-                disabled={isScanning}
-                className="w-full py-4 bg-brand-success/10 text-brand-success hover:bg-brand-success hover:text-white border border-brand-success/20 rounded-2xl font-bold text-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {isScanning ? <Loader2 className="w-6 h-6 animate-spin" /> : <CheckCircle2 className="w-6 h-6" />} Giả lập Quét Đúng
-              </button>
-              
-              <button 
-                onClick={() => handleScan('INVALID')}
-                disabled={isScanning}
-                className="w-full py-4 bg-brand-danger/10 text-brand-danger hover:bg-brand-danger hover:text-white border border-brand-danger/20 rounded-2xl font-bold text-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {isScanning ? <Loader2 className="w-6 h-6 animate-spin" /> : <XCircle className="w-6 h-6" />} Giả lập Quét Sai
-              </button>
-            </div>
+            <p className="text-sm font-medium text-brand-text/60 mb-6">
+              Trên thiết bị thực tế, máy ảnh sẽ quét tự động sau khi tích hợp device API.
+            </p>
 
             <div className="mt-8 pt-6 border-t border-black/5">
               <p className="text-sm font-bold text-brand-text mb-3">Nhập mã vé thủ công</p>
               <div className="flex gap-2">
-                <input 
-                  type="text" 
-                  placeholder="Nhập mã vé (VD: TKT-123)" 
+                <input
+                  type="text"
+                  placeholder="Nhập mã vé"
                   className="flex-1 bg-brand-surface border border-transparent rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-brand-primary focus:bg-white transition-all"
                 />
                 <button className="px-4 py-3 bg-black text-white rounded-xl hover:bg-black/80 transition-colors">

@@ -1,0 +1,21 @@
+# Local secrets
+dbauth.txt
+frontend/.env*.local
+backend/.env*.local
+unibus-vision-ocr.json
+*service-account*.json
+*credential*.json
+
+# Build output and scratch data
+target/
+backend/backend-run*.log
+backend/uploads/
+frontend/frontend-run*.log
+.codex-tmp/
+.understand-anything/intermediate/
+.understand-anything/tmp/
+.understand-anything/diff-overlay.json
+
+# IDE settings
+.idea/
+*.iml

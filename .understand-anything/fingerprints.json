@@ -1,0 +1,5348 @@
+{
+  "version": "1.0.0",
+  "gitCommitHash": "11e4c975f83da6d2da0583fcbe9c3cfb7a412a54",
+  "generatedAt": "2026-05-25T04:39:50.775Z",
+  "files": {
+    ".understand-anything/.understandignore": {
+      "filePath": ".understand-anything/.understandignore",
+      "contentHash": "6ed1f50f65d29a470faef9fc0213f84aeffa2668c27604da9a87ddc8fe7ccbec",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 10,
+      "hasStructuralAnalysis": false
+    },
+    ".understand-anything/config.json": {
+      "filePath": ".understand-anything/config.json",
+      "contentHash": "846bbff6069b328c7adf5222254da4f789144dac3aba8327ea426d00ba485440",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 5,
+      "hasStructuralAnalysis": true
+    },
+    "backend/pom.xml": {
+      "filePath": "backend/pom.xml",
+      "contentHash": "d6f4ee601ee6aebdf307d9d20c26e3a4f133699cb6557a02a320dd66a5de2f38",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 153,
+      "hasStructuralAnalysis": false
+    },
+    "backend/requests/iteration1.http": {
+      "filePath": "backend/requests/iteration1.http",
+      "contentHash": "518a7daa78d683c1d27284933445733431f6db379479ccee2165b08fd035bb76",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 96,
+      "hasStructuralAnalysis": false
+    },
+    "backend/src/main/java/com/unibus/api/auth/AuthController.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/auth/AuthController.java",
+      "contentHash": "d4c975000499e8b585b7769c8e5f75e861ad1fc250ee92870b3d596550ceccb7",
+      "functions": [
+        {
+          "name": "AuthController",
+          "params": [
+            "authService"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "requestRegistrationOtp",
+          "params": [
+            "request"
+          ],
+          "returnType": "ResponseEntity<ApiResponse<Void>>",
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "register",
+          "params": [
+            "request"
+          ],
+          "returnType": "ResponseEntity<ApiResponse<RegisteredUser>>",
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "login",
+          "params": [
+            "request",
+            "servletRequest"
+          ],
+          "returnType": "ApiResponse<TokenPair>",
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "refresh",
+          "params": [
+            "request"
+          ],
+          "returnType": "ApiResponse<TokenPair>",
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "logout",
+          "params": [
+            "currentUser"
+          ],
+          "returnType": "ApiResponse<Void>",
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "requestPasswordResetOtp",
+          "params": [
+            "request"
+          ],
+          "returnType": "ResponseEntity<ApiResponse<Void>>",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "resetPassword",
+          "params": [
+            "request"
+          ],
+          "returnType": "ApiResponse<Void>",
+          "exported": false,
+          "lineCount": 5
+        }
+      ],
+      "classes": [
+        {
+          "name": "AuthController",
+          "methods": [
+            "AuthController",
+            "requestRegistrationOtp",
+            "register",
+            "login",
+            "refresh",
+            "logout",
+            "requestPasswordResetOtp",
+            "resetPassword"
+          ],
+          "properties": [
+            "authService"
+          ],
+          "exported": true,
+          "lineCount": 52
+        }
+      ],
+      "imports": [
+        {
+          "source": "org.springframework.http.HttpStatus",
+          "specifiers": [
+            "HttpStatus"
+          ]
+        },
+        {
+          "source": "org.springframework.http.ResponseEntity",
+          "specifiers": [
+            "ResponseEntity"
+          ]
+        },
+        {
+          "source": "org.springframework.security.core.annotation.AuthenticationPrincipal",
+          "specifiers": [
+            "AuthenticationPrincipal"
+          ]
+        },
+        {
+          "source": "org.springframework.validation.annotation.Validated",
+          "specifiers": [
+            "Validated"
+          ]
+        },
+        {
+          "source": "org.springframework.web.bind.annotation.PostMapping",
+          "specifiers": [
+            "PostMapping"
+          ]
+        },
+        {
+          "source": "org.springframework.web.bind.annotation.RequestBody",
+          "specifiers": [
+            "RequestBody"
+          ]
+        },
+        {
+          "source": "org.springframework.web.bind.annotation.RequestMapping",
+          "specifiers": [
+            "RequestMapping"
+          ]
+        },
+        {
+          "source": "org.springframework.web.bind.annotation.RestController",
+          "specifiers": [
+            "RestController"
+          ]
+        },
+        {
+          "source": "com.unibus.api.auth.dto.AuthRequests.LoginRequest",
+          "specifiers": [
+            "LoginRequest"
+          ]
+        },
+        {
+          "source": "com.unibus.api.auth.dto.AuthRequests.OtpRequest",
+          "specifiers": [
+            "OtpRequest"
+          ]
+        },
+        {
+          "source": "com.unibus.api.auth.dto.AuthRequests.RefreshRequest",
+          "specifiers": [
+            "RefreshRequest"
+          ]
+        },
+        {
+          "source": "com.unibus.api.auth.dto.AuthRequests.RegisterRequest",
+          "specifiers": [
+            "RegisterRequest"
+          ]
+        },
+        {
+          "source": "com.unibus.api.auth.dto.AuthRequests.ResetPasswordRequest",
+          "specifiers": [
+            "ResetPasswordRequest"
+          ]
+        },
+        {
+          "source": "com.unibus.api.auth.dto.AuthResponses.RegisteredUser",
+          "specifiers": [
+            "RegisteredUser"
+          ]
+        },
+        {
+          "source": "com.unibus.api.auth.dto.AuthResponses.TokenPair",
+          "specifiers": [
+            "TokenPair"
+          ]
+        },
+        {
+          "source": "com.unibus.api.common.ApiResponse",
+          "specifiers": [
+            "ApiResponse"
+          ]
+        },
+        {
+          "source": "com.unibus.api.security.CurrentUser",
+          "specifiers": [
+            "CurrentUser"
+          ]
+        },
+        {
+          "source": "jakarta.servlet.http.HttpServletRequest",
+          "specifiers": [
+            "HttpServletRequest"
+          ]
+        },
+        {
+          "source": "jakarta.validation.Valid",
+          "specifiers": [
+            "Valid"
+          ]
+        }
+      ],
+      "exports": [
+        "AuthController",
+        "AuthController"
+      ],
+      "totalLines": 77,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/auth/AuthService.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/auth/AuthService.java",
+      "contentHash": "93b0bc5afba7a26d3083a6c379834cfd5d7659c958f119c749cc34c0d532c1e2",
+      "functions": [
+        {
+          "name": "AuthService",
+          "params": [
+            "userRepository",
+            "studentRepository",
+            "loginSessionRepository",
+            "otpService",
+            "jwtTokenService",
+            "hashingService",
+            "passwordEncoder"
+          ],
+          "exported": true,
+          "lineCount": 16
+        },
+        {
+          "name": "requestRegistrationOtp",
+          "params": [
+            "email"
+          ],
+          "returnType": "void",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "register",
+          "params": [
+            "request"
+          ],
+          "returnType": "RegisteredUser",
+          "exported": true,
+          "lineCount": 30
+        },
+        {
+          "name": "login",
+          "params": [
+            "request",
+            "ipAddress"
+          ],
+          "returnType": "TokenPair",
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "refresh",
+          "params": [
+            "refreshToken"
+          ],
+          "returnType": "TokenPair",
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "logout",
+          "params": [
+            "currentUser"
+          ],
+          "returnType": "void",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "requestPasswordResetOtp",
+          "params": [
+            "email"
+          ],
+          "returnType": "void",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "resetPassword",
+          "params": [
+            "request"
+          ],
+          "returnType": "void",
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "createSessionTokens",
+          "params": [
+            "user",
+            "device",
+            "ipAddress"
+          ],
+          "returnType": "TokenPair",
+          "exported": false,
+          "lineCount": 20
+        },
+        {
+          "name": "activeSession",
+          "params": [
+            "sessionId",
+            "userId"
+          ],
+          "returnType": "LoginSession",
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "normalizeEmail",
+          "params": [
+            "email"
+          ],
+          "returnType": "String",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "invalidCredentials",
+          "params": [],
+          "returnType": "ApiException",
+          "exported": false,
+          "lineCount": 3
+        }
+      ],
+      "classes": [
+        {
+          "name": "AuthService",
+          "methods": [
+            "AuthService",
+            "requestRegistrationOtp",
+            "register",
+            "login",
+            "refresh",
+            "logout",
+            "requestPasswordResetOtp",
+            "resetPassword",
+            "createSessionTokens",
+            "activeSession",
+            "normalizeEmail",
+            "invalidCredentials"
+          ],
+          "properties": [
+            "userRepository",
+            "studentRepository",
+            "loginSessionRepository",
+            "otpService",
+            "jwtTokenService",
+            "hashingService",
+            "passwordEncoder"
+          ],
+          "exported": true,
+          "lineCount": 163
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.time.OffsetDateTime",
+          "specifiers": [
+            "OffsetDateTime"
+          ]
+        },
+        {
+          "source": "java.time.ZoneOffset",
+          "specifiers": [
+            "ZoneOffset"
+          ]
+        },
+        {
+          "source": "org.springframework.http.HttpStatus",
+          "specifiers": [
+            "HttpStatus"
+          ]
+        },
+        {
+          "source": "org.springframework.security.crypto.password.PasswordEncoder",
+          "specifiers": [
+            "PasswordEncoder"
+          ]
+        },
+        {
+          "source": "org.springframework.stereotype.Service",
+          "specifiers": [
+            "Service"
+          ]
+        },
+        {
+          "source": "org.springframework.transaction.annotation.Transactional",
+          "specifiers": [
+            "Transactional"
+          ]
+        },
+        {
+          "source": "com.unibus.api.auth.JwtTokenService.IssuedToken",
+          "specifiers": [
+            "IssuedToken"
+          ]
+        },
+        {
+          "source": "com.unibus.api.auth.JwtTokenService.TokenClaims",
+          "specifiers": [
+            "TokenClaims"
+          ]
+        },
+        {
+          "source": "com.unibus.api.auth.dto.AuthRequests.LoginRequest",
+          "specifiers": [
+            "LoginRequest"
+          ]
+        },
+        {
+          "source": "com.unibus.api.auth.dto.AuthRequests.RegisterRequest",
+          "specifiers": [
+            "RegisterRequest"
+          ]
+        },
+        {
+          "source": "com.unibus.api.auth.dto.AuthRequests.ResetPasswordRequest",
+          "specifiers": [
+            "ResetPasswordRequest"
+          ]
+        },
+        {
+          "source": "com.unibus.api.auth.dto.AuthResponses.RegisteredUser",
+          "specifiers": [
+            "RegisteredUser"
+          ]
+        },
+        {
+          "source": "com.unibus.api.auth.dto.AuthResponses.TokenPair",
+          "specifiers": [
+            "TokenPair"
+          ]
+        },
+        {
+          "source": "com.unibus.api.auth.model.LoginSession",
+          "specifiers": [
+            "LoginSession"
+          ]
+        },
+        {
+          "source": "com.unibus.api.auth.model.VerificationPurpose",
+          "specifiers": [
+            "VerificationPurpose"
+          ]
+        },
+        {
+          "source": "com.unibus.api.common.ApiException",
+          "specifiers": [
+            "ApiException"
+          ]
+        },
+        {
+          "source": "com.unibus.api.security.CurrentUser",
+          "specifiers": [
+            "CurrentUser"
+          ]
+        },
+        {
+          "source": "com.unibus.api.user.StudentRepository",
+          "specifiers": [
+            "StudentRepository"
+          ]
+        },
+        {
+          "source": "com.unibus.api.user.UserRepository",
+          "specifiers": [
+            "UserRepository"
+          ]
+        },
+        {
+          "source": "com.unibus.api.user.model.Student",
+          "specifiers": [
+            "Student"
+          ]
+        },
+        {
+          "source": "com.unibus.api.user.model.User",
+          "specifiers": [
+            "User"
+          ]
+        },
+        {
+          "source": "com.unibus.api.user.model.UserRole",
+          "specifiers": [
+            "UserRole"
+          ]
+        },
+        {
+          "source": "com.unibus.api.user.model.UserStatus",
+          "specifiers": [
+            "UserStatus"
+          ]
+        }
+      ],
+      "exports": [
+        "AuthService",
+        "requestRegistrationOtp",
+        "register",
+        "login",
+        "refresh",
+        "logout",
+        "requestPasswordResetOtp",
+        "resetPassword",
+        "AuthService"
+      ],
+      "totalLines": 192,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/auth/dto/AuthRequests.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/auth/dto/AuthRequests.java",
+      "contentHash": "9e3a99101ddafd14e8f1fb6a71a8ca379786f5761f7a88db38d9ab1e48fbb960",
+      "functions": [
+        {
+          "name": "AuthRequests",
+          "params": [],
+          "exported": true,
+          "lineCount": 2
+        }
+      ],
+      "classes": [
+        {
+          "name": "AuthRequests",
+          "methods": [
+            "AuthRequests"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 35
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.time.LocalDate",
+          "specifiers": [
+            "LocalDate"
+          ]
+        },
+        {
+          "source": "jakarta.validation.constraints.Email",
+          "specifiers": [
+            "Email"
+          ]
+        },
+        {
+          "source": "jakarta.validation.constraints.NotBlank",
+          "specifiers": [
+            "NotBlank"
+          ]
+        },
+        {
+          "source": "jakarta.validation.constraints.Size",
+          "specifiers": [
+            "Size"
+          ]
+        }
+      ],
+      "exports": [
+        "AuthRequests"
+      ],
+      "totalLines": 44,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/auth/dto/AuthResponses.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/auth/dto/AuthResponses.java",
+      "contentHash": "eac4f447086d548fcf3ae4d80b138437d5a459c836334446bf74a52714a4fc87",
+      "functions": [
+        {
+          "name": "AuthResponses",
+          "params": [],
+          "exported": true,
+          "lineCount": 2
+        }
+      ],
+      "classes": [
+        {
+          "name": "AuthResponses",
+          "methods": [
+            "AuthResponses"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 17
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.time.OffsetDateTime",
+          "specifiers": [
+            "OffsetDateTime"
+          ]
+        },
+        {
+          "source": "com.unibus.api.user.model.UserRole",
+          "specifiers": [
+            "UserRole"
+          ]
+        }
+      ],
+      "exports": [
+        "AuthResponses"
+      ],
+      "totalLines": 24,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/auth/HashingService.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/auth/HashingService.java",
+      "contentHash": "f7343e7bdbc9ac0cffe1685d0db8caeb7ee897ce65760587e8a9011c541e6eb9",
+      "functions": [
+        {
+          "name": "HashingService",
+          "params": [
+            "pepper"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "hash",
+          "params": [
+            "value"
+          ],
+          "returnType": "String",
+          "exported": true,
+          "lineCount": 9
+        }
+      ],
+      "classes": [
+        {
+          "name": "HashingService",
+          "methods": [
+            "HashingService",
+            "hash"
+          ],
+          "properties": [
+            "pepper"
+          ],
+          "exported": true,
+          "lineCount": 19
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.nio.charset.StandardCharsets",
+          "specifiers": [
+            "StandardCharsets"
+          ]
+        },
+        {
+          "source": "java.security.MessageDigest",
+          "specifiers": [
+            "MessageDigest"
+          ]
+        },
+        {
+          "source": "java.security.NoSuchAlgorithmException",
+          "specifiers": [
+            "NoSuchAlgorithmException"
+          ]
+        },
+        {
+          "source": "java.util.HexFormat",
+          "specifiers": [
+            "HexFormat"
+          ]
+        },
+        {
+          "source": "org.springframework.beans.factory.annotation.Value",
+          "specifiers": [
+            "Value"
+          ]
+        },
+        {
+          "source": "org.springframework.stereotype.Component",
+          "specifiers": [
+            "Component"
+          ]
+        }
+      ],
+      "exports": [
+        "HashingService",
+        "hash",
+        "HashingService"
+      ],
+      "totalLines": 30,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/auth/JwtTokenService.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/auth/JwtTokenService.java",
+      "contentHash": "64a9c331c09d61263a8ea658fb8ac912b0b7b927b89e5807227a5a033064927b",
+      "functions": [
+        {
+          "name": "JwtTokenService",
+          "params": [
+            "objectMapper",
+            "secret",
+            "accessMinutes",
+            "refreshDays"
+          ],
+          "exported": true,
+          "lineCount": 13
+        },
+        {
+          "name": "issueAccessToken",
+          "params": [
+            "user",
+            "sessionId"
+          ],
+          "returnType": "IssuedToken",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "issueRefreshToken",
+          "params": [
+            "user",
+            "sessionId"
+          ],
+          "returnType": "IssuedToken",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "parseAccessToken",
+          "params": [
+            "token"
+          ],
+          "returnType": "TokenClaims",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "parseRefreshToken",
+          "params": [
+            "token"
+          ],
+          "returnType": "TokenClaims",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "issue",
+          "params": [
+            "user",
+            "sessionId",
+            "type",
+            "expiration"
+          ],
+          "returnType": "IssuedToken",
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "parse",
+          "params": [
+            "token",
+            "expectedType"
+          ],
+          "returnType": "TokenClaims",
+          "exported": false,
+          "lineCount": 27
+        },
+        {
+          "name": "encode",
+          "params": [
+            "value"
+          ],
+          "returnType": "String",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "sign",
+          "params": [
+            "input"
+          ],
+          "returnType": "String",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "invalidToken",
+          "params": [],
+          "returnType": "ApiException",
+          "exported": false,
+          "lineCount": 3
+        }
+      ],
+      "classes": [
+        {
+          "name": "JwtTokenService",
+          "methods": [
+            "JwtTokenService",
+            "issueAccessToken",
+            "issueRefreshToken",
+            "parseAccessToken",
+            "parseRefreshToken",
+            "issue",
+            "parse",
+            "encode",
+            "sign",
+            "invalidToken"
+          ],
+          "properties": [
+            "HEADER",
+            "objectMapper",
+            "key",
+            "accessMinutes",
+            "refreshDays"
+          ],
+          "exported": true,
+          "lineCount": 111
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.nio.charset.StandardCharsets",
+          "specifiers": [
+            "StandardCharsets"
+          ]
+        },
+        {
+          "source": "java.security.MessageDigest",
+          "specifiers": [
+            "MessageDigest"
+          ]
+        },
+        {
+          "source": "java.time.OffsetDateTime",
+          "specifiers": [
+            "OffsetDateTime"
+          ]
+        },
+        {
+          "source": "java.time.ZoneOffset",
+          "specifiers": [
+            "ZoneOffset"
+          ]
+        },
+        {
+          "source": "java.util.Base64",
+          "specifiers": [
+            "Base64"
+          ]
+        },
+        {
+          "source": "java.util.LinkedHashMap",
+          "specifiers": [
+            "LinkedHashMap"
+          ]
+        },
+        {
+          "source": "java.util.Map",
+          "specifiers": [
+            "Map"
+          ]
+        },
+        {
+          "source": "javax.crypto.Mac",
+          "specifiers": [
+            "Mac"
+          ]
+        },
+        {
+          "source": "javax.crypto.spec.SecretKeySpec",
+          "specifiers": [
+            "SecretKeySpec"
+          ]
+        },
+        {
+          "source": "org.springframework.beans.factory.annotation.Value",
+          "specifiers": [
+            "Value"
+          ]
+        },
+        {
+          "source": "org.springframework.http.HttpStatus",
+          "specifiers": [
+            "HttpStatus"
+          ]
+        },
+        {
+          "source": "org.springframework.stereotype.Component",
+          "specifiers": [
+            "Component"
+          ]
+        },
+        {
+          "source": "com.unibus.api.common.ApiException",
+          "specifiers": [
+            "ApiException"
+          ]
+        },
+        {
+          "source": "com.unibus.api.user.model.User",
+          "specifiers": [
+            "User"
+          ]
+        },
+        {
+          "source": "com.unibus.api.user.model.UserRole",
+          "specifiers": [
+            "UserRole"
+          ]
+        },
+        {
+          "source": "tools.jackson.core.type.TypeReference",
+          "specifiers": [
+            "TypeReference"
+          ]
+        },
+        {
+          "source": "tools.jackson.databind.ObjectMapper",
+          "specifiers": [
+            "ObjectMapper"
+          ]
+        }
+      ],
+      "exports": [
+        "JwtTokenService",
+        "issueAccessToken",
+        "issueRefreshToken",
+        "parseAccessToken",
+        "parseRefreshToken",
+        "JwtTokenService"
+      ],
+      "totalLines": 136,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/auth/LoginSessionRepository.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/auth/LoginSessionRepository.java",
+      "contentHash": "7cabb3aab069411c055c44fab7116599dfee50abddbb9bfa6723ffc0dfe9231d",
+      "functions": [],
+      "classes": [
+        {
+          "name": "LoginSessionRepository",
+          "methods": [
+            "findByIdAndActiveTrue",
+            "findAllByUserIdAndActiveTrue"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 7
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.util.List",
+          "specifiers": [
+            "List"
+          ]
+        },
+        {
+          "source": "java.util.Optional",
+          "specifiers": [
+            "Optional"
+          ]
+        },
+        {
+          "source": "org.springframework.data.jpa.repository.JpaRepository",
+          "specifiers": [
+            "JpaRepository"
+          ]
+        },
+        {
+          "source": "org.springframework.data.jpa.repository.EntityGraph",
+          "specifiers": [
+            "EntityGraph"
+          ]
+        },
+        {
+          "source": "com.unibus.api.auth.model.LoginSession",
+          "specifiers": [
+            "LoginSession"
+          ]
+        }
+      ],
+      "exports": [
+        "LoginSessionRepository"
+      ],
+      "totalLines": 18,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/auth/model/LoginSession.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/auth/model/LoginSession.java",
+      "contentHash": "e327b734f255ed65a5e99ecfb2e4cc0248bfcd24f6aed2b12f6ffaabb66e2e02",
+      "functions": [],
+      "classes": [
+        {
+          "name": "LoginSession",
+          "methods": [],
+          "properties": [
+            "id",
+            "user",
+            "tokenHash",
+            "device",
+            "ipAddress",
+            "signedInAt",
+            "expiresAt",
+            "signedOutAt",
+            "active"
+          ],
+          "exported": true,
+          "lineCount": 37
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.time.OffsetDateTime",
+          "specifiers": [
+            "OffsetDateTime"
+          ]
+        },
+        {
+          "source": "com.unibus.api.user.model.User",
+          "specifiers": [
+            "User"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Column",
+          "specifiers": [
+            "Column"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Entity",
+          "specifiers": [
+            "Entity"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.FetchType",
+          "specifiers": [
+            "FetchType"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.GeneratedValue",
+          "specifiers": [
+            "GeneratedValue"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.GenerationType",
+          "specifiers": [
+            "GenerationType"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Id",
+          "specifiers": [
+            "Id"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.JoinColumn",
+          "specifiers": [
+            "JoinColumn"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.ManyToOne",
+          "specifiers": [
+            "ManyToOne"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Table",
+          "specifiers": [
+            "Table"
+          ]
+        },
+        {
+          "source": "lombok.Getter",
+          "specifiers": [
+            "Getter"
+          ]
+        },
+        {
+          "source": "lombok.NoArgsConstructor",
+          "specifiers": [
+            "NoArgsConstructor"
+          ]
+        },
+        {
+          "source": "lombok.Setter",
+          "specifiers": [
+            "Setter"
+          ]
+        }
+      ],
+      "exports": [
+        "LoginSession"
+      ],
+      "totalLines": 57,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/auth/model/VerificationCode.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/auth/model/VerificationCode.java",
+      "contentHash": "3fb1f0c1c3aa6b62757aabccf7823c557527a51a3505fa58cf7cd2a7ba399a99",
+      "functions": [],
+      "classes": [
+        {
+          "name": "VerificationCode",
+          "methods": [],
+          "properties": [
+            "id",
+            "email",
+            "purpose",
+            "codeHash",
+            "createdAt",
+            "expiresAt",
+            "consumedAt",
+            "attemptCount"
+          ],
+          "exported": true,
+          "lineCount": 34
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.time.OffsetDateTime",
+          "specifiers": [
+            "OffsetDateTime"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Column",
+          "specifiers": [
+            "Column"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Entity",
+          "specifiers": [
+            "Entity"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.EnumType",
+          "specifiers": [
+            "EnumType"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Enumerated",
+          "specifiers": [
+            "Enumerated"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.GeneratedValue",
+          "specifiers": [
+            "GeneratedValue"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.GenerationType",
+          "specifiers": [
+            "GenerationType"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Id",
+          "specifiers": [
+            "Id"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Table",
+          "specifiers": [
+            "Table"
+          ]
+        },
+        {
+          "source": "lombok.Getter",
+          "specifiers": [
+            "Getter"
+          ]
+        },
+        {
+          "source": "lombok.NoArgsConstructor",
+          "specifiers": [
+            "NoArgsConstructor"
+          ]
+        },
+        {
+          "source": "lombok.Setter",
+          "specifiers": [
+            "Setter"
+          ]
+        }
+      ],
+      "exports": [
+        "VerificationCode"
+      ],
+      "totalLines": 51,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/auth/model/VerificationPurpose.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/auth/model/VerificationPurpose.java",
+      "contentHash": "0389f1c35ddc83a31f067fe22f8c65c0921c7d0887d96bd8bcd23d3705348d6e",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 7,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/auth/OtpService.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/auth/OtpService.java",
+      "contentHash": "9482dad7866a548f1ffa5d36013018398f0fd950d849aa762217d01d39872898",
+      "functions": [
+        {
+          "name": "OtpService",
+          "params": [
+            "verificationCodeRepository",
+            "hashingService",
+            "expirationMinutes",
+            "logCode"
+          ],
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "issue",
+          "params": [
+            "rawEmail",
+            "purpose"
+          ],
+          "returnType": "void",
+          "exported": true,
+          "lineCount": 16
+        },
+        {
+          "name": "verify",
+          "params": [
+            "rawEmail",
+            "purpose",
+            "code"
+          ],
+          "returnType": "void",
+          "exported": true,
+          "lineCount": 17
+        },
+        {
+          "name": "invalidOtp",
+          "params": [],
+          "returnType": "ApiException",
+          "exported": false,
+          "lineCount": 3
+        }
+      ],
+      "classes": [
+        {
+          "name": "OtpService",
+          "methods": [
+            "OtpService",
+            "issue",
+            "verify",
+            "invalidOtp"
+          ],
+          "properties": [
+            "LOGGER",
+            "MAX_ATTEMPTS",
+            "verificationCodeRepository",
+            "hashingService",
+            "secureRandom",
+            "expirationMinutes",
+            "logCode"
+          ],
+          "exported": true,
+          "lineCount": 62
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.security.SecureRandom",
+          "specifiers": [
+            "SecureRandom"
+          ]
+        },
+        {
+          "source": "java.time.OffsetDateTime",
+          "specifiers": [
+            "OffsetDateTime"
+          ]
+        },
+        {
+          "source": "java.time.ZoneOffset",
+          "specifiers": [
+            "ZoneOffset"
+          ]
+        },
+        {
+          "source": "org.slf4j.Logger",
+          "specifiers": [
+            "Logger"
+          ]
+        },
+        {
+          "source": "org.slf4j.LoggerFactory",
+          "specifiers": [
+            "LoggerFactory"
+          ]
+        },
+        {
+          "source": "org.springframework.beans.factory.annotation.Value",
+          "specifiers": [
+            "Value"
+          ]
+        },
+        {
+          "source": "org.springframework.http.HttpStatus",
+          "specifiers": [
+            "HttpStatus"
+          ]
+        },
+        {
+          "source": "org.springframework.stereotype.Service",
+          "specifiers": [
+            "Service"
+          ]
+        },
+        {
+          "source": "org.springframework.transaction.annotation.Propagation",
+          "specifiers": [
+            "Propagation"
+          ]
+        },
+        {
+          "source": "org.springframework.transaction.annotation.Transactional",
+          "specifiers": [
+            "Transactional"
+          ]
+        },
+        {
+          "source": "com.unibus.api.auth.model.VerificationCode",
+          "specifiers": [
+            "VerificationCode"
+          ]
+        },
+        {
+          "source": "com.unibus.api.auth.model.VerificationPurpose",
+          "specifiers": [
+            "VerificationPurpose"
+          ]
+        },
+        {
+          "source": "com.unibus.api.common.ApiException",
+          "specifiers": [
+            "ApiException"
+          ]
+        }
+      ],
+      "exports": [
+        "OtpService",
+        "issue",
+        "verify",
+        "OtpService"
+      ],
+      "totalLines": 81,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/auth/VerificationCodeRepository.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/auth/VerificationCodeRepository.java",
+      "contentHash": "13f133865be3ea02a84bb62c9a9702801ec888c812629aafe1db5188555cdf78",
+      "functions": [],
+      "classes": [
+        {
+          "name": "VerificationCodeRepository",
+          "methods": [
+            "findTopByEmailIgnoreCaseAndPurposeAndConsumedAtIsNullOrderByCreatedAtDesc"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 5
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.util.Optional",
+          "specifiers": [
+            "Optional"
+          ]
+        },
+        {
+          "source": "org.springframework.data.jpa.repository.JpaRepository",
+          "specifiers": [
+            "JpaRepository"
+          ]
+        },
+        {
+          "source": "com.unibus.api.auth.model.VerificationCode",
+          "specifiers": [
+            "VerificationCode"
+          ]
+        },
+        {
+          "source": "com.unibus.api.auth.model.VerificationPurpose",
+          "specifiers": [
+            "VerificationPurpose"
+          ]
+        }
+      ],
+      "exports": [
+        "VerificationCodeRepository"
+      ],
+      "totalLines": 15,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/common/ApiException.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/common/ApiException.java",
+      "contentHash": "425cc5210f8097e505c021cba81b115e1ee600e1c051a388e79cc4a2c86898e8",
+      "functions": [
+        {
+          "name": "ApiException",
+          "params": [
+            "status",
+            "message"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "getStatus",
+          "params": [],
+          "returnType": "HttpStatus",
+          "exported": true,
+          "lineCount": 3
+        }
+      ],
+      "classes": [
+        {
+          "name": "ApiException",
+          "methods": [
+            "ApiException",
+            "getStatus"
+          ],
+          "properties": [
+            "status"
+          ],
+          "exported": true,
+          "lineCount": 13
+        }
+      ],
+      "imports": [
+        {
+          "source": "org.springframework.http.HttpStatus",
+          "specifiers": [
+            "HttpStatus"
+          ]
+        }
+      ],
+      "exports": [
+        "ApiException",
+        "getStatus",
+        "ApiException"
+      ],
+      "totalLines": 18,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/common/ApiResponse.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/common/ApiResponse.java",
+      "contentHash": "22caa97f2a020308418c97727502eb93698bbd0d5558ccfbca64c53ee66cfb56",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 8,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/common/GlobalExceptionHandler.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/common/GlobalExceptionHandler.java",
+      "contentHash": "df8bea08986922f5b88c971f0982d53ff23149592edc175712addf3ae368257b",
+      "functions": [
+        {
+          "name": "handleApiException",
+          "params": [
+            "exception"
+          ],
+          "returnType": "ResponseEntity<ApiResponse<Void>>",
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "handleValidation",
+          "params": [
+            "exception"
+          ],
+          "returnType": "ResponseEntity<ApiResponse<Map<String, String>>>",
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "handleMalformedRequest",
+          "params": [
+            "exception"
+          ],
+          "returnType": "ResponseEntity<ApiResponse<Void>>",
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "handleUnexpected",
+          "params": [
+            "exception"
+          ],
+          "returnType": "ResponseEntity<ApiResponse<Void>>",
+          "exported": false,
+          "lineCount": 5
+        }
+      ],
+      "classes": [
+        {
+          "name": "GlobalExceptionHandler",
+          "methods": [
+            "handleApiException",
+            "handleValidation",
+            "handleMalformedRequest",
+            "handleUnexpected"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 35
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.util.LinkedHashMap",
+          "specifiers": [
+            "LinkedHashMap"
+          ]
+        },
+        {
+          "source": "java.util.Map",
+          "specifiers": [
+            "Map"
+          ]
+        },
+        {
+          "source": "org.springframework.http.HttpStatus",
+          "specifiers": [
+            "HttpStatus"
+          ]
+        },
+        {
+          "source": "org.springframework.http.ResponseEntity",
+          "specifiers": [
+            "ResponseEntity"
+          ]
+        },
+        {
+          "source": "org.springframework.http.converter.HttpMessageNotReadableException",
+          "specifiers": [
+            "HttpMessageNotReadableException"
+          ]
+        },
+        {
+          "source": "org.springframework.validation.FieldError",
+          "specifiers": [
+            "FieldError"
+          ]
+        },
+        {
+          "source": "org.springframework.web.bind.MethodArgumentNotValidException",
+          "specifiers": [
+            "MethodArgumentNotValidException"
+          ]
+        },
+        {
+          "source": "org.springframework.web.bind.MissingServletRequestParameterException",
+          "specifiers": [
+            "MissingServletRequestParameterException"
+          ]
+        },
+        {
+          "source": "org.springframework.web.bind.annotation.ExceptionHandler",
+          "specifiers": [
+            "ExceptionHandler"
+          ]
+        },
+        {
+          "source": "org.springframework.web.bind.annotation.RestControllerAdvice",
+          "specifiers": [
+            "RestControllerAdvice"
+          ]
+        },
+        {
+          "source": "org.springframework.web.method.annotation.MethodArgumentTypeMismatchException",
+          "specifiers": [
+            "MethodArgumentTypeMismatchException"
+          ]
+        }
+      ],
+      "exports": [
+        "GlobalExceptionHandler"
+      ],
+      "totalLines": 51,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/registration/dto/RegistrationDtos.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/registration/dto/RegistrationDtos.java",
+      "contentHash": "a42a72a591940fdd8138b79c387d395f5fcc13aef48f8d2cf0580ec78adaee71",
+      "functions": [
+        {
+          "name": "RegistrationDtos",
+          "params": [],
+          "exported": true,
+          "lineCount": 2
+        }
+      ],
+      "classes": [
+        {
+          "name": "RegistrationDtos",
+          "methods": [
+            "RegistrationDtos"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 15
+        }
+      ],
+      "imports": [
+        {
+          "source": "com.unibus.api.registration.model.RegistrationStatus",
+          "specifiers": [
+            "RegistrationStatus"
+          ]
+        },
+        {
+          "source": "jakarta.validation.constraints.NotNull",
+          "specifiers": [
+            "NotNull"
+          ]
+        },
+        {
+          "source": "jakarta.validation.constraints.Size",
+          "specifiers": [
+            "Size"
+          ]
+        },
+        {
+          "source": "java.time.LocalDate",
+          "specifiers": [
+            "LocalDate"
+          ]
+        },
+        {
+          "source": "java.time.OffsetDateTime",
+          "specifiers": [
+            "OffsetDateTime"
+          ]
+        }
+      ],
+      "exports": [
+        "RegistrationDtos"
+      ],
+      "totalLines": 24,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/registration/model/RegistrationStatus.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/registration/model/RegistrationStatus.java",
+      "contentHash": "94b7b8aaceab7700f923c8776cb7035a9dad9d4b2709dd583e4d2efb2be86aed",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 13,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/registration/model/RouteRegistration.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/registration/model/RouteRegistration.java",
+      "contentHash": "9648782af7e25c1bb2c18bea8d15d71699f032b237e5aac013430a1ed17eb593",
+      "functions": [],
+      "classes": [
+        {
+          "name": "RouteRegistration",
+          "methods": [],
+          "properties": [
+            "id",
+            "student",
+            "route",
+            "boardingStop",
+            "alightingStop",
+            "registeredAt",
+            "effectiveDate",
+            "status",
+            "previousRegistration",
+            "cancellationReason",
+            "approvedAt"
+          ],
+          "exported": true,
+          "lineCount": 48
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.time.LocalDate",
+          "specifiers": [
+            "LocalDate"
+          ]
+        },
+        {
+          "source": "java.time.OffsetDateTime",
+          "specifiers": [
+            "OffsetDateTime"
+          ]
+        },
+        {
+          "source": "com.unibus.api.transport.model.BusRoute",
+          "specifiers": [
+            "BusRoute"
+          ]
+        },
+        {
+          "source": "com.unibus.api.transport.model.Stop",
+          "specifiers": [
+            "Stop"
+          ]
+        },
+        {
+          "source": "com.unibus.api.user.model.Student",
+          "specifiers": [
+            "Student"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Column",
+          "specifiers": [
+            "Column"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Entity",
+          "specifiers": [
+            "Entity"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.EnumType",
+          "specifiers": [
+            "EnumType"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Enumerated",
+          "specifiers": [
+            "Enumerated"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.FetchType",
+          "specifiers": [
+            "FetchType"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.GeneratedValue",
+          "specifiers": [
+            "GeneratedValue"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.GenerationType",
+          "specifiers": [
+            "GenerationType"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Id",
+          "specifiers": [
+            "Id"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.JoinColumn",
+          "specifiers": [
+            "JoinColumn"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.ManyToOne",
+          "specifiers": [
+            "ManyToOne"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Table",
+          "specifiers": [
+            "Table"
+          ]
+        },
+        {
+          "source": "lombok.Getter",
+          "specifiers": [
+            "Getter"
+          ]
+        },
+        {
+          "source": "lombok.NoArgsConstructor",
+          "specifiers": [
+            "NoArgsConstructor"
+          ]
+        },
+        {
+          "source": "lombok.Setter",
+          "specifiers": [
+            "Setter"
+          ]
+        }
+      ],
+      "exports": [
+        "RouteRegistration"
+      ],
+      "totalLines": 73,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/registration/RouteRegistrationController.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/registration/RouteRegistrationController.java",
+      "contentHash": "26c6227afa14cf2732422e89ad04a330833c56fda05eb490fe37aae4dbfadf88",
+      "functions": [
+        {
+          "name": "RouteRegistrationController",
+          "params": [
+            "routeRegistrationService"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "getCurrent",
+          "params": [
+            "currentUser"
+          ],
+          "returnType": "ApiResponse<Registration>",
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "register",
+          "params": [
+            "currentUser",
+            "request"
+          ],
+          "returnType": "ResponseEntity<ApiResponse<Registration>>",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "change",
+          "params": [
+            "currentUser",
+            "registrationId",
+            "request"
+          ],
+          "returnType": "ApiResponse<Registration>",
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "cancel",
+          "params": [
+            "currentUser",
+            "registrationId",
+            "request"
+          ],
+          "returnType": "ApiResponse<Void>",
+          "exported": false,
+          "lineCount": 8
+        }
+      ],
+      "classes": [
+        {
+          "name": "RouteRegistrationController",
+          "methods": [
+            "RouteRegistrationController",
+            "getCurrent",
+            "register",
+            "change",
+            "cancel"
+          ],
+          "properties": [
+            "routeRegistrationService"
+          ],
+          "exported": true,
+          "lineCount": 43
+        }
+      ],
+      "imports": [
+        {
+          "source": "org.springframework.http.HttpStatus",
+          "specifiers": [
+            "HttpStatus"
+          ]
+        },
+        {
+          "source": "org.springframework.http.ResponseEntity",
+          "specifiers": [
+            "ResponseEntity"
+          ]
+        },
+        {
+          "source": "org.springframework.security.access.prepost.PreAuthorize",
+          "specifiers": [
+            "PreAuthorize"
+          ]
+        },
+        {
+          "source": "org.springframework.security.core.annotation.AuthenticationPrincipal",
+          "specifiers": [
+            "AuthenticationPrincipal"
+          ]
+        },
+        {
+          "source": "org.springframework.web.bind.annotation.DeleteMapping",
+          "specifiers": [
+            "DeleteMapping"
+          ]
+        },
+        {
+          "source": "org.springframework.web.bind.annotation.GetMapping",
+          "specifiers": [
+            "GetMapping"
+          ]
+        },
+        {
+          "source": "org.springframework.web.bind.annotation.PathVariable",
+          "specifiers": [
+            "PathVariable"
+          ]
+        },
+        {
+          "source": "org.springframework.web.bind.annotation.PostMapping",
+          "specifiers": [
+            "PostMapping"
+          ]
+        },
+        {
+          "source": "org.springframework.web.bind.annotation.PutMapping",
+          "specifiers": [
+            "PutMapping"
+          ]
+        },
+        {
+          "source": "org.springframework.web.bind.annotation.RequestBody",
+          "specifiers": [
+            "RequestBody"
+          ]
+        },
+        {
+          "source": "org.springframework.web.bind.annotation.RequestMapping",
+          "specifiers": [
+            "RequestMapping"
+          ]
+        },
+        {
+          "source": "org.springframework.web.bind.annotation.RestController",
+          "specifiers": [
+            "RestController"
+          ]
+        },
+        {
+          "source": "com.unibus.api.common.ApiResponse",
+          "specifiers": [
+            "ApiResponse"
+          ]
+        },
+        {
+          "source": "com.unibus.api.registration.dto.RegistrationDtos.CancellationRequest",
+          "specifiers": [
+            "CancellationRequest"
+          ]
+        },
+        {
+          "source": "com.unibus.api.registration.dto.RegistrationDtos.Registration",
+          "specifiers": [
+            "Registration"
+          ]
+        },
+        {
+          "source": "com.unibus.api.registration.dto.RegistrationDtos.RegistrationRequest",
+          "specifiers": [
+            "RegistrationRequest"
+          ]
+        },
+        {
+          "source": "com.unibus.api.security.CurrentUser",
+          "specifiers": [
+            "CurrentUser"
+          ]
+        },
+        {
+          "source": "jakarta.validation.Valid",
+          "specifiers": [
+            "Valid"
+          ]
+        }
+      ],
+      "exports": [
+        "RouteRegistrationController",
+        "RouteRegistrationController"
+      ],
+      "totalLines": 67,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/registration/RouteRegistrationRepository.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/registration/RouteRegistrationRepository.java",
+      "contentHash": "8fb9b5e78b8d354cdafa42526ae9468c206e64cdaea027ff8aee754d6c52befe",
+      "functions": [],
+      "classes": [
+        {
+          "name": "RouteRegistrationRepository",
+          "methods": [
+            "findFirstByStudentStudentCodeAndStatusInOrderByRegisteredAtDesc",
+            "findByIdAndStudentStudentCode"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 9
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.util.List",
+          "specifiers": [
+            "List"
+          ]
+        },
+        {
+          "source": "java.util.Optional",
+          "specifiers": [
+            "Optional"
+          ]
+        },
+        {
+          "source": "org.springframework.data.jpa.repository.EntityGraph",
+          "specifiers": [
+            "EntityGraph"
+          ]
+        },
+        {
+          "source": "org.springframework.data.jpa.repository.JpaRepository",
+          "specifiers": [
+            "JpaRepository"
+          ]
+        },
+        {
+          "source": "com.unibus.api.registration.model.RegistrationStatus",
+          "specifiers": [
+            "RegistrationStatus"
+          ]
+        },
+        {
+          "source": "com.unibus.api.registration.model.RouteRegistration",
+          "specifiers": [
+            "RouteRegistration"
+          ]
+        }
+      ],
+      "exports": [
+        "RouteRegistrationRepository"
+      ],
+      "totalLines": 21,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/registration/RouteRegistrationService.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/registration/RouteRegistrationService.java",
+      "contentHash": "d4e8fa3bf294796ed3033c567eee590eddbbc20207ed68f5a176962b138f2312",
+      "functions": [
+        {
+          "name": "RouteRegistrationService",
+          "params": [
+            "routeRegistrationRepository",
+            "studentRepository",
+            "transportService"
+          ],
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "getCurrent",
+          "params": [
+            "currentUser"
+          ],
+          "returnType": "Registration",
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "register",
+          "params": [
+            "currentUser",
+            "request"
+          ],
+          "returnType": "Registration",
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "change",
+          "params": [
+            "currentUser",
+            "registrationId",
+            "request"
+          ],
+          "returnType": "Registration",
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "cancel",
+          "params": [
+            "currentUser",
+            "registrationId",
+            "reason"
+          ],
+          "returnType": "void",
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "saveRegistration",
+          "params": [
+            "student",
+            "selection",
+            "effectiveDate",
+            "previous"
+          ],
+          "returnType": "RouteRegistration",
+          "exported": false,
+          "lineCount": 18
+        },
+        {
+          "name": "findStudent",
+          "params": [
+            "currentUser"
+          ],
+          "returnType": "Student",
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "ownedRegistration",
+          "params": [
+            "student",
+            "registrationId"
+          ],
+          "returnType": "RouteRegistration",
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "requireActive",
+          "params": [
+            "registration"
+          ],
+          "returnType": "void",
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "toResponse",
+          "params": [
+            "registration"
+          ],
+          "returnType": "Registration",
+          "exported": false,
+          "lineCount": 13
+        }
+      ],
+      "classes": [
+        {
+          "name": "RouteRegistrationService",
+          "methods": [
+            "RouteRegistrationService",
+            "getCurrent",
+            "register",
+            "change",
+            "cancel",
+            "saveRegistration",
+            "findStudent",
+            "ownedRegistration",
+            "requireActive",
+            "toResponse"
+          ],
+          "properties": [
+            "ACTIVE_STATUSES",
+            "routeRegistrationRepository",
+            "studentRepository",
+            "transportService"
+          ],
+          "exported": true,
+          "lineCount": 113
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.time.LocalDate",
+          "specifiers": [
+            "LocalDate"
+          ]
+        },
+        {
+          "source": "java.time.OffsetDateTime",
+          "specifiers": [
+            "OffsetDateTime"
+          ]
+        },
+        {
+          "source": "java.time.ZoneOffset",
+          "specifiers": [
+            "ZoneOffset"
+          ]
+        },
+        {
+          "source": "java.util.List",
+          "specifiers": [
+            "List"
+          ]
+        },
+        {
+          "source": "org.springframework.http.HttpStatus",
+          "specifiers": [
+            "HttpStatus"
+          ]
+        },
+        {
+          "source": "org.springframework.stereotype.Service",
+          "specifiers": [
+            "Service"
+          ]
+        },
+        {
+          "source": "org.springframework.transaction.annotation.Transactional",
+          "specifiers": [
+            "Transactional"
+          ]
+        },
+        {
+          "source": "com.unibus.api.common.ApiException",
+          "specifiers": [
+            "ApiException"
+          ]
+        },
+        {
+          "source": "com.unibus.api.registration.dto.RegistrationDtos.Registration",
+          "specifiers": [
+            "Registration"
+          ]
+        },
+        {
+          "source": "com.unibus.api.registration.dto.RegistrationDtos.RegistrationRequest",
+          "specifiers": [
+            "RegistrationRequest"
+          ]
+        },
+        {
+          "source": "com.unibus.api.registration.model.RegistrationStatus",
+          "specifiers": [
+            "RegistrationStatus"
+          ]
+        },
+        {
+          "source": "com.unibus.api.registration.model.RouteRegistration",
+          "specifiers": [
+            "RouteRegistration"
+          ]
+        },
+        {
+          "source": "com.unibus.api.security.CurrentUser",
+          "specifiers": [
+            "CurrentUser"
+          ]
+        },
+        {
+          "source": "com.unibus.api.transport.TransportService",
+          "specifiers": [
+            "TransportService"
+          ]
+        },
+        {
+          "source": "com.unibus.api.transport.TransportService.RouteSelection",
+          "specifiers": [
+            "RouteSelection"
+          ]
+        },
+        {
+          "source": "com.unibus.api.user.StudentRepository",
+          "specifiers": [
+            "StudentRepository"
+          ]
+        },
+        {
+          "source": "com.unibus.api.user.model.Student",
+          "specifiers": [
+            "Student"
+          ]
+        }
+      ],
+      "exports": [
+        "RouteRegistrationService",
+        "getCurrent",
+        "register",
+        "change",
+        "cancel",
+        "RouteRegistrationService"
+      ],
+      "totalLines": 136,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/security/CurrentUser.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/security/CurrentUser.java",
+      "contentHash": "dea8b2ef8a7c74369500147d033fe3fe14b31947ded0f35ffefc86fbe0a9d77c",
+      "functions": [],
+      "classes": [],
+      "imports": [
+        {
+          "source": "com.unibus.api.user.model.UserRole",
+          "specifiers": [
+            "UserRole"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 7,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/security/JwtAuthenticationFilter.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/security/JwtAuthenticationFilter.java",
+      "contentHash": "1d6af708e07a079ececefa30b505e6935a1c8c594488fab72f49abc1765643e9",
+      "functions": [
+        {
+          "name": "JwtAuthenticationFilter",
+          "params": [
+            "jwtTokenService",
+            "loginSessionRepository"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "doFilterInternal",
+          "params": [
+            "request",
+            "response",
+            "filterChain"
+          ],
+          "returnType": "void",
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "authenticate",
+          "params": [
+            "token"
+          ],
+          "returnType": "void",
+          "exported": false,
+          "lineCount": 19
+        }
+      ],
+      "classes": [
+        {
+          "name": "JwtAuthenticationFilter",
+          "methods": [
+            "JwtAuthenticationFilter",
+            "doFilterInternal",
+            "authenticate"
+          ],
+          "properties": [
+            "jwtTokenService",
+            "loginSessionRepository"
+          ],
+          "exported": true,
+          "lineCount": 45
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.io.IOException",
+          "specifiers": [
+            "IOException"
+          ]
+        },
+        {
+          "source": "java.time.OffsetDateTime",
+          "specifiers": [
+            "OffsetDateTime"
+          ]
+        },
+        {
+          "source": "java.time.ZoneOffset",
+          "specifiers": [
+            "ZoneOffset"
+          ]
+        },
+        {
+          "source": "java.util.List",
+          "specifiers": [
+            "List"
+          ]
+        },
+        {
+          "source": "org.springframework.security.authentication.UsernamePasswordAuthenticationToken",
+          "specifiers": [
+            "UsernamePasswordAuthenticationToken"
+          ]
+        },
+        {
+          "source": "org.springframework.security.core.authority.SimpleGrantedAuthority",
+          "specifiers": [
+            "SimpleGrantedAuthority"
+          ]
+        },
+        {
+          "source": "org.springframework.security.core.context.SecurityContextHolder",
+          "specifiers": [
+            "SecurityContextHolder"
+          ]
+        },
+        {
+          "source": "org.springframework.stereotype.Component",
+          "specifiers": [
+            "Component"
+          ]
+        },
+        {
+          "source": "org.springframework.web.filter.OncePerRequestFilter",
+          "specifiers": [
+            "OncePerRequestFilter"
+          ]
+        },
+        {
+          "source": "com.unibus.api.auth.JwtTokenService",
+          "specifiers": [
+            "JwtTokenService"
+          ]
+        },
+        {
+          "source": "com.unibus.api.auth.JwtTokenService.TokenClaims",
+          "specifiers": [
+            "TokenClaims"
+          ]
+        },
+        {
+          "source": "com.unibus.api.auth.LoginSessionRepository",
+          "specifiers": [
+            "LoginSessionRepository"
+          ]
+        },
+        {
+          "source": "com.unibus.api.auth.model.LoginSession",
+          "specifiers": [
+            "LoginSession"
+          ]
+        },
+        {
+          "source": "com.unibus.api.common.ApiException",
+          "specifiers": [
+            "ApiException"
+          ]
+        },
+        {
+          "source": "com.unibus.api.user.model.UserStatus",
+          "specifiers": [
+            "UserStatus"
+          ]
+        },
+        {
+          "source": "jakarta.servlet.FilterChain",
+          "specifiers": [
+            "FilterChain"
+          ]
+        },
+        {
+          "source": "jakarta.servlet.ServletException",
+          "specifiers": [
+            "ServletException"
+          ]
+        },
+        {
+          "source": "jakarta.servlet.http.HttpServletRequest",
+          "specifiers": [
+            "HttpServletRequest"
+          ]
+        },
+        {
+          "source": "jakarta.servlet.http.HttpServletResponse",
+          "specifiers": [
+            "HttpServletResponse"
+          ]
+        }
+      ],
+      "exports": [
+        "JwtAuthenticationFilter",
+        "JwtAuthenticationFilter"
+      ],
+      "totalLines": 71,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/security/SecurityConfig.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/security/SecurityConfig.java",
+      "contentHash": "d71068a01b00c815f9ea2e5bd26076b7ee9abdd7bc7f25b4e1698a2abbfc4ecb",
+      "functions": [
+        {
+          "name": "passwordEncoder",
+          "params": [],
+          "returnType": "PasswordEncoder",
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "securityFilterChain",
+          "params": [
+            "httpSecurity",
+            "jwtAuthenticationFilter",
+            "objectMapper"
+          ],
+          "returnType": "SecurityFilterChain",
+          "exported": false,
+          "lineCount": 24
+        },
+        {
+          "name": "writeError",
+          "params": [
+            "response",
+            "objectMapper",
+            "status",
+            "message"
+          ],
+          "returnType": "void",
+          "exported": false,
+          "lineCount": 9
+        }
+      ],
+      "classes": [
+        {
+          "name": "SecurityConfig",
+          "methods": [
+            "passwordEncoder",
+            "securityFilterChain",
+            "writeError"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 44
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.io.IOException",
+          "specifiers": [
+            "IOException"
+          ]
+        },
+        {
+          "source": "org.springframework.context.annotation.Bean",
+          "specifiers": [
+            "Bean"
+          ]
+        },
+        {
+          "source": "org.springframework.context.annotation.Configuration",
+          "specifiers": [
+            "Configuration"
+          ]
+        },
+        {
+          "source": "org.springframework.http.HttpStatus",
+          "specifiers": [
+            "HttpStatus"
+          ]
+        },
+        {
+          "source": "org.springframework.http.MediaType",
+          "specifiers": [
+            "MediaType"
+          ]
+        },
+        {
+          "source": "org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity",
+          "specifiers": [
+            "EnableMethodSecurity"
+          ]
+        },
+        {
+          "source": "org.springframework.security.config.annotation.web.builders.HttpSecurity",
+          "specifiers": [
+            "HttpSecurity"
+          ]
+        },
+        {
+          "source": "org.springframework.security.config.http.SessionCreationPolicy",
+          "specifiers": [
+            "SessionCreationPolicy"
+          ]
+        },
+        {
+          "source": "org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder",
+          "specifiers": [
+            "BCryptPasswordEncoder"
+          ]
+        },
+        {
+          "source": "org.springframework.security.crypto.password.PasswordEncoder",
+          "specifiers": [
+            "PasswordEncoder"
+          ]
+        },
+        {
+          "source": "org.springframework.security.web.SecurityFilterChain",
+          "specifiers": [
+            "SecurityFilterChain"
+          ]
+        },
+        {
+          "source": "org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter",
+          "specifiers": [
+            "UsernamePasswordAuthenticationFilter"
+          ]
+        },
+        {
+          "source": "com.unibus.api.common.ApiResponse",
+          "specifiers": [
+            "ApiResponse"
+          ]
+        },
+        {
+          "source": "jakarta.servlet.http.HttpServletResponse",
+          "specifiers": [
+            "HttpServletResponse"
+          ]
+        },
+        {
+          "source": "tools.jackson.databind.ObjectMapper",
+          "specifiers": [
+            "ObjectMapper"
+          ]
+        }
+      ],
+      "exports": [
+        "SecurityConfig"
+      ],
+      "totalLines": 66,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/student/dto/StudentDtos.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/student/dto/StudentDtos.java",
+      "contentHash": "710e82369951f6d4270ff96cf372ea1384224d39754d222ce307edf6e20278cd",
+      "functions": [
+        {
+          "name": "StudentDtos",
+          "params": [],
+          "exported": true,
+          "lineCount": 2
+        }
+      ],
+      "classes": [
+        {
+          "name": "StudentDtos",
+          "methods": [
+            "StudentDtos"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 24
+        }
+      ],
+      "imports": [
+        {
+          "source": "jakarta.validation.constraints.Email",
+          "specifiers": [
+            "Email"
+          ]
+        },
+        {
+          "source": "jakarta.validation.constraints.Size",
+          "specifiers": [
+            "Size"
+          ]
+        },
+        {
+          "source": "java.time.LocalDate",
+          "specifiers": [
+            "LocalDate"
+          ]
+        }
+      ],
+      "exports": [
+        "StudentDtos"
+      ],
+      "totalLines": 31,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/student/StudentProfileController.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/student/StudentProfileController.java",
+      "contentHash": "ef18a5ef0816b2280135ce778710905a46460f81d160a3868ca6051c4f67fec4",
+      "functions": [
+        {
+          "name": "StudentProfileController",
+          "params": [
+            "studentProfileService"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "getProfile",
+          "params": [
+            "currentUser"
+          ],
+          "returnType": "ApiResponse<Profile>",
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "updateProfile",
+          "params": [
+            "currentUser",
+            "request"
+          ],
+          "returnType": "ApiResponse<Profile>",
+          "exported": false,
+          "lineCount": 6
+        }
+      ],
+      "classes": [
+        {
+          "name": "StudentProfileController",
+          "methods": [
+            "StudentProfileController",
+            "getProfile",
+            "updateProfile"
+          ],
+          "properties": [
+            "studentProfileService"
+          ],
+          "exported": true,
+          "lineCount": 23
+        }
+      ],
+      "imports": [
+        {
+          "source": "org.springframework.security.access.prepost.PreAuthorize",
+          "specifiers": [
+            "PreAuthorize"
+          ]
+        },
+        {
+          "source": "org.springframework.security.core.annotation.AuthenticationPrincipal",
+          "specifiers": [
+            "AuthenticationPrincipal"
+          ]
+        },
+        {
+          "source": "org.springframework.web.bind.annotation.GetMapping",
+          "specifiers": [
+            "GetMapping"
+          ]
+        },
+        {
+          "source": "org.springframework.web.bind.annotation.PatchMapping",
+          "specifiers": [
+            "PatchMapping"
+          ]
+        },
+        {
+          "source": "org.springframework.web.bind.annotation.RequestBody",
+          "specifiers": [
+            "RequestBody"
+          ]
+        },
+        {
+          "source": "org.springframework.web.bind.annotation.RequestMapping",
+          "specifiers": [
+            "RequestMapping"
+          ]
+        },
+        {
+          "source": "org.springframework.web.bind.annotation.RestController",
+          "specifiers": [
+            "RestController"
+          ]
+        },
+        {
+          "source": "com.unibus.api.common.ApiResponse",
+          "specifiers": [
+            "ApiResponse"
+          ]
+        },
+        {
+          "source": "com.unibus.api.security.CurrentUser",
+          "specifiers": [
+            "CurrentUser"
+          ]
+        },
+        {
+          "source": "com.unibus.api.student.dto.StudentDtos.Profile",
+          "specifiers": [
+            "Profile"
+          ]
+        },
+        {
+          "source": "com.unibus.api.student.dto.StudentDtos.UpdateProfileRequest",
+          "specifiers": [
+            "UpdateProfileRequest"
+          ]
+        },
+        {
+          "source": "jakarta.validation.Valid",
+          "specifiers": [
+            "Valid"
+          ]
+        }
+      ],
+      "exports": [
+        "StudentProfileController",
+        "StudentProfileController"
+      ],
+      "totalLines": 41,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/student/StudentProfileService.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/student/StudentProfileService.java",
+      "contentHash": "60063e1b3b39569dba5cc86f7c402526802ef52cbe0d772a3c9610849ba4c544",
+      "functions": [
+        {
+          "name": "StudentProfileService",
+          "params": [
+            "studentRepository",
+            "userRepository"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "getProfile",
+          "params": [
+            "currentUser"
+          ],
+          "returnType": "Profile",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "updateProfile",
+          "params": [
+            "currentUser",
+            "request"
+          ],
+          "returnType": "Profile",
+          "exported": true,
+          "lineCount": 39
+        },
+        {
+          "name": "findStudent",
+          "params": [
+            "currentUser"
+          ],
+          "returnType": "Student",
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "toProfile",
+          "params": [
+            "student"
+          ],
+          "returnType": "Profile",
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "nullableTrim",
+          "params": [
+            "value"
+          ],
+          "returnType": "String",
+          "exported": false,
+          "lineCount": 3
+        }
+      ],
+      "classes": [
+        {
+          "name": "StudentProfileService",
+          "methods": [
+            "StudentProfileService",
+            "getProfile",
+            "updateProfile",
+            "findStudent",
+            "toProfile",
+            "nullableTrim"
+          ],
+          "properties": [
+            "studentRepository",
+            "userRepository"
+          ],
+          "exported": true,
+          "lineCount": 80
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.time.OffsetDateTime",
+          "specifiers": [
+            "OffsetDateTime"
+          ]
+        },
+        {
+          "source": "java.time.ZoneOffset",
+          "specifiers": [
+            "ZoneOffset"
+          ]
+        },
+        {
+          "source": "org.springframework.http.HttpStatus",
+          "specifiers": [
+            "HttpStatus"
+          ]
+        },
+        {
+          "source": "org.springframework.stereotype.Service",
+          "specifiers": [
+            "Service"
+          ]
+        },
+        {
+          "source": "org.springframework.transaction.annotation.Transactional",
+          "specifiers": [
+            "Transactional"
+          ]
+        },
+        {
+          "source": "com.unibus.api.common.ApiException",
+          "specifiers": [
+            "ApiException"
+          ]
+        },
+        {
+          "source": "com.unibus.api.security.CurrentUser",
+          "specifiers": [
+            "CurrentUser"
+          ]
+        },
+        {
+          "source": "com.unibus.api.student.dto.StudentDtos.Profile",
+          "specifiers": [
+            "Profile"
+          ]
+        },
+        {
+          "source": "com.unibus.api.student.dto.StudentDtos.UpdateProfileRequest",
+          "specifiers": [
+            "UpdateProfileRequest"
+          ]
+        },
+        {
+          "source": "com.unibus.api.user.StudentRepository",
+          "specifiers": [
+            "StudentRepository"
+          ]
+        },
+        {
+          "source": "com.unibus.api.user.UserRepository",
+          "specifiers": [
+            "UserRepository"
+          ]
+        },
+        {
+          "source": "com.unibus.api.user.model.Student",
+          "specifiers": [
+            "Student"
+          ]
+        }
+      ],
+      "exports": [
+        "StudentProfileService",
+        "getProfile",
+        "updateProfile",
+        "StudentProfileService"
+      ],
+      "totalLines": 98,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/transport/BusRouteRepository.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/transport/BusRouteRepository.java",
+      "contentHash": "82b35644388c91071e386dc7d7cdcabcf51199543d417e6a054d4b15ad9efd10",
+      "functions": [],
+      "classes": [
+        {
+          "name": "BusRouteRepository",
+          "methods": [
+            "searchRoutes"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 17
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.util.List",
+          "specifiers": [
+            "List"
+          ]
+        },
+        {
+          "source": "org.springframework.data.jpa.repository.JpaRepository",
+          "specifiers": [
+            "JpaRepository"
+          ]
+        },
+        {
+          "source": "org.springframework.data.jpa.repository.Query",
+          "specifiers": [
+            "Query"
+          ]
+        },
+        {
+          "source": "org.springframework.data.repository.query.Param",
+          "specifiers": [
+            "Param"
+          ]
+        },
+        {
+          "source": "com.unibus.api.transport.model.BusRoute",
+          "specifiers": [
+            "BusRoute"
+          ]
+        }
+      ],
+      "exports": [
+        "BusRouteRepository"
+      ],
+      "totalLines": 28,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/transport/dto/TransportDtos.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/transport/dto/TransportDtos.java",
+      "contentHash": "980360f97f5ee155923ad13dedd18fed28cabc3dbc0f216eaf382401749c9816",
+      "functions": [
+        {
+          "name": "TransportDtos",
+          "params": [],
+          "exported": true,
+          "lineCount": 2
+        }
+      ],
+      "classes": [
+        {
+          "name": "TransportDtos",
+          "methods": [
+            "TransportDtos"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 19
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.math.BigDecimal",
+          "specifiers": [
+            "BigDecimal"
+          ]
+        },
+        {
+          "source": "java.time.OffsetDateTime",
+          "specifiers": [
+            "OffsetDateTime"
+          ]
+        },
+        {
+          "source": "java.util.List",
+          "specifiers": [
+            "List"
+          ]
+        }
+      ],
+      "exports": [
+        "TransportDtos"
+      ],
+      "totalLines": 26,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/transport/EtaRepository.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/transport/EtaRepository.java",
+      "contentHash": "dfdac71a5d64b832ce592be9c039f02b097c5d3fd0cbcd7587dfda03c1df2006",
+      "functions": [
+        {
+          "name": "EtaRepository",
+          "params": [
+            "jdbcTemplate"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "findRunningTripEtas",
+          "params": [
+            "routeId",
+            "stopId"
+          ],
+          "returnType": "List<EtaView>",
+          "exported": true,
+          "lineCount": 19
+        }
+      ],
+      "classes": [
+        {
+          "name": "EtaRepository",
+          "methods": [
+            "EtaRepository",
+            "findRunningTripEtas"
+          ],
+          "properties": [
+            "jdbcTemplate"
+          ],
+          "exported": true,
+          "lineCount": 38
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.time.OffsetDateTime",
+          "specifiers": [
+            "OffsetDateTime"
+          ]
+        },
+        {
+          "source": "java.util.List",
+          "specifiers": [
+            "List"
+          ]
+        },
+        {
+          "source": "org.springframework.jdbc.core.JdbcTemplate",
+          "specifiers": [
+            "JdbcTemplate"
+          ]
+        },
+        {
+          "source": "org.springframework.stereotype.Repository",
+          "specifiers": [
+            "Repository"
+          ]
+        }
+      ],
+      "exports": [
+        "EtaRepository",
+        "findRunningTripEtas",
+        "EtaRepository"
+      ],
+      "totalLines": 47,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/transport/model/BusRoute.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/transport/model/BusRoute.java",
+      "contentHash": "f0fc69caec4c6fe802cd04b284311e712514028ec23b8856f6f671e71e2add3e",
+      "functions": [],
+      "classes": [
+        {
+          "name": "BusRoute",
+          "methods": [],
+          "properties": [
+            "id",
+            "routeName",
+            "description",
+            "distanceKm",
+            "estimatedMinutes",
+            "circular",
+            "status",
+            "createdAt"
+          ],
+          "exported": true,
+          "lineCount": 34
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.math.BigDecimal",
+          "specifiers": [
+            "BigDecimal"
+          ]
+        },
+        {
+          "source": "java.time.OffsetDateTime",
+          "specifiers": [
+            "OffsetDateTime"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Column",
+          "specifiers": [
+            "Column"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Entity",
+          "specifiers": [
+            "Entity"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.EnumType",
+          "specifiers": [
+            "EnumType"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Enumerated",
+          "specifiers": [
+            "Enumerated"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.GeneratedValue",
+          "specifiers": [
+            "GeneratedValue"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.GenerationType",
+          "specifiers": [
+            "GenerationType"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Id",
+          "specifiers": [
+            "Id"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Table",
+          "specifiers": [
+            "Table"
+          ]
+        },
+        {
+          "source": "lombok.Getter",
+          "specifiers": [
+            "Getter"
+          ]
+        },
+        {
+          "source": "lombok.NoArgsConstructor",
+          "specifiers": [
+            "NoArgsConstructor"
+          ]
+        },
+        {
+          "source": "lombok.Setter",
+          "specifiers": [
+            "Setter"
+          ]
+        }
+      ],
+      "exports": [
+        "BusRoute"
+      ],
+      "totalLines": 52,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/transport/model/RouteStatus.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/transport/model/RouteStatus.java",
+      "contentHash": "580aa5870bc7914de9e56c20087699cf839fab1d0e95013ba32245f233569211",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 13,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/transport/model/RouteStop.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/transport/model/RouteStop.java",
+      "contentHash": "78f0df3f6182ffa8d10a1574f7a47cc93d216fdf28e19ac24207be7db8997246",
+      "functions": [],
+      "classes": [
+        {
+          "name": "RouteStop",
+          "methods": [],
+          "properties": [
+            "id",
+            "route",
+            "stop",
+            "stopOrder",
+            "minutesFromPreviousStop"
+          ],
+          "exported": true,
+          "lineCount": 26
+        }
+      ],
+      "imports": [
+        {
+          "source": "jakarta.persistence.Column",
+          "specifiers": [
+            "Column"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Entity",
+          "specifiers": [
+            "Entity"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.FetchType",
+          "specifiers": [
+            "FetchType"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.GeneratedValue",
+          "specifiers": [
+            "GeneratedValue"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.GenerationType",
+          "specifiers": [
+            "GenerationType"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Id",
+          "specifiers": [
+            "Id"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.JoinColumn",
+          "specifiers": [
+            "JoinColumn"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.ManyToOne",
+          "specifiers": [
+            "ManyToOne"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Table",
+          "specifiers": [
+            "Table"
+          ]
+        },
+        {
+          "source": "lombok.Getter",
+          "specifiers": [
+            "Getter"
+          ]
+        },
+        {
+          "source": "lombok.NoArgsConstructor",
+          "specifiers": [
+            "NoArgsConstructor"
+          ]
+        },
+        {
+          "source": "lombok.Setter",
+          "specifiers": [
+            "Setter"
+          ]
+        }
+      ],
+      "exports": [
+        "RouteStop"
+      ],
+      "totalLines": 42,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/transport/model/Stop.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/transport/model/Stop.java",
+      "contentHash": "4e2312d0bcf831d972c12570969429e5389017e5e4f35062501d39d2d667acca",
+      "functions": [],
+      "classes": [
+        {
+          "name": "Stop",
+          "methods": [],
+          "properties": [
+            "id",
+            "stopName",
+            "address",
+            "longitude",
+            "latitude",
+            "description",
+            "status",
+            "createdAt"
+          ],
+          "exported": true,
+          "lineCount": 31
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.math.BigDecimal",
+          "specifiers": [
+            "BigDecimal"
+          ]
+        },
+        {
+          "source": "java.time.OffsetDateTime",
+          "specifiers": [
+            "OffsetDateTime"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Column",
+          "specifiers": [
+            "Column"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Entity",
+          "specifiers": [
+            "Entity"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.EnumType",
+          "specifiers": [
+            "EnumType"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Enumerated",
+          "specifiers": [
+            "Enumerated"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.GeneratedValue",
+          "specifiers": [
+            "GeneratedValue"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.GenerationType",
+          "specifiers": [
+            "GenerationType"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Id",
+          "specifiers": [
+            "Id"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Table",
+          "specifiers": [
+            "Table"
+          ]
+        },
+        {
+          "source": "lombok.Getter",
+          "specifiers": [
+            "Getter"
+          ]
+        },
+        {
+          "source": "lombok.NoArgsConstructor",
+          "specifiers": [
+            "NoArgsConstructor"
+          ]
+        },
+        {
+          "source": "lombok.Setter",
+          "specifiers": [
+            "Setter"
+          ]
+        }
+      ],
+      "exports": [
+        "Stop"
+      ],
+      "totalLines": 49,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/transport/RouteStopRepository.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/transport/RouteStopRepository.java",
+      "contentHash": "42f3ba444b4f04d8619dcfc53bbc21faaa14230d07020efb5c001c4ef89a5c82",
+      "functions": [],
+      "classes": [
+        {
+          "name": "RouteStopRepository",
+          "methods": [
+            "findAllByRouteIdOrderByStopOrder",
+            "findAllByStopId"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 8
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.util.List",
+          "specifiers": [
+            "List"
+          ]
+        },
+        {
+          "source": "org.springframework.data.jpa.repository.EntityGraph",
+          "specifiers": [
+            "EntityGraph"
+          ]
+        },
+        {
+          "source": "org.springframework.data.jpa.repository.JpaRepository",
+          "specifiers": [
+            "JpaRepository"
+          ]
+        },
+        {
+          "source": "com.unibus.api.transport.model.RouteStop",
+          "specifiers": [
+            "RouteStop"
+          ]
+        }
+      ],
+      "exports": [
+        "RouteStopRepository"
+      ],
+      "totalLines": 18,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/transport/StopRepository.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/transport/StopRepository.java",
+      "contentHash": "888f2ac6b4a677bdc877032ada0e1aa88bbd1ea13e494435c6518b382ea83642",
+      "functions": [],
+      "classes": [
+        {
+          "name": "StopRepository",
+          "methods": [
+            "findAllByStatusOrderByStopName"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 4
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.util.List",
+          "specifiers": [
+            "List"
+          ]
+        },
+        {
+          "source": "org.springframework.data.jpa.repository.JpaRepository",
+          "specifiers": [
+            "JpaRepository"
+          ]
+        },
+        {
+          "source": "com.unibus.api.transport.model.RouteStatus",
+          "specifiers": [
+            "RouteStatus"
+          ]
+        },
+        {
+          "source": "com.unibus.api.transport.model.Stop",
+          "specifiers": [
+            "Stop"
+          ]
+        }
+      ],
+      "exports": [
+        "StopRepository"
+      ],
+      "totalLines": 14,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/transport/TransportController.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/transport/TransportController.java",
+      "contentHash": "9c4fe818edbaf14696450edf979db488717f6132ade2c361c7fc4af03792186d",
+      "functions": [
+        {
+          "name": "TransportController",
+          "params": [
+            "transportService"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "getStops",
+          "params": [],
+          "returnType": "ApiResponse<List<StopSummary>>",
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "searchRoutes",
+          "params": [
+            "boardingStopId",
+            "alightingStopId"
+          ],
+          "returnType": "ApiResponse<List<RouteSuggestion>>",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "getEta",
+          "params": [
+            "routeId",
+            "stopId"
+          ],
+          "returnType": "ApiResponse<List<Eta>>",
+          "exported": false,
+          "lineCount": 4
+        }
+      ],
+      "classes": [
+        {
+          "name": "TransportController",
+          "methods": [
+            "TransportController",
+            "getStops",
+            "searchRoutes",
+            "getEta"
+          ],
+          "properties": [
+            "transportService"
+          ],
+          "exported": true,
+          "lineCount": 28
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.util.List",
+          "specifiers": [
+            "List"
+          ]
+        },
+        {
+          "source": "org.springframework.security.access.prepost.PreAuthorize",
+          "specifiers": [
+            "PreAuthorize"
+          ]
+        },
+        {
+          "source": "org.springframework.web.bind.annotation.GetMapping",
+          "specifiers": [
+            "GetMapping"
+          ]
+        },
+        {
+          "source": "org.springframework.web.bind.annotation.PathVariable",
+          "specifiers": [
+            "PathVariable"
+          ]
+        },
+        {
+          "source": "org.springframework.web.bind.annotation.RequestMapping",
+          "specifiers": [
+            "RequestMapping"
+          ]
+        },
+        {
+          "source": "org.springframework.web.bind.annotation.RequestParam",
+          "specifiers": [
+            "RequestParam"
+          ]
+        },
+        {
+          "source": "org.springframework.web.bind.annotation.RestController",
+          "specifiers": [
+            "RestController"
+          ]
+        },
+        {
+          "source": "com.unibus.api.common.ApiResponse",
+          "specifiers": [
+            "ApiResponse"
+          ]
+        },
+        {
+          "source": "com.unibus.api.transport.dto.TransportDtos.Eta",
+          "specifiers": [
+            "Eta"
+          ]
+        },
+        {
+          "source": "com.unibus.api.transport.dto.TransportDtos.RouteSuggestion",
+          "specifiers": [
+            "RouteSuggestion"
+          ]
+        },
+        {
+          "source": "com.unibus.api.transport.dto.TransportDtos.StopSummary",
+          "specifiers": [
+            "StopSummary"
+          ]
+        }
+      ],
+      "exports": [
+        "TransportController",
+        "TransportController"
+      ],
+      "totalLines": 45,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/transport/TransportService.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/transport/TransportService.java",
+      "contentHash": "1614e8a4d3c76a98ccbee3c7c6b1d9b10932a0ef68fc143ff882b93c1024cbae",
+      "functions": [
+        {
+          "name": "TransportService",
+          "params": [
+            "stopRepository",
+            "routeStopRepository",
+            "busRouteRepository",
+            "etaRepository"
+          ],
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "getActiveStops",
+          "params": [],
+          "returnType": "List<StopSummary>",
+          "exported": true,
+          "lineCount": 17
+        },
+        {
+          "name": "searchRoutes",
+          "params": [
+            "boardingStopId",
+            "alightingStopId"
+          ],
+          "returnType": "List<RouteSuggestion>",
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "getEtas",
+          "params": [
+            "routeId",
+            "stopId"
+          ],
+          "returnType": "List<Eta>",
+          "exported": true,
+          "lineCount": 14
+        },
+        {
+          "name": "requireValidSelection",
+          "params": [
+            "routeId",
+            "boardingStopId",
+            "alightingStopId"
+          ],
+          "returnType": "RouteSelection",
+          "exported": true,
+          "lineCount": 16
+        },
+        {
+          "name": "toRouteSuggestion",
+          "params": [
+            "route"
+          ],
+          "returnType": "RouteSuggestion",
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "requireActiveStop",
+          "params": [
+            "stopId"
+          ],
+          "returnType": "Stop",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "validateStopOnRoute",
+          "params": [
+            "routeId",
+            "stopId"
+          ],
+          "returnType": "void",
+          "exported": false,
+          "lineCount": 6
+        }
+      ],
+      "classes": [
+        {
+          "name": "TransportService",
+          "methods": [
+            "TransportService",
+            "getActiveStops",
+            "searchRoutes",
+            "getEtas",
+            "requireValidSelection",
+            "toRouteSuggestion",
+            "requireActiveStop",
+            "validateStopOnRoute"
+          ],
+          "properties": [
+            "stopRepository",
+            "routeStopRepository",
+            "busRouteRepository",
+            "etaRepository"
+          ],
+          "exported": true,
+          "lineCount": 112
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.util.List",
+          "specifiers": [
+            "List"
+          ]
+        },
+        {
+          "source": "org.springframework.http.HttpStatus",
+          "specifiers": [
+            "HttpStatus"
+          ]
+        },
+        {
+          "source": "org.springframework.stereotype.Service",
+          "specifiers": [
+            "Service"
+          ]
+        },
+        {
+          "source": "org.springframework.transaction.annotation.Transactional",
+          "specifiers": [
+            "Transactional"
+          ]
+        },
+        {
+          "source": "com.unibus.api.common.ApiException",
+          "specifiers": [
+            "ApiException"
+          ]
+        },
+        {
+          "source": "com.unibus.api.transport.dto.TransportDtos.Eta",
+          "specifiers": [
+            "Eta"
+          ]
+        },
+        {
+          "source": "com.unibus.api.transport.dto.TransportDtos.RouteReference",
+          "specifiers": [
+            "RouteReference"
+          ]
+        },
+        {
+          "source": "com.unibus.api.transport.dto.TransportDtos.RouteStopSummary",
+          "specifiers": [
+            "RouteStopSummary"
+          ]
+        },
+        {
+          "source": "com.unibus.api.transport.dto.TransportDtos.RouteSuggestion",
+          "specifiers": [
+            "RouteSuggestion"
+          ]
+        },
+        {
+          "source": "com.unibus.api.transport.dto.TransportDtos.StopSummary",
+          "specifiers": [
+            "StopSummary"
+          ]
+        },
+        {
+          "source": "com.unibus.api.transport.model.BusRoute",
+          "specifiers": [
+            "BusRoute"
+          ]
+        },
+        {
+          "source": "com.unibus.api.transport.model.RouteStatus",
+          "specifiers": [
+            "RouteStatus"
+          ]
+        },
+        {
+          "source": "com.unibus.api.transport.model.RouteStop",
+          "specifiers": [
+            "RouteStop"
+          ]
+        },
+        {
+          "source": "com.unibus.api.transport.model.Stop",
+          "specifiers": [
+            "Stop"
+          ]
+        }
+      ],
+      "exports": [
+        "TransportService",
+        "getActiveStops",
+        "searchRoutes",
+        "getEtas",
+        "requireValidSelection",
+        "TransportService"
+      ],
+      "totalLines": 132,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/travel/TravelHistoryController.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/travel/TravelHistoryController.java",
+      "contentHash": "1dae07fe38cb132405c31a721d736be0e68cba1fa91ae5aab4e5990facbcc0d3",
+      "functions": [
+        {
+          "name": "TravelHistoryController",
+          "params": [
+            "travelHistoryService"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "getHistory",
+          "params": [
+            "currentUser",
+            "page",
+            "size"
+          ],
+          "returnType": "ApiResponse<List<TravelHistoryRepository.TravelHistoryView>>",
+          "exported": false,
+          "lineCount": 7
+        }
+      ],
+      "classes": [
+        {
+          "name": "TravelHistoryController",
+          "methods": [
+            "TravelHistoryController",
+            "getHistory"
+          ],
+          "properties": [
+            "travelHistoryService"
+          ],
+          "exported": true,
+          "lineCount": 19
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.util.List",
+          "specifiers": [
+            "List"
+          ]
+        },
+        {
+          "source": "org.springframework.security.access.prepost.PreAuthorize",
+          "specifiers": [
+            "PreAuthorize"
+          ]
+        },
+        {
+          "source": "org.springframework.security.core.annotation.AuthenticationPrincipal",
+          "specifiers": [
+            "AuthenticationPrincipal"
+          ]
+        },
+        {
+          "source": "org.springframework.web.bind.annotation.GetMapping",
+          "specifiers": [
+            "GetMapping"
+          ]
+        },
+        {
+          "source": "org.springframework.web.bind.annotation.RequestMapping",
+          "specifiers": [
+            "RequestMapping"
+          ]
+        },
+        {
+          "source": "org.springframework.web.bind.annotation.RequestParam",
+          "specifiers": [
+            "RequestParam"
+          ]
+        },
+        {
+          "source": "org.springframework.web.bind.annotation.RestController",
+          "specifiers": [
+            "RestController"
+          ]
+        },
+        {
+          "source": "com.unibus.api.common.ApiResponse",
+          "specifiers": [
+            "ApiResponse"
+          ]
+        },
+        {
+          "source": "com.unibus.api.security.CurrentUser",
+          "specifiers": [
+            "CurrentUser"
+          ]
+        }
+      ],
+      "exports": [
+        "TravelHistoryController",
+        "TravelHistoryController"
+      ],
+      "totalLines": 34,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/travel/TravelHistoryRepository.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/travel/TravelHistoryRepository.java",
+      "contentHash": "7e82863693e91b408cf7dbd14b2179f5aa75dac72a5f8d4d33eed33be5e9843f",
+      "functions": [
+        {
+          "name": "TravelHistoryRepository",
+          "params": [
+            "jdbcTemplate"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "findRecentByStudentCode",
+          "params": [
+            "studentCode",
+            "limit",
+            "offset"
+          ],
+          "returnType": "List<TravelHistoryView>",
+          "exported": true,
+          "lineCount": 26
+        }
+      ],
+      "classes": [
+        {
+          "name": "TravelHistoryRepository",
+          "methods": [
+            "TravelHistoryRepository",
+            "findRecentByStudentCode"
+          ],
+          "properties": [
+            "jdbcTemplate"
+          ],
+          "exported": true,
+          "lineCount": 48
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.time.LocalDate",
+          "specifiers": [
+            "LocalDate"
+          ]
+        },
+        {
+          "source": "java.time.OffsetDateTime",
+          "specifiers": [
+            "OffsetDateTime"
+          ]
+        },
+        {
+          "source": "java.util.List",
+          "specifiers": [
+            "List"
+          ]
+        },
+        {
+          "source": "org.springframework.jdbc.core.JdbcTemplate",
+          "specifiers": [
+            "JdbcTemplate"
+          ]
+        },
+        {
+          "source": "org.springframework.stereotype.Repository",
+          "specifiers": [
+            "Repository"
+          ]
+        }
+      ],
+      "exports": [
+        "TravelHistoryRepository",
+        "findRecentByStudentCode",
+        "TravelHistoryRepository"
+      ],
+      "totalLines": 58,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/travel/TravelHistoryService.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/travel/TravelHistoryService.java",
+      "contentHash": "dc67f43a5c23b8f22247f10438518e1872893a52d62f1f7554313e39d2c7d82b",
+      "functions": [
+        {
+          "name": "TravelHistoryService",
+          "params": [
+            "studentRepository",
+            "travelHistoryRepository"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "getHistory",
+          "params": [
+            "currentUser",
+            "page",
+            "size"
+          ],
+          "returnType": "List<TravelHistoryRepository.TravelHistoryView>",
+          "exported": true,
+          "lineCount": 9
+        }
+      ],
+      "classes": [
+        {
+          "name": "TravelHistoryService",
+          "methods": [
+            "TravelHistoryService",
+            "getHistory"
+          ],
+          "properties": [
+            "studentRepository",
+            "travelHistoryRepository"
+          ],
+          "exported": true,
+          "lineCount": 21
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.util.List",
+          "specifiers": [
+            "List"
+          ]
+        },
+        {
+          "source": "org.springframework.http.HttpStatus",
+          "specifiers": [
+            "HttpStatus"
+          ]
+        },
+        {
+          "source": "org.springframework.stereotype.Service",
+          "specifiers": [
+            "Service"
+          ]
+        },
+        {
+          "source": "org.springframework.transaction.annotation.Transactional",
+          "specifiers": [
+            "Transactional"
+          ]
+        },
+        {
+          "source": "com.unibus.api.common.ApiException",
+          "specifiers": [
+            "ApiException"
+          ]
+        },
+        {
+          "source": "com.unibus.api.security.CurrentUser",
+          "specifiers": [
+            "CurrentUser"
+          ]
+        },
+        {
+          "source": "com.unibus.api.user.StudentRepository",
+          "specifiers": [
+            "StudentRepository"
+          ]
+        },
+        {
+          "source": "com.unibus.api.user.model.Student",
+          "specifiers": [
+            "Student"
+          ]
+        }
+      ],
+      "exports": [
+        "TravelHistoryService",
+        "getHistory",
+        "TravelHistoryService"
+      ],
+      "totalLines": 35,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/UnibusApiApplication.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/UnibusApiApplication.java",
+      "contentHash": "b37ed7bbf73773a069c61c06f5f52150951e6735cf28b2d3b9923d95ab65fafe",
+      "functions": [
+        {
+          "name": "main",
+          "params": [
+            "args"
+          ],
+          "returnType": "void",
+          "exported": true,
+          "lineCount": 3
+        }
+      ],
+      "classes": [
+        {
+          "name": "UnibusApiApplication",
+          "methods": [
+            "main"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 8
+        }
+      ],
+      "imports": [
+        {
+          "source": "org.springframework.boot.SpringApplication",
+          "specifiers": [
+            "SpringApplication"
+          ]
+        },
+        {
+          "source": "org.springframework.boot.autoconfigure.SpringBootApplication",
+          "specifiers": [
+            "SpringBootApplication"
+          ]
+        }
+      ],
+      "exports": [
+        "main",
+        "UnibusApiApplication"
+      ],
+      "totalLines": 14,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/user/model/Student.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/user/model/Student.java",
+      "contentHash": "0fe0ce9936be2f980bd345b4339e92e01f8882e2d9bb2ccab4773c0c6815c2b8",
+      "functions": [],
+      "classes": [
+        {
+          "name": "Student",
+          "methods": [],
+          "properties": [
+            "studentCode",
+            "user",
+            "university",
+            "faculty",
+            "academicYear",
+            "dateOfBirth"
+          ],
+          "exported": true,
+          "lineCount": 27
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.time.LocalDate",
+          "specifiers": [
+            "LocalDate"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Column",
+          "specifiers": [
+            "Column"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Entity",
+          "specifiers": [
+            "Entity"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.FetchType",
+          "specifiers": [
+            "FetchType"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Id",
+          "specifiers": [
+            "Id"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.JoinColumn",
+          "specifiers": [
+            "JoinColumn"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.OneToOne",
+          "specifiers": [
+            "OneToOne"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Table",
+          "specifiers": [
+            "Table"
+          ]
+        },
+        {
+          "source": "lombok.Getter",
+          "specifiers": [
+            "Getter"
+          ]
+        },
+        {
+          "source": "lombok.NoArgsConstructor",
+          "specifiers": [
+            "NoArgsConstructor"
+          ]
+        },
+        {
+          "source": "lombok.Setter",
+          "specifiers": [
+            "Setter"
+          ]
+        }
+      ],
+      "exports": [
+        "Student"
+      ],
+      "totalLines": 43,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/user/model/User.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/user/model/User.java",
+      "contentHash": "0b5b1109e006ad595ddc4c0f50bf4bedf93154cb381c1b2cd79f4f83d439b426",
+      "functions": [],
+      "classes": [
+        {
+          "name": "User",
+          "methods": [],
+          "properties": [
+            "id",
+            "email",
+            "passwordHash",
+            "fullName",
+            "phoneNumber",
+            "address",
+            "avatarUrl",
+            "role",
+            "status",
+            "lockReason",
+            "createdAt",
+            "updatedAt"
+          ],
+          "exported": true,
+          "lineCount": 46
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.time.OffsetDateTime",
+          "specifiers": [
+            "OffsetDateTime"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Column",
+          "specifiers": [
+            "Column"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Entity",
+          "specifiers": [
+            "Entity"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.EnumType",
+          "specifiers": [
+            "EnumType"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Enumerated",
+          "specifiers": [
+            "Enumerated"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.GeneratedValue",
+          "specifiers": [
+            "GeneratedValue"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.GenerationType",
+          "specifiers": [
+            "GenerationType"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Id",
+          "specifiers": [
+            "Id"
+          ]
+        },
+        {
+          "source": "jakarta.persistence.Table",
+          "specifiers": [
+            "Table"
+          ]
+        },
+        {
+          "source": "lombok.Getter",
+          "specifiers": [
+            "Getter"
+          ]
+        },
+        {
+          "source": "lombok.NoArgsConstructor",
+          "specifiers": [
+            "NoArgsConstructor"
+          ]
+        },
+        {
+          "source": "lombok.Setter",
+          "specifiers": [
+            "Setter"
+          ]
+        }
+      ],
+      "exports": [
+        "User"
+      ],
+      "totalLines": 63,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/user/model/UserRole.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/user/model/UserRole.java",
+      "contentHash": "26be984e47ac3f06d6cb6c41bb427b2c6d8b099129371dfc4985876a3c3d0d3c",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 10,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/user/model/UserStatus.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/user/model/UserStatus.java",
+      "contentHash": "34995ecdb5794f47ccc3580130ff92d0404b8cf8480aa38960b18f15d395a0ac",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 12,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/user/StudentRepository.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/user/StudentRepository.java",
+      "contentHash": "9ce2873408531fa2b192fa4e6b71aab790a8a86fc316c5e8cadfdb2a031d8350",
+      "functions": [],
+      "classes": [
+        {
+          "name": "StudentRepository",
+          "methods": [
+            "findByUserId"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 4
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.util.Optional",
+          "specifiers": [
+            "Optional"
+          ]
+        },
+        {
+          "source": "org.springframework.data.jpa.repository.JpaRepository",
+          "specifiers": [
+            "JpaRepository"
+          ]
+        },
+        {
+          "source": "com.unibus.api.user.model.Student",
+          "specifiers": [
+            "Student"
+          ]
+        }
+      ],
+      "exports": [
+        "StudentRepository"
+      ],
+      "totalLines": 13,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/java/com/unibus/api/user/UserRepository.java": {
+      "filePath": "backend/src/main/java/com/unibus/api/user/UserRepository.java",
+      "contentHash": "5c134c7e7cecc8257de4b92580659238c91921b278c979f0a92292dd39d9f125",
+      "functions": [],
+      "classes": [
+        {
+          "name": "UserRepository",
+          "methods": [
+            "findByEmailIgnoreCase",
+            "existsByEmailIgnoreCase"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 6
+        }
+      ],
+      "imports": [
+        {
+          "source": "java.util.Optional",
+          "specifiers": [
+            "Optional"
+          ]
+        },
+        {
+          "source": "org.springframework.data.jpa.repository.JpaRepository",
+          "specifiers": [
+            "JpaRepository"
+          ]
+        },
+        {
+          "source": "com.unibus.api.user.model.User",
+          "specifiers": [
+            "User"
+          ]
+        }
+      ],
+      "exports": [
+        "UserRepository"
+      ],
+      "totalLines": 15,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/main/resources/application.properties": {
+      "filePath": "backend/src/main/resources/application.properties",
+      "contentHash": "bc24f606068a37ed7b1d21659c8a2484fe6c977e86d103ba63c69634492b754c",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 19,
+      "hasStructuralAnalysis": false
+    },
+    "backend/src/main/resources/db/migration/V2__add_verification_codes.sql": {
+      "filePath": "backend/src/main/resources/db/migration/V2__add_verification_codes.sql",
+      "contentHash": "88d728c6a76d404496ebe6aad1fae2bd18c957942b20ab04e28ee87cc593b3d9",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 18,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/test/java/com/unibus/api/auth/AuthHttpIntegrationTests.java": {
+      "filePath": "backend/src/test/java/com/unibus/api/auth/AuthHttpIntegrationTests.java",
+      "contentHash": "f4205e8ffe7dfa1447903d2cbe2231ca1a5249bf33aa8cc53cfdfa1bd38e1419",
+      "functions": [
+        {
+          "name": "cleanDatabase",
+          "params": [],
+          "returnType": "void",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "protectsStudentEndpointWithoutToken",
+          "params": [],
+          "returnType": "void",
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "registersAndLogsInThroughHttpContract",
+          "params": [],
+          "returnType": "void",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "saveOtp",
+          "params": [
+            "email",
+            "rawCode"
+          ],
+          "returnType": "void",
+          "exported": false,
+          "lineCount": 10
+        }
+      ],
+      "classes": [
+        {
+          "name": "AuthHttpIntegrationTests",
+          "methods": [
+            "cleanDatabase",
+            "protectsStudentEndpointWithoutToken",
+            "registersAndLogsInThroughHttpContract",
+            "saveOtp"
+          ],
+          "properties": [
+            "mockMvc",
+            "hashingService",
+            "verificationCodeRepository",
+            "loginSessionRepository",
+            "studentRepository",
+            "userRepository"
+          ],
+          "exported": false,
+          "lineCount": 50
+        }
+      ],
+      "imports": [
+        {
+          "source": "com.unibus.api.auth.model.VerificationCode",
+          "specifiers": [
+            "VerificationCode"
+          ]
+        },
+        {
+          "source": "com.unibus.api.auth.model.VerificationPurpose",
+          "specifiers": [
+            "VerificationPurpose"
+          ]
+        },
+        {
+          "source": "com.unibus.api.user.StudentRepository",
+          "specifiers": [
+            "StudentRepository"
+          ]
+        },
+        {
+          "source": "com.unibus.api.user.UserRepository",
+          "specifiers": [
+            "UserRepository"
+          ]
+        },
+        {
+          "source": "java.time.OffsetDateTime",
+          "specifiers": [
+            "OffsetDateTime"
+          ]
+        },
+        {
+          "source": "java.time.ZoneOffset",
+          "specifiers": [
+            "ZoneOffset"
+          ]
+        },
+        {
+          "source": "org.junit.jupiter.api.BeforeEach",
+          "specifiers": [
+            "BeforeEach"
+          ]
+        },
+        {
+          "source": "org.junit.jupiter.api.Test",
+          "specifiers": [
+            "Test"
+          ]
+        },
+        {
+          "source": "org.springframework.beans.factory.annotation.Autowired",
+          "specifiers": [
+            "Autowired"
+          ]
+        },
+        {
+          "source": "org.springframework.boot.test.context.SpringBootTest",
+          "specifiers": [
+            "SpringBootTest"
+          ]
+        },
+        {
+          "source": "org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc",
+          "specifiers": [
+            "AutoConfigureMockMvc"
+          ]
+        },
+        {
+          "source": "org.springframework.http.MediaType",
+          "specifiers": [
+            "MediaType"
+          ]
+        },
+        {
+          "source": "org.springframework.test.annotation.DirtiesContext",
+          "specifiers": [
+            "DirtiesContext"
+          ]
+        },
+        {
+          "source": "org.springframework.test.annotation.DirtiesContext.ClassMode",
+          "specifiers": [
+            "ClassMode"
+          ]
+        },
+        {
+          "source": "org.springframework.test.web.servlet.MockMvc",
+          "specifiers": [
+            "MockMvc"
+          ]
+        },
+        {
+          "source": "org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder",
+          "specifiers": [
+            "MockHttpServletRequestBuilder"
+          ]
+        },
+        {
+          "source": "org.springframework.test.web.servlet.request.MockMvcRequestBuilders",
+          "specifiers": [
+            "MockMvcRequestBuilders"
+          ]
+        },
+        {
+          "source": "org.springframework.test.web.servlet.result.MockMvcResultMatchers",
+          "specifiers": [
+            "MockMvcResultMatchers"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 72,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/test/java/com/unibus/api/auth/AuthServiceTests.java": {
+      "filePath": "backend/src/test/java/com/unibus/api/auth/AuthServiceTests.java",
+      "contentHash": "223fccecb8686ac6b9344180c15d718808d33a725c88ef6654b95e32d0443677",
+      "functions": [
+        {
+          "name": "cleanDatabase",
+          "params": [],
+          "returnType": "void",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "registerLoginAndLogoutMaintainsSessionState",
+          "params": [],
+          "returnType": "void",
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "invalidOtpIncrementsAttempts",
+          "params": [],
+          "returnType": "void",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "saveOtp",
+          "params": [
+            "email",
+            "purpose",
+            "value"
+          ],
+          "returnType": "VerificationCode",
+          "exported": false,
+          "lineCount": 10
+        }
+      ],
+      "classes": [
+        {
+          "name": "AuthServiceTests",
+          "methods": [
+            "cleanDatabase",
+            "registerLoginAndLogoutMaintainsSessionState",
+            "invalidOtpIncrementsAttempts",
+            "saveOtp"
+          ],
+          "properties": [
+            "authService",
+            "otpService",
+            "hashingService",
+            "jwtTokenService",
+            "verificationCodeRepository",
+            "loginSessionRepository",
+            "studentRepository",
+            "userRepository"
+          ],
+          "exported": false,
+          "lineCount": 61
+        }
+      ],
+      "imports": [
+        {
+          "source": "com.unibus.api.auth.dto.AuthRequests",
+          "specifiers": [
+            "AuthRequests"
+          ]
+        },
+        {
+          "source": "com.unibus.api.auth.dto.AuthResponses",
+          "specifiers": [
+            "AuthResponses"
+          ]
+        },
+        {
+          "source": "com.unibus.api.auth.model.VerificationCode",
+          "specifiers": [
+            "VerificationCode"
+          ]
+        },
+        {
+          "source": "com.unibus.api.auth.model.VerificationPurpose",
+          "specifiers": [
+            "VerificationPurpose"
+          ]
+        },
+        {
+          "source": "com.unibus.api.common.ApiException",
+          "specifiers": [
+            "ApiException"
+          ]
+        },
+        {
+          "source": "com.unibus.api.security.CurrentUser",
+          "specifiers": [
+            "CurrentUser"
+          ]
+        },
+        {
+          "source": "com.unibus.api.user.StudentRepository",
+          "specifiers": [
+            "StudentRepository"
+          ]
+        },
+        {
+          "source": "com.unibus.api.user.UserRepository",
+          "specifiers": [
+            "UserRepository"
+          ]
+        },
+        {
+          "source": "com.unibus.api.user.model.UserRole",
+          "specifiers": [
+            "UserRole"
+          ]
+        },
+        {
+          "source": "java.time.LocalDate",
+          "specifiers": [
+            "LocalDate"
+          ]
+        },
+        {
+          "source": "java.time.OffsetDateTime",
+          "specifiers": [
+            "OffsetDateTime"
+          ]
+        },
+        {
+          "source": "java.time.ZoneOffset",
+          "specifiers": [
+            "ZoneOffset"
+          ]
+        },
+        {
+          "source": "org.assertj.core.api.AbstractThrowableAssert",
+          "specifiers": [
+            "AbstractThrowableAssert"
+          ]
+        },
+        {
+          "source": "org.assertj.core.api.Assertions",
+          "specifiers": [
+            "Assertions"
+          ]
+        },
+        {
+          "source": "org.junit.jupiter.api.BeforeEach",
+          "specifiers": [
+            "BeforeEach"
+          ]
+        },
+        {
+          "source": "org.junit.jupiter.api.Test",
+          "specifiers": [
+            "Test"
+          ]
+        },
+        {
+          "source": "org.springframework.beans.factory.annotation.Autowired",
+          "specifiers": [
+            "Autowired"
+          ]
+        },
+        {
+          "source": "org.springframework.boot.test.context.SpringBootTest",
+          "specifiers": [
+            "SpringBootTest"
+          ]
+        },
+        {
+          "source": "org.springframework.http.HttpStatus",
+          "specifiers": [
+            "HttpStatus"
+          ]
+        },
+        {
+          "source": "org.springframework.test.annotation.DirtiesContext",
+          "specifiers": [
+            "DirtiesContext"
+          ]
+        },
+        {
+          "source": "org.springframework.test.annotation.DirtiesContext.ClassMode",
+          "specifiers": [
+            "ClassMode"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 86,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/test/java/com/unibus/api/student/StudentIteration1ServiceTests.java": {
+      "filePath": "backend/src/test/java/com/unibus/api/student/StudentIteration1ServiceTests.java",
+      "contentHash": "039b568b0e47b35856073e83c140e7490c1aa40f19a9e99fd6c8e5dc581a1c64",
+      "functions": [
+        {
+          "name": "setUp",
+          "params": [],
+          "returnType": "void",
+          "exported": false,
+          "lineCount": 36
+        },
+        {
+          "name": "searchesRouteAndManagesSingleActiveRegistration",
+          "params": [],
+          "returnType": "void",
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "readsEtaAndTravelHistoryFromOperationalTables",
+          "params": [],
+          "returnType": "void",
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "saveStop",
+          "params": [
+            "name"
+          ],
+          "returnType": "Stop",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "saveRouteStop",
+          "params": [
+            "stop",
+            "order"
+          ],
+          "returnType": "void",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "createQueryTables",
+          "params": [],
+          "returnType": "void",
+          "exported": false,
+          "lineCount": 5
+        }
+      ],
+      "classes": [
+        {
+          "name": "StudentIteration1ServiceTests",
+          "methods": [
+            "setUp",
+            "searchesRouteAndManagesSingleActiveRegistration",
+            "readsEtaAndTravelHistoryFromOperationalTables",
+            "saveStop",
+            "saveRouteStop",
+            "createQueryTables"
+          ],
+          "properties": [
+            "transportService",
+            "routeRegistrationService",
+            "travelHistoryService",
+            "userRepository",
+            "studentRepository",
+            "stopRepository",
+            "busRouteRepository",
+            "routeStopRepository",
+            "routeRegistrationRepository",
+            "jdbcTemplate",
+            "currentUser",
+            "route",
+            "boarding",
+            "alighting"
+          ],
+          "exported": false,
+          "lineCount": 109
+        }
+      ],
+      "imports": [
+        {
+          "source": "com.unibus.api.common.ApiException",
+          "specifiers": [
+            "ApiException"
+          ]
+        },
+        {
+          "source": "com.unibus.api.registration.RouteRegistrationRepository",
+          "specifiers": [
+            "RouteRegistrationRepository"
+          ]
+        },
+        {
+          "source": "com.unibus.api.registration.RouteRegistrationService",
+          "specifiers": [
+            "RouteRegistrationService"
+          ]
+        },
+        {
+          "source": "com.unibus.api.registration.dto.RegistrationDtos",
+          "specifiers": [
+            "RegistrationDtos"
+          ]
+        },
+        {
+          "source": "com.unibus.api.registration.model.RouteRegistration",
+          "specifiers": [
+            "RouteRegistration"
+          ]
+        },
+        {
+          "source": "com.unibus.api.security.CurrentUser",
+          "specifiers": [
+            "CurrentUser"
+          ]
+        },
+        {
+          "source": "com.unibus.api.transport.BusRouteRepository",
+          "specifiers": [
+            "BusRouteRepository"
+          ]
+        },
+        {
+          "source": "com.unibus.api.transport.RouteStopRepository",
+          "specifiers": [
+            "RouteStopRepository"
+          ]
+        },
+        {
+          "source": "com.unibus.api.transport.StopRepository",
+          "specifiers": [
+            "StopRepository"
+          ]
+        },
+        {
+          "source": "com.unibus.api.transport.TransportService",
+          "specifiers": [
+            "TransportService"
+          ]
+        },
+        {
+          "source": "com.unibus.api.transport.dto.TransportDtos",
+          "specifiers": [
+            "TransportDtos"
+          ]
+        },
+        {
+          "source": "com.unibus.api.transport.model.BusRoute",
+          "specifiers": [
+            "BusRoute"
+          ]
+        },
+        {
+          "source": "com.unibus.api.transport.model.RouteStatus",
+          "specifiers": [
+            "RouteStatus"
+          ]
+        },
+        {
+          "source": "com.unibus.api.transport.model.RouteStop",
+          "specifiers": [
+            "RouteStop"
+          ]
+        },
+        {
+          "source": "com.unibus.api.transport.model.Stop",
+          "specifiers": [
+            "Stop"
+          ]
+        },
+        {
+          "source": "com.unibus.api.travel.TravelHistoryService",
+          "specifiers": [
+            "TravelHistoryService"
+          ]
+        },
+        {
+          "source": "com.unibus.api.travel.TravelHistoryRepository",
+          "specifiers": [
+            "TravelHistoryRepository"
+          ]
+        },
+        {
+          "source": "com.unibus.api.user.StudentRepository",
+          "specifiers": [
+            "StudentRepository"
+          ]
+        },
+        {
+          "source": "com.unibus.api.user.UserRepository",
+          "specifiers": [
+            "UserRepository"
+          ]
+        },
+        {
+          "source": "com.unibus.api.user.model.Student",
+          "specifiers": [
+            "Student"
+          ]
+        },
+        {
+          "source": "com.unibus.api.user.model.User",
+          "specifiers": [
+            "User"
+          ]
+        },
+        {
+          "source": "com.unibus.api.user.model.UserRole",
+          "specifiers": [
+            "UserRole"
+          ]
+        },
+        {
+          "source": "com.unibus.api.user.model.UserStatus",
+          "specifiers": [
+            "UserStatus"
+          ]
+        },
+        {
+          "source": "java.time.LocalDate",
+          "specifiers": [
+            "LocalDate"
+          ]
+        },
+        {
+          "source": "java.time.OffsetDateTime",
+          "specifiers": [
+            "OffsetDateTime"
+          ]
+        },
+        {
+          "source": "java.time.ZoneOffset",
+          "specifiers": [
+            "ZoneOffset"
+          ]
+        },
+        {
+          "source": "org.assertj.core.api.AbstractThrowableAssert",
+          "specifiers": [
+            "AbstractThrowableAssert"
+          ]
+        },
+        {
+          "source": "org.assertj.core.api.Assertions",
+          "specifiers": [
+            "Assertions"
+          ]
+        },
+        {
+          "source": "org.junit.jupiter.api.BeforeEach",
+          "specifiers": [
+            "BeforeEach"
+          ]
+        },
+        {
+          "source": "org.junit.jupiter.api.Test",
+          "specifiers": [
+            "Test"
+          ]
+        },
+        {
+          "source": "org.springframework.beans.factory.annotation.Autowired",
+          "specifiers": [
+            "Autowired"
+          ]
+        },
+        {
+          "source": "org.springframework.boot.test.context.SpringBootTest",
+          "specifiers": [
+            "SpringBootTest"
+          ]
+        },
+        {
+          "source": "org.springframework.http.HttpStatus",
+          "specifiers": [
+            "HttpStatus"
+          ]
+        },
+        {
+          "source": "org.springframework.jdbc.core.JdbcTemplate",
+          "specifiers": [
+            "JdbcTemplate"
+          ]
+        },
+        {
+          "source": "org.springframework.test.annotation.DirtiesContext",
+          "specifiers": [
+            "DirtiesContext"
+          ]
+        },
+        {
+          "source": "org.springframework.test.annotation.DirtiesContext.ClassMode",
+          "specifiers": [
+            "ClassMode"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 149,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/test/java/com/unibus/api/UnibusApiApplicationTests.java": {
+      "filePath": "backend/src/test/java/com/unibus/api/UnibusApiApplicationTests.java",
+      "contentHash": "cb3d94caf515498fc516ef2d80f3579637e575807d704ee452f3cc52b8b6672d",
+      "functions": [
+        {
+          "name": "contextLoads",
+          "params": [],
+          "returnType": "void",
+          "exported": false,
+          "lineCount": 3
+        }
+      ],
+      "classes": [
+        {
+          "name": "UnibusApiApplicationTests",
+          "methods": [
+            "contextLoads"
+          ],
+          "properties": [],
+          "exported": false,
+          "lineCount": 6
+        }
+      ],
+      "imports": [
+        {
+          "source": "org.junit.jupiter.api.Test",
+          "specifiers": [
+            "Test"
+          ]
+        },
+        {
+          "source": "org.springframework.boot.test.context.SpringBootTest",
+          "specifiers": [
+            "SpringBootTest"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 12,
+      "hasStructuralAnalysis": true
+    },
+    "backend/src/test/resources/application.properties": {
+      "filePath": "backend/src/test/resources/application.properties",
+      "contentHash": "e17e38dc42cef2316410a0b8a893acfd9045123c580118f7a6aad3c050a996d3",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 13,
+      "hasStructuralAnalysis": false
+    },
+    "README.md": {
+      "filePath": "README.md",
+      "contentHash": "557cfbd5afb216cd33b94c480659d5139c0baee414620e71d01f86df3b208461",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 119,
+      "hasStructuralAnalysis": true
+    }
+  }
+}

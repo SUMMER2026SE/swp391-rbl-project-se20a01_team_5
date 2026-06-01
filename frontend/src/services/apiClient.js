@@ -1,4 +1,17 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+function resolveApiUrl() {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  if (process.env.NEXT_PUBLIC_API_BASE_URL) {
+    return process.env.NEXT_PUBLIC_API_BASE_URL;
+  }
+  if (typeof window !== 'undefined') {
+    return `${window.location.protocol}//${window.location.hostname}:8080/api/v1`;
+  }
+  return 'http://localhost:8080/api/v1';
+}
+
+const API_URL = resolveApiUrl();
 
 export const apiClient = async (endpoint, options = {}) => {
   const token = typeof window !== 'undefined' ? sessionStorage.getItem('access_token') || localStorage.getItem('access_token') : null;

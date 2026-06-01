@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, RotateCw, Image as ImageIcon } from 'lucide-react';
 
 export default function ImageCropModal({ isOpen, imageUrl, onClose, onConfirm }) {
@@ -12,20 +12,24 @@ export default function ImageCropModal({ isOpen, imageUrl, onClose, onConfirm })
 
   // Reset states when new image is loaded
   useEffect(() => {
-    if (isOpen) {
+    if (!isOpen) return undefined;
+
+    const handle = window.setTimeout(() => {
       setZoom(100);
       setRotation(0);
       setPosition({ x: 0, y: 0 });
-    }
+    }, 0);
+
+    return () => window.clearTimeout(handle);
   }, [isOpen, imageUrl]);
 
   // Compute precise bounds based on actual image dimensions
-  const getBounds = () => {
+  const getBounds = useCallback(() => {
     if (!containerRef.current || !imageRef.current) return { maxX: 0, maxY: 0 };
-    
+
     const containerW = containerRef.current.clientWidth;
     const containerH = containerRef.current.clientHeight;
-    
+
     let imageW = imageRef.current.offsetWidth;
     let imageH = imageRef.current.offsetHeight;
 
@@ -33,29 +37,33 @@ export default function ImageCropModal({ isOpen, imageUrl, onClose, onConfirm })
       imageW = imageRef.current.offsetHeight;
       imageH = imageRef.current.offsetWidth;
     }
-    
+
     const scale = zoom / 100;
     const finalW = imageW * scale;
     const finalH = imageH * scale;
-    
+
     const maxX = Math.max(0, (finalW - containerW) / 2);
     const maxY = Math.max(0, (finalH - containerH) / 2);
-    
+
     return { maxX, maxY };
-  };
+  }, [rotation, zoom]);
 
   // Bound the position when zoom changes
   useEffect(() => {
-    const { maxX, maxY } = getBounds();
-    setPosition(prev => {
-      const newX = Math.min(Math.max(prev.x, -maxX), maxX);
-      const newY = Math.min(Math.max(prev.y, -maxY), maxY);
-      if (newX !== prev.x || newY !== prev.y) {
-        return { x: newX, y: newY };
-      }
-      return prev;
-    });
-  }, [zoom, rotation]);
+    const handle = window.setTimeout(() => {
+      const { maxX, maxY } = getBounds();
+      setPosition(prev => {
+        const newX = Math.min(Math.max(prev.x, -maxX), maxX);
+        const newY = Math.min(Math.max(prev.y, -maxY), maxY);
+        if (newX !== prev.x || newY !== prev.y) {
+          return { x: newX, y: newY };
+        }
+        return prev;
+      });
+    }, 0);
+
+    return () => window.clearTimeout(handle);
+  }, [getBounds]);
 
   if (!isOpen) return null;
 
@@ -118,27 +126,27 @@ export default function ImageCropModal({ isOpen, imageUrl, onClose, onConfirm })
       onConfirm(imageUrl);
       return;
     }
-    
+
     try {
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
-      
+
       // Kích thước ảnh xuất ra (512x512 là chuẩn đẹp cho Avatar)
       const outputSize = 512;
       canvas.width = outputSize;
       canvas.height = outputSize;
-      
+
       const container = containerRef.current;
       const image = imageRef.current;
-      
+
       // mask là h-[90%] của container
       const maskSize = container.clientHeight * 0.9;
       // Tỷ lệ phóng từ màn hình lên Canvas
       const renderScale = outputSize / maskSize;
-      
+
       const cx = outputSize / 2;
       const cy = outputSize / 2;
-      
+
       // Đưa gốc tọa độ ra giữa Canvas
       ctx.translate(cx, cy);
       // Phóng to theo tỷ lệ Canvas / Mask
@@ -149,13 +157,13 @@ export default function ImageCropModal({ isOpen, imageUrl, onClose, onConfirm })
       ctx.scale(zoom / 100, zoom / 100);
       // Xoay
       ctx.rotate((rotation * Math.PI) / 180);
-      
+
       // Vẽ ảnh gốc vào canvas (Kích thước layout hiển thị trên màn hình)
       const imageW = image.offsetWidth;
       const imageH = image.offsetHeight;
-      
+
       ctx.drawImage(image, -imageW / 2, -imageH / 2, imageW, imageH);
-      
+
       // Xuất ra Base64 định dạng JPEG chất lượng cao (95%)
       const base64Image = canvas.toDataURL('image/jpeg', 0.95);
       onConfirm(base64Image);
@@ -169,10 +177,10 @@ export default function ImageCropModal({ isOpen, imageUrl, onClose, onConfirm })
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 font-sans">
       <div className="bg-white rounded-3xl w-full max-w-[420px] overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
-        
+
         {/* Header */}
         <div className="p-6 border-b border-black/5 relative flex items-center justify-center">
-          <button 
+          <button
             onClick={onClose}
             className="absolute left-6 text-brand-text/40 hover:text-brand-text transition-colors"
           >
@@ -183,7 +191,7 @@ export default function ImageCropModal({ isOpen, imageUrl, onClose, onConfirm })
 
         {/* Image Preview Area */}
         <div className="px-6 pt-6 pb-2">
-          <div 
+          <div
             ref={containerRef}
             className="w-full aspect-[4/3] bg-black/5 rounded-2xl relative overflow-hidden flex items-center justify-center cursor-move touch-none border border-black/5"
             onMouseDown={handleMouseDown}
@@ -195,24 +203,24 @@ export default function ImageCropModal({ isOpen, imageUrl, onClose, onConfirm })
             onTouchEnd={handleMouseUp}
           >
             {imageUrl ? (
-              <img 
+              <img
                 ref={imageRef}
                 crossOrigin="anonymous"
-                src={imageUrl} 
-                alt="Crop preview" 
+                src={imageUrl}
+                alt="Crop preview"
                 draggable="false"
                 className={`absolute top-1/2 left-1/2 min-w-full min-h-full max-w-none origin-center ${isDragging ? '' : 'transition-transform duration-200'}`}
-                style={{ 
-                  transform: `translate(calc(-50% + ${position.x}px), calc(-50% + ${position.y}px)) scale(${zoom / 100}) rotate(${rotation}deg)` 
+                style={{
+                  transform: `translate(calc(-50% + ${position.x}px), calc(-50% + ${position.y}px)) scale(${zoom / 100}) rotate(${rotation}deg)`
                 }}
               />
             ) : (
               <ImageIcon className="w-12 h-12 text-black/20 relative z-10" />
             )}
-            
+
             {/* Circular Mask Overlay */}
-            <div 
-              className="absolute h-[90%] aspect-square rounded-full pointer-events-none" 
+            <div
+              className="absolute h-[90%] aspect-square rounded-full pointer-events-none"
               style={{ boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.5)' }}
             ></div>
             <div className="absolute h-[90%] aspect-square rounded-full border-2 border-white/80 pointer-events-none shadow-inner"></div>
@@ -224,10 +232,10 @@ export default function ImageCropModal({ isOpen, imageUrl, onClose, onConfirm })
           {/* Zoom Control */}
           <div className="flex items-center gap-4 flex-1">
             <ImageIcon className="w-5 h-5 text-brand-text/40" />
-            <input 
-              type="range" 
-              min="100" 
-              max="300" 
+            <input
+              type="range"
+              min="100"
+              max="300"
               value={zoom}
               onChange={(e) => setZoom(Number(e.target.value))}
               className="flex-1 h-2 bg-brand-surface rounded-lg appearance-none cursor-pointer accent-brand-primary"
@@ -236,7 +244,7 @@ export default function ImageCropModal({ isOpen, imageUrl, onClose, onConfirm })
           </div>
 
           {/* Rotate Control */}
-          <button 
+          <button
             onClick={() => setRotation(r => r + 90)}
             className="text-brand-text/60 hover:text-brand-text transition-colors"
           >
@@ -246,21 +254,21 @@ export default function ImageCropModal({ isOpen, imageUrl, onClose, onConfirm })
 
         {/* Footer */}
         <div className="px-6 pb-6 pt-2 flex items-center justify-between">
-          <button 
+          <button
             onClick={() => { setZoom(100); setRotation(0); setPosition({ x: 0, y: 0 }); }}
             className="text-brand-primary font-bold hover:text-brand-text transition-colors text-sm"
           >
             Làm lại
           </button>
-          
+
           <div className="flex gap-3">
-            <button 
+            <button
               onClick={onClose}
               className="px-6 py-2.5 rounded-xl bg-white border border-black/5 text-brand-text font-bold hover:bg-black/5 transition-colors text-sm"
             >
               Hủy
             </button>
-            <button 
+            <button
               onClick={handleConfirm}
               className="px-8 py-2.5 rounded-xl bg-brand-text text-white font-bold hover:bg-black transition-colors text-sm shadow-sm"
             >
