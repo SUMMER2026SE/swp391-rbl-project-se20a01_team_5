@@ -17,6 +17,7 @@ const emptyProfile = {
   faculty: '',
   academicYear: '',
   dateOfBirth: '',
+  hasPassword: true, // Default to true so it doesn't flash "Tạo mật khẩu" during load if possible, though it's masked by skeleton
 };
 
 export default function StudentProfilePage() {
@@ -52,6 +53,7 @@ export default function StudentProfilePage() {
           faculty: profile.faculty || '',
           academicYear: profile.academicYear || '',
           dateOfBirth: profile.dateOfBirth || '',
+          hasPassword: profile.hasPassword || false,
         };
         setFormData(nextProfile);
         setOriginalData(nextProfile);
@@ -140,6 +142,7 @@ export default function StudentProfilePage() {
         faculty: profile.faculty || '',
         academicYear: profile.academicYear || '',
         dateOfBirth: profile.dateOfBirth || '',
+        hasPassword: profile.hasPassword || false,
       };
       setFormData(updatedProfile);
       setOriginalData(updatedProfile);
