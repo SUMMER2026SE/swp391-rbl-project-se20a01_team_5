@@ -1,0 +1,24 @@
+version: 0.2
+
+env:
+  shell: bash
+
+phases:
+  pre_build:
+    commands:
+      - aws ecr get-login-password --region "$AWS_DEFAULT_REGION" | docker login --username AWS --password-stdin "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com"
+      - BACKEND_IMAGE="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$BACKEND_REPOSITORY:$IMAGE_TAG"
+      - FRONTEND_IMAGE="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$FRONTEND_REPOSITORY:$IMAGE_TAG"
+  build:
+    commands:
+      - docker build -t "$BACKEND_IMAGE" -f backend/Dockerfile backend
+      - docker build --build-arg NEXT_PUBLIC_GOOGLE_CLIENT_ID="$NEXT_PUBLIC_GOOGLE_CLIENT_ID" -t "$FRONTEND_IMAGE" -f frontend/Dockerfile frontend
+  post_build:
+    commands:
+      - docker push "$BACKEND_IMAGE"
+      - docker push "$FRONTEND_IMAGE"
+      - printf '{"backend":"%s","frontend":"%s"}\n' "$BACKEND_IMAGE" "$FRONTEND_IMAGE" > image-uris.json
+
+artifacts:
+  files:
+    - image-uris.json
