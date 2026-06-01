@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { UserCircle, Mail, Phone, MapPin, GraduationCap, KeyRound, Save, Camera } from 'lucide-react';
 import ImageCropModal from '@/components/modals/ImageCropModal';
-import { studentApi } from '@/services/api';
+import { studentApi, studentVerificationApi, toApiAssetUrl } from '@/services/api';
 
 const emptyProfile = {
   fullName: '',
@@ -28,12 +28,16 @@ export default function StudentProfilePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [universities, setUniversities] = useState([]);
 
   useEffect(() => {
     let cancelled = false;
 
-    studentApi.getProfile()
-      .then((profile) => {
+    Promise.all([
+      studentApi.getProfile(),
+      studentVerificationApi.listDaNangUniversities(),
+    ])
+      .then(([profile, universityList]) => {
         if (cancelled) return;
         const nextProfile = {
           fullName: profile.fullName || '',
@@ -48,7 +52,11 @@ export default function StudentProfilePage() {
           dateOfBirth: profile.dateOfBirth || '',
         };
         setFormData(nextProfile);
-        setAvatar(profile.avatarUrl || null);
+        setAvatar(toApiAssetUrl(profile.avatarUrl) || null);
+        if (profile.avatarUrl) {
+          window.dispatchEvent(new CustomEvent('avatarUpdated', { detail: toApiAssetUrl(profile.avatarUrl) }));
+        }
+        setUniversities(universityList || []);
       })
       .catch((err) => {
         if (!cancelled) setError(err.message);
@@ -95,7 +103,6 @@ export default function StudentProfilePage() {
         fullName: formData.fullName.trim(),
         phoneNumber: formData.phoneNumber.trim() || null,
         address: formData.address.trim() || null,
-        avatarUrl: formData.avatarUrl?.trim() || null,
         university: formData.university.trim(),
         faculty: formData.faculty.trim() || null,
         academicYear: formData.academicYear ? Number(formData.academicYear) : null,
@@ -103,19 +110,25 @@ export default function StudentProfilePage() {
       };
 
       const profile = await studentApi.updateProfile(payload);
+      let avatarUrl = profile.avatarUrl || '';
+      if (avatar?.startsWith('data:image/')) {
+        const avatarProfile = await studentApi.uploadAvatar(dataUrlToFile(avatar, 'avatar.jpg'));
+        avatarUrl = avatarProfile.avatarUrl || avatarUrl;
+        window.dispatchEvent(new CustomEvent('avatarUpdated', { detail: toApiAssetUrl(avatarUrl) }));
+      }
       setFormData({
         fullName: profile.fullName || '',
         studentCode: profile.studentCode || '',
         phoneNumber: profile.phoneNumber || '',
         email: profile.email || '',
         address: profile.address || '',
-        avatarUrl: profile.avatarUrl || '',
+        avatarUrl,
         university: profile.university || '',
         faculty: profile.faculty || '',
         academicYear: profile.academicYear || '',
         dateOfBirth: profile.dateOfBirth || '',
       });
-      setAvatar(profile.avatarUrl || avatar);
+      setAvatar(toApiAssetUrl(avatarUrl) || null);
       setIsEditing(false);
       setMessage('Cập nhật thông tin cá nhân thành công.');
     } catch (err) {
@@ -208,7 +221,7 @@ export default function StudentProfilePage() {
               <ProfileInput icon={UserCircle} label="Mã sinh viên" name="studentCode" value={formData.studentCode} onChange={handleChange} disabled />
               <ProfileInput icon={Phone} label="Số điện thoại" name="phoneNumber" value={formData.phoneNumber} onChange={handleChange} disabled={!isEditing} />
               <ProfileInput icon={Mail} label="Email" type="email" name="email" value={formData.email} onChange={handleChange} disabled={!isEditing} />
-              <ProfileInput icon={GraduationCap} label="Trường" name="university" value={formData.university} onChange={handleChange} disabled={!isEditing} />
+              <ProfileSelect icon={GraduationCap} label="Trường" name="university" value={formData.university} onChange={handleChange} disabled={!isEditing} options={universities} />
               <ProfileInput icon={GraduationCap} label="Khoa" name="faculty" value={formData.faculty} onChange={handleChange} disabled={!isEditing} />
               <ProfileInput icon={KeyRound} label="Năm học" type="number" name="academicYear" value={formData.academicYear} onChange={handleChange} disabled={!isEditing} />
               <ProfileInput icon={UserCircle} label="Ngày sinh" type="date" name="dateOfBirth" value={formData.dateOfBirth} onChange={handleChange} disabled={!isEditing} />
@@ -234,9 +247,9 @@ function InfoCard({ icon: Icon, label, value }) {
   return (
     <div className="flex items-center gap-3 p-3 bg-brand-surface rounded-xl">
       <Icon className="w-5 h-5 text-brand-text/40" />
-      <div>
+      <div className="min-w-0">
         <div className="text-xs font-bold text-brand-text/40 uppercase">{label}</div>
-        <div className="font-bold">{value}</div>
+        <div className="font-bold truncate">{value}</div>
       </div>
     </div>
   );
@@ -256,4 +269,35 @@ function ProfileInput({ icon: Icon, label, disabled, type = 'text', ...props }) 
       />
     </label>
   );
+}
+
+function ProfileSelect({ icon: Icon, label, disabled, options, ...props }) {
+  return (
+    <label className="block">
+      <span className="text-sm font-bold text-brand-text/70 mb-2 flex items-center gap-2">
+        <Icon className="w-4 h-4" /> {label}
+      </span>
+      <select
+        disabled={disabled}
+        className="w-full bg-brand-surface border border-transparent disabled:opacity-70 disabled:cursor-not-allowed rounded-2xl p-4 text-sm font-bold focus:outline-none focus:border-brand-primary focus:bg-white transition-all"
+        {...props}
+      >
+        <option value="">Chọn trường</option>
+        {options.map((option) => (
+          <option key={option} value={option}>{option}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function dataUrlToFile(dataUrl, fileName) {
+  const [metadata, content] = dataUrl.split(',');
+  const mime = metadata.match(/data:(.*?);base64/)?.[1] || 'image/jpeg';
+  const binary = atob(content);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new File([bytes], fileName, { type: mime });
 }

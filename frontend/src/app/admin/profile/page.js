@@ -1,41 +1,35 @@
 "use client";
 
-import { useState } from 'react';
-import { UserCircle, Mail, Phone, MapPin, Building2, ShieldCheck, KeyRound, Save, BadgeCheck, Server, Camera } from 'lucide-react';
+import { UserCircle, Mail, Phone, MapPin, Building2, ShieldCheck, KeyRound, Save, Server, Camera } from 'lucide-react';
+import ImageCropModal from '@/components/modals/ImageCropModal';
+import useProfileEditor from '@/components/profile/useProfileEditor';
 
 export default function AdminProfilePage() {
-  const [formData, setFormData] = useState({
-    name: '',
-    employeeId: '',
-    phone: '',
-    email: '',
-    address: ''
-  });
+  const {
+    formData,
+    isEditing,
+    setIsEditing,
+    avatar,
+    cropModalOpen,
+    setCropModalOpen,
+    tempImageUrl,
+    isLoading,
+    isSaving,
+    error,
+    message,
+    handleAvatarChange,
+    handleConfirmCrop,
+    handleChange,
+    handleSubmit,
+  } = useProfileEditor();
 
-  const [isEditing, setIsEditing] = useState(false);
-  const [avatar, setAvatar] = useState(null);
-  const [notice, setNotice] = useState('');
-
-  const handleAvatarChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const imageUrl = URL.createObjectURL(file);
-      setAvatar(imageUrl);
-      // Phát sự kiện để Header cập nhật
-      window.dispatchEvent(new CustomEvent('avatarUpdated', { detail: imageUrl }));
-    }
-  };
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    setIsEditing(false);
-    setNotice('Chức năng cập nhật hồ sơ quản trị viên chưa được kết nối với backend.');
-  };
+  if (isLoading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-sm font-bold text-brand-text/50">Đang tải hồ sơ...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col gap-6 font-sans relative">
@@ -78,14 +72,14 @@ export default function AdminProfilePage() {
                 <Building2 className="w-5 h-5 text-brand-text/40" />
                 <div>
                   <div className="text-xs font-bold text-brand-text/40 uppercase">Phòng ban</div>
-                  <div className="font-bold">--</div>
+                  <div className="font-bold">Quản trị hệ thống</div>
                 </div>
               </div>
               <div className="flex items-center gap-3 p-3 bg-brand-surface rounded-xl">
                 <Server className="w-5 h-5 text-brand-text/40" />
                 <div>
                   <div className="text-xs font-bold text-brand-text/40 uppercase">Mã Hệ thống</div>
-                  <div className="font-bold">{formData.employeeId}</div>
+                  <div className="font-bold">{formData.employeeId || '--'}</div>
                 </div>
               </div>
             </div>
@@ -96,9 +90,14 @@ export default function AdminProfilePage() {
         <div className="xl:col-span-2 flex flex-col gap-6">
 
           <form onSubmit={handleSubmit} className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-black/5">
-            {notice && (
-              <div className="mb-4 rounded-2xl border border-brand-secondary/20 bg-brand-secondary/10 p-4 text-sm font-bold text-brand-text">
-                {notice}
+            {error && (
+              <div className="mb-4 rounded-2xl border border-brand-danger/20 bg-brand-danger/10 p-4 text-sm font-bold text-brand-danger">
+                {error}
+              </div>
+            )}
+            {message && (
+              <div className="mb-4 rounded-2xl border border-brand-success/20 bg-brand-success/10 p-4 text-sm font-bold text-brand-success">
+                {message}
               </div>
             )}
             <div className="flex items-center justify-between mb-8">
@@ -114,9 +113,10 @@ export default function AdminProfilePage() {
               ) : (
                 <button
                   type="submit"
-                  className="text-sm font-bold text-white bg-black hover:bg-black/80 transition-colors px-4 py-2 rounded-xl flex items-center gap-2"
+                  disabled={isSaving}
+                  className="text-sm font-bold text-white bg-black hover:bg-black/80 transition-colors px-4 py-2 rounded-xl flex items-center gap-2 disabled:opacity-60"
                 >
-                  <Save className="w-4 h-4" /> Lưu thay đổi
+                  <Save className="w-4 h-4" /> {isSaving ? 'Đang lưu...' : 'Lưu thay đổi'}
                 </button>
               )}
             </div>
@@ -143,8 +143,7 @@ export default function AdminProfilePage() {
                   type="text"
                   name="employeeId"
                   value={formData.employeeId}
-                  onChange={handleChange}
-                  disabled={!isEditing}
+                  disabled
                   className="w-full bg-brand-surface border border-transparent disabled:opacity-70 disabled:cursor-not-allowed rounded-2xl p-4 text-sm font-bold focus:outline-none focus:border-brand-primary focus:bg-white transition-all"
                 />
               </div>
@@ -199,7 +198,7 @@ export default function AdminProfilePage() {
             <div className="flex flex-col md:flex-row gap-4 items-center justify-between p-4 border border-black/5 rounded-2xl mb-4">
               <div>
                 <h4 className="font-bold">Mật khẩu Root</h4>
-                <p className="text-sm font-medium text-brand-text/60">Chưa có dữ liệu từ backend</p>
+                <p className="text-sm font-medium text-brand-text/60">Đăng nhập bằng thông tin xác thực backend.</p>
               </div>
               <button className="px-6 py-3 bg-brand-surface font-bold text-sm rounded-xl hover:bg-brand-danger hover:text-white transition-colors w-full md:w-auto">
                 Đổi mật khẩu
@@ -223,6 +222,13 @@ export default function AdminProfilePage() {
         </div>
 
       </div>
+
+      <ImageCropModal
+        isOpen={cropModalOpen}
+        imageUrl={tempImageUrl}
+        onClose={() => setCropModalOpen(false)}
+        onConfirm={handleConfirmCrop}
+      />
     </div>
   );
 }

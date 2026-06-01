@@ -5,7 +5,7 @@ export const REFRESH_TOKEN_KEY = 'refresh_token';
 export const USER_ROLE_KEY = 'user_role';
 export const STUDENT_VERIFICATION_STATUS_KEY = 'student_verification_status';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080/api/v1';
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080/api/v1';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -123,6 +123,16 @@ export function clearAuthSession() {
   localStorage.removeItem(REFRESH_TOKEN_KEY);
   localStorage.removeItem(USER_ROLE_KEY);
   localStorage.removeItem(STUDENT_VERIFICATION_STATUS_KEY);
+}
+
+export function toApiAssetUrl(url) {
+  if (!url || url.startsWith('http') || url.startsWith('data:') || url.startsWith('blob:')) {
+    return url || '';
+  }
+  if (url.startsWith('/')) {
+    return `${new URL(API_BASE_URL).origin}${url}`;
+  }
+  return url;
 }
 
 export function getDefaultRouteForRole(role, studentVerificationStatus) {
@@ -263,6 +273,36 @@ export const studentApi = {
 
   async updateProfile(payload) {
     const response = await apiClient.patch('/students/me/profile', payload);
+    return unwrap(response);
+  },
+
+  async uploadAvatar(file) {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    const response = await apiClient.post('/users/me/avatar', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return unwrap(response);
+  },
+};
+
+export const userApi = {
+  async getProfile() {
+    const response = await apiClient.get('/users/me/profile');
+    return unwrap(response);
+  },
+
+  async updateProfile(payload) {
+    const response = await apiClient.patch('/users/me/profile', payload);
+    return unwrap(response);
+  },
+
+  async uploadAvatar(file) {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    const response = await apiClient.post('/users/me/avatar', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
     return unwrap(response);
   },
 };

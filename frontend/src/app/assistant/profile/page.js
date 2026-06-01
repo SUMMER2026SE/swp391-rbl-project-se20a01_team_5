@@ -1,30 +1,35 @@
 "use client";
 
-import { useState } from 'react';
-import { UserCircle, Map, Clock, ShieldCheck, Mail, Phone, Award, CreditCard, Camera } from 'lucide-react';
+import { UserCircle, Map, Clock, ShieldCheck, Mail, Phone, Award, CreditCard, Camera, Save, MapPin } from 'lucide-react';
 import ImageCropModal from '@/components/modals/ImageCropModal';
+import useProfileEditor from '@/components/profile/useProfileEditor';
 
 export default function AssistantProfilePage() {
-  const [isEditing, setIsEditing] = useState(false);
-  const [avatar, setAvatar] = useState(null);
-  const [cropModalOpen, setCropModalOpen] = useState(false);
-  const [tempImageUrl, setTempImageUrl] = useState(null);
+  const {
+    formData,
+    isEditing,
+    setIsEditing,
+    avatar,
+    cropModalOpen,
+    setCropModalOpen,
+    tempImageUrl,
+    isLoading,
+    isSaving,
+    error,
+    message,
+    handleAvatarChange,
+    handleConfirmCrop,
+    handleChange,
+    handleSubmit,
+  } = useProfileEditor();
 
-  const handleAvatarChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const imageUrl = URL.createObjectURL(file);
-      setTempImageUrl(imageUrl);
-      setCropModalOpen(true);
-    }
-    e.target.value = null;
-  };
-
-  const handleConfirmCrop = (croppedImageUrl) => {
-    setAvatar(croppedImageUrl);
-    window.dispatchEvent(new CustomEvent('avatarUpdated', { detail: croppedImageUrl }));
-    setCropModalOpen(false);
-  };
+  if (isLoading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-sm font-bold text-brand-text/50">Đang tải hồ sơ...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col gap-6 font-sans">
@@ -34,8 +39,6 @@ export default function AssistantProfilePage() {
       </div>
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 overflow-y-auto custom-scrollbar pr-2 pb-6">
-
-        {/* Column 1: Identity (Spans 1 col) */}
         <div className="flex flex-col gap-6">
           <div className="bg-white rounded-3xl p-8 shadow-sm border border-black/5 flex flex-col items-center text-center relative overflow-hidden">
             <div className="absolute top-0 w-full h-32 bg-brand-primary/20"></div>
@@ -46,111 +49,74 @@ export default function AssistantProfilePage() {
               ) : (
                 <UserCircle className="w-32 h-32 text-brand-text/20" />
               )}
-
               <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                 <Camera className="w-8 h-8 text-white" />
               </div>
               <input type="file" className="hidden" accept="image/*" onChange={handleAvatarChange} />
             </label>
 
-            <h2 className="text-2xl font-bold text-brand-text">Chưa có hồ sơ</h2>
-            <p className="text-brand-text/60 font-medium mb-6">Chưa có dữ liệu từ backend</p>
+            <h2 className="text-2xl font-bold text-brand-text">{formData.name || 'Chưa có hồ sơ'}</h2>
+            <p className="text-brand-text/60 font-medium mb-6">Nhân viên phụ xe</p>
 
             <div className="w-full flex flex-col gap-3 text-left">
-              <div className="flex items-center gap-3 p-3 bg-brand-surface rounded-xl">
-                <CreditCard className="w-5 h-5 text-brand-text/40" />
-                <div>
-                  <div className="text-xs font-bold text-brand-text/40 uppercase">Mã nhân viên</div>
-                  <div className="font-bold">--</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 p-3 bg-brand-surface rounded-xl">
-                <Phone className="w-5 h-5 text-brand-text/40" />
-                <div>
-                  <div className="text-xs font-bold text-brand-text/40 uppercase">Số điện thoại</div>
-                  <div className="font-bold">--</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 p-3 bg-brand-surface rounded-xl">
-                <Mail className="w-5 h-5 text-brand-text/40" />
-                <div>
-                  <div className="text-xs font-bold text-brand-text/40 uppercase">Email</div>
-                  <div className="font-bold truncate max-w-[200px]">--</div>
-                </div>
-              </div>
+              <InfoCard icon={CreditCard} label="Mã nhân viên" value={formData.employeeId || '--'} />
+              <InfoCard icon={Phone} label="Số điện thoại" value={formData.phone || '--'} />
+              <InfoCard icon={Mail} label="Email" value={formData.email || '--'} />
             </div>
           </div>
         </div>
 
-        {/* Column 2 & 3: Stats & Details (Spans 2 cols) */}
         <div className="lg:col-span-2 flex flex-col gap-6">
+          <form onSubmit={handleSubmit} className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-black/5">
+            {error && (
+              <div className="mb-4 rounded-2xl border border-brand-danger/20 bg-brand-danger/10 p-4 text-sm font-bold text-brand-danger">
+                {error}
+              </div>
+            )}
+            {message && (
+              <div className="mb-4 rounded-2xl border border-brand-success/20 bg-brand-success/10 p-4 text-sm font-bold text-brand-success">
+                {message}
+              </div>
+            )}
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold">Thông tin liên lạc</h3>
+              {!isEditing ? (
+                <button type="button" onClick={() => setIsEditing(true)} className="text-sm font-bold text-brand-primary hover:text-brand-text transition-colors px-4 py-2 bg-brand-primary/10 rounded-xl">
+                  Chỉnh sửa
+                </button>
+              ) : (
+                <button type="submit" disabled={isSaving} className="text-sm font-bold text-white bg-brand-text hover:bg-black transition-colors px-4 py-2 rounded-xl flex items-center gap-2 disabled:opacity-60">
+                  <Save className="w-4 h-4" /> {isSaving ? 'Đang lưu...' : 'Lưu thay đổi'}
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <ProfileInput icon={UserCircle} label="Họ và tên" name="name" value={formData.name} onChange={handleChange} disabled={!isEditing} />
+              <ProfileInput icon={CreditCard} label="Mã nhân viên" name="employeeId" value={formData.employeeId} disabled />
+              <ProfileInput icon={Phone} label="Số điện thoại" type="tel" name="phone" value={formData.phone} onChange={handleChange} disabled={!isEditing} />
+              <ProfileInput icon={Mail} label="Email" type="email" name="email" value={formData.email} onChange={handleChange} disabled={!isEditing} />
+              <div className="md:col-span-2">
+                <ProfileInput icon={MapPin} label="Địa chỉ" name="address" value={formData.address} onChange={handleChange} disabled={!isEditing} />
+              </div>
+            </div>
+          </form>
 
-          {/* Stats Bento */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-white rounded-3xl p-6 shadow-sm border border-black/5 flex flex-col gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-brand-primary/20 flex items-center justify-center">
-                <Map className="w-6 h-6 text-brand-primary" />
-              </div>
-              <div>
-                <div className="text-3xl font-black text-brand-text">--</div>
-                <div className="text-sm font-bold text-brand-text/40 uppercase tracking-wider">Chuyến đã hỗ trợ</div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-3xl p-6 shadow-sm border border-black/5 flex flex-col gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-brand-secondary/20 flex items-center justify-center">
-                <Clock className="w-6 h-6 text-brand-secondary" />
-              </div>
-              <div>
-                <div className="text-3xl font-black text-brand-text">--</div>
-                <div className="text-sm font-bold text-brand-text/40 uppercase tracking-wider">Giờ làm (Tháng này)</div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-3xl p-6 shadow-sm border border-black/5 flex flex-col gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-brand-success/20 flex items-center justify-center">
-                <ShieldCheck className="w-6 h-6 text-brand-success" />
-              </div>
-              <div>
-                <div className="text-3xl font-black text-brand-text">--</div>
-                <div className="text-sm font-bold text-brand-text/40 uppercase tracking-wider">Đánh giá hài lòng</div>
-              </div>
-            </div>
+            <StatCard icon={Map} color="bg-brand-primary/20 text-brand-primary" value="--" label="Chuyến đã hỗ trợ" />
+            <StatCard icon={Clock} color="bg-brand-secondary/20 text-brand-secondary" value="--" label="Giờ làm (Tháng này)" />
+            <StatCard icon={ShieldCheck} color="bg-brand-success/20 text-brand-success" value="--" label="Đánh giá hài lòng" />
           </div>
 
-          {/* Licenses and Badges */}
           <div className="bg-white rounded-3xl p-8 shadow-sm border border-black/5 flex-1">
             <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
               <Award className="w-6 h-6 text-brand-text" /> Chứng chỉ đào tạo
             </h3>
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="border border-black/5 rounded-2xl p-4 flex items-start gap-4 hover:border-brand-primary transition-colors">
-                <div className="w-12 h-12 bg-brand-surface rounded-xl flex items-center justify-center shrink-0 font-black text-xl text-brand-primary">
-                  S
-                </div>
-                <div>
-                  <div className="font-bold">Chưa có dữ liệu chứng chỉ</div>
-                  <div className="text-sm text-brand-text/60 mt-1">--</div>
-                  <div className="text-sm font-bold text-brand-success mt-1">--</div>
-                </div>
-              </div>
-
-              <div className="border border-black/5 rounded-2xl p-4 flex items-start gap-4 hover:border-brand-primary transition-colors">
-                <div className="w-12 h-12 bg-brand-surface rounded-xl flex items-center justify-center shrink-0">
-                  <ShieldCheck className="w-6 h-6 text-brand-success" />
-                </div>
-                <div>
-                  <div className="font-bold">Chưa có dữ liệu PCCC</div>
-                  <div className="text-sm text-brand-text/60 mt-1">--</div>
-                  <div className="text-sm font-bold text-brand-success mt-1">--</div>
-                </div>
-              </div>
+              <CredentialCard title="Chưa có dữ liệu chứng chỉ" subtitle="--" status="--" mark="S" />
+              <CredentialCard title="Chưa có dữ liệu PCCC" subtitle="--" status="--" icon={ShieldCheck} />
             </div>
-
           </div>
         </div>
-
       </div>
 
       <ImageCropModal
@@ -159,6 +125,63 @@ export default function AssistantProfilePage() {
         onClose={() => setCropModalOpen(false)}
         onConfirm={handleConfirmCrop}
       />
+    </div>
+  );
+}
+
+function InfoCard({ icon: Icon, label, value }) {
+  return (
+    <div className="flex items-center gap-3 p-3 bg-brand-surface rounded-xl">
+      <Icon className="w-5 h-5 text-brand-text/40" />
+      <div className="min-w-0">
+        <div className="text-xs font-bold text-brand-text/40 uppercase">{label}</div>
+        <div className="font-bold truncate max-w-[200px]">{value}</div>
+      </div>
+    </div>
+  );
+}
+
+function ProfileInput({ icon: Icon, label, disabled, type = 'text', ...props }) {
+  return (
+    <div>
+      <label className="block text-sm font-bold text-brand-text/70 mb-2 flex items-center gap-2">
+        <Icon className="w-4 h-4" /> {label}
+      </label>
+      <input
+        type={type}
+        disabled={disabled}
+        className="w-full bg-brand-surface border border-transparent disabled:opacity-70 disabled:cursor-not-allowed rounded-2xl p-4 text-sm font-bold focus:outline-none focus:border-brand-primary focus:bg-white transition-all"
+        {...props}
+      />
+    </div>
+  );
+}
+
+function StatCard({ icon: Icon, color, value, label }) {
+  return (
+    <div className="bg-white rounded-3xl p-6 shadow-sm border border-black/5 flex flex-col gap-4">
+      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${color}`}>
+        <Icon className="w-6 h-6" />
+      </div>
+      <div>
+        <div className="text-3xl font-black text-brand-text">{value}</div>
+        <div className="text-sm font-bold text-brand-text/40 uppercase tracking-wider">{label}</div>
+      </div>
+    </div>
+  );
+}
+
+function CredentialCard({ title, subtitle, status, mark, icon: Icon }) {
+  return (
+    <div className="border border-black/5 rounded-2xl p-4 flex items-start gap-4 hover:border-brand-primary transition-colors">
+      <div className="w-12 h-12 bg-brand-surface rounded-xl flex items-center justify-center shrink-0 font-black text-xl text-brand-primary">
+        {Icon ? <Icon className="w-6 h-6 text-brand-success" /> : mark}
+      </div>
+      <div>
+        <div className="font-bold">{title}</div>
+        <div className="text-sm text-brand-text/60 mt-1">{subtitle}</div>
+        <div className="text-sm font-bold text-brand-success mt-1">{status}</div>
+      </div>
     </div>
   );
 }

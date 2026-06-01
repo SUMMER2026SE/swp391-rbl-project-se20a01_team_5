@@ -21,10 +21,15 @@ public class StudentProfileService {
 
     private final StudentRepository studentRepository;
     private final UserRepository userRepository;
+    private final UniversityCatalog universityCatalog;
 
-    public StudentProfileService(StudentRepository studentRepository, UserRepository userRepository) {
+    public StudentProfileService(
+            StudentRepository studentRepository,
+            UserRepository userRepository,
+            UniversityCatalog universityCatalog) {
         this.studentRepository = studentRepository;
         this.userRepository = userRepository;
+        this.universityCatalog = universityCatalog;
     }
 
     @Transactional(readOnly = true)
@@ -58,7 +63,7 @@ public class StudentProfileService {
         }
         user.setUpdatedAt(OffsetDateTime.now(ZoneOffset.UTC));
         if (student != null && nullableTrim(request.university()) != null) {
-            student.setUniversity(request.university().trim());
+            student.setUniversity(universityCatalog.requireAllowed(request.university()));
         }
         if (student != null && request.faculty() != null) {
             student.setFaculty(nullableTrim(request.faculty()));
