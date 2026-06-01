@@ -10,7 +10,7 @@ const emptyForm = {
   confirmPassword: '',
 };
 
-export default function ChangePasswordModal({ isOpen, onClose }) {
+export default function ChangePasswordModal({ isOpen, onClose, hasPassword = true }) {
   const [formData, setFormData] = useState(emptyForm);
   const [showPassword, setShowPassword] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -68,9 +68,9 @@ export default function ChangePasswordModal({ isOpen, onClose }) {
             <div className="w-12 h-12 rounded-2xl bg-brand-primary/20 flex items-center justify-center mb-4">
               <KeyRound className="w-6 h-6 text-brand-primary" />
             </div>
-            <h2 className="text-2xl font-black text-brand-text">Đổi mật khẩu</h2>
+            <h2 className="text-2xl font-black text-brand-text">{hasPassword ? 'Đổi mật khẩu' : 'Tạo mật khẩu'}</h2>
             <p className="text-sm font-medium text-brand-text/60 mt-1">
-              Mật khẩu mới nên khác mật khẩu hiện tại và có cả chữ lẫn số.
+              {hasPassword ? 'Mật khẩu mới nên khác mật khẩu hiện tại và có cả chữ lẫn số.' : 'Tạo mật khẩu để có thể đăng nhập bằng email trong lần tới.'}
             </p>
           </div>
           <button
@@ -95,15 +95,17 @@ export default function ChangePasswordModal({ isOpen, onClose }) {
             </div>
           )}
 
-          <PasswordField
-            icon={Lock}
-            label="Mật khẩu hiện tại"
-            name="currentPassword"
-            type={passwordType}
-            autoComplete="current-password"
-            value={formData.currentPassword}
-            onChange={handleChange}
-          />
+          {hasPassword && (
+            <PasswordField
+              icon={Lock}
+              label="Mật khẩu hiện tại"
+              name="currentPassword"
+              type={passwordType}
+              autoComplete="current-password"
+              value={formData.currentPassword}
+              onChange={handleChange}
+            />
+          )}
           <PasswordField
             icon={KeyRound}
             label="Mật khẩu mới"

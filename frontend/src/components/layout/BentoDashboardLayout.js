@@ -62,7 +62,7 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
     <div className="min-h-screen bg-brand-surface font-sans text-brand-text p-3 md:p-6 flex gap-4 md:gap-6">
       <aside className={`${isSidebarOpen ? 'w-72' : 'w-24'} shrink-0 transition-all duration-300 hidden md:flex flex-col`}>
         <div className="bg-white rounded-3xl p-6 shadow-sm border border-black/5 flex-1 flex flex-col h-fit max-h-[calc(100vh-3rem)] sticky top-6">
-          <SidebarHeader isSidebarOpen={isSidebarOpen} onToggle={() => setIsSidebarOpen((current) => !current)} />
+          <SidebarHeader isSidebarOpen={isSidebarOpen} onToggle={() => setIsSidebarOpen((current) => !current)} logoHref={menuItems[0]?.href || '/'} />
           <SidebarNav
             menuItems={menuItems}
             pathname={pathname}
@@ -82,7 +82,7 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
           />
           <aside className="absolute left-3 top-3 bottom-3 w-[min(20rem,calc(100vw-1.5rem))] bg-white rounded-3xl p-5 shadow-2xl border border-black/10 flex flex-col">
             <div className="flex items-center justify-between mb-6">
-              <Link href="/" className="transition-transform hover:scale-105 active:scale-95">
+              <Link href={menuItems[0]?.href || '/'} className="transition-transform hover:scale-105 active:scale-95">
                 <img src="/logo.png" alt="UniBus Logo" className="h-16 w-auto object-contain rounded-xl" />
               </Link>
               <button
@@ -166,12 +166,12 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
   );
 }
 
-function SidebarHeader({ isSidebarOpen, onToggle }) {
+function SidebarHeader({ isSidebarOpen, onToggle, logoHref }) {
   return (
     <div className={`flex items-center ${isSidebarOpen ? 'justify-between' : 'justify-center'} mb-10`}>
       {isSidebarOpen && (
         <div className="flex items-center justify-center w-full px-2">
-          <Link href="/" className="transition-transform hover:scale-105 active:scale-95">
+          <Link href={logoHref} className="transition-transform hover:scale-105 active:scale-95">
             <img src="/logo.png" alt="UniBus Logo" className="h-24 w-auto object-contain rounded-xl" />
           </Link>
         </div>

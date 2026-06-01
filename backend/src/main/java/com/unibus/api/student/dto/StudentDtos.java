@@ -10,7 +10,7 @@ public final class StudentDtos {
    private StudentDtos() {
    }
 
-   public static record Profile(Integer userId, String studentCode, String email, String fullName, String phoneNumber, String address, String avatarUrl, String university, String faculty, Integer academicYear, LocalDate dateOfBirth, StudentVerificationStatus studentVerificationStatus) {
+   public static record Profile(Integer userId, String studentCode, String email, String fullName, String phoneNumber, String address, String avatarUrl, String university, String faculty, Integer academicYear, LocalDate dateOfBirth, StudentVerificationStatus studentVerificationStatus, boolean hasPassword) {
    }
 
    public static record UpdateProfileRequest(@Email @Size(

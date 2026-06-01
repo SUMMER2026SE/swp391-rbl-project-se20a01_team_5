@@ -10,7 +10,11 @@ function resolveApiBaseUrl() {
     return process.env.NEXT_PUBLIC_API_BASE_URL;
   }
   if (typeof window !== 'undefined') {
-    return `${window.location.protocol}//${window.location.hostname}:8080/api/v1`;
+    const { hostname, protocol } = window.location;
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return `${protocol}//${hostname}:8080/api/v1`;
+    }
+    return '/api/v1';
   }
   return 'http://localhost:8080/api/v1';
 }
@@ -165,7 +169,10 @@ export function toApiAssetUrl(url) {
     return url || '';
   }
   if (url.startsWith('/')) {
-    return `${new URL(API_BASE_URL).origin}${url}`;
+    const origin = API_BASE_URL.startsWith('http')
+      ? new URL(API_BASE_URL).origin
+      : (typeof window !== 'undefined' ? window.location.origin : '');
+    return `${origin}${url}`;
   }
   return url;
 }
@@ -343,6 +350,11 @@ export const userApi = {
     const response = await apiClient.post('/users/me/avatar', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
+    return unwrap(response);
+  },
+
+  async changePassword(payload) {
+    const response = await apiClient.patch('/users/me/password', payload);
     return unwrap(response);
   },
 };

@@ -23,7 +23,8 @@ public final class UserProfileDtos {
             String avatarUrl,
             UserRole role,
             UserStatus status,
-            StudentVerificationStatus studentVerificationStatus) {
+            StudentVerificationStatus studentVerificationStatus,
+            boolean hasPassword) {
     }
 
     public record UpdateUserProfileRequest(
@@ -35,7 +36,7 @@ public final class UserProfileDtos {
     }
 
     public record ChangePasswordRequest(
-            @NotBlank String currentPassword,
+            String currentPassword,
             @NotBlank
             @Size(min = 8, max = 72)
             @Pattern(regexp = ".*[A-Za-z].*", message = "New password must include a letter")

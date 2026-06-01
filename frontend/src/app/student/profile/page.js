@@ -17,6 +17,7 @@ const emptyProfile = {
   faculty: '',
   academicYear: '',
   dateOfBirth: '',
+  hasPassword: true, // Default to true so it doesn't flash "Tạo mật khẩu" during load if possible, though it's masked by skeleton
 };
 
 export default function StudentProfilePage() {
@@ -52,6 +53,7 @@ export default function StudentProfilePage() {
           faculty: profile.faculty || '',
           academicYear: profile.academicYear || '',
           dateOfBirth: profile.dateOfBirth || '',
+          hasPassword: profile.hasPassword || false,
         };
         setFormData(nextProfile);
         setOriginalData(nextProfile);
@@ -140,6 +142,7 @@ export default function StudentProfilePage() {
         faculty: profile.faculty || '',
         academicYear: profile.academicYear || '',
         dateOfBirth: profile.dateOfBirth || '',
+        hasPassword: profile.hasPassword || false,
       };
       setFormData(updatedProfile);
       setOriginalData(updatedProfile);
@@ -238,8 +241,10 @@ export default function StudentProfilePage() {
                 <KeyRound className="w-6 h-6 text-brand-text/60" />
               </div>
               <div>
-                <h3 className="font-bold">Mật khẩu đăng nhập</h3>
-                <p className="text-sm font-medium text-brand-text/60">Đổi mật khẩu tài khoản sinh viên.</p>
+                <h3 className="font-bold">{formData.hasPassword ? 'Mật khẩu đăng nhập' : 'Tạo mật khẩu'}</h3>
+                <p className="text-sm font-medium text-brand-text/60">
+                  {formData.hasPassword ? 'Đổi mật khẩu tài khoản sinh viên.' : 'Thiết lập mật khẩu để đăng nhập.'}
+                </p>
               </div>
             </div>
             <button
@@ -247,7 +252,7 @@ export default function StudentProfilePage() {
               onClick={() => setPasswordModalOpen(true)}
               className="px-6 py-3 bg-brand-surface font-bold text-sm rounded-xl hover:bg-black hover:text-white transition-colors w-full md:w-auto"
             >
-              Đổi mật khẩu
+              {formData.hasPassword ? 'Đổi mật khẩu' : 'Tạo mật khẩu'}
             </button>
           </div>
         </div>
@@ -259,7 +264,7 @@ export default function StudentProfilePage() {
         onClose={() => setCropModalOpen(false)}
         onConfirm={handleConfirmCrop}
       />
-      <ChangePasswordModal isOpen={passwordModalOpen} onClose={() => setPasswordModalOpen(false)} />
+      <ChangePasswordModal isOpen={passwordModalOpen} onClose={() => setPasswordModalOpen(false)} hasPassword={formData.hasPassword} />
     </div>
   );
 }
