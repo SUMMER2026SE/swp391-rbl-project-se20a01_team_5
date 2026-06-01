@@ -345,6 +345,11 @@ export const userApi = {
     });
     return unwrap(response);
   },
+
+  async changePassword(payload) {
+    const response = await apiClient.patch('/users/me/password', payload);
+    return unwrap(response);
+  },
 };
 
 export const transportApi = {
