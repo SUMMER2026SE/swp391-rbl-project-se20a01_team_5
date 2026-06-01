@@ -60,8 +60,8 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
 
   return (
     <div className="min-h-screen bg-brand-surface font-sans text-brand-text p-3 md:p-6 flex gap-4 md:gap-6">
-      <aside className={`${isSidebarOpen ? 'w-64' : 'w-20'} shrink-0 transition-all duration-300 hidden md:flex flex-col`}>
-        <div className="bg-white rounded-2xl p-5 shadow-sm border border-black/5 flex-1 flex flex-col h-fit max-h-[calc(100vh-3rem)] sticky top-6">
+      <aside className={`${isSidebarOpen ? 'w-72' : 'w-24'} shrink-0 transition-all duration-300 hidden md:flex flex-col`}>
+        <div className="bg-white rounded-3xl p-6 shadow-sm border border-black/5 flex-1 flex flex-col h-fit max-h-[calc(100vh-3rem)] sticky top-6">
           <SidebarHeader isSidebarOpen={isSidebarOpen} onToggle={() => setIsSidebarOpen((current) => !current)} logoHref={menuItems[0]?.href || '/'} />
           <SidebarNav
             menuItems={menuItems}
@@ -80,7 +80,7 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
             className="absolute inset-0 bg-black/40"
             onClick={() => setIsMobileMenuOpen(false)}
           />
-          <aside className="absolute left-3 top-3 bottom-3 w-[min(18rem,calc(100vw-1.5rem))] bg-white rounded-2xl p-5 shadow-2xl border border-black/10 flex flex-col">
+          <aside className="absolute left-3 top-3 bottom-3 w-[min(20rem,calc(100vw-1.5rem))] bg-white rounded-3xl p-5 shadow-2xl border border-black/10 flex flex-col">
             <div className="flex items-center justify-between mb-6">
               <Link href={menuItems[0]?.href || '/'} className="transition-transform hover:scale-105 active:scale-95">
                 <img src="/logo.png" alt="UniBus Logo" className="h-16 w-auto object-contain rounded-xl" />
@@ -106,7 +106,7 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
       )}
 
       <main className="flex-1 flex flex-col min-w-0">
-        <header className="bg-white rounded-2xl p-3 md:px-5 shadow-sm border border-black/5 flex items-center justify-between mb-6 shrink-0 h-16 md:h-20">
+        <header className="bg-white rounded-3xl p-4 px-4 md:px-8 shadow-sm border border-black/5 flex items-center justify-between mb-4 md:mb-6 shrink-0 h-20 md:h-24">
           <div className="flex items-center gap-3 md:gap-4 flex-1 min-w-0">
             <button
               type="button"
@@ -185,7 +185,7 @@ function SidebarHeader({ isSidebarOpen, onToggle, logoHref }) {
 
 function SidebarNav({ menuItems, pathname, isSidebarOpen, onNavigate, onLogout }) {
   return (
-    <nav className="flex-1 flex flex-col gap-1 overflow-y-auto custom-scrollbar pr-2 -mr-2">
+    <nav className="flex-1 flex flex-col gap-2 overflow-y-auto custom-scrollbar pr-2 -mr-2">
       {isSidebarOpen && <div className="text-xs font-bold text-brand-text/40 mb-2 uppercase tracking-wider pl-4">Menu chính</div>}
 
       {menuItems.map((item) => {
@@ -195,7 +195,7 @@ function SidebarNav({ menuItems, pathname, isSidebarOpen, onNavigate, onLogout }
             key={item.name}
             href={item.href}
             onClick={onNavigate}
-            className={`flex items-center py-2.5 rounded-xl transition-all font-medium ${isSidebarOpen ? 'gap-3 px-3' : 'justify-center'} ${isActive ? 'bg-black/5 text-brand-text font-semibold' : 'hover:bg-brand-surface text-brand-text/70 hover:text-brand-text'}`}
+            className={`flex items-center py-3.5 rounded-2xl transition-all font-medium ${isSidebarOpen ? 'gap-4 px-4' : 'justify-center'} ${isActive ? 'bg-brand-text text-white shadow-sm' : 'hover:bg-brand-surface text-brand-text/70 hover:text-brand-text'}`}
           >
             <item.icon className="w-5 h-5 shrink-0" />
             {isSidebarOpen && <span>{item.name}</span>}
