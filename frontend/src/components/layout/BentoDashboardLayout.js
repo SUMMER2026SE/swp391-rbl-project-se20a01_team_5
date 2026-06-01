@@ -134,7 +134,7 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
             <div className="h-8 w-px bg-black/5 hidden md:block"></div>
             <Link
               href={profileHref || '#'}
-              className={`flex items-center gap-3 rounded-full pl-4 pr-1.5 py-1.5 transition-colors ${pathname === profileHref ? 'bg-brand-surface shadow-sm border border-black/5' : 'hover:bg-brand-surface'}`}
+              className={`flex items-center gap-3 rounded-full pl-4 pr-1.5 py-1.5 transition-colors ${pathname === profileHref ? 'bg-black/5' : 'hover:bg-black/5'}`}
               aria-label="Mở hồ sơ cá nhân"
             >
               <div className="text-right hidden md:block max-w-40">
