@@ -46,10 +46,26 @@ jobs:
         working-directory: backend
         shell: bash
         run: |
-          mvn -B test || {
-            echo "Backend tests failed once; retrying to avoid transient classloading issues on a fresh runner."
-            mvn -B test
-          }
+          set +e
+          mvn -B -ntp clean test
+          status="$?"
+          if [ "$status" -ne 0 ]; then
+            echo "Backend tests failed. Surefire report excerpts:"
+            find target/surefire-reports -type f -name "*.txt" -print -exec sed -n '1,220p' {} \; || true
+            while IFS= read -r report; do
+              message="$(tr '\n' ' ' < "$report" | cut -c1-900)"
+              echo "::error file=backend/${report},line=1::${message}"
+            done < <(find target/surefire-reports -type f -name "*.txt" 2>/dev/null)
+            exit "$status"
+          fi
+
+      - name: Upload backend test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-surefire-reports
+          path: backend/target/surefire-reports/
+          if-no-files-found: ignore
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
