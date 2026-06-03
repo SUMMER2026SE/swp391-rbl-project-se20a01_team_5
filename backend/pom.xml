@@ -78,6 +78,10 @@
 			<groupId>software.amazon.awssdk</groupId>
 			<artifactId>textract</artifactId>
 		</dependency>
+		<dependency>
+			<groupId>software.amazon.awssdk</groupId>
+			<artifactId>s3</artifactId>
+		</dependency>
 
 		<dependency>
 			<groupId>org.postgresql</groupId>

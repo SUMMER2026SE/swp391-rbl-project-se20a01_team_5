@@ -1,8 +1,5 @@
 package com.unibus.api.user;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -19,6 +16,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.unibus.api.common.ApiResponse;
 import com.unibus.api.security.CurrentUser;
+import com.unibus.api.storage.StoredFile;
 import com.unibus.api.user.dto.UserProfileDtos.ChangePasswordRequest;
 import com.unibus.api.user.dto.UserProfileDtos.UpdateUserProfileRequest;
 import com.unibus.api.user.dto.UserProfileDtos.UserProfile;
@@ -64,11 +62,10 @@ public class UserProfileController {
     }
 
     @GetMapping("/{userId}/avatar")
-    ResponseEntity<byte[]> getAvatar(@PathVariable Integer userId) throws Exception {
-        Path avatar = userProfileService.loadAvatar(userId);
-        String contentType = Files.probeContentType(avatar);
+    ResponseEntity<byte[]> getAvatar(@PathVariable Integer userId) {
+        StoredFile avatar = userProfileService.loadAvatar(userId);
         return ResponseEntity.ok()
-                .contentType(MediaType.parseMediaType(contentType == null ? MediaType.IMAGE_JPEG_VALUE : contentType))
-                .body(Files.readAllBytes(avatar));
+                .contentType(MediaType.parseMediaType(avatar.contentType()))
+                .body(avatar.content());
     }
 }

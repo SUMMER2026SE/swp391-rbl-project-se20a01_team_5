@@ -1,15 +1,11 @@
 package com.unibus.api.student;
 
-import java.io.IOException;
 import java.math.BigDecimal;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,6 +13,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.unibus.api.common.ApiException;
 import com.unibus.api.security.CurrentUser;
+import com.unibus.api.storage.FileStorageService;
+import com.unibus.api.storage.StoredFile;
 import com.unibus.api.student.dto.StudentVerificationDtos.VerificationView;
 import com.unibus.api.student.model.StudentVerification;
 import com.unibus.api.student.model.StudentVerificationStatus;
@@ -34,7 +32,7 @@ public class StudentVerificationService {
     private final StudentRepository studentRepository;
     private final UniversityCatalog universityCatalog;
     private final StudentCardOcrService studentCardOcrService;
-    private final Path uploadDir;
+    private final FileStorageService fileStorageService;
 
     public StudentVerificationService(
             StudentVerificationRepository verificationRepository,
@@ -42,13 +40,13 @@ public class StudentVerificationService {
             StudentRepository studentRepository,
             UniversityCatalog universityCatalog,
             StudentCardOcrService studentCardOcrService,
-            @Value("${app.upload.student-verification-dir}") String uploadDir) {
+            FileStorageService fileStorageService) {
         this.verificationRepository = verificationRepository;
         this.userRepository = userRepository;
         this.studentRepository = studentRepository;
         this.universityCatalog = universityCatalog;
         this.studentCardOcrService = studentCardOcrService;
-        this.uploadDir = Path.of(uploadDir);
+        this.fileStorageService = fileStorageService;
     }
 
     @Transactional(readOnly = true)
@@ -164,7 +162,7 @@ public class StudentVerificationService {
     }
 
     @Transactional(readOnly = true)
-    public Path loadCardImage(CurrentUser currentUser, Long verificationId) {
+    public StoredFile loadCardImage(CurrentUser currentUser, Long verificationId) {
         StudentVerification verification = requireVerification(verificationId);
         boolean canRead = currentUser.role() == UserRole.ADMIN
                 || verification.getUser().getId().equals(currentUser.userId());
@@ -175,12 +173,14 @@ public class StudentVerificationService {
             throw new ApiException(HttpStatus.NOT_FOUND, "Student card image not found");
         }
 
-        Path base = uploadDir.toAbsolutePath().normalize();
-        Path file = Path.of(verification.getCardImageUrl()).toAbsolutePath().normalize();
-        if (!file.startsWith(base) || !Files.exists(file) || Files.isDirectory(file)) {
+        try {
+            return fileStorageService.load(verification.getCardImageUrl());
+        } catch (ApiException exception) {
+            if (exception.getStatus() != HttpStatus.NOT_FOUND) {
+                throw exception;
+            }
             throw new ApiException(HttpStatus.NOT_FOUND, "Student card image not found");
         }
-        return file;
     }
 
     private VerificationView reviewWithStatus(
@@ -294,13 +294,13 @@ public class StudentVerificationService {
             return null;
         }
         try {
-            Files.createDirectories(uploadDir);
             String extension = extension(cardImage.getOriginalFilename());
             String fileName = "user-" + userId + "-" + UUID.randomUUID() + extension;
-            Path destination = uploadDir.resolve(fileName).normalize();
-            cardImage.transferTo(destination);
-            return uploadDir.resolve(fileName).toString().replace('\\', '/');
-        } catch (IOException exception) {
+            return fileStorageService.store(
+                    "student-verifications/" + fileName,
+                    cardImage.getBytes(),
+                    cardImage.getContentType());
+        } catch (java.io.IOException exception) {
             throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Unable to store student card image");
         }
     }

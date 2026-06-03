@@ -57,11 +57,19 @@ SMTP_FROM_NAME=UniBus
 SMTP_TLS=true
 SMTP_AUTH=true
 GOOGLE_CLIENT_ID=<google-oauth-web-client-id>
+STORAGE_PROVIDER=local
+UPLOAD_BASE_DIR=uploads
+S3_UPLOAD_BUCKET=
+S3_UPLOAD_PREFIX=
 ```
 
 Set `SMTP_ENABLED=true` and `OTP_LOG_CODE=false` outside a development environment. For Gmail,
 use an App Password instead of the normal mailbox password. No database or SMTP credentials
 should be committed; `dbauth.txt` is ignored locally.
+
+For production container deployments, set `STORAGE_PROVIDER=s3` and `S3_UPLOAD_BUCKET` to a private
+bucket. The backend stores uploaded avatars under `profile-avatars/` and student verification card
+images under `student-verifications/`, then serves them back through authenticated API endpoints.
 
 ### IntelliJ Run Configuration
 
