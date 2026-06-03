@@ -28,6 +28,7 @@ WITH seed_users(email) AS (
         ('admin.verify@unibus.local'),
         ('driver.iter1@unibus.local'),
         ('conductor.iter1@unibus.local'),
+        ('dispatcher.iter1@unibus.local'),
         ('student.verified@unibus.local'),
         ('student.pending@unibus.local'),
         ('student.rejected@unibus.local'),
@@ -42,6 +43,7 @@ WITH seed_users(email) AS (
         ('admin.verify@unibus.local'),
         ('driver.iter1@unibus.local'),
         ('conductor.iter1@unibus.local'),
+        ('dispatcher.iter1@unibus.local'),
         ('student.verified@unibus.local'),
         ('student.pending@unibus.local'),
         ('student.rejected@unibus.local'),
@@ -77,6 +79,7 @@ VALUES
     ('admin.verify@unibus.local', '$2a$10$EBx14iAsXMpv3k69BQ5/C.GtzEiFqeMvBuMNanRkwHlwx//7yMzWu', 'Admin Verify', 'ADMIN', 'ACTIVE', CURRENT_TIMESTAMP, 'NOT_SUBMITTED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
     ('driver.iter1@unibus.local', '$2a$10$EBx14iAsXMpv3k69BQ5/C.GtzEiFqeMvBuMNanRkwHlwx//7yMzWu', 'Iter1 Driver', 'DRIVER', 'ACTIVE', CURRENT_TIMESTAMP, 'NOT_SUBMITTED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
     ('conductor.iter1@unibus.local', '$2a$10$EBx14iAsXMpv3k69BQ5/C.GtzEiFqeMvBuMNanRkwHlwx//7yMzWu', 'Iter1 Conductor', 'CONDUCTOR', 'ACTIVE', CURRENT_TIMESTAMP, 'NOT_SUBMITTED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    ('dispatcher.iter1@unibus.local', '$2a$10$EBx14iAsXMpv3k69BQ5/C.GtzEiFqeMvBuMNanRkwHlwx//7yMzWu', 'Iter1 Dispatcher', 'DISPATCHER', 'ACTIVE', CURRENT_TIMESTAMP, 'NOT_SUBMITTED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
     ('student.verified@unibus.local', '$2a$10$EBx14iAsXMpv3k69BQ5/C.GtzEiFqeMvBuMNanRkwHlwx//7yMzWu', 'Verified Student', 'STUDENT', 'ACTIVE', CURRENT_TIMESTAMP, 'VERIFIED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
     ('student.pending@unibus.local', '$2a$10$EBx14iAsXMpv3k69BQ5/C.GtzEiFqeMvBuMNanRkwHlwx//7yMzWu', 'Pending Student', 'STUDENT', 'ACTIVE', CURRENT_TIMESTAMP, 'PENDING_REVIEW', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
     ('student.rejected@unibus.local', '$2a$10$EBx14iAsXMpv3k69BQ5/C.GtzEiFqeMvBuMNanRkwHlwx//7yMzWu', 'Rejected Student', 'STUDENT', 'ACTIVE', CURRENT_TIMESTAMP, 'REJECTED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
@@ -217,6 +220,14 @@ FROM users
 WHERE email = 'conductor.iter1@unibus.local'
 ON CONFLICT (employee_code) DO UPDATE
 SET user_id = EXCLUDED.user_id;
+
+INSERT INTO dispatchers (user_id, employee_code, department)
+SELECT user_id, 'ITER1-DISPATCHER', 'Operations Control'
+FROM users
+WHERE email = 'dispatcher.iter1@unibus.local'
+ON CONFLICT (employee_code) DO UPDATE
+SET user_id = EXCLUDED.user_id,
+    department = EXCLUDED.department;
 
 WITH seed_routes AS (
     SELECT route_id
