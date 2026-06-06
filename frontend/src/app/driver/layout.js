@@ -1,17 +1,17 @@
 "use client";
 
 import BentoDashboardLayout from '@/components/layout/BentoDashboardLayout';
-import { Clock, Navigation, AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Clock, Navigation } from 'lucide-react';
 
 export default function DriverLayout({ children }) {
   const menus = [
-    { name: 'Tổng quan', href: '/driver', icon: Clock },
-    { name: 'Chuyến hiện tại', href: '/driver/trips', icon: Navigation },
-    { name: 'Điều phối viên', href: '/driver/contact', icon: AlertTriangle },
+    { name: 'Tong quan', href: '/driver', icon: Clock },
+    { name: 'Chuyen hien tai', href: '/driver/trips', icon: Navigation },
+    { name: 'Dieu phoi vien', href: '/driver/contact', icon: AlertTriangle },
   ];
 
   return (
-    <BentoDashboardLayout menuItems={menus} roleName="Tài xế" profileHref="/driver/profile">
+    <BentoDashboardLayout menuItems={menus} roleName="Tai xe" profileHref="/driver/profile">
       {children}
     </BentoDashboardLayout>
   );

@@ -1,0 +1,7 @@
+target/
+uploads/
+*.log
+backend-run*.log
+.mvn/
+.env
+.env.*

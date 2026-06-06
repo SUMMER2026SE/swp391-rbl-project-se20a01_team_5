@@ -3,30 +3,14 @@
 import { useState } from 'react';
 import { CalendarDays, Clock, Map, Users, BusFront, CheckCircle2, AlertCircle, ChevronDown, Save } from 'lucide-react';
 
-const MOCK_DRIVERS = [
-  { id: 'TX01', name: 'Nguyễn Văn Tài', status: 'available' },
-  { id: 'TX02', name: 'Trần Văn B', status: 'busy' },
-  { id: 'TX03', name: 'Lê Thị C', status: 'available' },
-  { id: 'TX04', name: 'Phạm Văn D', status: 'off' },
-];
-
-const MOCK_BUSES = [
-  { id: '43B-123.45', type: '45 chỗ', status: 'available' },
-  { id: '43B-888.99', type: '29 chỗ', status: 'busy' },
-  { id: '43B-555.22', type: '45 chỗ', status: 'maintenance' },
-  { id: '43B-777.11', type: '29 chỗ', status: 'available' },
-];
-
-const INITIAL_SHIFTS = [
-  { id: 'S1', route: 'Tuyến 1: KTX ⇄ ĐH Bách Khoa', time: '06:00 - 08:00', driver: 'TX01', bus: '43B-123.45', status: 'assigned' },
-  { id: 'S2', route: 'Tuyến 2: Ngã ba Huế ⇄ ĐH Kinh Tế', time: '06:30 - 08:30', driver: '', bus: '', status: 'unassigned' },
-  { id: 'S3', route: 'Tuyến 1: KTX ⇄ ĐH Bách Khoa', time: '08:30 - 10:30', driver: '', bus: '', status: 'unassigned' },
-  { id: 'S4', route: 'Tuyến 3: Cầu Rồng ⇄ ĐH Ngoại Ngữ', time: '07:00 - 09:00', driver: 'TX02', bus: '43B-888.99', status: 'assigned' },
-];
+const driversFromBackend = [];
+const busesFromBackend = [];
+const shiftsFromBackend = [];
 
 export default function CoordinatorSchedulesPage() {
-  const [shifts, setShifts] = useState(INITIAL_SHIFTS);
+  const [shifts, setShifts] = useState(shiftsFromBackend);
   const [isSaving, setIsSaving] = useState(false);
+  const [notice, setNotice] = useState('');
 
   const handleAssign = (shiftId, field, value) => {
     setShifts(shifts.map(shift => {
@@ -46,18 +30,18 @@ export default function CoordinatorSchedulesPage() {
 
   const handleSave = () => {
     setIsSaving(true);
-    setTimeout(() => {
-      setIsSaving(false);
-      alert('Đã lưu lịch phân công thành công!');
-    }, 800);
+    setIsSaving(false);
+    setNotice('Chức năng lưu lịch phân công chưa được kết nối với backend.');
   };
 
-  const availableDrivers = MOCK_DRIVERS.filter(d => d.status === 'available').length;
-  const availableBuses = MOCK_BUSES.filter(b => b.status === 'available').length;
+  const availableDrivers = driversFromBackend.filter(d => d.status === 'available').length;
+  const availableBuses = busesFromBackend.filter(b => b.status === 'available').length;
+  const driverCapacity = driversFromBackend.length ? (availableDrivers / driversFromBackend.length) * 100 : 0;
+  const busCapacity = busesFromBackend.length ? (availableBuses / busesFromBackend.length) * 100 : 0;
 
   return (
     <div className="h-full flex flex-col gap-6 font-sans relative">
-      
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -66,10 +50,10 @@ export default function CoordinatorSchedulesPage() {
           </h1>
           <p className="text-brand-text/60 font-medium">Sắp xếp ca chạy, gán Tài xế và Xe Bus cho từng tuyến.</p>
         </div>
-        
+
         <div className="flex items-center gap-3">
           <input type="date" className="bg-white border border-black/5 rounded-2xl px-4 py-3 font-bold text-sm focus:outline-none focus:border-brand-primary shadow-sm" defaultValue="2026-05-25" />
-          <button 
+          <button
             onClick={handleSave}
             disabled={isSaving}
             className="bg-brand-text text-white px-6 py-3 rounded-2xl font-bold hover:bg-black transition-colors flex items-center gap-2 shadow-sm disabled:opacity-70"
@@ -80,10 +64,10 @@ export default function CoordinatorSchedulesPage() {
       </div>
 
       <div className="flex-1 grid grid-cols-1 xl:grid-cols-4 gap-6 overflow-hidden pb-6">
-        
+
         {/* Main Board Area (Spans 3 cols) */}
         <div className="xl:col-span-3 bg-white rounded-3xl shadow-sm border border-black/5 flex flex-col overflow-hidden">
-          
+
           <div className="p-6 border-b border-black/5 flex justify-between items-center bg-brand-surface/30">
             <h2 className="text-xl font-bold">Bảng Phân Công Tuyến</h2>
             <div className="flex gap-4">
@@ -97,10 +81,20 @@ export default function CoordinatorSchedulesPage() {
           </div>
 
           <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
+            {notice && (
+              <div className="mb-4 rounded-2xl border border-brand-secondary/20 bg-brand-secondary/10 p-4 text-sm font-bold text-brand-text">
+                {notice}
+              </div>
+            )}
             <div className="flex flex-col gap-4">
+              {shifts.length === 0 && (
+                <div className="rounded-2xl border border-dashed border-black/10 bg-brand-surface/40 p-8 text-center text-sm font-bold text-brand-text/50">
+                  Chưa có dữ liệu ca chạy từ backend.
+                </div>
+              )}
               {shifts.map(shift => (
                 <div key={shift.id} className={`border rounded-2xl p-5 flex flex-col xl:flex-row xl:items-center gap-6 transition-colors ${shift.status === 'unassigned' ? 'border-brand-danger/30 bg-brand-danger/5' : 'border-black/5 hover:border-brand-primary/50'}`}>
-                  
+
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
                       <span className="font-black text-lg">{shift.id}</span>
@@ -123,13 +117,13 @@ export default function CoordinatorSchedulesPage() {
                         <Users className="w-3.5 h-3.5" /> Chọn Tài xế
                       </label>
                       <div className="relative">
-                        <select 
+                        <select
                           value={shift.driver}
                           onChange={(e) => handleAssign(shift.id, 'driver', e.target.value)}
                           className={`w-full appearance-none rounded-xl p-3 pr-10 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-brand-primary/50 border transition-colors ${!shift.driver ? 'bg-white border-brand-danger/50 text-brand-danger' : 'bg-brand-surface border-transparent text-brand-text'}`}
                         >
                           <option value="">-- Chưa gán --</option>
-                          {MOCK_DRIVERS.map(d => (
+                          {driversFromBackend.map(d => (
                             <option key={d.id} value={d.id} disabled={d.status !== 'available' && shift.driver !== d.id}>
                               {d.name} ({d.id}) {d.status !== 'available' && '- Bận'}
                             </option>
@@ -145,13 +139,13 @@ export default function CoordinatorSchedulesPage() {
                         <BusFront className="w-3.5 h-3.5" /> Chọn Xe Bus
                       </label>
                       <div className="relative">
-                        <select 
+                        <select
                           value={shift.bus}
                           onChange={(e) => handleAssign(shift.id, 'bus', e.target.value)}
                           className={`w-full appearance-none rounded-xl p-3 pr-10 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-brand-primary/50 border transition-colors ${!shift.bus ? 'bg-white border-brand-danger/50 text-brand-danger' : 'bg-brand-surface border-transparent text-brand-text'}`}
                         >
                           <option value="">-- Chưa gán --</option>
-                          {MOCK_BUSES.map(b => (
+                          {busesFromBackend.map(b => (
                             <option key={b.id} value={b.id} disabled={b.status !== 'available' && shift.bus !== b.id}>
                               {b.id} ({b.type}) {b.status !== 'available' && '- Bận'}
                             </option>
@@ -165,7 +159,7 @@ export default function CoordinatorSchedulesPage() {
                 </div>
               ))}
             </div>
-            
+
             <button className="w-full mt-6 py-4 bg-brand-surface border border-black/5 border-dashed text-brand-text font-bold rounded-2xl hover:bg-brand-primary hover:text-brand-text transition-colors flex items-center justify-center gap-2">
               + Thêm Ca Chạy Mới
             </button>
@@ -174,7 +168,7 @@ export default function CoordinatorSchedulesPage() {
 
         {/* Sidebar: Resources Stats */}
         <div className="flex flex-col gap-6 overflow-y-auto custom-scrollbar pr-2">
-          
+
           <div className="bg-brand-primary/10 rounded-3xl p-6 border border-brand-primary/20">
             <h2 className="text-lg font-black mb-4">Tình trạng Nguồn lực</h2>
             <div className="flex justify-between items-end mb-2">
@@ -182,7 +176,7 @@ export default function CoordinatorSchedulesPage() {
               <span className="text-3xl font-black text-brand-primary">{availableDrivers}</span>
             </div>
             <div className="w-full bg-brand-text/10 rounded-full h-2 mb-6">
-              <div className="bg-brand-primary h-2 rounded-full" style={{width: `${(availableDrivers/MOCK_DRIVERS.length)*100}%`}}></div>
+              <div className="bg-brand-primary h-2 rounded-full" style={{width: `${driverCapacity}%`}}></div>
             </div>
 
             <div className="flex justify-between items-end mb-2">
@@ -190,7 +184,7 @@ export default function CoordinatorSchedulesPage() {
               <span className="text-3xl font-black text-brand-primary">{availableBuses}</span>
             </div>
             <div className="w-full bg-brand-text/10 rounded-full h-2">
-              <div className="bg-brand-primary h-2 rounded-full" style={{width: `${(availableBuses/MOCK_BUSES.length)*100}%`}}></div>
+              <div className="bg-brand-primary h-2 rounded-full" style={{width: `${busCapacity}%`}}></div>
             </div>
           </div>
 
@@ -198,7 +192,12 @@ export default function CoordinatorSchedulesPage() {
           <div className="bg-white rounded-3xl p-6 shadow-sm border border-black/5">
             <h3 className="font-bold mb-4">Danh sách Tài xế</h3>
             <div className="flex flex-col gap-2">
-              {MOCK_DRIVERS.map(d => (
+              {driversFromBackend.length === 0 && (
+                <div className="rounded-xl border border-dashed border-black/10 bg-brand-surface/40 p-4 text-center text-xs font-bold text-brand-text/50">
+                  Chưa có tài xế từ backend.
+                </div>
+              )}
+              {driversFromBackend.map(d => (
                 <div key={d.id} className="flex justify-between items-center p-2 rounded-lg hover:bg-brand-surface">
                   <div className="flex flex-col">
                     <span className="font-bold text-sm">{d.name}</span>

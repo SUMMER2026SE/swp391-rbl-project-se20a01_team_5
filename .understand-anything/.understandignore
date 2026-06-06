@@ -1,0 +1,9 @@
+# Exclude local secrets, IDE state, and generated output from architecture analysis.
+dbauth.txt
+.idea/
+.codex-tmp/
+target/
+backend/target/
+HELP.md
+
+# Keep the committed HTTP request template in the graph because it documents API usage.
