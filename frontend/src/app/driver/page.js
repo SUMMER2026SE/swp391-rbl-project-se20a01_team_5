@@ -4,20 +4,16 @@ import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Clock, MapPin, Navigation, Phone, Play, Square } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { driverApi } from '@/services/api';
-import { currentTripMock } from '@/services/mockTrips';
 
-const fallbackDashboard = {
-  currentTrip: currentTripMock,
-  nextSchedules: [
-    { id: 'mock-1', timeRange: '09:00 - 09:45', routeName: 'ITER1 - City Connector', status: 'UPCOMING' },
-    { id: 'mock-2', timeRange: '14:00 - 14:45', routeName: 'ITER1 - Campus Loop', status: 'UPCOMING' },
-  ],
-  tripStatus: 'IN_PROGRESS',
+const emptyDashboard = {
+  currentTrip: null,
+  nextSchedules: [],
+  tripStatus: 'IDLE',
 };
 
 export default function DriverDashboard() {
   const router = useRouter();
-  const [dashboard, setDashboard] = useState(fallbackDashboard);
+  const [dashboard, setDashboard] = useState(emptyDashboard);
   const [isLoading, setIsLoading] = useState(true);
   const [notice, setNotice] = useState('');
 
@@ -31,10 +27,10 @@ export default function DriverDashboard() {
           setNotice('');
         }
       })
-      .catch(() => {
+      .catch((error) => {
         if (mounted) {
-          setDashboard(fallbackDashboard);
-          setNotice('Đang dùng dữ liệu mẫu vì backend chưa sẵn sàng hoặc chưa đăng nhập tài khoản DRIVER.');
+          setDashboard(emptyDashboard);
+          setNotice(error.message || 'Khong the tai du lieu tai xe tu backend. Hay dang nhap tai khoan DRIVER va kiem tra backend dang chay code moi.');
         }
       })
       .finally(() => {
@@ -99,6 +95,7 @@ export default function DriverDashboard() {
           <button
             type="button"
             onClick={() => router.push('/driver/trips')}
+            disabled={!trip?.tripId}
             className="w-full flex-1 min-h-[300px] bg-brand-surface rounded-2xl border border-black/5 flex items-center justify-center mb-6 relative overflow-hidden group cursor-pointer hover:border-brand-primary transition-colors text-left"
           >
             <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(#000 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
@@ -111,6 +108,11 @@ export default function DriverDashboard() {
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {firstStops.length === 0 && (
+                  <div className="md:col-span-3 rounded-2xl bg-white/70 border border-white p-4 text-sm font-bold text-brand-text/50 text-center">
+                    Chua co chuyen xe tu backend.
+                  </div>
+                )}
                 {firstStops.map((stop) => (
                   <div key={stop.id} className="rounded-2xl bg-white/70 border border-white p-4">
                     <div className="text-xs font-bold text-brand-text/40 uppercase">{stop.time}</div>
@@ -150,6 +152,11 @@ export default function DriverDashboard() {
             </h3>
 
             <div className="space-y-3">
+              {(dashboard.nextSchedules || []).length === 0 && (
+                <div className="bg-white/60 p-4 rounded-2xl border border-white text-sm font-bold text-brand-text/60 text-center">
+                  Chua co lich chay tu backend.
+                </div>
+              )}
               {(dashboard.nextSchedules || []).map((schedule) => (
                 <div key={schedule.id} className="bg-white/60 p-4 rounded-2xl border border-white">
                   <div className="flex justify-between items-start mb-1 gap-3">

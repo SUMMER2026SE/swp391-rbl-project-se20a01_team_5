@@ -250,7 +250,7 @@ public class DriverService {
     }
 
     private Trip ensureTrip(BusSchedule schedule, LocalDate date) {
-        return tripRepository.findByScheduleIdAndServiceDate(schedule.getId(), date)
+        return tripRepository.findFirstByScheduleIdAndServiceDateOrderByIdAsc(schedule.getId(), date)
                 .orElseGet(() -> {
                     Trip trip = new Trip();
                     trip.setSchedule(schedule);

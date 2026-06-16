@@ -10,7 +10,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface TripRepository extends JpaRepository<Trip, Integer> {
 
     @EntityGraph(attributePaths = { "schedule.route", "schedule.bus", "schedule.driver.user", "schedule.conductor.user", "schedule.assignedBy", "route", "bus", "driver.user", "conductor.user" })
-    Optional<Trip> findByScheduleIdAndServiceDate(Integer scheduleId, LocalDate serviceDate);
+    Optional<Trip> findFirstByScheduleIdAndServiceDateOrderByIdAsc(Integer scheduleId, LocalDate serviceDate);
 
     @EntityGraph(attributePaths = { "schedule.route", "schedule.bus", "schedule.driver.user", "schedule.conductor.user", "schedule.assignedBy", "route", "bus", "driver.user", "conductor.user" })
     List<Trip> findByScheduleDriverIdAndServiceDateOrderByScheduleDepartureTimeAsc(Integer driverId, LocalDate serviceDate);

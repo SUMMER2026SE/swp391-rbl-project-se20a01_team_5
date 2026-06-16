@@ -10,14 +10,11 @@ import {
   Users,
 } from "lucide-react";
 import { driverApi } from "@/services/api";
-import { currentTripMock } from "@/services/mockTrips";
 
 export default function DriverTripPage() {
-  const [trip, setTrip] = useState(currentTripMock);
+  const [trip, setTrip] = useState(null);
   const [notice, setNotice] = useState("");
-  const [currentStationIndex, setCurrentStationIndex] = useState(() =>
-    getCurrentStopIndex(currentTripMock.stops),
-  );
+  const [currentStationIndex, setCurrentStationIndex] = useState(0);
 
   useEffect(() => {
     let mounted = true;
@@ -30,13 +27,11 @@ export default function DriverTripPage() {
         setCurrentStationIndex(getCurrentStopIndex(data.stops));
         setNotice("");
       })
-      .catch(() => {
+      .catch((error) => {
         if (!mounted) return;
-        setTrip(currentTripMock);
-        setCurrentStationIndex(getCurrentStopIndex(currentTripMock.stops));
-        setNotice(
-          "Đang dùng dữ liệu mẫu vì backend chưa sẵn sàng hoặc chưa đăng nhập tài khoản DRIVER.",
-        );
+        setTrip(null);
+        setCurrentStationIndex(0);
+        setNotice(error.message || "Khong the tai chuyen xe tu backend. Hay dang nhap tai khoan DRIVER va kiem tra backend dang chay code moi.");
       });
 
     return () => {
@@ -106,8 +101,15 @@ export default function DriverTripPage() {
           </div>
 
           <div className="flex-1 relative z-10 pl-4 md:pl-10">
-            <div className="absolute left-[29px] md:left-[53px] top-4 bottom-8 w-1 bg-black/5 rounded-full z-0"></div>
+            {routeStations.length > 0 && (
+              <div className="absolute left-[29px] md:left-[53px] top-4 bottom-8 w-1 bg-black/5 rounded-full z-0"></div>
+            )}
 
+            {routeStations.length === 0 && (
+              <div className="rounded-2xl bg-white/70 border border-white p-6 text-sm font-bold text-brand-text/50 text-center">
+                Chua co lo trinh tu backend.
+              </div>
+            )}
             {routeStations.map((station, index) => {
               const isPassed = index < currentStationIndex;
               const isCurrent = index === currentStationIndex;
@@ -170,7 +172,7 @@ export default function DriverTripPage() {
               Trạm tiếp theo
             </h3>
             <div className="text-3xl font-black text-brand-text mb-8 relative z-10">
-              {currentStation ? currentStation.name : "Đã hoàn thành"}
+              {currentStation ? currentStation.name : "Chua co chuyen"}
             </div>
 
             {!isTripFinished ? (
