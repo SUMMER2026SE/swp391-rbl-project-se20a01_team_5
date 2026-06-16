@@ -3,15 +3,18 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Bell, LogOut, Menu, Search, X } from 'lucide-react';
+import { Bell, CheckCheck, LogOut, Menu, Search, X } from 'lucide-react';
 import LogoutConfirmModal from '@/components/modals/LogoutConfirmModal';
-import { authApi, clearAuthSession, getAuthSession, toApiAssetUrl, userApi } from '@/services/api';
+import { authApi, clearAuthSession, getAuthSession, notificationApi, toApiAssetUrl, userApi } from '@/services/api';
 
 export default function BentoDashboardLayout({ children, menuItems, roleName, profileHref }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(null);
   const [displayName, setDisplayName] = useState('Người dùng');
   const pathname = usePathname();
@@ -36,6 +39,14 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
         // Header stays usable even if profile fetch fails.
       });
 
+    notificationApi.getUnreadCount()
+      .then((payload) => {
+        if (!cancelled) setUnreadCount(payload?.count || 0);
+      })
+      .catch(() => {
+        if (!cancelled) setUnreadCount(0);
+      });
+
     const handleAvatarUpdate = (event) => {
       setAvatarUrl(toApiAssetUrl(event.detail) || null);
     };
@@ -57,6 +68,38 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
     clearAuthSession();
     setShowLogoutModal(false);
     router.push('/login');
+  };
+
+  const loadNotifications = () => {
+    setIsLoadingNotifications(true);
+    notificationApi.listMine({ page: 0, size: 8 })
+      .then((items) => {
+        setNotifications(items || []);
+        setUnreadCount((items || []).filter((item) => !item.read).length);
+      })
+      .catch(() => setNotifications([]))
+      .finally(() => setIsLoadingNotifications(false));
+  };
+
+  const toggleNotifications = () => {
+    setShowNotifications((current) => {
+      const next = !current;
+      if (next) loadNotifications();
+      return next;
+    });
+  };
+
+  const markNotificationRead = async (notification) => {
+    if (!notification?.notificationId || notification.read) return;
+    setNotifications((items) => items.map((item) => (
+      item.notificationId === notification.notificationId ? { ...item, read: true } : item
+    )));
+    setUnreadCount((count) => Math.max(0, count - 1));
+    try {
+      await notificationApi.markRead(notification.notificationId);
+    } catch {
+      loadNotifications();
+    }
   };
 
   return (
@@ -130,11 +173,12 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
           <div className="flex items-center gap-3 md:gap-6">
             <div className="relative">
               <button 
-                onClick={() => setShowNotifications(!showNotifications)}
+                onClick={toggleNotifications}
                 className="p-3 rounded-2xl bg-brand-surface hover:bg-brand-surface/70 text-brand-text transition-all relative"
+                aria-label="Mở thông báo"
               >
                 <Bell className="w-5 h-5" />
-                <span className="absolute top-3 right-3 w-2.5 h-2.5 bg-brand-danger rounded-full border-2 border-white"></span>
+                {unreadCount > 0 && <span className="absolute top-3 right-3 w-2.5 h-2.5 bg-brand-danger rounded-full border-2 border-white"></span>}
               </button>
 
               {showNotifications && (
@@ -143,17 +187,40 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
                   <div className="absolute top-full right-0 mt-2 w-80 bg-white rounded-3xl shadow-xl border border-black/5 p-4 z-50 animate-in fade-in slide-in-from-top-2">
                     <div className="flex justify-between items-center mb-4">
                       <h3 className="font-bold text-lg">Thông báo</h3>
-                      <span className="text-xs font-bold text-brand-primary bg-brand-primary/10 px-2 py-1 rounded-lg">1 mới</span>
+                      <span className="text-xs font-bold text-brand-primary bg-brand-primary/10 px-2 py-1 rounded-lg">{unreadCount} mới</span>
                     </div>
-                    <div className="flex flex-col gap-2">
-                      <div className="p-4 bg-brand-surface rounded-2xl cursor-pointer hover:bg-brand-primary/5 transition-colors border border-transparent hover:border-brand-primary/20">
-                        <div className="flex items-center gap-2 mb-1">
-                          <div className="w-2 h-2 bg-brand-danger rounded-full"></div>
-                          <p className="text-sm font-bold text-brand-text">Chào mừng bạn!</p>
-                        </div>
-                        <p className="text-xs text-brand-text/60 font-medium pl-4">Hệ thống UniBus đang được cập nhật thêm nhiều tính năng mới.</p>
-                      </div>
+                    <div className="flex max-h-96 flex-col gap-2 overflow-y-auto custom-scrollbar pr-1">
+                      {isLoadingNotifications ? (
+                        <div className="p-6 text-center text-sm font-bold text-brand-text/50">Đang tải thông báo...</div>
+                      ) : notifications.length ? (
+                        notifications.map((notification) => (
+                          <button
+                            key={notification.notificationId}
+                            type="button"
+                            onClick={() => markNotificationRead(notification)}
+                            className={`p-4 text-left rounded-2xl cursor-pointer hover:bg-brand-primary/5 transition-colors border ${notification.read ? 'bg-white border-black/5' : 'bg-brand-surface border-brand-primary/20'}`}
+                          >
+                            <div className="flex items-center gap-2 mb-1">
+                              <div className={`w-2 h-2 rounded-full ${notification.read ? 'bg-brand-text/20' : 'bg-brand-danger'}`}></div>
+                              <p className="text-sm font-bold text-brand-text line-clamp-1">{notification.title}</p>
+                            </div>
+                            <p className="text-xs text-brand-text/60 font-medium pl-4 line-clamp-2">{notification.content}</p>
+                            <p className="text-[10px] text-brand-text/40 font-bold pl-4 mt-2">{formatNotificationTime(notification.createdAt)}</p>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="p-6 text-center text-sm font-bold text-brand-text/50">Chưa có thông báo.</div>
+                      )}
                     </div>
+                    {notifications.some((notification) => !notification.read) && (
+                      <button
+                        type="button"
+                        onClick={() => notifications.filter((notification) => !notification.read).forEach(markNotificationRead)}
+                        className="mt-3 w-full py-2 rounded-xl bg-brand-text text-white text-xs font-bold flex items-center justify-center gap-2"
+                      >
+                        <CheckCheck className="w-4 h-4" /> Đánh dấu đã đọc
+                      </button>
+                    )}
                   </div>
                 </>
               )}
@@ -191,6 +258,16 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
       />
     </div>
   );
+}
+
+function formatNotificationTime(value) {
+  if (!value) return '';
+  return new Intl.DateTimeFormat('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    day: '2-digit',
+    month: '2-digit',
+  }).format(new Date(value));
 }
 
 function SidebarHeader({ isSidebarOpen, onToggle, logoHref }) {

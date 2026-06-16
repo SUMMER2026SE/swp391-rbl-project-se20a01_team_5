@@ -71,7 +71,6 @@ class StudentIteration1ServiceTests {
    @BeforeEach
    void setUp() {
       this.createQueryTables();
-      this.jdbcTemplate.update("DELETE FROM stop_arrival_estimates");
       this.jdbcTemplate.update("DELETE FROM travel_history");
       this.jdbcTemplate.update("DELETE FROM trips");
       this.routeRegistrationRepository.deleteAll();
@@ -118,12 +117,10 @@ class StudentIteration1ServiceTests {
    }
 
    @Test
-   void readsEtaAndTravelHistoryFromOperationalTables() {
-      OffsetDateTime estimate = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(5L);
+   void readsTravelHistoryFromOperationalTablesAndReturnsNoEtaRows() {
       this.jdbcTemplate.update("INSERT INTO trips(trip_id, route_id, bus_id, service_date, status) VALUES (?, ?, ?, ?, ?)", new Object[]{11, this.route.getId(), 25, LocalDate.now(ZoneOffset.UTC), "RUNNING"});
-      this.jdbcTemplate.update("INSERT INTO stop_arrival_estimates(estimate_id, trip_id, stop_id, estimated_arrival_at, updated_at) VALUES (?, ?, ?, ?, ?)", new Object[]{1L, 11, this.alighting.getId(), estimate, OffsetDateTime.now(ZoneOffset.UTC)});
       this.jdbcTemplate.update("INSERT INTO travel_history(travel_history_id, student_code, trip_id, boarding_stop_id, alighting_stop_id, boarded_at) VALUES (?, ?, ?, ?, ?, ?)", new Object[]{1, "SE001", 11, this.boarding.getId(), this.alighting.getId(), OffsetDateTime.now(ZoneOffset.UTC)});
-      Assertions.assertThat(this.transportService.getEtas(this.route.getId(), this.alighting.getId())).singleElement().extracting(TransportDtos.Eta::busId).isEqualTo(25);
+      Assertions.assertThat(this.transportService.getEtas(this.route.getId(), this.alighting.getId())).isEmpty();
       Assertions.assertThat(this.travelHistoryService.getHistory(this.currentUser, 0, 20)).singleElement().extracting(TravelHistoryRepository.TravelHistoryView::routeName).isEqualTo("Route A");
    }
 
@@ -145,7 +142,6 @@ class StudentIteration1ServiceTests {
 
    private void createQueryTables() {
       this.jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS trips (\n    trip_id INTEGER PRIMARY KEY,\n    route_id INTEGER NOT NULL,\n    bus_id INTEGER NOT NULL,\n    service_date DATE NOT NULL,\n    status VARCHAR(20) NOT NULL\n)\n");
-      this.jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS stop_arrival_estimates (\n    estimate_id BIGINT PRIMARY KEY,\n    trip_id INTEGER NOT NULL,\n    stop_id INTEGER NOT NULL,\n    estimated_arrival_at TIMESTAMP WITH TIME ZONE NOT NULL,\n    actual_arrival_at TIMESTAMP WITH TIME ZONE,\n    updated_at TIMESTAMP WITH TIME ZONE NOT NULL\n)\n");
       this.jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS travel_history (\n    travel_history_id INTEGER PRIMARY KEY,\n    student_code VARCHAR(20) NOT NULL,\n    trip_id INTEGER NOT NULL,\n    boarding_stop_id INTEGER,\n    alighting_stop_id INTEGER,\n    boarded_at TIMESTAMP WITH TIME ZONE,\n    alighted_at TIMESTAMP WITH TIME ZONE\n)\n");
    }
 }
