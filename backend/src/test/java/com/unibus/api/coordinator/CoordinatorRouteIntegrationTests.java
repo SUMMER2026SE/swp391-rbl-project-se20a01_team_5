@@ -83,36 +83,35 @@ class CoordinatorRouteIntegrationTests {
         mockMvc.perform(get("/api/v1/coordinator/routes"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].id").value(testRoute.getId()))
-                .andExpect(jsonPath("$.data[0].name").value("Test Route"))
-                .andExpect(jsonPath("$.data[0].stopsCount").value(0));
+                .andExpect(jsonPath("$.data[0].routeName").value("Test Route"));
     }
 
     @Test
     @WithMockUser(roles = "DISPATCHER")
     void dispatcherCanAddAndRetrieveStops() throws Exception {
         // Thêm Trạm 1
-        String req1 = "{\"name\": \"Trạm A\", \"timeFromStart\": \"0 phút\", \"type\": \"Điểm đầu\"}";
+        String req1 = "{\"stopName\": \"Trạm A\", \"address\": \"A\", \"longitude\": 10.0, \"latitude\": 10.0, \"stopOrder\": 1, \"minutesFromPreviousStop\": 0}";
         mockMvc.perform(post("/api/v1/coordinator/routes/" + testRoute.getId() + "/stops")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(req1))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.data.name").value("Trạm A"));
+                .andExpect(jsonPath("$.data.stopName").value("Trạm A"));
 
         // Thêm Trạm 2
-        String req2 = "{\"name\": \"Trạm B\", \"timeFromStart\": \"15 phút\", \"type\": \"Trạm dừng\"}";
+        String req2 = "{\"stopName\": \"Trạm B\", \"address\": \"B\", \"longitude\": 10.0, \"latitude\": 10.0, \"stopOrder\": 2, \"minutesFromPreviousStop\": 15}";
         mockMvc.perform(post("/api/v1/coordinator/routes/" + testRoute.getId() + "/stops")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(req2))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.data.name").value("Trạm B"));
+                .andExpect(jsonPath("$.data.stopName").value("Trạm B"));
 
         // Lấy danh sách trạm
         mockMvc.perform(get("/api/v1/coordinator/routes/" + testRoute.getId() + "/stops"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0].name").value("Trạm A"))
-                .andExpect(jsonPath("$.data[0].timeFromStart").value("0 phút"))
-                .andExpect(jsonPath("$.data[1].name").value("Trạm B"))
-                .andExpect(jsonPath("$.data[1].timeFromStart").value("15 phút"));
+                .andExpect(jsonPath("$.data[0].stopName").value("Trạm A"))
+                .andExpect(jsonPath("$.data[0].minutesFromPreviousStop").value(0))
+                .andExpect(jsonPath("$.data[1].stopName").value("Trạm B"))
+                .andExpect(jsonPath("$.data[1].minutesFromPreviousStop").value(15));
     }
 
     @Test
@@ -133,12 +132,12 @@ class CoordinatorRouteIntegrationTests {
         routeStopRepository.save(rs);
 
         // Đổi tên trạm
-        String req = "{\"name\": \"New Name\", \"timeFromStart\": \"0 phút\", \"type\": \"Điểm đầu\"}";
-        mockMvc.perform(put("/api/v1/coordinator/routes/" + testRoute.getId() + "/stops/" + stop.getId())
+        String req = "{\"id\": " + rs.getId() + ", \"stopId\": " + stop.getId() + ", \"stopName\": \"New Name\", \"stopOrder\": 1, \"minutesFromPreviousStop\": 0}";
+        mockMvc.perform(put("/api/v1/coordinator/routes/" + testRoute.getId() + "/stops/" + rs.getId())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(req))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.data.name").value("New Name"));
+                .andExpect(jsonPath("$.data.stopName").value("New Name"));
     }
 
     @Test
@@ -159,7 +158,7 @@ class CoordinatorRouteIntegrationTests {
         routeStopRepository.save(rs);
 
         // Xóa trạm
-        mockMvc.perform(delete("/api/v1/coordinator/routes/" + testRoute.getId() + "/stops/" + stop.getId()))
+        mockMvc.perform(delete("/api/v1/coordinator/routes/" + testRoute.getId() + "/stops/" + rs.getId()))
                 .andExpect(status().isOk());
 
         // Kiểm tra danh sách rỗng
