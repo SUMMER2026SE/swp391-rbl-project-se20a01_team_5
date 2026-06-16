@@ -1,23 +1,33 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { CalendarDays, Clock, Map, Users, BusFront, CheckCircle2, AlertCircle, ChevronDown, Save } from 'lucide-react';
+import { CalendarDays, Clock, Map, Users, BusFront, CheckCircle2, AlertCircle, ChevronDown, Save, Plus, X } from 'lucide-react';
 import { coordinatorSchedulesService } from '@/services/coordinatorSchedules.service';
+import { coordinatorRoutesService } from '@/services/coordinatorRoutes.service';
 
 export default function CoordinatorSchedulesPage() {
   const [shifts, setShifts] = useState([]);
   const [driversFromBackend, setDriversFromBackend] = useState([]);
   const [busesFromBackend, setBusesFromBackend] = useState([]);
+  const [routesFromBackend, setRoutesFromBackend] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
   const [notice, setNotice] = useState('');
+  
+  const [isAddingNew, setIsAddingNew] = useState(false);
+  const [newSchedule, setNewSchedule] = useState({ routeId: '', busId: '', driverId: '', weekdayNumber: '2' });
+  const [hour12, setHour12] = useState('08');
+  const [minute, setMinute] = useState('00');
+  const [ampm, setAmpm] = useState('AM');
+  const [isCreating, setIsCreating] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [shiftsData, busesData, driversData] = await Promise.all([
+        const [shiftsData, busesData, driversData, routesData] = await Promise.all([
           coordinatorSchedulesService.getAllSchedules(),
           coordinatorSchedulesService.getAvailableBuses(),
-          coordinatorSchedulesService.getAvailableDrivers()
+          coordinatorSchedulesService.getAvailableDrivers(),
+          coordinatorRoutesService.getRoutes()
         ]);
         
         const mappedShifts = shiftsData.map(s => ({
@@ -32,6 +42,7 @@ export default function CoordinatorSchedulesPage() {
         setShifts(mappedShifts);
         setBusesFromBackend(busesData.map(b => ({ ...b, type: b.seatCount + ' chỗ', status: 'available' })));
         setDriversFromBackend(driversData.map(d => ({ ...d, name: d.driverName, status: 'available' })));
+        setRoutesFromBackend(routesData);
       } catch (err) {
         setNotice('Lỗi tải dữ liệu: ' + err.message);
       }
@@ -70,6 +81,55 @@ export default function CoordinatorSchedulesPage() {
       setNotice('Lỗi khi lưu phân công: ' + err.message);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleCreateNew = async () => {
+    if (!newSchedule.routeId) {
+      setNotice('Vui lòng chọn tuyến đường!');
+      return;
+    }
+    if (!newSchedule.busId || !newSchedule.driverId) {
+      setNotice('Vui lòng chọn Xe Bus và Tài xế! (Database bắt buộc)');
+      return;
+    }
+    
+    let hour24 = parseInt(hour12, 10);
+    if (ampm === 'PM' && hour24 < 12) hour24 += 12;
+    if (ampm === 'AM' && hour24 === 12) hour24 = 0;
+    const finalDepartureTime = `${hour24.toString().padStart(2, '0')}:${minute}:00`;
+
+    setIsCreating(true);
+    setNotice('');
+    try {
+      const created = await coordinatorSchedulesService.createSchedule({
+        routeId: parseInt(newSchedule.routeId),
+        busId: parseInt(newSchedule.busId),
+        driverId: parseInt(newSchedule.driverId),
+        weekdayNumber: parseInt(newSchedule.weekdayNumber),
+        departureTime: finalDepartureTime
+      });
+      setNotice('Thêm ca chạy mới thành công!');
+      
+      const mappedShift = {
+        id: created.id,
+        status: created.busId && created.driverId ? 'assigned' : 'unassigned',
+        route: created.routeName,
+        time: created.departureTime ? created.departureTime.substring(0, 5) : 'N/A',
+        driver: created.driverId || '',
+        bus: created.busId || ''
+      };
+      
+      setShifts([mappedShift, ...shifts]);
+      setIsAddingNew(false);
+      setNewSchedule({ routeId: '', busId: '', driverId: '', weekdayNumber: '2' });
+      setHour12('08');
+      setMinute('00');
+      setAmpm('AM');
+    } catch (err) {
+      setNotice('Lỗi khi thêm ca: ' + err.message);
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -126,11 +186,83 @@ export default function CoordinatorSchedulesPage() {
               </div>
             )}
             <div className="flex flex-col gap-4">
-              {shifts.length === 0 && (
+              {shifts.length === 0 && !isAddingNew && (
                 <div className="rounded-2xl border border-dashed border-black/10 bg-brand-surface/40 p-8 text-center text-sm font-bold text-brand-text/50">
                   Chưa có dữ liệu ca chạy từ backend.
                 </div>
               )}
+              
+              {isAddingNew && (
+                <div className="border border-brand-primary/50 bg-brand-primary/5 rounded-2xl p-5 flex flex-col gap-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="font-bold text-brand-primary flex items-center gap-2"><Plus className="w-5 h-5"/> Tạo Ca Chạy Mới</h3>
+                    <button onClick={() => setIsAddingNew(false)} className="p-1 hover:bg-black/5 rounded-full"><X className="w-5 h-5"/></button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                    <div className="lg:col-span-2">
+                      <label className="block text-xs font-bold text-brand-text/70 uppercase mb-1">Tuyến đường</label>
+                      <select value={newSchedule.routeId} onChange={e => setNewSchedule({...newSchedule, routeId: e.target.value})} className="w-full rounded-xl p-2.5 text-sm font-bold border bg-white focus:outline-none focus:border-brand-primary">
+                        <option value="">-- Chọn Tuyến --</option>
+                        {routesFromBackend.map(r => <option key={r.id} value={r.id}>{r.name || r.routeName}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-brand-text/70 uppercase mb-1">Thứ</label>
+                      <select value={newSchedule.weekdayNumber} onChange={e => setNewSchedule({...newSchedule, weekdayNumber: e.target.value})} className="w-full rounded-xl p-2.5 text-sm font-bold border bg-white focus:outline-none focus:border-brand-primary">
+                        <option value="2">Thứ 2</option><option value="3">Thứ 3</option><option value="4">Thứ 4</option>
+                        <option value="5">Thứ 5</option><option value="6">Thứ 6</option><option value="7">Thứ 7</option>
+                        <option value="1">Chủ Nhật</option>
+                      </select>
+                    </div>
+                    <div className="lg:col-span-2">
+                      <label className="block text-xs font-bold text-brand-text/70 uppercase mb-1">Giờ chạy</label>
+                      <div className="flex gap-2">
+                        <select value={hour12} onChange={e => setHour12(e.target.value)} className="w-1/3 rounded-xl p-2.5 text-sm font-bold border bg-white focus:outline-none focus:border-brand-primary">
+                          {Array.from({length: 12}, (_, i) => {
+                            const val = (i + 1).toString().padStart(2, '0');
+                            return <option key={val} value={val}>{val}</option>;
+                          })}
+                        </select>
+                        <span className="font-bold self-center">:</span>
+                        <select value={minute} onChange={e => setMinute(e.target.value)} className="w-1/3 rounded-xl p-2.5 text-sm font-bold border bg-white focus:outline-none focus:border-brand-primary">
+                          {Array.from({length: 60}, (_, i) => {
+                            const val = i.toString().padStart(2, '0');
+                            return <option key={val} value={val}>{val}</option>;
+                          })}
+                        </select>
+                        <select value={ampm} onChange={e => setAmpm(e.target.value)} className="w-1/3 rounded-xl p-2.5 text-sm font-bold border bg-white focus:outline-none focus:border-brand-primary">
+                          <option value="AM">AM</option>
+                          <option value="PM">PM</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-brand-text/70 uppercase mb-1">Tài xế</label>
+                      <select value={newSchedule.driverId} onChange={e => setNewSchedule({...newSchedule, driverId: e.target.value})} className="w-full rounded-xl p-2.5 text-sm font-bold border bg-white focus:outline-none focus:border-brand-primary">
+                        <option value="">-- Chọn Tài xế --</option>
+                        {driversFromBackend.map(d => (
+                          <option key={d.id} value={d.id} disabled={d.status !== 'available'}>{d.name} {d.status !== 'available' && '- Bận'}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-brand-text/70 uppercase mb-1">Xe Bus</label>
+                      <select value={newSchedule.busId} onChange={e => setNewSchedule({...newSchedule, busId: e.target.value})} className="w-full rounded-xl p-2.5 text-sm font-bold border bg-white focus:outline-none focus:border-brand-primary">
+                        <option value="">-- Chọn Xe Bus --</option>
+                        {busesFromBackend.map(b => (
+                          <option key={b.id} value={b.id} disabled={b.status !== 'available'}>{b.id} ({b.type}) {b.status !== 'available' && '- Bận'}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex items-end lg:col-span-3">
+                      <button onClick={handleCreateNew} disabled={isCreating} className="w-full bg-brand-primary text-white font-bold py-2.5 rounded-xl hover:bg-black transition-colors disabled:opacity-50">
+                        {isCreating ? 'Đang tạo...' : 'Tạo mới'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {shifts.map(shift => (
                 <div key={shift.id} className={`border rounded-2xl p-5 flex flex-col xl:flex-row xl:items-center gap-6 transition-colors ${shift.status === 'unassigned' ? 'border-brand-danger/30 bg-brand-danger/5' : 'border-black/5 hover:border-brand-primary/50'}`}>
 
@@ -199,8 +331,8 @@ export default function CoordinatorSchedulesPage() {
               ))}
             </div>
 
-            <button className="w-full mt-6 py-4 bg-brand-surface border border-black/5 border-dashed text-brand-text font-bold rounded-2xl hover:bg-brand-primary hover:text-brand-text transition-colors flex items-center justify-center gap-2">
-              + Thêm Ca Chạy Mới
+            <button onClick={() => setIsAddingNew(true)} className="w-full mt-6 py-4 bg-brand-surface border border-black/5 border-dashed text-brand-text font-bold rounded-2xl hover:bg-brand-primary hover:text-white transition-colors flex items-center justify-center gap-2">
+              <Plus className="w-5 h-5"/> Thêm Ca Chạy Mới
             </button>
           </div>
         </div>

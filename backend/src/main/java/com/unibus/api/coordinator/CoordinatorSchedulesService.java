@@ -67,26 +67,33 @@ public class CoordinatorSchedulesService {
     @Transactional
     public ScheduleListItem createSchedule(CreateScheduleRequest request) {
         BusRoute route = routeRepository.findById(request.routeId()).orElseThrow();
-        Bus bus = busRepository.findById(request.busId()).orElseThrow();
-        Driver driver = driverRepository.findById(request.driverId()).orElseThrow();
 
         BusSchedule schedule = new BusSchedule();
         schedule.setRoute(route);
-        schedule.setBus(bus);
-        schedule.setDriver(driver);
+        
+        if (request.busId() != null) {
+            Bus bus = busRepository.findById(request.busId()).orElseThrow();
+            schedule.setBus(bus);
+        }
+        
+        if (request.driverId() != null) {
+            Driver driver = driverRepository.findById(request.driverId()).orElseThrow();
+            schedule.setDriver(driver);
+        }
+        
         schedule.setWeekdayNumber(request.weekdayNumber());
         schedule.setDepartureTime(request.departureTime());
-        schedule.setStatus("SCHEDULED");
+        schedule.setStatus("ACTIVE");
 
         schedule = scheduleRepository.save(schedule);
 
         return new ScheduleListItem(
                 schedule.getId(),
                 route.getRouteName(),
-                bus.getId(),
-                bus.getLicensePlate(),
-                driver.getId(),
-                driver.getUser() != null ? driver.getUser().getFullName() : "Unknown Driver",
+                schedule.getBus() != null ? schedule.getBus().getId() : null,
+                schedule.getBus() != null ? schedule.getBus().getLicensePlate() : "No Bus",
+                schedule.getDriver() != null ? schedule.getDriver().getId() : null,
+                schedule.getDriver() != null && schedule.getDriver().getUser() != null ? schedule.getDriver().getUser().getFullName() : "No Driver",
                 schedule.getDepartureTime(),
                 schedule.getEndTime(),
                 schedule.getStatus()
