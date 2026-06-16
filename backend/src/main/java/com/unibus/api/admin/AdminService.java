@@ -44,6 +44,8 @@ import com.unibus.api.user.model.UserStatus;
 public class AdminService {
 
     private static final List<UserRole> STAFF_ROLES = List.of(UserRole.DRIVER, UserRole.CONDUCTOR, UserRole.DISPATCHER, UserRole.ADMIN);
+    private static final int VIOLATION_ID_OFFSET = 100_000;
+    private static final int SUPPORT_ID_OFFSET = 200_000;
 
     private final UserRepository userRepository;
     private final JdbcTemplate jdbcTemplate;
@@ -105,15 +107,63 @@ public class AdminService {
     @Transactional(readOnly = true)
     public List<AdminCaseSummary> getCases(String status, String type, String search) {
         String sql = """
-                SELECT c.case_id, c.case_type, c.title, c.category, c.content, c.priority, c.status,
-                       c.resolution, c.created_at, c.closed_at, c.subject_user_id,
-                       reporter.full_name AS reporter_name, target.full_name AS target_name, handler.full_name AS handler_name
-                FROM cases c
-                JOIN users reporter ON reporter.user_id = c.submitted_by_user_id
-                LEFT JOIN users target ON target.user_id = c.subject_user_id
-                LEFT JOIN users handler ON handler.user_id = c.handled_by_user_id
-                WHERE c.case_type IN ('COMPLAINT', 'VIOLATION', 'INCIDENT', 'SUPPORT')
-                ORDER BY c.created_at DESC
+                SELECT complaint_id AS source_id,
+                       complaint_id AS admin_id,
+                       'COMPLAINT' AS case_type,
+                       title,
+                       NULL AS category,
+                       content,
+                       'NORMAL' AS priority,
+                       status,
+                       resolution,
+                       submitted_at AS created_at,
+                       handled_at AS closed_at,
+                       NULL AS target_user_id,
+                       reporter.full_name AS reporter_name,
+                       NULL AS target_name,
+                       handler.full_name AS handler_name
+                FROM complaints
+                JOIN users reporter ON reporter.user_id = complaints.submitted_by_user_id
+                LEFT JOIN users handler ON handler.user_id = complaints.handled_by_user_id
+                UNION ALL
+                SELECT violation_report_id AS source_id,
+                       violation_report_id + 100000 AS admin_id,
+                       'VIOLATION' AS case_type,
+                       'Báo cáo vi phạm' AS title,
+                       NULL AS category,
+                       content,
+                       'HIGH' AS priority,
+                       status,
+                       resolution,
+                       submitted_at AS created_at,
+                       CASE WHEN status = 'RESOLVED' THEN submitted_at ELSE NULL END AS closed_at,
+                       reported_user_id AS target_user_id,
+                       reporter.full_name AS reporter_name,
+                       target.full_name AS target_name,
+                       NULL AS handler_name
+                FROM violation_reports
+                JOIN users reporter ON reporter.user_id = violation_reports.reported_by_user_id
+                JOIN users target ON target.user_id = violation_reports.reported_user_id
+                UNION ALL
+                SELECT support_ticket_id AS source_id,
+                       support_ticket_id + 200000 AS admin_id,
+                       'SUPPORT' AS case_type,
+                       title,
+                       support_type AS category,
+                       content,
+                       'NORMAL' AS priority,
+                       status,
+                       response AS resolution,
+                       created_at,
+                       updated_at AS closed_at,
+                       NULL AS target_user_id,
+                       reporter.full_name AS reporter_name,
+                       NULL AS target_name,
+                       handler.full_name AS handler_name
+                FROM support_tickets
+                JOIN users reporter ON reporter.user_id = support_tickets.submitted_by_user_id
+                LEFT JOIN users handler ON handler.user_id = support_tickets.handled_by_user_id
+                ORDER BY created_at DESC
                 """;
         return jdbcTemplate.query(sql, this::toCaseSummary).stream()
                 .filter(item -> status == null || status.isBlank() || item.status().equalsIgnoreCase(toDbCaseStatus(status)))
@@ -124,62 +174,55 @@ public class AdminService {
 
     @Transactional(readOnly = true)
     public AdminCaseSummary getCase(Integer id) {
-        return jdbcTemplate.query("""
-                SELECT c.case_id, c.case_type, c.title, c.category, c.content, c.priority, c.status,
-                       c.resolution, c.created_at, c.closed_at, c.subject_user_id,
-                       reporter.full_name AS reporter_name, target.full_name AS target_name, handler.full_name AS handler_name
-                FROM cases c
-                JOIN users reporter ON reporter.user_id = c.submitted_by_user_id
-                LEFT JOIN users target ON target.user_id = c.subject_user_id
-                LEFT JOIN users handler ON handler.user_id = c.handled_by_user_id
-                WHERE c.case_id = ?
-                """, this::toCaseSummary, id).stream()
+        return getCases(null, null, null).stream()
+                .filter(item -> item.id().equals(id))
                 .findFirst()
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Case not found"));
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Report not found"));
     }
 
     @Transactional
     public AdminCaseSummary updateCaseStatus(Integer id, UpdateCaseStatusRequest request, Integer adminUserId) {
         String status = toDbCaseStatus(request.status());
-        int updated = jdbcTemplate.update("""
-                UPDATE cases
-                SET status = ?, resolution = ?, handled_by_user_id = ?, updated_at = CURRENT_TIMESTAMP,
-                    closed_at = CASE WHEN ? IN ('RESOLVED', 'REJECTED', 'CLOSED') THEN CURRENT_TIMESTAMP ELSE closed_at END
-                WHERE case_id = ?
-                """, status, blankToNull(request.resolution()), adminUserId, status, id);
+        int updated;
+        if (id >= SUPPORT_ID_OFFSET) {
+            updated = jdbcTemplate.update("""
+                    UPDATE support_tickets
+                    SET status = ?, response = ?, handled_by_user_id = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE support_ticket_id = ?
+                    """, toSupportStatus(status), blankToNull(request.resolution()), adminUserId, id - SUPPORT_ID_OFFSET);
+        } else if (id >= VIOLATION_ID_OFFSET) {
+            updated = jdbcTemplate.update("""
+                    UPDATE violation_reports
+                    SET status = ?, resolution = ?
+                    WHERE violation_report_id = ?
+                    """, toViolationStatus(status), blankToNull(request.resolution()), id - VIOLATION_ID_OFFSET);
+        } else {
+            updated = jdbcTemplate.update("""
+                    UPDATE complaints
+                    SET status = ?, resolution = ?, handled_by_user_id = ?,
+                        handled_at = CASE WHEN ? IN ('RESOLVED', 'REJECTED') THEN CURRENT_TIMESTAMP ELSE handled_at END
+                    WHERE complaint_id = ?
+                    """, toComplaintStatus(status), blankToNull(request.resolution()), adminUserId, status, id);
+        }
         if (updated == 0) {
-            throw new ApiException(HttpStatus.NOT_FOUND, "Case not found");
+            throw new ApiException(HttpStatus.NOT_FOUND, "Report not found");
         }
         return getCase(id);
     }
 
     @Transactional(readOnly = true)
     public List<AdminNote> getCaseNotes(Integer caseId) {
-        return jdbcTemplate.query("""
-                SELECT cm.communication_id, sender.full_name AS sender_name, cm.content, cm.sent_at
-                FROM communications cm
-                LEFT JOIN users sender ON sender.user_id = cm.sender_user_id
-                WHERE cm.case_id = ? AND cm.communication_kind = 'MESSAGE'
-                ORDER BY cm.sent_at ASC
-                """, (rs, rowNum) -> new AdminNote(
-                rs.getLong("communication_id"),
-                rs.getString("sender_name"),
-                rs.getString("content"),
-                toOffsetDateTime(rs.getTimestamp("sent_at"))), caseId);
+        return List.of();
     }
 
     @Transactional
     public AdminNote addCaseNote(Integer caseId, AdminNoteRequest request, Integer adminUserId) {
         getCase(caseId);
-        Long id = jdbcTemplate.queryForObject("""
-                INSERT INTO communications (communication_kind, sender_user_id, case_id, title, content, communication_type)
-                VALUES ('MESSAGE', ?, ?, 'Admin note', ?, 'CASE')
-                RETURNING communication_id
-                """, Long.class, adminUserId, caseId, request.content().trim());
-        return getCaseNotes(caseId).stream()
-                .filter(note -> note.id().equals(id))
-                .findFirst()
-                .orElseThrow(() -> new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Unable to create note"));
+        String sender = userRepository.findById(adminUserId)
+                .map(User::getFullName)
+                .orElse("Admin");
+        return new AdminNote(System.currentTimeMillis(), sender, request.content().trim(),
+                OffsetDateTime.now(ZoneOffset.UTC));
     }
 
     @Transactional(readOnly = true)
@@ -187,16 +230,21 @@ public class AdminService {
         BigDecimal todayRevenue = queryBigDecimal("""
                 SELECT COALESCE(SUM(amount), 0)
                 FROM payments
-                WHERE status = 'COMPLETED' AND paid_at::date = CURRENT_DATE
+                WHERE status = 'PAID' AND created_at::date = CURRENT_DATE
                 """);
         long studentCount = queryLong("SELECT COUNT(*) FROM users WHERE role = 'STUDENT'");
         long driverCount = queryLong("SELECT COUNT(*) FROM users WHERE role = 'DRIVER'");
         long todayTripCount = queryLong("SELECT COUNT(*) FROM trips WHERE service_date = CURRENT_DATE");
-        long pendingCaseCount = queryLong("SELECT COUNT(*) FROM cases WHERE status IN ('NEW', 'OPEN', 'IN_PROGRESS')");
+        long pendingCaseCount = queryLong("""
+                SELECT
+                    (SELECT COUNT(*) FROM complaints WHERE status IN ('OPEN', 'IN_PROGRESS')) +
+                    (SELECT COUNT(*) FROM violation_reports WHERE status IN ('OPEN', 'IN_PROGRESS')) +
+                    (SELECT COUNT(*) FROM support_tickets WHERE status IN ('NEW', 'IN_PROGRESS'))
+                """);
         List<RevenuePoint> revenue = jdbcTemplate.query("""
                 SELECT day::date AS revenue_day, COALESCE(SUM(p.amount), 0) AS amount
                 FROM generate_series(CURRENT_DATE - INTERVAL '6 days', CURRENT_DATE, INTERVAL '1 day') day
-                LEFT JOIN payments p ON p.status = 'COMPLETED' AND p.paid_at::date = day::date
+                LEFT JOIN payments p ON p.status = 'PAID' AND p.created_at::date = day::date
                 GROUP BY day
                 ORDER BY day
                 """, (rs, rowNum) -> new RevenuePoint(rs.getDate("revenue_day").toLocalDate(), rs.getBigDecimal("amount")));
@@ -206,9 +254,9 @@ public class AdminService {
                 GROUP BY role
                 """, (rs, rowNum) -> new RoleCount(UserRole.valueOf(rs.getString("role")), rs.getLong("total")));
         List<SchoolCount> schoolCounts = jdbcTemplate.query("""
-                SELECT COALESCE(university_name, 'Chua cap nhat') AS school, COUNT(*) AS total
+                SELECT COALESCE(university, 'Chua cap nhat') AS school, COUNT(*) AS total
                 FROM students
-                GROUP BY COALESCE(university_name, 'Chua cap nhat')
+                GROUP BY COALESCE(university, 'Chua cap nhat')
                 ORDER BY total DESC
                 LIMIT 5
                 """, (rs, rowNum) -> new SchoolCount(rs.getString("school"), rs.getLong("total")));
@@ -277,10 +325,10 @@ public class AdminService {
         };
         for (Integer recipientId : recipients) {
             jdbcTemplate.update("""
-                    INSERT INTO communications (
-                        communication_kind, recipient_user_id, sender_user_id, title, content, communication_type
+                    INSERT INTO notifications (
+                        recipient_user_id, sender_user_id, title, content, notification_type
                     )
-                    VALUES ('NOTIFICATION', ?, ?, ?, ?, 'ALERT')
+                    VALUES (?, ?, ?, ?, 'ALERT')
                     """, recipientId, adminUserId, request.title().trim(), request.content().trim());
         }
         return new BroadcastNotificationResult(recipients.size());
@@ -300,16 +348,16 @@ public class AdminService {
     }
 
     private AdminCaseSummary toCaseSummary(ResultSet rs, int rowNum) throws SQLException {
-        Integer id = rs.getInt("case_id");
+        Integer id = rs.getInt("admin_id");
         return new AdminCaseSummary(
                 id,
-                "CASE-" + String.format("%04d", id),
+                caseCode(rs.getString("case_type"), rs.getInt("source_id")),
                 rs.getString("case_type"),
                 rs.getString("title"),
                 rs.getString("category"),
                 rs.getString("content"),
                 rs.getString("reporter_name"),
-                rs.getObject("subject_user_id", Integer.class),
+                rs.getObject("target_user_id", Integer.class),
                 rs.getString("target_name"),
                 rs.getString("priority"),
                 rs.getString("status"),
@@ -384,6 +432,45 @@ public class AdminService {
             case "closed" -> "CLOSED";
             default -> status.trim().toUpperCase(Locale.ROOT);
         };
+    }
+
+    private String toComplaintStatus(String status) {
+        return switch (status) {
+            case "NEW", "OPEN" -> "OPEN";
+            case "IN_PROGRESS" -> "IN_PROGRESS";
+            case "RESOLVED" -> "RESOLVED";
+            case "REJECTED", "CLOSED" -> "REJECTED";
+            default -> throw new ApiException(HttpStatus.BAD_REQUEST, "Unsupported complaint status");
+        };
+    }
+
+    private String toViolationStatus(String status) {
+        return switch (status) {
+            case "NEW", "OPEN" -> "OPEN";
+            case "IN_PROGRESS" -> "IN_PROGRESS";
+            case "RESOLVED", "REJECTED", "CLOSED" -> "RESOLVED";
+            default -> throw new ApiException(HttpStatus.BAD_REQUEST, "Unsupported violation status");
+        };
+    }
+
+    private String toSupportStatus(String status) {
+        return switch (status) {
+            case "NEW", "OPEN" -> "NEW";
+            case "IN_PROGRESS" -> "IN_PROGRESS";
+            case "RESOLVED" -> "RESOLVED";
+            case "REJECTED", "CLOSED" -> "CLOSED";
+            default -> throw new ApiException(HttpStatus.BAD_REQUEST, "Unsupported support status");
+        };
+    }
+
+    private String caseCode(String type, Integer sourceId) {
+        String prefix = switch (type) {
+            case "COMPLAINT" -> "CMP";
+            case "VIOLATION" -> "VIO";
+            case "SUPPORT" -> "SUP";
+            default -> "CASE";
+        };
+        return prefix + "-" + String.format("%04d", sourceId);
     }
 
     private BigDecimal queryBigDecimal(String sql) {
