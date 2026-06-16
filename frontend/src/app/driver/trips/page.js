@@ -24,7 +24,7 @@ export default function DriverTripPage() {
         if (!mounted) return;
         setTrip(currentTripMock);
         setCurrentStationIndex(getCurrentStopIndex(currentTripMock.stops));
-        setNotice('Dang dung du lieu mau vi backend chua san sang hoac chua dang nhap tai khoan DRIVER.');
+        setNotice('Đang dùng dữ liệu mẫu vì backend chưa sẵn sàng hoặc chưa đăng nhập tài khoản DRIVER.');
       });
 
     return () => {
@@ -51,8 +51,8 @@ export default function DriverTripPage() {
     <div className="h-full flex flex-col gap-6 font-sans">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-brand-text mb-2">Chuyen di hien tai</h1>
-          <p className="text-brand-text/60 font-medium">{trip?.routeName || '--'} - Bien so: {trip?.licensePlate || '--'}</p>
+          <h1 className="text-3xl font-extrabold tracking-tight text-brand-text mb-2">Chuyến đi hiện tại</h1>
+          <p className="text-brand-text/60 font-medium">{trip?.routeName || '--'} - Biển số: {trip?.licensePlate || '--'}</p>
         </div>
         <div className="px-4 py-2 bg-brand-success/10 text-brand-success rounded-xl font-bold border border-brand-success/20 flex items-center gap-2">
           <span className="relative flex h-3 w-3">
@@ -75,10 +75,10 @@ export default function DriverTripPage() {
 
           <div className="flex items-start justify-between gap-4 mb-8 relative z-10">
             <h2 className="text-xl font-bold flex items-center gap-2">
-              <MapPin className="w-6 h-6 text-brand-primary" /> Lo trinh di chuyen
+              <MapPin className="w-6 h-6 text-brand-primary" /> Lộ trình di chuyển
             </h2>
             <div className="text-right">
-              <div className="text-xs font-bold text-brand-text/40 uppercase">Tien do</div>
+              <div className="text-xs font-bold text-brand-text/40 uppercase">Tiến độ</div>
               <div className="font-black">{tripProgress}%</div>
             </div>
           </div>
@@ -115,7 +115,7 @@ export default function DriverTripPage() {
                       </h3>
                       <span className="font-mono text-sm font-bold text-brand-text/50">{station.time}</span>
                     </div>
-                    {isCurrent && <p className="text-sm font-medium text-brand-text/70">Dang tien den tram nay...</p>}
+                    {isCurrent && <p className="text-sm font-medium text-brand-text/70">Đang tiến đến trạm này...</p>}
                   </div>
                 </div>
               );
@@ -126,10 +126,10 @@ export default function DriverTripPage() {
         <div className="flex flex-col gap-6">
           <div className="bg-brand-primary rounded-3xl p-6 md:p-8 shadow-sm border border-black/5 flex flex-col justify-center text-center relative overflow-hidden">
             <h3 className="text-sm font-bold uppercase tracking-widest text-brand-text/50 mb-2 relative z-10">
-              Tram tiep theo
+              Trạm tiếp theo
             </h3>
             <div className="text-3xl font-black text-brand-text mb-8 relative z-10">
-              {currentStation ? currentStation.name : 'Da hoan thanh'}
+              {currentStation ? currentStation.name : 'Đã hoàn thành'}
             </div>
 
             {!isTripFinished ? (
@@ -137,23 +137,23 @@ export default function DriverTripPage() {
                 onClick={handleArrive}
                 className="w-full py-5 rounded-2xl bg-white text-brand-text font-black text-lg hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 shadow-sm"
               >
-                <Flag className="w-6 h-6 text-brand-primary fill-brand-primary" /> Da den tram
+                <Flag className="w-6 h-6 text-brand-primary fill-brand-primary" /> Đã đến trạm
               </button>
             ) : (
               <button className="w-full py-5 rounded-2xl bg-brand-success text-white font-black text-lg flex items-center justify-center gap-3 shadow-sm">
-                <CheckCircle2 className="w-6 h-6" /> Hoan thanh chuyen xe
+                <CheckCircle2 className="w-6 h-6" /> Hoàn thành chuyến xe
               </button>
             )}
 
             <div className="grid grid-cols-2 gap-4 mt-8 relative z-10">
-              <Stat label="Toc do" value={`${trip?.averageSpeed ?? '--'}`} suffix="km/h" />
-              <Stat label="Khach tren xe" value={`${trip?.passengerCount ?? '--'}`} suffix={`/${trip?.capacity ?? '--'}`} />
+              <Stat label="Tốc độ" value={`${trip?.averageSpeed ?? '--'}`} suffix="km/h" />
+              <Stat label="Khách trên xe" value={`${trip?.passengerCount ?? '--'}`} suffix={`/${trip?.capacity ?? '--'}`} />
             </div>
           </div>
 
           <div className="bg-white rounded-3xl p-6 shadow-sm border border-black/5">
             <h3 className="font-bold mb-4 flex items-center gap-2">
-              <Users className="w-5 h-5 text-brand-secondary" /> Phu xe chuyen nay
+              <Users className="w-5 h-5 text-brand-secondary" /> Phụ xe chuyến này
             </h3>
 
             <div className="flex items-center justify-between p-4 bg-brand-surface rounded-2xl border border-black/5">
@@ -163,7 +163,7 @@ export default function DriverTripPage() {
                 </div>
                 <div>
                   <div className="font-bold text-sm">{trip?.conductorName || '--'}</div>
-                  <div className="text-xs font-medium text-brand-text/60">SDT: {trip?.conductorPhone || '--'}</div>
+                  <div className="text-xs font-medium text-brand-text/60">SĐT: {trip?.conductorPhone || '--'}</div>
                 </div>
               </div>
               <a href={`tel:${(trip?.conductorPhone || '').replaceAll(' ', '')}`} className="p-3 bg-brand-primary rounded-xl text-brand-text hover:bg-black hover:text-white transition-colors shadow-sm">
@@ -197,9 +197,9 @@ function getCurrentStopIndex(stops = []) {
 
 function statusText(status) {
   const labels = {
-    IN_PROGRESS: 'Dang van hanh',
-    STARTED: 'Dang van hanh',
-    COMPLETED: 'Hoan thanh',
+    IN_PROGRESS: 'Đang vận hành',
+    STARTED: 'Đang vận hành',
+    COMPLETED: 'Hoàn thành',
   };
-  return labels[status] || status || 'San sang';
+  return labels[status] || status || 'Sẵn sàng';
 }

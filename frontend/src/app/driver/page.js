@@ -34,7 +34,7 @@ export default function DriverDashboard() {
       .catch(() => {
         if (mounted) {
           setDashboard(fallbackDashboard);
-          setNotice('Dang dung du lieu mau vi backend chua san sang hoac chua dang nhap tai khoan DRIVER.');
+          setNotice('Đang dùng dữ liệu mẫu vì backend chưa sẵn sàng hoặc chưa đăng nhập tài khoản DRIVER.');
         }
       })
       .finally(() => {
@@ -61,9 +61,9 @@ export default function DriverDashboard() {
           tripStatus: result.status === 'COMPLETED' ? 'COMPLETED' : result.trip.status,
         }));
       }
-      setNotice(result?.message || 'Da cap nhat trang thai chuyen.');
+      setNotice(result?.message || 'Đã cập nhật trạng thái chuyến.');
     } catch (error) {
-      setNotice(error.message || 'Khong the cap nhat chuyen xe.');
+      setNotice(error.message || 'Không thể cập nhật chuyến xe.');
     }
   };
 
@@ -71,11 +71,11 @@ export default function DriverDashboard() {
     <div className="h-full flex flex-col gap-6 font-sans">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-brand-text mb-2">Bang dieu khien tai xe</h1>
-          <p className="text-brand-text/60 font-medium">Theo doi chuyen hien tai, lich tiep theo va lien he dieu phoi.</p>
+          <h1 className="text-3xl font-extrabold tracking-tight text-brand-text mb-2">Bảng điều khiển tài xế</h1>
+          <p className="text-brand-text/60 font-medium">Theo dõi chuyến hiện tại, lịch tiếp theo và liên hệ điều phối.</p>
         </div>
         <div className="px-4 py-2 rounded-2xl bg-white border border-black/5 text-sm font-bold text-brand-text shadow-sm">
-          {isLoading ? 'Dang tai...' : statusText(dashboard.tripStatus)}
+          {isLoading ? 'Đang tải...' : statusText(dashboard.tripStatus)}
         </div>
       </div>
 
@@ -89,10 +89,10 @@ export default function DriverDashboard() {
         <div className="lg:col-span-2 bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-black/5 flex flex-col">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
             <h2 className="text-xl font-bold flex items-center gap-2">
-              <Navigation className="w-6 h-6 text-brand-primary" /> Chuyen xe hien tai
+              <Navigation className="w-6 h-6 text-brand-primary" /> Chuyến xe hiện tại
             </h2>
             <div className="px-3 py-1 bg-brand-surface text-brand-text font-bold text-xs rounded-full uppercase tracking-widest border border-black/5">
-              {trip?.routeName || 'Chua co tuyen'}
+              {trip?.routeName || 'Chưa có tuyến'}
             </div>
           </div>
 
@@ -122,10 +122,10 @@ export default function DriverDashboard() {
           </button>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-            <Metric label="Toc do" value={trip?.averageSpeed ?? '--'} suffix="km/h" />
-            <Metric label="Khach" value={trip?.passengerCount ?? '--'} suffix={`/${trip?.capacity ?? '--'}`} />
-            <Metric label="An toan" value={trip?.safetyScore ?? '--'} suffix="/100" />
-            <Metric label="Canh bao" value={trip?.alerts || '--'} />
+            <Metric label="Tốc độ" value={trip?.averageSpeed ?? '--'} suffix="km/h" />
+            <Metric label="Khách" value={trip?.passengerCount ?? '--'} suffix={`/${trip?.capacity ?? '--'}`} />
+            <Metric label="An toàn" value={trip?.safetyScore ?? '--'} suffix="/100" />
+            <Metric label="Cảnh báo" value={trip?.alerts || '--'} />
           </div>
 
           <button
@@ -139,14 +139,14 @@ export default function DriverDashboard() {
             }`}
           >
             {isRunning ? <Square className="w-5 h-5" /> : <Play className="w-5 h-5" />}
-            {isRunning ? 'Ket thuc chuyen' : 'Bat dau chuyen xe'}
+            {isRunning ? 'Kết thúc chuyến' : 'Bắt đầu chuyến xe'}
           </button>
         </div>
 
         <div className="flex flex-col gap-6">
           <div className="bg-brand-primary text-brand-text rounded-3xl p-6 shadow-sm flex flex-col border border-black/5">
             <h3 className="font-bold mb-4 flex items-center gap-2">
-              <Clock className="w-5 h-5" /> Lich chay tiep theo
+              <Clock className="w-5 h-5" /> Lịch chạy tiếp theo
             </h3>
 
             <div className="space-y-3">
@@ -164,20 +164,20 @@ export default function DriverDashboard() {
 
           <div className="bg-white rounded-3xl p-6 shadow-sm border border-black/5">
             <h3 className="font-bold mb-2 flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-brand-warning" /> Ho tro khan cap
+              <AlertTriangle className="w-5 h-5 text-brand-warning" /> Hỗ trợ khẩn cấp
             </h3>
-            <p className="text-xs text-brand-text/60 mb-6">Lien he dieu phoi khi xe gap su co, ket xe hoac thay doi lo trinh.</p>
+            <p className="text-xs text-brand-text/60 mb-6">Liên hệ điều phối khi xe gặp sự cố, kẹt xe hoặc thay đổi lộ trình.</p>
 
             <div className="space-y-3">
               <a href={`tel:${trip?.dispatcherPhone || '0909988776'}`} className="w-full py-3 rounded-xl bg-brand-surface text-brand-text font-bold hover:bg-brand-text hover:text-white transition-all text-sm flex justify-center items-center gap-2 border border-black/5 hover:border-brand-text">
-                <Phone className="w-4 h-4" /> Goi dieu phoi
+                <Phone className="w-4 h-4" /> Gọi điều phối
               </a>
               <button
                 type="button"
                 onClick={() => router.push('/driver/contact')}
                 className="w-full py-3 rounded-xl bg-brand-danger/10 text-brand-danger font-bold hover:bg-brand-danger hover:text-white transition-all text-sm flex justify-center items-center gap-2 border border-brand-danger/20"
               >
-                <AlertTriangle className="w-4 h-4" /> Bao cao su co
+                <AlertTriangle className="w-4 h-4" /> Báo cáo sự cố
               </button>
             </div>
           </div>
@@ -198,11 +198,11 @@ function Metric({ label, value, suffix = '' }) {
 
 function statusText(status) {
   const labels = {
-    IN_PROGRESS: 'Dang chay',
-    STARTED: 'Dang chay',
-    COMPLETED: 'Hoan thanh',
-    UPCOMING: 'Sap toi',
-    IDLE: 'San sang',
+    IN_PROGRESS: 'Đang chạy',
+    STARTED: 'Đang chạy',
+    COMPLETED: 'Hoàn thành',
+    UPCOMING: 'Sắp tới',
+    IDLE: 'Sẵn sàng',
   };
-  return labels[status] || status || 'San sang';
+  return labels[status] || status || 'Sẵn sàng';
 }

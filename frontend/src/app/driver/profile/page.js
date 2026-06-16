@@ -9,10 +9,10 @@ import { driverApi } from '@/services/api';
 
 const fallbackDriverProfile = {
   employeeId: 'DRV-ITER1-01',
-  fullName: 'Nguyen Minh Tai',
+  fullName: 'Nguyễn Minh Tài',
   phone: '0905551234',
   email: 'driver.iter1@unibus.vn',
-  address: 'Da Nang',
+  address: 'Đà Nẵng',
   totalTrips: 128,
   drivingHoursThisMonth: 64,
   safetyScore: 98,
@@ -62,7 +62,7 @@ export default function DriverProfilePage() {
   if (isLoading) {
     return (
       <div className="h-full flex items-center justify-center">
-        <div className="text-sm font-bold text-brand-text/50">Dang tai ho so...</div>
+        <div className="text-sm font-bold text-brand-text/50">Đang tải hồ sơ...</div>
       </div>
     );
   }
@@ -76,8 +76,8 @@ export default function DriverProfilePage() {
   return (
     <div className="h-full flex flex-col gap-6 font-sans">
       <div>
-        <h1 className="text-3xl font-extrabold tracking-tight text-brand-text mb-2">Ho so tai xe</h1>
-        <p className="text-brand-text/60 font-medium">Thong tin ca nhan, thong ke hoat dong va chung chi lai xe.</p>
+        <h1 className="text-3xl font-extrabold tracking-tight text-brand-text mb-2">Hồ sơ tài xế</h1>
+        <p className="text-brand-text/60 font-medium">Thông tin cá nhân, thống kê hoạt động và chứng chỉ lái xe.</p>
       </div>
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 overflow-y-auto custom-scrollbar pr-2 pb-6">
@@ -98,11 +98,11 @@ export default function DriverProfilePage() {
             </label>
 
             <h2 className="text-2xl font-bold text-brand-text">{displayName}</h2>
-            <p className="text-brand-text/60 font-medium mb-6">Tai xe UniBus</p>
+            <p className="text-brand-text/60 font-medium mb-6">Tài xế UniBus</p>
 
             <div className="w-full flex flex-col gap-3 text-left">
-              <InfoCard icon={CreditCard} label="Ma nhan vien" value={displayEmployeeId || '--'} />
-              <InfoCard icon={Phone} label="So dien thoai" value={displayPhone || '--'} />
+              <InfoCard icon={CreditCard} label="Mã nhân viên" value={displayEmployeeId || '--'} />
+              <InfoCard icon={Phone} label="Số điện thoại" value={displayPhone || '--'} />
               <InfoCard icon={Mail} label="Email" value={displayEmail || '--'} />
             </div>
           </div>
@@ -121,24 +121,24 @@ export default function DriverProfilePage() {
               </div>
             )}
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold">Thong tin lien lac</h3>
+              <h3 className="text-xl font-bold">Thông tin liên lạc</h3>
               {!isEditing ? (
                 <button type="button" onClick={() => setIsEditing(true)} className="text-sm font-bold text-brand-primary hover:text-brand-text transition-colors px-4 py-2 bg-brand-primary/10 rounded-xl">
-                  Chinh sua
+                  Chỉnh sửa
                 </button>
               ) : (
                 <button type="submit" disabled={isSaving} className="text-sm font-bold text-white bg-brand-text hover:bg-black transition-colors px-4 py-2 rounded-xl flex items-center gap-2 disabled:opacity-60">
-                  <Save className="w-4 h-4" /> {isSaving ? 'Dang luu...' : 'Luu thay doi'}
+                  <Save className="w-4 h-4" /> {isSaving ? 'Đang lưu...' : 'Lưu thay đổi'}
                 </button>
               )}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <ProfileInput icon={UserCircle} label="Ho va ten" name="name" value={displayName || ''} onChange={handleChange} disabled={!isEditing} />
-              <ProfileInput icon={CreditCard} label="Ma nhan vien" name="employeeId" value={displayEmployeeId || ''} disabled />
-              <ProfileInput icon={Phone} label="So dien thoai" type="tel" name="phone" value={displayPhone || ''} onChange={handleChange} disabled={!isEditing} />
+              <ProfileInput icon={UserCircle} label="Họ và tên" name="name" value={displayName || ''} onChange={handleChange} disabled={!isEditing} />
+              <ProfileInput icon={CreditCard} label="Mã nhân viên" name="employeeId" value={displayEmployeeId || ''} disabled />
+              <ProfileInput icon={Phone} label="Số điện thoại" type="tel" name="phone" value={displayPhone || ''} onChange={handleChange} disabled={!isEditing} />
               <ProfileInput icon={Mail} label="Email" type="email" name="email" value={displayEmail || ''} onChange={handleChange} disabled={!isEditing} />
               <div className="md:col-span-2">
-                <ProfileInput icon={MapPin} label="Dia chi" name="address" value={displayAddress || ''} onChange={handleChange} disabled={!isEditing} />
+                <ProfileInput icon={MapPin} label="Địa chỉ" name="address" value={displayAddress || ''} onChange={handleChange} disabled={!isEditing} />
               </div>
             </div>
           </form>
@@ -149,8 +149,8 @@ export default function DriverProfilePage() {
                 <KeyRound className="w-6 h-6 text-brand-text/60" />
               </div>
               <div>
-                <h3 className="font-bold">Mat khau dang nhap</h3>
-                <p className="text-sm font-medium text-brand-text/60">Doi mat khau tai khoan tai xe.</p>
+                <h3 className="font-bold">Mật khẩu đăng nhập</h3>
+                <p className="text-sm font-medium text-brand-text/60">Đổi mật khẩu tài khoản tài xế.</p>
               </div>
             </div>
             <button
@@ -158,23 +158,23 @@ export default function DriverProfilePage() {
               onClick={() => setPasswordModalOpen(true)}
               className="px-6 py-3 bg-brand-surface font-bold text-sm rounded-xl hover:bg-black hover:text-white transition-colors w-full md:w-auto"
             >
-              Doi mat khau
+              Đổi mật khẩu
             </button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <StatCard icon={Map} color="bg-brand-primary/20 text-brand-primary" value={driverProfile.totalTrips ?? '--'} label="Chuyen da di" />
-            <StatCard icon={Clock} color="bg-brand-secondary/20 text-brand-secondary" value={driverProfile.drivingHoursThisMonth ?? '--'} label="Gio lai thang nay" />
-            <StatCard icon={ShieldCheck} color="bg-brand-success/20 text-brand-success" value={driverProfile.safetyScore ?? '--'} label="Diem an toan" />
+            <StatCard icon={Map} color="bg-brand-primary/20 text-brand-primary" value={driverProfile.totalTrips ?? '--'} label="Chuyến đã đi" />
+            <StatCard icon={Clock} color="bg-brand-secondary/20 text-brand-secondary" value={driverProfile.drivingHoursThisMonth ?? '--'} label="Giờ lái tháng này" />
+            <StatCard icon={ShieldCheck} color="bg-brand-success/20 text-brand-success" value={driverProfile.safetyScore ?? '--'} label="Điểm an toàn" />
           </div>
 
           <div className="bg-white rounded-3xl p-8 shadow-sm border border-black/5 flex-1">
             <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
-              <Award className="w-6 h-6 text-brand-text" /> Bang lai va chung chi
+              <Award className="w-6 h-6 text-brand-text" /> Bằng lái và chứng chỉ
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <CredentialCard title={`Bang lai hang ${driverProfile.licenseClass || '--'}`} subtitle={`Het han: ${driverProfile.licenseExpiryDate || '--'}`} status="Hop le" mark={driverProfile.licenseClass || 'E'} />
-              <CredentialCard title="Giay kham suc khoe" subtitle="Ho so tai xe" status={driverProfile.healthCertificateStatus || '--'} icon={ShieldCheck} />
+              <CredentialCard title={`Bằng lái hạng ${driverProfile.licenseClass || '--'}`} subtitle={`Hết hạn: ${driverProfile.licenseExpiryDate || '--'}`} status="Hợp lệ" mark={driverProfile.licenseClass || 'E'} />
+              <CredentialCard title="Giấy khám sức khỏe" subtitle="Hồ sơ tài xế" status={driverProfile.healthCertificateStatus || '--'} icon={ShieldCheck} />
             </div>
           </div>
         </div>

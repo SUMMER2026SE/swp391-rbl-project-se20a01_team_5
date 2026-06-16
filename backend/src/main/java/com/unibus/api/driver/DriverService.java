@@ -27,10 +27,10 @@ public class DriverService {
                 "ITER1 - Campus Loop",
                 "IN_PROGRESS",
                 "43B-ITER1-01",
-                "Nguyen Minh Tai",
-                "Tran Phu Xe",
+                "Nguyễn Minh Tài",
+                "Trần Phụ Xe",
                 "0901234567",
-                "Le Dieu Phoi",
+                "Lê Điều Phối",
                 "0909988776",
                 "07:15",
                 "08:00",
@@ -38,13 +38,13 @@ public class DriverService {
                 28,
                 45,
                 98,
-                "Khong co canh bao",
+                "Không có cảnh báo",
                 List.of(
-                        new DriverStop(1, "Ky tuc xa phia Dong", "07:15", "passed"),
-                        new DriverStop(2, "Dai hoc Bach khoa", "07:26", "passed"),
-                        new DriverStop(3, "Cau Rong", "07:38", "current"),
-                        new DriverStop(4, "Dai hoc Kinh te", "07:50", "upcoming"),
-                        new DriverStop(5, "Ben xe trung tam", "08:00", "upcoming")));
+                        new DriverStop(1, "Ký túc xá phía Đông", "07:15", "passed"),
+                        new DriverStop(2, "Đại học Bách khoa", "07:26", "passed"),
+                        new DriverStop(3, "Cầu Rồng", "07:38", "current"),
+                        new DriverStop(4, "Đại học Kinh tế", "07:50", "upcoming"),
+                        new DriverStop(5, "Bến xe trung tâm", "08:00", "upcoming")));
     }
 
     public List<DriverSchedule> nextSchedules() {
@@ -54,22 +54,22 @@ public class DriverService {
     }
 
     public DriverContactPage contacts() {
-        DriverContact dispatcher = new DriverContact("Le Dieu Phoi", "DISPATCHER", "0909988776", "ONLINE");
+        DriverContact dispatcher = new DriverContact("Lê Điều Phối", "DISPATCHER", "0909988776", "ONLINE");
         return new DriverContactPage(
                 dispatcher,
                 List.of(
                         dispatcher,
-                        new DriverContact("Tran Phu Xe", "CONDUCTOR", "0901234567", "ON_TRIP")),
+                        new DriverContact("Trần Phụ Xe", "CONDUCTOR", "0901234567", "ON_TRIP")),
                 List.of("TECHNICAL", "TRAFFIC_JAM", "MEDICAL_EMERGENCY", "OTHER"));
     }
 
     public DriverProfile profile() {
         return new DriverProfile(
                 "DRV-ITER1-01",
-                "Nguyen Minh Tai",
+                "Nguyễn Minh Tài",
                 "0905551234",
                 "driver.iter1@unibus.vn",
-                "Da Nang",
+                "Đà Nẵng",
                 128,
                 64,
                 98,
@@ -79,20 +79,20 @@ public class DriverService {
     }
 
     public DriverActionResponse startTrip(String tripId) {
-        return action("STARTED", "Chuyen xe da bat dau", currentTrip());
+        return action("STARTED", "Chuyến xe đã bắt đầu", currentTrip());
     }
 
     public DriverActionResponse endTrip(String tripId) {
-        return action("COMPLETED", "Chuyen xe da ket thuc", currentTrip());
+        return action("COMPLETED", "Chuyến xe đã kết thúc", currentTrip());
     }
 
     public DriverActionResponse reportIncident(String incidentType) {
         String type = incidentType == null || incidentType.isBlank() ? "OTHER" : incidentType;
-        return action("REPORTED", "Da gui bao cao su co: " + type, currentTrip());
+        return action("REPORTED", "Đã gửi báo cáo sự cố: " + type, currentTrip());
     }
 
     public DriverActionResponse sendMessage(String message) {
-        return action("SENT", "Tin nhan da gui", currentTrip());
+        return action("SENT", "Tin nhắn đã gửi", currentTrip());
     }
 
     private DriverActionResponse action(String status, String message, DriverTrip trip) {
