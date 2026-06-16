@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { CalendarDays, Clock, Map, Users, BusFront, CheckCircle2, AlertCircle, ChevronDown, Save, Plus, X } from 'lucide-react';
+import { CalendarDays, Clock, Map, Users, BusFront, CheckCircle2, AlertCircle, ChevronDown, Save, Plus, X, Edit2, Trash2 } from 'lucide-react';
 import { coordinatorSchedulesService } from '@/services/coordinatorSchedules.service';
 import { coordinatorRoutesService } from '@/services/coordinatorRoutes.service';
 
@@ -19,7 +19,8 @@ export default function CoordinatorSchedulesPage() {
   const [minute, setMinute] = useState('00');
   const [ampm, setAmpm] = useState('AM');
   const [isCreating, setIsCreating] = useState(false);
-
+  const [editingSchedule, setEditingSchedule] = useState(null);
+  const [isUpdating, setIsUpdating] = useState(false);
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -32,6 +33,8 @@ export default function CoordinatorSchedulesPage() {
         
         const mappedShifts = shiftsData.map(s => ({
           id: s.id,
+          routeId: s.routeId,
+          weekdayNumber: s.weekdayNumber,
           status: s.busId && s.driverId ? 'assigned' : 'unassigned',
           route: s.routeName,
           time: s.departureTime ? s.departureTime.substring(0, 5) : 'N/A',
@@ -113,6 +116,8 @@ export default function CoordinatorSchedulesPage() {
       
       const mappedShift = {
         id: created.id,
+        routeId: created.routeId,
+        weekdayNumber: created.weekdayNumber,
         status: created.busId && created.driverId ? 'assigned' : 'unassigned',
         route: created.routeName,
         time: created.departureTime ? created.departureTime.substring(0, 5) : 'N/A',
@@ -130,6 +135,87 @@ export default function CoordinatorSchedulesPage() {
       setNotice('Lỗi khi thêm ca: ' + err.message);
     } finally {
       setIsCreating(false);
+    }
+  };
+
+  const handleEditClick = (shift) => {
+    let h24 = 8;
+    let m = '00';
+    let ampm = 'AM';
+    if (shift.time && shift.time !== 'N/A') {
+      const [hStr, mStr] = shift.time.split(':');
+      h24 = parseInt(hStr, 10);
+      m = mStr;
+      if (h24 >= 12) {
+        ampm = 'PM';
+        if (h24 > 12) h24 -= 12;
+      } else {
+        ampm = 'AM';
+        if (h24 === 0) h24 = 12;
+      }
+    }
+    const h12Str = h24.toString().padStart(2, '0');
+
+    setEditingSchedule({
+      id: shift.id,
+      routeId: shift.routeId || '',
+      weekdayNumber: shift.weekdayNumber || '2',
+      hour12: h12Str,
+      minute: m,
+      ampm: ampm
+    });
+  };
+
+  const handleUpdateSchedule = async () => {
+    if (!editingSchedule.routeId) {
+      setNotice('Vui lòng chọn tuyến đường!');
+      return;
+    }
+    let hour24 = parseInt(editingSchedule.hour12, 10);
+    if (editingSchedule.ampm === 'PM' && hour24 < 12) hour24 += 12;
+    if (editingSchedule.ampm === 'AM' && hour24 === 12) hour24 = 0;
+    const finalDepartureTime = `${hour24.toString().padStart(2, '0')}:${editingSchedule.minute}:00`;
+
+    setIsUpdating(true);
+    setNotice('');
+    try {
+      const updated = await coordinatorSchedulesService.updateSchedule(editingSchedule.id, {
+        routeId: parseInt(editingSchedule.routeId),
+        weekdayNumber: parseInt(editingSchedule.weekdayNumber),
+        departureTime: finalDepartureTime
+      });
+      setNotice('Cập nhật ca chạy thành công!');
+      
+      const mappedShift = {
+        id: updated.id,
+        routeId: updated.routeId,
+        weekdayNumber: updated.weekdayNumber,
+        status: updated.busId && updated.driverId ? 'assigned' : 'unassigned',
+        route: updated.routeName,
+        time: updated.departureTime ? updated.departureTime.substring(0, 5) : 'N/A',
+        driver: updated.driverId || '',
+        bus: updated.busId || ''
+      };
+      
+      setShifts(shifts.map(s => s.id === updated.id ? { ...s, ...mappedShift } : s));
+      setEditingSchedule(null);
+    } catch (err) {
+      setNotice('Lỗi khi cập nhật ca: ' + err.message);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleDeleteSchedule = async (id) => {
+    if (!window.confirm('Bạn có chắc chắn muốn xóa ca chạy này không?')) return;
+    
+    setNotice('');
+    try {
+      await coordinatorSchedulesService.deleteSchedule(id);
+      setNotice('Xóa ca chạy thành công!');
+      setShifts(shifts.filter(s => s.id !== id));
+    } catch (err) {
+      setNotice('Lỗi khi xóa ca: ' + err.message);
     }
   };
 
@@ -151,7 +237,7 @@ export default function CoordinatorSchedulesPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          <input type="date" className="bg-white border border-black/5 rounded-2xl px-4 py-3 font-bold text-sm focus:outline-none focus:border-brand-primary shadow-sm" defaultValue="2026-05-25" />
+          <input type="date" className="bg-white border border-black/5 rounded-2xl px-4 py-3 font-bold text-sm focus:outline-none focus:border-brand-primary shadow-sm" defaultValue={new Date().toISOString().split('T')[0]} />
           <button
             onClick={handleSave}
             disabled={isSaving}
@@ -267,11 +353,21 @@ export default function CoordinatorSchedulesPage() {
                 <div key={shift.id} className={`border rounded-2xl p-5 flex flex-col xl:flex-row xl:items-center gap-6 transition-colors ${shift.status === 'unassigned' ? 'border-brand-danger/30 bg-brand-danger/5' : 'border-black/5 hover:border-brand-primary/50'}`}>
 
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="font-black text-lg">{shift.id}</span>
-                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${shift.status === 'assigned' ? 'bg-brand-success text-white' : 'bg-brand-danger text-white'}`}>
-                        {shift.status === 'assigned' ? 'Đã phân công' : 'Cần phân công'}
-                      </span>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-black text-lg">{shift.id}</span>
+                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${shift.status === 'assigned' ? 'bg-brand-success text-white' : 'bg-brand-danger text-white'}`}>
+                          {shift.status === 'assigned' ? 'Đã phân công' : 'Cần phân công'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 pr-4 xl:pr-0">
+                        <button onClick={() => handleEditClick(shift)} className="p-1.5 text-brand-text/50 hover:text-brand-primary hover:bg-brand-primary/10 rounded-lg transition-colors">
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => handleDeleteSchedule(shift.id)} className="p-1.5 text-brand-text/50 hover:text-brand-danger hover:bg-brand-danger/10 rounded-lg transition-colors">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                     <div className="font-bold text-brand-text mb-1 flex items-center gap-2">
                       <Map className="w-4 h-4 text-brand-primary" /> {shift.route}
@@ -383,6 +479,71 @@ export default function CoordinatorSchedulesPage() {
         </div>
 
       </div>
+
+      {/* Edit Modal */}
+      {editingSchedule && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-lg shadow-2xl">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-brand-text flex items-center gap-2"><Edit2 className="w-5 h-5 text-brand-primary"/> Chỉnh sửa Ca chạy #{editingSchedule.id}</h3>
+              <button onClick={() => setEditingSchedule(null)} className="p-1 hover:bg-black/5 rounded-full"><X className="w-6 h-6 text-brand-text/50"/></button>
+            </div>
+            
+            <div className="flex flex-col gap-4">
+              <div>
+                <label className="block text-xs font-bold text-brand-text/70 uppercase mb-1">Tuyến đường</label>
+                <select value={editingSchedule.routeId} onChange={e => setEditingSchedule({...editingSchedule, routeId: e.target.value})} className="w-full rounded-xl p-3 text-sm font-bold border bg-white focus:outline-none focus:border-brand-primary">
+                  <option value="">-- Chọn Tuyến --</option>
+                  {routesFromBackend.map(r => <option key={r.id} value={r.id}>{r.name || r.routeName}</option>)}
+                </select>
+              </div>
+              
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <label className="block text-xs font-bold text-brand-text/70 uppercase mb-1">Thứ</label>
+                  <select value={editingSchedule.weekdayNumber} onChange={e => setEditingSchedule({...editingSchedule, weekdayNumber: e.target.value})} className="w-full rounded-xl p-3 text-sm font-bold border bg-white focus:outline-none focus:border-brand-primary">
+                    <option value="2">Thứ 2</option><option value="3">Thứ 3</option><option value="4">Thứ 4</option>
+                    <option value="5">Thứ 5</option><option value="6">Thứ 6</option><option value="7">Thứ 7</option>
+                    <option value="1">Chủ Nhật</option>
+                  </select>
+                </div>
+                <div className="flex-1">
+                  <label className="block text-xs font-bold text-brand-text/70 uppercase mb-1">Giờ chạy</label>
+                  <div className="flex gap-2">
+                    <select value={editingSchedule.hour12} onChange={e => setEditingSchedule({...editingSchedule, hour12: e.target.value})} className="w-1/3 rounded-xl p-3 text-sm font-bold border bg-white focus:outline-none focus:border-brand-primary">
+                      {Array.from({length: 12}, (_, i) => {
+                        const val = (i + 1).toString().padStart(2, '0');
+                        return <option key={val} value={val}>{val}</option>;
+                      })}
+                    </select>
+                    <span className="font-bold self-center">:</span>
+                    <select value={editingSchedule.minute} onChange={e => setEditingSchedule({...editingSchedule, minute: e.target.value})} className="w-1/3 rounded-xl p-3 text-sm font-bold border bg-white focus:outline-none focus:border-brand-primary">
+                      {Array.from({length: 60}, (_, i) => {
+                        const val = i.toString().padStart(2, '0');
+                        return <option key={val} value={val}>{val}</option>;
+                      })}
+                    </select>
+                    <select value={editingSchedule.ampm} onChange={e => setEditingSchedule({...editingSchedule, ampm: e.target.value})} className="w-1/3 rounded-xl p-3 text-sm font-bold border bg-white focus:outline-none focus:border-brand-primary">
+                      <option value="AM">AM</option>
+                      <option value="PM">PM</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="mt-4 flex items-center justify-end gap-3">
+                <button onClick={() => setEditingSchedule(null)} className="px-5 py-2.5 rounded-xl font-bold text-brand-text/60 hover:bg-black/5 transition-colors">
+                  Hủy bỏ
+                </button>
+                <button onClick={handleUpdateSchedule} disabled={isUpdating} className="px-6 py-2.5 bg-brand-primary text-white font-bold rounded-xl hover:bg-black transition-colors disabled:opacity-50">
+                  {isUpdating ? 'Đang lưu...' : 'Lưu Thay Đổi'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

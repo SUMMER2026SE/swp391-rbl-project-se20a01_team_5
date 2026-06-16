@@ -25,6 +25,15 @@ export const coordinatorRoutesService = {
     });
     return res.data;
   },
+
+  updateRoute: async (routeId, routeData) => {
+    if (USE_MOCK) return await mockAddRoute(routeData); // Mock will be sufficient for now
+    const res = await apiClient(`/coordinator/routes/${routeId}`, {
+      method: 'PUT',
+      body: JSON.stringify(routeData)
+    });
+    return res.data;
+  },
   
   getRouteStops: async (routeId) => {
     if (USE_MOCK) return await mockGetRouteStops(routeId);

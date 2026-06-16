@@ -18,6 +18,12 @@ public class CoordinatorRoutesDtos {
             Integer estimatedMinutes) {
     }
 
+    public record UpdateRouteRequest(
+            String routeName,
+            String description,
+            Integer estimatedMinutes) {
+    }
+
     public record RouteStopDto(
             Integer id,
             Integer stopId,

@@ -27,7 +27,8 @@ export default function CoordinatorRoutesPage() {
   // Route Modal State
   const [isRouteModalOpen, setIsRouteModalOpen] = useState(false);
   const [newRouteName, setNewRouteName] = useState('');
-  const [isAddingRoute, setIsAddingRoute] = useState(false);
+  const [editingRoute, setEditingRoute] = useState(null);
+  const [isSavingRoute, setIsSavingRoute] = useState(false);
 
   // Prevent body scroll when modal is open
   useEffect(() => {
@@ -153,27 +154,37 @@ export default function CoordinatorRoutesPage() {
     }
   };
 
-  const handleAddRoute = async (e) => {
+  const handleSaveRoute = async (e) => {
     e.preventDefault();
     if (!newRouteName.trim()) return;
-    setIsAddingRoute(true);
+    setIsSavingRoute(true);
     try {
-      const payload = {
-        routeName: newRouteName,
-        description: '',
-        estimatedMinutes: 60
-      };
-      const createdRoute = await coordinatorRoutesService.addRoute(payload);
-      setRoutes([...routes, createdRoute]);
-      setActiveRoute(createdRoute.id);
-      setIsRouteModalOpen(false);
-      setNewRouteName('');
-      setNotice('Đã thêm tuyến xe mới thành công!');
+      if (editingRoute) {
+        const payload = { routeName: newRouteName };
+        const updatedRoute = await coordinatorRoutesService.updateRoute(editingRoute.id, payload);
+        setRoutes(routes.map(r => r.id === editingRoute.id ? { ...r, ...updatedRoute } : r));
+        setIsRouteModalOpen(false);
+        setEditingRoute(null);
+        setNewRouteName('');
+        setNotice('Cập nhật tên tuyến thành công!');
+      } else {
+        const payload = {
+          routeName: newRouteName,
+          description: '',
+          estimatedMinutes: 60
+        };
+        const createdRoute = await coordinatorRoutesService.addRoute(payload);
+        setRoutes([...routes, createdRoute]);
+        setActiveRoute(createdRoute.id);
+        setIsRouteModalOpen(false);
+        setNewRouteName('');
+        setNotice('Đã thêm tuyến xe mới thành công!');
+      }
     } catch (err) {
       console.error(err);
-      setNotice('Thêm tuyến thất bại. Vui lòng thử lại.');
+      setNotice('Thao tác thất bại. Vui lòng thử lại.');
     } finally {
-      setIsAddingRoute(false);
+      setIsSavingRoute(false);
     }
   };
 
@@ -189,7 +200,11 @@ export default function CoordinatorRoutesPage() {
           <p className="text-brand-text/60 font-medium">Điều chỉnh lộ trình và cập nhật danh sách các trạm dừng xe.</p>
         </div>
         <button 
-          onClick={() => setIsRouteModalOpen(true)}
+          onClick={() => {
+            setEditingRoute(null);
+            setNewRouteName('');
+            setIsRouteModalOpen(true);
+          }}
           className="bg-brand-text text-white px-6 py-3 rounded-2xl font-bold hover:bg-black transition-colors flex items-center gap-2 shadow-sm"
         >
           <Plus className="w-5 h-5" /> Thêm Tuyến Mới
@@ -244,7 +259,25 @@ export default function CoordinatorRoutesPage() {
 
           <div className="p-6 md:p-8 border-b border-black/5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-brand-surface/30 shrink-0">
             <div>
-              <h2 className="text-xl font-bold mb-1">Cấu hình Trạm dừng</h2>
+              <div className="flex items-center gap-3 mb-1">
+                <h2 className="text-xl font-bold">Cấu hình Trạm dừng</h2>
+                {activeRoute && (
+                  <button
+                    onClick={() => {
+                      const r = routes.find(r => r.id === activeRoute);
+                      if (r) {
+                        setEditingRoute(r);
+                        setNewRouteName(r.routeName || r.name);
+                        setIsRouteModalOpen(true);
+                      }
+                    }}
+                    className="p-1.5 bg-brand-surface rounded-lg hover:bg-black/5 text-brand-text/60 hover:text-brand-primary transition-colors border border-black/5"
+                    title="Chỉnh sửa tên tuyến"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
               <p className="text-sm font-bold text-brand-text/60">
                 Lộ trình chi tiết của {routes.find(r => r.id === activeRoute)?.routeName || routes.find(r => r.id === activeRoute)?.name || ''}
               </p>
@@ -430,40 +463,56 @@ export default function CoordinatorRoutesPage() {
         </div>
       )}
 
-      {/* Modal Thêm Tuyến Mới */}
+      {/* Add/Edit Route Modal */}
       {isRouteModalOpen && (
-        <div className="fixed inset-0 z-50 bg-brand-text/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl relative animate-in fade-in zoom-in duration-200">
-            <button 
-              onClick={() => setIsRouteModalOpen(false)}
-              className="absolute top-6 right-6 w-8 h-8 bg-brand-surface rounded-full flex items-center justify-center hover:bg-brand-danger/10 hover:text-brand-danger transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
-
-            <h2 className="text-2xl font-black mb-6">Thêm Tuyến Xe Mới</h2>
-
-            <form onSubmit={handleAddRoute} className="flex flex-col gap-4">
-              <div>
-                <label className="block text-sm font-bold text-brand-text/70 mb-2">Tên tuyến xe</label>
-                <input 
-                  type="text" 
-                  required
-                  value={newRouteName}
-                  onChange={(e) => setNewRouteName(e.target.value)}
-                  placeholder="VD: Tuyến số 01: Khu A - Khu B"
-                  className="w-full bg-brand-surface border border-transparent rounded-2xl p-4 text-sm font-bold focus:outline-none focus:border-brand-primary focus:bg-white transition-all"
-                />
-              </div>
-
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-3xl shadow-xl w-full max-w-md overflow-hidden animate-slide-up border border-black/10">
+            <div className="p-6 border-b border-black/5 flex justify-between items-center bg-brand-surface/30">
+              <h3 className="font-bold text-xl text-brand-text">{editingRoute ? 'Chỉnh sửa tên Tuyến' : 'Thêm Tuyến Xe Mới'}</h3>
               <button 
-                type="submit"
-                disabled={isAddingRoute}
-                className="w-full py-4 mt-4 bg-brand-text text-white font-bold rounded-2xl hover:bg-black transition-colors flex justify-center items-center gap-2 shadow-xl shadow-brand-text/20 disabled:opacity-70"
+                onClick={() => {
+                  setIsRouteModalOpen(false);
+                  setEditingRoute(null);
+                }} 
+                className="p-2 hover:bg-black/5 rounded-xl transition-colors"
               >
-                {isAddingRoute ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />} 
-                Lưu Tuyến Xe
+                <X className="w-5 h-5 text-brand-text/50" />
               </button>
+            </div>
+            <form onSubmit={handleSaveRoute} className="p-6">
+              <div className="flex flex-col gap-5">
+                <div>
+                  <label className="block text-sm font-bold text-brand-text/70 mb-2">Tên tuyến (Ví dụ: ITER1 - City Connector)</label>
+                  <input
+                    type="text"
+                    required
+                    value={newRouteName}
+                    onChange={(e) => setNewRouteName(e.target.value)}
+                    className="w-full bg-brand-surface border border-black/5 rounded-2xl p-4 font-medium focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary/50 transition-all"
+                    placeholder="Nhập tên tuyến xe..."
+                  />
+                </div>
+              </div>
+              <div className="mt-8 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsRouteModalOpen(false);
+                    setEditingRoute(null);
+                  }}
+                  className="flex-1 py-3.5 px-4 bg-brand-surface text-brand-text font-bold rounded-2xl hover:bg-black/5 transition-colors"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingRoute || !newRouteName.trim()}
+                  className="flex-1 py-3.5 px-4 bg-brand-primary text-brand-text font-bold rounded-2xl hover:bg-brand-primary/80 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isSavingRoute ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                  {isSavingRoute ? 'Đang lưu...' : 'Lưu lại'}
+                </button>
+              </div>
             </form>
           </div>
         </div>

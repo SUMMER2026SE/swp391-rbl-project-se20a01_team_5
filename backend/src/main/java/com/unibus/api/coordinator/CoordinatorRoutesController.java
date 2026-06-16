@@ -17,6 +17,7 @@ import com.unibus.api.coordinator.dto.CoordinatorRoutesDtos.AddStopRequest;
 import com.unibus.api.coordinator.dto.CoordinatorRoutesDtos.CreateRouteRequest;
 import com.unibus.api.coordinator.dto.CoordinatorRoutesDtos.RouteListItem;
 import com.unibus.api.coordinator.dto.CoordinatorRoutesDtos.RouteStopDto;
+import com.unibus.api.coordinator.dto.CoordinatorRoutesDtos.UpdateRouteRequest;
 import com.unibus.api.coordinator.dto.CoordinatorRoutesDtos.UpdateStopRequest;
 
 @RestController
@@ -39,6 +40,12 @@ public class CoordinatorRoutesController {
     @PreAuthorize("hasAnyRole('ADMIN', 'DISPATCHER')")
     ApiResponse<RouteListItem> createRoute(@RequestBody CreateRouteRequest request) {
         return ApiResponse.ok("Route created successfully", routesService.createRoute(request));
+    }
+
+    @PutMapping("/{routeId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DISPATCHER')")
+    ApiResponse<RouteListItem> updateRoute(@PathVariable Integer routeId, @RequestBody UpdateRouteRequest request) {
+        return ApiResponse.ok("Route updated successfully", routesService.updateRoute(routeId, request));
     }
 
     @GetMapping("/{routeId}/stops")

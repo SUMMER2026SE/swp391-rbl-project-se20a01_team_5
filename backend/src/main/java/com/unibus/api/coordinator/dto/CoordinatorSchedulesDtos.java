@@ -6,11 +6,13 @@ public class CoordinatorSchedulesDtos {
 
     public record ScheduleListItem(
             Integer id,
+            Integer routeId,
             String routeName,
             Integer busId,
             String licensePlate,
             Integer driverId,
             String driverName,
+            Integer weekdayNumber,
             LocalTime departureTime,
             LocalTime endTime,
             String status) {

@@ -10,6 +10,7 @@ import com.unibus.api.coordinator.dto.CoordinatorRoutesDtos.AddStopRequest;
 import com.unibus.api.coordinator.dto.CoordinatorRoutesDtos.CreateRouteRequest;
 import com.unibus.api.coordinator.dto.CoordinatorRoutesDtos.RouteListItem;
 import com.unibus.api.coordinator.dto.CoordinatorRoutesDtos.RouteStopDto;
+import com.unibus.api.coordinator.dto.CoordinatorRoutesDtos.UpdateRouteRequest;
 import com.unibus.api.coordinator.dto.CoordinatorRoutesDtos.UpdateStopRequest;
 import com.unibus.api.transport.BusRouteRepository;
 import com.unibus.api.transport.RouteStopRepository;
@@ -57,6 +58,27 @@ public class CoordinatorRoutesService {
         route.setStatus(RouteStatus.ACTIVE);
         route.setCreatedAt(OffsetDateTime.now());
 
+        BusRoute saved = routeRepository.save(route);
+        return new RouteListItem(
+                saved.getId(),
+                saved.getRouteName(),
+                saved.getDescription(),
+                saved.getEstimatedMinutes(),
+                saved.getStatus().name());
+    }
+
+    @Transactional
+    public RouteListItem updateRoute(Integer routeId, UpdateRouteRequest request) {
+        BusRoute route = routeRepository.findById(routeId).orElseThrow();
+        if (request.routeName() != null) {
+            route.setRouteName(request.routeName());
+        }
+        if (request.description() != null) {
+            route.setDescription(request.description());
+        }
+        if (request.estimatedMinutes() != null) {
+            route.setEstimatedMinutes(request.estimatedMinutes());
+        }
         BusRoute saved = routeRepository.save(route);
         return new RouteListItem(
                 saved.getId(),
