@@ -75,6 +75,7 @@ public class DriverService {
                 .findByDriverIdAndWeekdayNumberAndStatusOrderByDepartureTimeAsc(
                         driver.getId(), weekdayNumber(today), ACTIVE);
         List<Trip> todayTrips = todaySchedules.stream()
+                .filter(this::isTripReadySchedule)
                 .map(schedule -> ensureTrip(schedule, today))
                 .sorted(Comparator.comparing(trip -> trip.getSchedule().getDepartureTime()))
                 .toList();
@@ -100,7 +101,9 @@ public class DriverService {
                 .findByDriverIdAndWeekdayNumberAndStatusOrderByDepartureTimeAsc(
                         driver.getId(), weekdayNumber(today), ACTIVE)
                 .stream()
+                .filter(this::isTripReadySchedule)
                 .map(schedule -> ensureTrip(schedule, today))
+                .filter(this::isActionableTrip)
                 .sorted(Comparator.comparing(trip -> trip.getSchedule().getDepartureTime()))
                 .findFirst();
         return todayTrip.or(() -> nextAssignedTrip(driver, today))
@@ -198,7 +201,8 @@ public class DriverService {
         busRepository.save(trip.getBus());
         driverRepository.save(driver);
         Trip saved = tripRepository.save(trip);
-        return action("COMPLETED", "Chuyen xe da ket thuc", saved);
+        Trip nextTrip = selectCurrentTrip(driver, LocalDate.now(), todayTrips(driver, LocalDate.now()));
+        return action("COMPLETED", "Chuyen xe da ket thuc", nextTrip);
     }
 
     @Transactional
@@ -250,6 +254,9 @@ public class DriverService {
     }
 
     private Trip ensureTrip(BusSchedule schedule, LocalDate date) {
+        if (!isTripReadySchedule(schedule)) {
+            throw new ApiException(HttpStatus.CONFLICT, "Schedule is not fully assigned");
+        }
         return tripRepository.findFirstByScheduleIdAndServiceDateOrderByIdAsc(schedule.getId(), date)
                 .orElseGet(() -> {
                     Trip trip = new Trip();
@@ -270,7 +277,9 @@ public class DriverService {
                 .findByDriverIdAndWeekdayNumberAndStatusOrderByDepartureTimeAsc(
                         driver.getId(), weekdayNumber(today), ACTIVE)
                 .stream()
+                .filter(this::isTripReadySchedule)
                 .map(schedule -> ensureTrip(schedule, today))
+                .filter(this::isActionableTrip)
                 .findFirst();
     }
 
@@ -286,7 +295,7 @@ public class DriverService {
         Trip todayTrip = todayTrips.stream()
                 .filter(trip -> NOT_STARTED.equals(trip.getStatus()))
                 .findFirst()
-                .orElse(todayTrips.stream().findFirst().orElse(null));
+                .orElse(todayTrips.stream().filter(this::isActionableTrip).findFirst().orElse(null));
         if (todayTrip != null) {
             return todayTrip;
         }
@@ -296,16 +305,46 @@ public class DriverService {
     private Optional<Trip> nextAssignedTrip(Driver driver, LocalDate fromDate) {
         return busScheduleRepository.findByDriverIdAndStatusOrderByWeekdayNumberAscDepartureTimeAsc(driver.getId(), ACTIVE)
                 .stream()
+                .filter(this::isTripReadySchedule)
+                .map(schedule -> nextActionableTrip(schedule, fromDate))
                 .min(Comparator
-                        .comparing((BusSchedule schedule) -> nextServiceDate(fromDate, schedule.getWeekdayNumber()))
-                        .thenComparing(BusSchedule::getDepartureTime))
-                .map(schedule -> ensureTrip(schedule, nextServiceDate(fromDate, schedule.getWeekdayNumber())));
+                        .comparing(Trip::getServiceDate)
+                        .thenComparing(trip -> trip.getSchedule().getDepartureTime()));
     }
 
     private LocalDate nextServiceDate(LocalDate fromDate, Integer weekdayNumber) {
         int target = weekdayNumber == null ? fromDate.getDayOfWeek().getValue() : weekdayNumber;
         int delta = Math.floorMod(target - fromDate.getDayOfWeek().getValue(), 7);
         return fromDate.plusDays(delta);
+    }
+
+    private boolean isTripReadySchedule(BusSchedule schedule) {
+        return schedule.getRoute() != null && schedule.getBus() != null && schedule.getDriver() != null;
+    }
+
+    private List<Trip> todayTrips(Driver driver, LocalDate date) {
+        return busScheduleRepository
+                .findByDriverIdAndWeekdayNumberAndStatusOrderByDepartureTimeAsc(
+                        driver.getId(), weekdayNumber(date), ACTIVE)
+                .stream()
+                .filter(this::isTripReadySchedule)
+                .map(schedule -> ensureTrip(schedule, date))
+                .filter(this::isActionableTrip)
+                .sorted(Comparator.comparing(trip -> trip.getSchedule().getDepartureTime()))
+                .toList();
+    }
+
+    private Trip nextActionableTrip(BusSchedule schedule, LocalDate fromDate) {
+        LocalDate serviceDate = nextServiceDate(fromDate, schedule.getWeekdayNumber());
+        Trip trip = ensureTrip(schedule, serviceDate);
+        if (isActionableTrip(trip)) {
+            return trip;
+        }
+        return ensureTrip(schedule, serviceDate.plusWeeks(1));
+    }
+
+    private boolean isActionableTrip(Trip trip) {
+        return !COMPLETED.equals(trip.getStatus()) && !"CANCELLED".equals(trip.getStatus());
     }
 
     private Trip requireDriverTrip(Driver driver, String tripId) {
@@ -371,7 +410,14 @@ public class DriverService {
                 weekdayLabel(schedule.getWeekdayNumber()) + " " + formatTime(schedule.getDepartureTime()) + " - "
                         + formatTime(schedule.getEndTime()),
                 schedule.getRoute().getRouteName(),
-                ACTIVE.equals(schedule.getStatus()) ? "UPCOMING" : schedule.getStatus());
+                toScheduleStatus(schedule));
+    }
+
+    private String toScheduleStatus(BusSchedule schedule) {
+        if (!isTripReadySchedule(schedule)) {
+            return "PENDING_ASSIGNMENT";
+        }
+        return ACTIVE.equals(schedule.getStatus()) ? "UPCOMING" : schedule.getStatus();
     }
 
     private DriverContact toContact(Conductor conductor, String role) {

@@ -33,12 +33,12 @@ public class BusSchedule {
     @JoinColumn(name = "route_id", nullable = false)
     private BusRoute route;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "bus_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "bus_id")
     private Bus bus;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "driver_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "driver_id")
     private Driver driver;
 
     @ManyToOne(fetch = FetchType.LAZY)

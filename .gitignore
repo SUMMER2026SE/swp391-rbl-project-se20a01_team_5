@@ -1,5 +1,8 @@
 # Local secrets
 dbauth.txt
+.env*.local
+*.env.local
+run-local.env
 frontend/.env*.local
 backend/.env*.local
 unibus-vision-ocr.json

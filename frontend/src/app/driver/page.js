@@ -54,7 +54,13 @@ export default function DriverDashboard() {
         setDashboard((current) => ({
           ...current,
           currentTrip: result.trip,
-          tripStatus: result.status === 'COMPLETED' ? 'COMPLETED' : result.trip.status,
+          tripStatus: result.trip.status || result.status,
+        }));
+      } else if (result?.status === 'COMPLETED') {
+        setDashboard((current) => ({
+          ...current,
+          currentTrip: null,
+          tripStatus: 'IDLE',
         }));
       }
       setNotice(result?.message || 'Đã cập nhật trạng thái chuyến.');
