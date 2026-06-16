@@ -9,5 +9,4 @@ public class UnibusApiApplication {
     public static void main(String[] args) {
         SpringApplication.run(UnibusApiApplication.class, args);
     }
-
-}   
+}

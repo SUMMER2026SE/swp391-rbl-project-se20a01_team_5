@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { History, MapPin, Clock, BusFront, RefreshCw } from 'lucide-react';
+import Link from 'next/link';
+import { History, MapPin, Clock, BusFront, RefreshCw, MessageSquare } from 'lucide-react';
 import { travelApi } from '@/services/api';
 import { recentTripMocks } from '@/services/mockTrips';
 
@@ -76,8 +77,14 @@ export default function TripHistoryPage() {
                         <StopBadge label="Lên xe" value={trip.boardingStopName} time={trip.boardedAt} />
                         <StopBadge label="Xuống xe" value={trip.alightingStopName} time={trip.alightedAt} />
                       </div>
-                    </div>
+                      </div>
                   </div>
+                  <Link
+                    href={`/student/feedback?tripId=${trip.tripId || ''}&routeId=${trip.routeId || ''}`}
+                    className="self-start lg:self-center px-4 py-2 bg-brand-surface text-brand-text font-bold text-xs rounded-xl hover:bg-brand-text hover:text-white transition-colors flex items-center gap-2"
+                  >
+                    <MessageSquare className="w-4 h-4" /> Gửi phản hồi
+                  </Link>
                 </div>
               ))}
             </div>
