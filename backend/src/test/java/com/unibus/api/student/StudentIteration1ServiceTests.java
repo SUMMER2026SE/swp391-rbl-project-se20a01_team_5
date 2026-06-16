@@ -74,6 +74,8 @@ class StudentIteration1ServiceTests {
       this.jdbcTemplate.update("DELETE FROM stop_arrival_estimates");
       this.jdbcTemplate.update("DELETE FROM travel_history");
       this.jdbcTemplate.update("DELETE FROM trips");
+      this.jdbcTemplate.update("DELETE FROM drivers");
+      this.jdbcTemplate.update("DELETE FROM buses");
       this.routeRegistrationRepository.deleteAll();
       this.routeStopRepository.deleteAll();
       this.busRouteRepository.deleteAll();
@@ -120,7 +122,18 @@ class StudentIteration1ServiceTests {
    @Test
    void readsEtaAndTravelHistoryFromOperationalTables() {
       OffsetDateTime estimate = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(5L);
-      this.jdbcTemplate.update("INSERT INTO trips(trip_id, route_id, bus_id, service_date, status) VALUES (?, ?, ?, ?, ?)", new Object[]{11, this.route.getId(), 25, LocalDate.now(ZoneOffset.UTC), "RUNNING"});
+      User driverUser = new User();
+      driverUser.setEmail("driver@student-iteration.test");
+      driverUser.setPasswordHash("unused");
+      driverUser.setFullName("Driver A");
+      driverUser.setRole(UserRole.DRIVER);
+      driverUser.setStatus(UserStatus.ACTIVE);
+      driverUser.setEmailVerifiedAt(OffsetDateTime.now(ZoneOffset.UTC));
+      driverUser.setCreatedAt(OffsetDateTime.now(ZoneOffset.UTC));
+      driverUser = this.userRepository.save(driverUser);
+      this.jdbcTemplate.update("INSERT INTO buses(bus_id, license_plate, seat_count, status) VALUES (?, ?, ?, ?)", new Object[]{25, "43B-00025", 45, "READY"});
+      this.jdbcTemplate.update("INSERT INTO drivers(driver_id, user_id, license_number, work_status) VALUES (?, ?, ?, ?)", new Object[]{31, driverUser.getId(), "GPLX-TEST-31", "READY"});
+      this.jdbcTemplate.update("INSERT INTO trips(trip_id, route_id, bus_id, driver_id, service_date, status) VALUES (?, ?, ?, ?, ?, ?)", new Object[]{11, this.route.getId(), 25, 31, LocalDate.now(ZoneOffset.UTC), "RUNNING"});
       this.jdbcTemplate.update("INSERT INTO stop_arrival_estimates(estimate_id, trip_id, stop_id, estimated_arrival_at, updated_at) VALUES (?, ?, ?, ?, ?)", new Object[]{1L, 11, this.alighting.getId(), estimate, OffsetDateTime.now(ZoneOffset.UTC)});
       this.jdbcTemplate.update("INSERT INTO travel_history(travel_history_id, student_code, trip_id, boarding_stop_id, alighting_stop_id, boarded_at) VALUES (?, ?, ?, ?, ?, ?)", new Object[]{1, "SE001", 11, this.boarding.getId(), this.alighting.getId(), OffsetDateTime.now(ZoneOffset.UTC)});
       Assertions.assertThat(this.transportService.getEtas(this.route.getId(), this.alighting.getId())).singleElement().extracting(TransportDtos.Eta::busId).isEqualTo(25);
