@@ -19,3 +19,4 @@ frontend/frontend-run*.log
 # IDE settings
 .idea/
 *.iml
+.vscode/
