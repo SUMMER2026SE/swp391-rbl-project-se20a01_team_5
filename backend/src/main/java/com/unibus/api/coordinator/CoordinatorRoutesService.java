@@ -19,15 +19,21 @@ import com.unibus.api.transport.model.RouteStatus;
 import com.unibus.api.transport.model.RouteStop;
 import com.unibus.api.transport.model.Stop;
 
-import lombok.RequiredArgsConstructor;
-
 @Service
-@RequiredArgsConstructor
 public class CoordinatorRoutesService {
 
     private final BusRouteRepository routeRepository;
     private final StopRepository stopRepository;
     private final RouteStopRepository routeStopRepository;
+
+    public CoordinatorRoutesService(
+            BusRouteRepository routeRepository,
+            StopRepository stopRepository,
+            RouteStopRepository routeStopRepository) {
+        this.routeRepository = routeRepository;
+        this.stopRepository = stopRepository;
+        this.routeStopRepository = routeStopRepository;
+    }
 
     @Transactional(readOnly = true)
     public List<RouteListItem> getRoutes() {
@@ -111,6 +117,13 @@ public class CoordinatorRoutesService {
         rs.setStopOrder(request.stopOrder());
         rs.setMinutesFromPreviousStop(request.minutesFromPreviousStop());
         rs = routeStopRepository.save(rs);
+
+        if (request.stopName() != null && !request.stopName().isBlank()) {
+            Stop stop = rs.getStop();
+            stop.setStopName(request.stopName());
+            stopRepository.save(stop);
+        }
+
         return new RouteStopDto(
                 rs.getId(),
                 rs.getStop().getId(),

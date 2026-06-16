@@ -19,48 +19,49 @@ import com.unibus.api.coordinator.dto.CoordinatorRoutesDtos.RouteListItem;
 import com.unibus.api.coordinator.dto.CoordinatorRoutesDtos.RouteStopDto;
 import com.unibus.api.coordinator.dto.CoordinatorRoutesDtos.UpdateStopRequest;
 
-import lombok.RequiredArgsConstructor;
-
 @RestController
 @RequestMapping("/api/v1/coordinator/routes")
-@RequiredArgsConstructor
 public class CoordinatorRoutesController {
 
     private final CoordinatorRoutesService routesService;
 
+    public CoordinatorRoutesController(CoordinatorRoutesService routesService) {
+        this.routesService = routesService;
+    }
+
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'DISPATCHER')")
-    public ApiResponse<List<RouteListItem>> getRoutes() {
+    ApiResponse<List<RouteListItem>> getRoutes() {
         return ApiResponse.ok("Routes retrieved successfully", routesService.getRoutes());
     }
 
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'DISPATCHER')")
-    public ApiResponse<RouteListItem> createRoute(@RequestBody CreateRouteRequest request) {
+    ApiResponse<RouteListItem> createRoute(@RequestBody CreateRouteRequest request) {
         return ApiResponse.ok("Route created successfully", routesService.createRoute(request));
     }
 
     @GetMapping("/{routeId}/stops")
     @PreAuthorize("hasAnyRole('ADMIN', 'DISPATCHER')")
-    public ApiResponse<List<RouteStopDto>> getRouteStops(@PathVariable Integer routeId) {
+    ApiResponse<List<RouteStopDto>> getRouteStops(@PathVariable Integer routeId) {
         return ApiResponse.ok("Route stops retrieved successfully", routesService.getRouteStops(routeId));
     }
 
     @PostMapping("/{routeId}/stops")
     @PreAuthorize("hasAnyRole('ADMIN', 'DISPATCHER')")
-    public ApiResponse<RouteStopDto> addStop(@PathVariable Integer routeId, @RequestBody AddStopRequest request) {
+    ApiResponse<RouteStopDto> addStop(@PathVariable Integer routeId, @RequestBody AddStopRequest request) {
         return ApiResponse.ok("Stop added successfully", routesService.addStop(routeId, request));
     }
 
     @PutMapping("/{routeId}/stops/{stopId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'DISPATCHER')")
-    public ApiResponse<RouteStopDto> updateStop(@PathVariable Integer routeId, @PathVariable Integer stopId, @RequestBody UpdateStopRequest request) {
+    ApiResponse<RouteStopDto> updateStop(@PathVariable Integer routeId, @PathVariable Integer stopId, @RequestBody UpdateStopRequest request) {
         return ApiResponse.ok("Stop updated successfully", routesService.updateStop(routeId, request));
     }
 
     @DeleteMapping("/{routeId}/stops/{stopId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'DISPATCHER')")
-    public ApiResponse<Void> deleteStop(@PathVariable Integer routeId, @PathVariable Integer stopId) {
+    ApiResponse<Void> deleteStop(@PathVariable Integer routeId, @PathVariable Integer stopId) {
         routesService.deleteStop(routeId, stopId);
         return ApiResponse.ok("Stop deleted successfully", null);
     }

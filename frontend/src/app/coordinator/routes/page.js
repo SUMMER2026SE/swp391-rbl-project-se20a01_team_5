@@ -79,7 +79,15 @@ export default function CoordinatorRoutesPage() {
 
   const openModal = (mode, stop = null) => {
     setModalMode(mode);
-    setCurrentStop(stop || { name: '', timeFromStart: '', type: 'Trạm dừng' });
+    if (mode === 'edit' && stop) {
+      setCurrentStop({
+        ...stop,
+        name: stop.stopName || stop.name || '',
+        timeFromStart: stop.minutesFromPreviousStop?.toString() || stop.timeFromStart || '0'
+      });
+    } else {
+      setCurrentStop({ name: '', timeFromStart: '', type: 'Trạm dừng' });
+    }
     setIsModalOpen(true);
   };
 
@@ -92,13 +100,26 @@ export default function CoordinatorRoutesPage() {
     e.preventDefault();
     setIsSaving(true);
     try {
+      const minutes = parseInt(currentStop.timeFromStart) || 0;
       if (modalMode === 'add') {
-        const res = await coordinatorRoutesService.addStop(activeRoute, currentStop);
-        setStops([...stops, res.data]);
+        const payload = {
+          stopName: currentStop.name,
+          stopOrder: stops.length + 1,
+          minutesFromPreviousStop: minutes
+        };
+        const savedStop = await coordinatorRoutesService.addStop(activeRoute, payload);
+        setStops([...stops, savedStop]);
         setNotice('Đã thêm trạm dừng mới thành công!');
       } else {
-        const res = await coordinatorRoutesService.updateStop(activeRoute, currentStop);
-        setStops(stops.map(s => s.id === currentStop.id ? res.data : s));
+        const payload = {
+          id: currentStop.id,
+          stopId: currentStop.stopId,
+          stopName: currentStop.name,
+          stopOrder: currentStop.stopOrder,
+          minutesFromPreviousStop: minutes
+        };
+        const updatedStop = await coordinatorRoutesService.updateStop(activeRoute, payload);
+        setStops(stops.map(s => s.id === currentStop.id ? updatedStop : s));
         setNotice('Cập nhật trạm dừng thành công!');
       }
       closeModal();
@@ -137,8 +158,12 @@ export default function CoordinatorRoutesPage() {
     if (!newRouteName.trim()) return;
     setIsAddingRoute(true);
     try {
-      const res = await coordinatorRoutesService.addRoute({ name: newRouteName });
-      const createdRoute = res.data || res; // handle mock vs real
+      const payload = {
+        routeName: newRouteName,
+        description: '',
+        estimatedMinutes: 60
+      };
+      const createdRoute = await coordinatorRoutesService.addRoute(payload);
       setRoutes([...routes, createdRoute]);
       setActiveRoute(createdRoute.id);
       setIsRouteModalOpen(false);

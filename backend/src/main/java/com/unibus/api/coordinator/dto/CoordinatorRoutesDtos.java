@@ -39,6 +39,7 @@ public class CoordinatorRoutesDtos {
     public record UpdateStopRequest(
             Integer id,
             Integer stopId,
+            String stopName,
             Integer stopOrder,
             Integer minutesFromPreviousStop) {
     }
