@@ -20,6 +20,10 @@ export default function BentoDashboardLayout({ children, menuItems, roleName, pr
   useEffect(() => {
     const session = getAuthSession();
     if (!session) {
+      if (process.env.NEXT_PUBLIC_USE_MOCK === 'true') {
+        setDisplayName('Admin Demo');
+        return;
+      }
       router.replace('/login');
       return;
     }

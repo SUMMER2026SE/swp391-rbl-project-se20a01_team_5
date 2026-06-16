@@ -205,6 +205,29 @@ export const authApi = {
   },
 
   async login(payload) {
+    if (process.env.NEXT_PUBLIC_USE_MOCK === 'true') {
+      if (payload.password !== '123456') {
+        throw new Error('Sai email hoặc mật khẩu. Tài khoản demo dùng mật khẩu 123456.');
+      }
+      const email = payload.email || '';
+      const lowerEmail = email.toLowerCase();
+      const role = lowerEmail.includes('admin')
+        ? 'ADMIN'
+        : lowerEmail.includes('taixe')
+          ? 'DRIVER'
+          : lowerEmail.includes('phuxe')
+            ? 'CONDUCTOR'
+            : lowerEmail.includes('dieuphoi')
+              ? 'DISPATCHER'
+              : 'STUDENT';
+      return {
+        tokenType: 'Bearer',
+        accessToken: `mock_${role.toLowerCase()}_access_token`,
+        refreshToken: `mock_${role.toLowerCase()}_refresh_token`,
+        role,
+        studentVerificationStatus: role === 'STUDENT' ? 'VERIFIED' : null,
+      };
+    }
     const response = await apiClient.post('/auth/login', {
       ...payload,
       device: payload.device || 'web',
