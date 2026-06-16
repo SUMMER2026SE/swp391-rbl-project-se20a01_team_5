@@ -359,14 +359,14 @@ export const feedbackApi = {
 
 export const coordinatorScheduleApi = {
   async getDashboard(serviceDate) {
-    const response = await apiClient.get('/coordinator/schedules', {
+    const response = await apiClient.get('/operations/schedules', {
       params: serviceDate ? { date: serviceDate } : undefined,
     });
     return unwrap(response);
   },
 
   async save(payload) {
-    const response = await apiClient.post('/coordinator/schedules', payload);
+    const response = await apiClient.post('/operations/schedules', payload);
     return unwrap(response);
   },
 };

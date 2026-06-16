@@ -19,7 +19,7 @@ import com.unibus.api.security.CurrentUser;
 import jakarta.validation.Valid;
 
 @RestController
-@RequestMapping("/api/v1/coordinator/schedules")
+@RequestMapping("/api/v1/operations/schedules")
 @PreAuthorize("hasAnyRole('DISPATCHER', 'ADMIN')")
 public class CoordinatorScheduleController {
 
