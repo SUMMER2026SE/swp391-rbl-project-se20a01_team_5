@@ -1,16 +1,43 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { CalendarDays, Clock, Map, Users, BusFront, CheckCircle2, AlertCircle, ChevronDown, Save } from 'lucide-react';
-
-const driversFromBackend = [];
-const busesFromBackend = [];
-const shiftsFromBackend = [];
+import { coordinatorSchedulesService } from '@/services/coordinatorSchedules.service';
 
 export default function CoordinatorSchedulesPage() {
-  const [shifts, setShifts] = useState(shiftsFromBackend);
+  const [shifts, setShifts] = useState([]);
+  const [driversFromBackend, setDriversFromBackend] = useState([]);
+  const [busesFromBackend, setBusesFromBackend] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
   const [notice, setNotice] = useState('');
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [shiftsData, busesData, driversData] = await Promise.all([
+          coordinatorSchedulesService.getAllSchedules(),
+          coordinatorSchedulesService.getAvailableBuses(),
+          coordinatorSchedulesService.getAvailableDrivers()
+        ]);
+        
+        const mappedShifts = shiftsData.map(s => ({
+          id: s.id,
+          status: s.busId && s.driverId ? 'assigned' : 'unassigned',
+          route: s.routeName,
+          time: s.departureTime ? s.departureTime.substring(0, 5) : 'N/A',
+          driver: s.driverId || '',
+          bus: s.busId || ''
+        }));
+        
+        setShifts(mappedShifts);
+        setBusesFromBackend(busesData.map(b => ({ ...b, type: b.seatCount + ' chỗ', status: 'available' })));
+        setDriversFromBackend(driversData.map(d => ({ ...d, name: d.driverName, status: 'available' })));
+      } catch (err) {
+        setNotice('Lỗi tải dữ liệu: ' + err.message);
+      }
+    };
+    fetchData();
+  }, []);
 
   const handleAssign = (shiftId, field, value) => {
     setShifts(shifts.map(shift => {
@@ -28,10 +55,22 @@ export default function CoordinatorSchedulesPage() {
     }));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setIsSaving(true);
-    setIsSaving(false);
-    setNotice('Chức năng lưu lịch phân công chưa được kết nối với backend.');
+    setNotice('');
+    try {
+      await Promise.all(shifts.map(shift => {
+        return coordinatorSchedulesService.updateSchedule(shift.id, {
+          busId: shift.bus || null,
+          driverId: shift.driver || null
+        });
+      }));
+      setNotice('Lưu phân công thành công!');
+    } catch (err) {
+      setNotice('Lỗi khi lưu phân công: ' + err.message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const availableDrivers = driversFromBackend.filter(d => d.status === 'available').length;
