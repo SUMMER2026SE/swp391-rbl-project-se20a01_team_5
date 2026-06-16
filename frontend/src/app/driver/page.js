@@ -1,17 +1,11 @@
 "use client";
 
-import { useState } from 'react';
 import { MapPin, Navigation, Phone, Clock, Play, Square, AlertTriangle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 export default function DriverDashboard() {
   const router = useRouter();
-  const [tripStatus] = useState('IDLE');
-  const [notice, setNotice] = useState('');
-
-  const handleTripStatusChange = () => {
-    setNotice('Chức năng bắt đầu/kết thúc chuyến chưa được kết nối với backend.');
-  };
+  const tripStatus = 'IDLE';
 
   return (
     <div className="h-full flex flex-col gap-6 font-sans">
@@ -45,24 +39,18 @@ export default function DriverDashboard() {
             </div>
           </div>
 
-          {notice && (
-            <div className="mb-4 rounded-2xl border border-brand-secondary/20 bg-brand-secondary/10 p-4 text-sm font-bold text-brand-text">
-              {notice}
-            </div>
-          )}
-
           <div className="grid grid-cols-2 gap-4">
             {tripStatus === 'IDLE' ? (
               <button
-                onClick={handleTripStatusChange}
+                onClick={() => router.push('/driver/trips')}
                 className="col-span-2 py-4 rounded-2xl bg-brand-text text-white font-bold hover:bg-black transition-colors flex items-center justify-center gap-2 shadow-sm"
               >
-                <Play className="w-5 h-5" /> Bắt đầu chuyến xe
+                <Play className="w-5 h-5" /> Mở lịch chạy thật
               </button>
             ) : (
               <>
                 <button
-                  onClick={handleTripStatusChange}
+                  onClick={() => router.push('/driver/trips')}
                   className="col-span-2 md:col-span-1 py-4 rounded-2xl bg-brand-danger/10 text-brand-danger font-bold hover:bg-brand-danger hover:text-white transition-colors flex items-center justify-center gap-2"
                 >
                   <Square className="w-5 h-5" /> Kết thúc chuyến

@@ -234,24 +234,6 @@ WITH seed_routes AS (
     FROM routes
     WHERE description LIKE 'ITER1 seed route:%'
 ),
-seed_stops AS (
-    SELECT stop_id
-    FROM stops
-    WHERE description = 'ITER1 seed stop'
-),
-seed_trips AS (
-    SELECT trip_id
-    FROM trips
-    WHERE route_id IN (SELECT route_id FROM seed_routes)
-)
-DELETE FROM stop_arrival_estimates
-WHERE trip_id IN (SELECT trip_id FROM seed_trips);
-
-WITH seed_routes AS (
-    SELECT route_id
-    FROM routes
-    WHERE description LIKE 'ITER1 seed route:%'
-),
 seed_trips AS (
     SELECT trip_id
     FROM trips
@@ -311,7 +293,7 @@ VALUES
 
 INSERT INTO routes (route_name, description, distance_km, estimated_minutes, is_circular, status, created_at)
 VALUES
-    ('ITER1 - Campus Loop', 'ITER1 seed route: campus loop for route search, registration and ETA testing', 18.20, 45, FALSE, 'ACTIVE', CURRENT_TIMESTAMP),
+    ('ITER1 - Campus Loop', 'ITER1 seed route: campus loop for route search and registration testing', 18.20, 45, FALSE, 'ACTIVE', CURRENT_TIMESTAMP),
     ('ITER1 - City Connector', 'ITER1 seed route: city connector for long distance registration testing', 24.60, 60, FALSE, 'ACTIVE', CURRENT_TIMESTAMP);
 
 WITH route_data AS (
@@ -422,33 +404,6 @@ JOIN route_data r ON r.route_name = items.route_name
 JOIN bus_data b ON b.license_plate = items.license_plate
 CROSS JOIN driver_profile d
 CROSS JOIN conductor_profile c;
-
-WITH running_trip AS (
-    SELECT t.trip_id, t.route_id
-    FROM trips t
-    JOIN routes r ON r.route_id = t.route_id
-    WHERE r.route_name = 'ITER1 - Campus Loop'
-      AND t.status = 'RUNNING'
-    ORDER BY t.trip_id DESC
-    LIMIT 1
-),
-campus_stops AS (
-    SELECT rs.stop_id, rs.stop_order
-    FROM route_stops rs
-    JOIN running_trip rt ON rt.route_id = rs.route_id
-)
-INSERT INTO stop_arrival_estimates (trip_id, stop_id, estimated_arrival_at, actual_arrival_at, updated_at)
-SELECT rt.trip_id,
-       cs.stop_id,
-       CURRENT_TIMESTAMP + ((cs.stop_order * 6) || ' minutes')::interval,
-       NULL,
-       CURRENT_TIMESTAMP
-FROM running_trip rt
-CROSS JOIN campus_stops cs
-ON CONFLICT (trip_id, stop_id) DO UPDATE
-SET estimated_arrival_at = EXCLUDED.estimated_arrival_at,
-    actual_arrival_at = EXCLUDED.actual_arrival_at,
-    updated_at = CURRENT_TIMESTAMP;
 
 WITH student_data AS (
     SELECT student_code
