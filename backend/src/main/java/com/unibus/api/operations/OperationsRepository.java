@@ -156,26 +156,45 @@ public class OperationsRepository {
 
     public List<DriverTripView> findDriverTrips(Integer driverId, LocalDate serviceDate) {
         return jdbcTemplate.query("""
-                SELECT bs.schedule_id, t.trip_id, bs.route_id, r.route_name,
-                       bs.bus_id, b.license_plate, cu.full_name AS conductor_name, cu.phone_number AS conductor_phone,
-                       ?::date AS service_date, bs.departure_time, t.departed_at, t.ended_at,
-                       COALESCE(t.status, 'NOT_CREATED') AS status
-                FROM bus_schedules bs
-                JOIN routes r ON r.route_id = bs.route_id
-                LEFT JOIN buses b ON b.bus_id = bs.bus_id
-                LEFT JOIN conductors c ON c.conductor_id = bs.conductor_id
-                LEFT JOIN users cu ON cu.user_id = c.user_id
-                LEFT JOIN LATERAL (
-                    SELECT trip_id, departed_at, ended_at, status
-                    FROM trips
-                    WHERE schedule_id = bs.schedule_id AND service_date = ?
-                    ORDER BY trip_id DESC
-                    LIMIT 1
-                ) t ON TRUE
-                WHERE bs.driver_id = ?
-                  AND bs.weekday_number = ?
-                ORDER BY bs.departure_time
-                """, (rs, rowNum) -> mapDriverTrip(rs), serviceDate, serviceDate, driverId, serviceDate.getDayOfWeek().getValue());
+                SELECT schedule_id, trip_id, route_id, route_name, bus_id, license_plate,
+                       conductor_name, conductor_phone, service_date, departure_time,
+                       departed_at, ended_at, status
+                FROM (
+                    SELECT bs.schedule_id, t.trip_id, t.route_id, r.route_name,
+                           t.bus_id, b.license_plate, cu.full_name AS conductor_name, cu.phone_number AS conductor_phone,
+                           t.service_date, bs.departure_time, t.departed_at, t.ended_at, t.status
+                    FROM trips t
+                    LEFT JOIN bus_schedules bs ON bs.schedule_id = t.schedule_id
+                    JOIN routes r ON r.route_id = t.route_id
+                    LEFT JOIN buses b ON b.bus_id = t.bus_id
+                    LEFT JOIN conductors c ON c.conductor_id = COALESCE(t.conductor_id, bs.conductor_id)
+                    LEFT JOIN users cu ON cu.user_id = c.user_id
+                    WHERE t.driver_id = ?
+                      AND t.service_date = ?
+
+                    UNION ALL
+
+                    SELECT bs.schedule_id, NULL AS trip_id, bs.route_id, r.route_name,
+                           bs.bus_id, b.license_plate, cu.full_name AS conductor_name, cu.phone_number AS conductor_phone,
+                           ?::date AS service_date, bs.departure_time, NULL AS departed_at, NULL AS ended_at,
+                           'NOT_CREATED' AS status
+                    FROM bus_schedules bs
+                    JOIN routes r ON r.route_id = bs.route_id
+                    LEFT JOIN buses b ON b.bus_id = bs.bus_id
+                    LEFT JOIN conductors c ON c.conductor_id = bs.conductor_id
+                    LEFT JOIN users cu ON cu.user_id = c.user_id
+                    WHERE bs.driver_id = ?
+                      AND bs.weekday_number = ?
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM trips t
+                          WHERE t.schedule_id = bs.schedule_id
+                            AND t.service_date = ?
+                      )
+                ) driver_trips
+                ORDER BY departure_time NULLS LAST, route_name, trip_id
+                """, (rs, rowNum) -> mapDriverTrip(rs),
+                driverId, serviceDate, serviceDate, driverId, serviceDate.getDayOfWeek().getValue(), serviceDate);
     }
 
     public DriverTripView findDriverTrip(Integer tripId, Integer driverId) {
@@ -228,6 +247,9 @@ public class OperationsRepository {
     }
 
     public List<TripStopView> findTripStopsBySchedule(Integer scheduleId) {
+        if (scheduleId == null) {
+            return List.of();
+        }
         return jdbcTemplate.query("""
                 SELECT rs.route_stop_id, s.stop_id, s.stop_name, rs.stop_order, rs.minutes_from_previous_stop
                 FROM bus_schedules bs
@@ -281,7 +303,7 @@ public class OperationsRepository {
     }
 
     private DriverTripView mapDriverTrip(ResultSet rs) throws SQLException {
-        Integer scheduleId = rs.getInt("schedule_id");
+        Integer scheduleId = (Integer) rs.getObject("schedule_id");
         return new DriverTripView(
                 scheduleId,
                 (Integer) rs.getObject("trip_id"),

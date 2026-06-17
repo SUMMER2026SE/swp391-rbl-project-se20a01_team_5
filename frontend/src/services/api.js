@@ -395,6 +395,30 @@ export const driverTripApi = {
   },
 };
 
+export const driverDispatchApi = {
+  async contact() {
+    const response = await apiClient.get('/driver/dispatch/contact');
+    return unwrap(response);
+  },
+
+  async sendMessage(payload) {
+    const response = await apiClient.post('/driver/dispatch/messages', payload);
+    return unwrap(response);
+  },
+
+  async reportIncident(payload) {
+    const response = await apiClient.post('/driver/dispatch/incidents', payload);
+    return unwrap(response);
+  },
+};
+
+export const dispatcherInboxApi = {
+  async inbox() {
+    const response = await apiClient.get('/dispatch/inbox');
+    return unwrap(response);
+  },
+};
+
 export const ticketingApi = {
   async dashboard() {
     const response = await apiClient.get('/students/me/tickets');
