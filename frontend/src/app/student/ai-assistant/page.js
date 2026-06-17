@@ -26,7 +26,7 @@ export default function StudentAIAssistantPage() {
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setIsTyping(false);
-    setNotice('AI assistant UI đã được giữ lại, nhưng API trả lời AI chưa được kết nối.');
+    setNotice('AI assistant đang được giữ ngoài luồng demo Iter1 để tránh nhầm với các chức năng đã sẵn sàng.');
   };
 
   return (

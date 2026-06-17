@@ -20,6 +20,7 @@ export default function DriverTripPage() {
   const [isMutating, setIsMutating] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [locationNotice, setLocationNotice] = useState('');
 
   const currentTrip = useMemo(() => {
     if (!trips.length) return null;
@@ -57,6 +58,46 @@ export default function DriverTripPage() {
     const handle = window.setTimeout(() => loadTrips(serviceDate), 0);
     return () => window.clearTimeout(handle);
   }, [loadTrips, serviceDate]);
+
+  useEffect(() => {
+    if (currentTrip?.status !== 'RUNNING' || !currentTrip.tripId) {
+      const handle = window.setTimeout(() => setLocationNotice(''), 0);
+      return () => window.clearTimeout(handle);
+    }
+
+    if (!('geolocation' in navigator)) {
+      const handle = window.setTimeout(() => setLocationNotice('Trình duyệt không hỗ trợ gửi vị trí GPS.'), 0);
+      return () => window.clearTimeout(handle);
+    }
+
+    const noticeHandle = window.setTimeout(() => setLocationNotice('Đang xin quyền vị trí để gửi live GPS...'), 0);
+    let lastSentAt = 0;
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        const now = Date.now();
+        if (now - lastSentAt < 8000) return;
+        lastSentAt = now;
+        driverTripApi.updateLocation(currentTrip.tripId, {
+          longitude: position.coords.longitude,
+          latitude: position.coords.latitude,
+          speedKmh: position.coords.speed == null ? null : Math.max(0, position.coords.speed * 3.6),
+        })
+          .then(() => setLocationNotice('Đang gửi vị trí live GPS cho điều phối.'))
+          .catch((err) => setLocationNotice(err.message || 'Không gửi được vị trí GPS.'));
+      },
+      (geoError) => {
+        setLocationNotice(geoError.code === geoError.PERMISSION_DENIED
+          ? 'Bạn đã từ chối quyền vị trí. Điều phối sẽ chưa thấy GPS live.'
+          : 'Không lấy được vị trí GPS từ trình duyệt.');
+      },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 12000 },
+    );
+
+    return () => {
+      window.clearTimeout(noticeHandle);
+      navigator.geolocation.clearWatch(watchId);
+    };
+  }, [currentTrip?.status, currentTrip?.tripId]);
 
   const mutateTrip = async (action) => {
     if (!currentTrip?.tripId) return;
@@ -116,6 +157,11 @@ export default function DriverTripPage() {
       {message && (
         <div className="p-4 bg-brand-success/10 border border-brand-success/20 rounded-2xl text-sm font-bold text-brand-success">
           {message}
+        </div>
+      )}
+      {locationNotice && (
+        <div className="p-4 bg-brand-secondary/10 border border-brand-secondary/20 rounded-2xl text-sm font-bold text-brand-text">
+          {locationNotice}
         </div>
       )}
 

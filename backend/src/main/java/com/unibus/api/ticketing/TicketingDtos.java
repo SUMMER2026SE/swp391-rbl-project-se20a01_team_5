@@ -45,6 +45,15 @@ public final class TicketingDtos {
             OffsetDateTime createdAt) {
     }
 
-    public record PassesDashboard(List<TicketView> tickets, List<PaymentView> payments) {
+    public record MonthlyPassQuote(
+            Integer routeId,
+            String routeName,
+            BigDecimal baseAmount,
+            BigDecimal subsidyAmount,
+            BigDecimal payableAmount,
+            String subsidyStatus) {
+    }
+
+    public record PassesDashboard(List<TicketView> tickets, List<PaymentView> payments, MonthlyPassQuote monthlyPassQuote) {
     }
 }

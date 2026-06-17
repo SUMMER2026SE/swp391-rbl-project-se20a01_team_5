@@ -12,11 +12,11 @@ export default function AdminReportsPage() {
   const [notice, setNotice] = useState('');
 
   const handleResolve = (id) => {
-    setNotice('Chức năng xử lý báo cáo chưa được kết nối với backend.');
+    setNotice('Màn xử lý khiếu nại đang được giữ ngoài luồng demo Iter1.');
   };
 
   const handleReject = (id) => {
-    setNotice('Chức năng từ chối báo cáo chưa được kết nối với backend.');
+    setNotice('Màn xử lý khiếu nại đang được giữ ngoài luồng demo Iter1.');
   };
 
   return (

@@ -24,7 +24,7 @@ export default function AdminSettingsPage() {
     e.preventDefault();
     setIsSavingPricing(true);
     setIsSavingPricing(false);
-    setNotice('Chức năng cập nhật bảng giá chưa được kết nối với backend.');
+    setNotice('Cấu hình bảng giá đang được giữ ngoài luồng demo Iter1.');
   };
 
   const handleSendNotification = (e) => {
@@ -32,7 +32,7 @@ export default function AdminSettingsPage() {
     setIsSendingNotif(true);
     setIsSendingNotif(false);
     setNotification({ target: 'all', title: '', content: '' });
-    setNotice('Chức năng phát thông báo hệ thống chưa được kết nối với backend.');
+    setNotice('Broadcast hệ thống đang được giữ ngoài luồng demo Iter1.');
   };
 
   return (
