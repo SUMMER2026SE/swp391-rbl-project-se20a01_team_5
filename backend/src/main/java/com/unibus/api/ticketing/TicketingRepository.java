@@ -1,6 +1,7 @@
 package com.unibus.api.ticketing;
 
 import java.math.BigDecimal;
+import java.sql.PreparedStatement;
 import java.sql.Date;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -13,6 +14,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.support.GeneratedKeyHolder;
+import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 
 import com.unibus.api.ticketing.TicketingDtos.PaymentView;
@@ -86,32 +89,63 @@ public class TicketingRepository {
     public TicketView createMonthlyTicket(String studentCode, ApprovedRegistration registration, int year, int month,
             OffsetDateTime validFrom, OffsetDateTime expiresAt, BigDecimal amount) {
         String qrCode = "UB-MONTHLY-" + UUID.randomUUID();
-        Integer monthlyPassId = jdbcTemplate.queryForObject("""
+        KeyHolder keyHolder = new GeneratedKeyHolder();
+        jdbcTemplate.update(connection -> {
+            PreparedStatement statement = connection.prepareStatement("""
                 INSERT INTO monthly_passes(student_code, route_id, effective_month, effective_year,
                                            valid_from, expires_on, fare_amount, qr_code, status)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE')
-                RETURNING monthly_pass_id
-                """, Integer.class, studentCode, registration.routeId(), month, year,
-                validFrom.toLocalDate(), expiresAt.toLocalDate(), amount, qrCode);
+                """, new String[] { "monthly_pass_id" });
+            statement.setString(1, studentCode);
+            statement.setInt(2, registration.routeId());
+            statement.setInt(3, month);
+            statement.setInt(4, year);
+            statement.setObject(5, validFrom.toLocalDate());
+            statement.setObject(6, expiresAt.toLocalDate());
+            statement.setBigDecimal(7, amount);
+            statement.setString(8, qrCode);
+            return statement;
+        }, keyHolder);
+        Integer monthlyPassId = generatedId(keyHolder, "monthly pass");
         return findTicket(monthlyPassId).orElseThrow();
     }
 
     public PaymentView createPaidPayment(Integer monthlyPassId, BigDecimal amount, String method) {
-        Integer paymentId = jdbcTemplate.queryForObject("""
+        KeyHolder keyHolder = new GeneratedKeyHolder();
+        jdbcTemplate.update(connection -> {
+            PreparedStatement statement = connection.prepareStatement("""
                 INSERT INTO payments(student_code, monthly_pass_id, amount, method, status, transaction_code, notes)
                 SELECT student_code, monthly_pass_id, ?, ?, 'PAID', ?, 'MVP internal payment confirmation'
                 FROM monthly_passes
                 WHERE monthly_pass_id = ?
-                RETURNING payment_id
-                """, Integer.class, amount, method, "MVP-" + UUID.randomUUID(), monthlyPassId);
+                """, new String[] { "payment_id" });
+            statement.setBigDecimal(1, amount);
+            statement.setString(2, method);
+            statement.setString(3, "MVP-" + UUID.randomUUID());
+            statement.setInt(4, monthlyPassId);
+            return statement;
+        }, keyHolder);
+        Integer paymentId = generatedId(keyHolder, "payment");
         jdbcTemplate.update("""
                 INSERT INTO invoices(payment_id, student_code, description, amount)
                 SELECT p.payment_id, p.student_code, 'Monthly bus pass payment', p.amount
                 FROM payments p
                 WHERE p.payment_id = ?
-                ON CONFLICT (payment_id) DO NOTHING
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM invoices i
+                      WHERE i.payment_id = p.payment_id
+                  )
                 """, paymentId);
         return findPayment(paymentId).orElseThrow();
+    }
+
+    private Integer generatedId(KeyHolder keyHolder, String entityName) {
+        Number key = keyHolder.getKey();
+        if (key == null) {
+            throw new IllegalStateException("Could not read generated " + entityName + " id");
+        }
+        return key.intValue();
     }
 
     public List<TicketView> findTickets(String studentCode) {
@@ -146,17 +180,24 @@ public class TicketingRepository {
                        mp.fare_amount, mp.qr_code, mp.status, mp.purchased_at
                 FROM monthly_passes mp
                 JOIN routes r ON r.route_id = mp.route_id
-                LEFT JOIN LATERAL (
-                    SELECT rr.boarding_stop_id, rr.alighting_stop_id
+                LEFT JOIN stops bs ON bs.stop_id = (
+                    SELECT rr.boarding_stop_id
                     FROM route_registrations rr
                     WHERE rr.student_code = mp.student_code
                       AND rr.route_id = mp.route_id
                       AND rr.status = 'APPROVED'
                     ORDER BY rr.approved_at DESC NULLS LAST, rr.registered_at DESC
                     LIMIT 1
-                ) reg ON TRUE
-                LEFT JOIN stops bs ON bs.stop_id = reg.boarding_stop_id
-                LEFT JOIN stops als ON als.stop_id = reg.alighting_stop_id
+                )
+                LEFT JOIN stops als ON als.stop_id = (
+                    SELECT rr.alighting_stop_id
+                    FROM route_registrations rr
+                    WHERE rr.student_code = mp.student_code
+                      AND rr.route_id = mp.route_id
+                      AND rr.status = 'APPROVED'
+                    ORDER BY rr.approved_at DESC NULLS LAST, rr.registered_at DESC
+                    LIMIT 1
+                )
                 """ + whereClause;
     }
 

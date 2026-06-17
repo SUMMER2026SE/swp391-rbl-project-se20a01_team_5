@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.unibus.api.common.ApiException;
 import com.unibus.api.security.CurrentUser;
 import com.unibus.api.ticketing.TicketingDtos.PassesDashboard;
+import com.unibus.api.ticketing.TicketingDtos.MonthlyPassQuote;
 import com.unibus.api.ticketing.TicketingDtos.PaymentView;
 import com.unibus.api.ticketing.TicketingDtos.PurchaseMonthlyPassRequest;
 import com.unibus.api.ticketing.TicketingDtos.TicketView;
@@ -30,9 +31,22 @@ public class TicketingService {
     @Transactional(readOnly = true)
     public PassesDashboard dashboard(CurrentUser currentUser) {
         String studentCode = requireStudentCode(currentUser);
+        MonthlyPassQuote quote = ticketingRepository.approvedRegistration(studentCode)
+                .map(registration -> {
+                    BigDecimal amount = ticketingRepository.monthlyFare(registration.routeId());
+                    return new MonthlyPassQuote(
+                            registration.routeId(),
+                            registration.routeName(),
+                            amount,
+                            BigDecimal.ZERO,
+                            amount,
+                            "NOT_CONFIGURED");
+                })
+                .orElse(null);
         return new PassesDashboard(
                 ticketingRepository.findTickets(studentCode),
-                ticketingRepository.findPayments(studentCode));
+                ticketingRepository.findPayments(studentCode),
+                quote);
     }
 
     @Transactional
@@ -66,7 +80,7 @@ public class TicketingService {
 
     private String method(PurchaseMonthlyPassRequest request) {
         return request == null || request.method() == null || request.method().isBlank()
-                ? "E_WALLET"
+                ? "BANK_TRANSFER"
                 : request.method();
     }
 }

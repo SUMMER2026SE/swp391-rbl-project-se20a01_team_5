@@ -9,7 +9,7 @@ export default function PassengerSupportPage() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    setNotice('Chức năng gửi báo cáo sự cố chưa được kết nối với backend.');
+    setNotice('Báo cáo sự cố đang được giữ ngoài luồng demo Iter1.');
   };
 
   return (

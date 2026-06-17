@@ -2,38 +2,15 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Search, Map, Clock, ArrowRight, BusFront, MapPin, Activity, CheckCircle2 } from 'lucide-react';
-import { registrationApi, transportApi } from '@/services/api';
-
-const mockPopularRoutes = [
-  {
-    routeId: 1,
-    routeName: 'Tuyến số 1',
-    stops: [{ stopName: 'Ký túc xá DMC' }, { stopName: 'Đại học FPT' }],
-    estimatedMinutes: 45,
-    distanceKm: 12.5,
-  },
-  {
-    routeId: 2,
-    routeName: 'Tuyến số 2',
-    stops: [{ stopName: 'Ngã Ba Huế' }, { stopName: 'Đại học Bách Khoa' }],
-    estimatedMinutes: 30,
-    distanceKm: 8.2,
-  },
-  {
-    routeId: 3,
-    routeName: 'Tuyến số 3',
-    stops: [{ stopName: 'Bến xe Nam' }, { stopName: 'Cầu Rồng' }],
-    estimatedMinutes: 50,
-    distanceKm: 15.0,
-  }
-];
+import { Search, Map, Clock, ArrowRight, BusFront, MapPin, Activity, CheckCircle2, Lock, Ticket } from 'lucide-react';
+import { registrationApi, ticketingApi, transportApi } from '@/services/api';
 
 export default function StudentRoutesPage() {
   const [stops, setStops] = useState([]);
-  const [routes, setRoutes] = useState(mockPopularRoutes);
+  const [routes, setRoutes] = useState([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [currentRegistration, setCurrentRegistration] = useState(null);
+  const [activeMonthlyTicket, setActiveMonthlyTicket] = useState(null);
   const [boardingStopId, setBoardingStopId] = useState('');
   const [alightingStopId, setAlightingStopId] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -49,11 +26,13 @@ export default function StudentRoutesPage() {
     Promise.all([
       transportApi.getStops(),
       registrationApi.getCurrent().catch(() => null),
+      ticketingApi.dashboard().catch(() => null),
     ])
-      .then(([stopList, registration]) => {
+      .then(([stopList, registration, ticketDashboard]) => {
         if (cancelled) return;
         setStops(stopList || []);
         setCurrentRegistration(registration);
+        setActiveMonthlyTicket((ticketDashboard?.tickets || []).find((ticket) => ticket.ticketType === 'MONTHLY' && ticket.status === 'ACTIVE') || null);
       })
       .catch((err) => {
         if (!cancelled) setError(err.message);
@@ -83,12 +62,12 @@ export default function StudentRoutesPage() {
     setMessage('');
 
     if (!boardingStopId || !alightingStopId) {
-      setError('Vui lòng chọn điểm lên và điểm xuống.');
+      setError('Vui lòng chọn điểm lên mặc định và điểm xuống mặc định.');
       return;
     }
 
     if (boardingStopId === alightingStopId) {
-      setError('Điểm lên và điểm xuống phải khác nhau.');
+      setError('Điểm lên mặc định và điểm xuống mặc định phải khác nhau.');
       return;
     }
 
@@ -112,6 +91,12 @@ export default function StudentRoutesPage() {
     setMessage('');
     setRegisteringRouteId(route.routeId);
 
+    if (activeMonthlyTicket && activeMonthlyTicket.routeId !== route.routeId) {
+      setError(`Bạn đang có vé tháng đang hoạt động cho ${activeMonthlyTicket.routeName}. Có thể đổi tuyến sau khi hết kỳ vé hiện tại.`);
+      setRegisteringRouteId(null);
+      return;
+    }
+
     const payload = {
       routeId: route.routeId,
       boardingStopId: Number(boardingStopId),
@@ -125,7 +110,7 @@ export default function StudentRoutesPage() {
         : await registrationApi.register(payload);
 
       setCurrentRegistration(registration);
-      setMessage(`Đã đăng ký ${registration.routeName}.`);
+      setMessage(`Đã lưu ${registration.routeName} làm tuyến mặc định. Vé tháng vẫn hợp lệ theo toàn tuyến.`);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -147,6 +132,9 @@ export default function StudentRoutesPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight text-brand-text mb-2">Tìm tuyến xe</h1>
+          <p className="text-brand-text/60 font-medium">
+            Chọn tuyến và trạm lên/xuống mặc định để theo dõi ETA. Vé tháng được kiểm tra theo tuyến, không khóa cứng theo hai trạm này.
+          </p>
         </div>
       </div>
 
@@ -162,9 +150,16 @@ export default function StudentRoutesPage() {
         </div>
       )}
 
+      {activeMonthlyTicket && (
+        <div className="p-4 bg-brand-primary/20 border border-brand-primary/30 rounded-2xl text-sm font-bold text-brand-text flex items-start gap-3">
+          <Ticket className="w-5 h-5 shrink-0 mt-0.5" />
+          Bạn đang có vé tháng đang hoạt động cho {activeMonthlyTicket.routeName}. Trong kỳ vé hiện tại, hệ thống chỉ cho cập nhật trạm mặc định trên cùng tuyến.
+        </div>
+      )}
+
       <form onSubmit={handleSearch} className="bg-white rounded-3xl p-5 shadow-sm border border-black/5 grid grid-cols-1 lg:grid-cols-[1fr_1fr_1fr_auto] gap-4 items-end">
-        <StopSelect label="Điểm lên" value={boardingStopId} onChange={setBoardingStopId} stops={stops} disabled={isLoadingStops} />
-        <StopSelect label="Điểm xuống" value={alightingStopId} onChange={setAlightingStopId} stops={stops} disabled={isLoadingStops} />
+        <StopSelect label="Điểm lên mặc định" value={boardingStopId} onChange={setBoardingStopId} stops={stops} disabled={isLoadingStops} />
+        <StopSelect label="Điểm xuống mặc định" value={alightingStopId} onChange={setAlightingStopId} stops={stops} disabled={isLoadingStops} />
         <label className="block">
           <span className="block text-xs font-black text-brand-text/40 uppercase mb-2">Lọc kết quả</span>
           <div className="relative">
@@ -190,27 +185,32 @@ export default function StudentRoutesPage() {
       <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 pb-6">
         {!hasSearched && filteredRoutes.length > 0 && (
           <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-            <Activity className="w-5 h-5 text-brand-secondary" /> Các tuyến xe phổ biến
+            <Activity className="w-5 h-5 text-brand-secondary" /> Tuyến xe phù hợp
           </h2>
         )}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           {filteredRoutes.map((route) => {
             const isCurrent = currentRegistration?.routeId === route.routeId;
+            const lockedByActivePass = activeMonthlyTicket && activeMonthlyTicket.routeId !== route.routeId;
+            const sameAsActivePass = activeMonthlyTicket?.routeId === route.routeId;
             const firstStop = route.stops?.[0]?.stopName;
             const lastStop = route.stops?.[route.stops.length - 1]?.stopName;
 
             return (
-              <div key={route.routeId} className="bg-white rounded-3xl p-6 shadow-sm border border-black/5 hover:shadow-md hover:border-brand-primary/30 transition-all group flex flex-col justify-between">
+              <div key={route.routeId} className="bg-white rounded-3xl p-6 shadow-sm border border-black/5 hover:border-brand-primary/30 transition-colors flex flex-col justify-between">
                 <div className="flex items-start justify-between mb-6">
                   <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 rounded-2xl bg-brand-primary/20 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                    <div className="w-14 h-14 rounded-2xl bg-brand-primary/20 flex items-center justify-center shrink-0">
                       <BusFront className="w-7 h-7 text-brand-primary" />
                     </div>
                     <div>
                       <h2 className="text-xl font-bold text-brand-text flex items-center gap-2">
                         {route.routeName}
                         {isCurrent && (
-                          <span className="px-2 py-0.5 bg-brand-success/10 text-brand-success text-[10px] font-black uppercase tracking-wider rounded-md">Đã đăng ký</span>
+                          <span className="px-2 py-0.5 bg-brand-success/10 text-brand-success text-[10px] font-black uppercase tracking-wider rounded-md">Tuyến mặc định</span>
+                        )}
+                        {sameAsActivePass && (
+                          <span className="px-2 py-0.5 bg-brand-primary/20 text-brand-text text-[10px] font-black uppercase tracking-wider rounded-md">Vé đang hoạt động</span>
                         )}
                       </h2>
                       <p className="text-sm font-bold text-brand-text/60 mt-1">
@@ -237,13 +237,24 @@ export default function StudentRoutesPage() {
                   <button
                     type="button"
                     onClick={() => handleRegister(route)}
-                    disabled={registeringRouteId === route.routeId}
-                    className="flex-1 py-4 bg-brand-text text-white font-bold rounded-2xl hover:bg-black transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
+                    disabled={registeringRouteId === route.routeId || lockedByActivePass}
+                    className="flex-1 py-4 bg-brand-text text-white font-bold rounded-2xl hover:bg-black transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <CheckCircle2 className="w-5 h-5" />
-                    {registeringRouteId === route.routeId ? 'Đang lưu...' : isCurrent ? 'Cập nhật tuyến' : 'Đăng ký tuyến'}
+                    {lockedByActivePass ? <Lock className="w-5 h-5" /> : <CheckCircle2 className="w-5 h-5" />}
+                    {lockedByActivePass
+                      ? 'Khóa trong kỳ vé'
+                      : registeringRouteId === route.routeId
+                        ? 'Đang lưu...'
+                        : isCurrent
+                          ? 'Cập nhật trạm mặc định'
+                          : 'Chọn làm tuyến mặc định'}
                   </button>
                 </div>
+                {lockedByActivePass && (
+                  <p className="mt-3 text-xs font-bold text-brand-text/45">
+                    Bạn có thể đổi sang tuyến này sau khi vé tháng hiện tại hết hiệu lực.
+                  </p>
+                )}
               </div>
             );
           })}
@@ -252,6 +263,7 @@ export default function StudentRoutesPage() {
             <div className="col-span-full flex flex-col items-center justify-center py-20 text-brand-text/40 bg-white rounded-3xl border border-black/5">
               <Map className="w-16 h-16 mb-4 opacity-50" />
               <p className="font-bold text-lg">{hasSearched ? 'Không tìm thấy tuyến phù hợp.' : 'Chưa có dữ liệu tuyến.'}</p>
+              {!hasSearched && <p className="text-sm font-medium mt-2">Chọn điểm lên/xuống mặc định để tìm tuyến thật từ hệ thống.</p>}
             </div>
           )}
         </div>
@@ -261,49 +273,23 @@ export default function StudentRoutesPage() {
 }
 
 function StopSelect({ label, value, onChange, stops, disabled }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const selectedStop = stops.find((s) => String(s.stopId) === String(value));
-
   return (
-    <div className="block relative">
+    <label className="block">
       <span className="block text-xs font-black text-brand-text/40 uppercase mb-2">{label}</span>
-      <button
-        type="button"
+      <select
+        value={value}
         disabled={disabled}
-        onClick={() => setIsOpen(!isOpen)}
-        onBlur={() => setTimeout(() => setIsOpen(false), 200)}
-        className={`w-full bg-brand-surface border border-black/5 rounded-2xl py-3.5 px-4 text-sm font-bold flex items-center justify-between focus:outline-none focus:border-brand-primary transition-all text-left ${isOpen ? 'border-brand-primary ring-2 ring-brand-primary/20 bg-white' : ''}`}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full min-h-12 bg-brand-surface border border-black/5 rounded-2xl py-3.5 px-4 text-sm font-bold text-brand-text focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 transition-colors disabled:opacity-60"
       >
-        <span className={value ? 'text-brand-text' : 'text-brand-text/50'}>
-          {disabled ? 'Đang tải trạm...' : selectedStop ? selectedStop.stopName : 'Chọn trạm'}
-        </span>
-        <svg className={`w-4 h-4 text-brand-text/40 transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-
-      {isOpen && !disabled && (
-        <div className="absolute z-50 w-full mt-2 bg-white border border-black/5 rounded-2xl shadow-2xl max-h-60 overflow-y-auto py-2 custom-scrollbar">
-          <button
-            type="button"
-            onClick={() => { onChange(''); setIsOpen(false); }}
-            className={`w-full text-left px-4 py-3 text-sm font-bold hover:bg-brand-surface transition-colors ${!value ? 'text-brand-text bg-brand-primary/20' : 'text-brand-text/50'}`}
-          >
-            Chọn trạm
-          </button>
-          {stops.map((stop) => (
-            <button
-              key={stop.stopId}
-              type="button"
-              onClick={() => { onChange(String(stop.stopId)); setIsOpen(false); }}
-              className={`w-full text-left px-4 py-3 text-sm font-bold hover:bg-brand-surface transition-colors ${String(stop.stopId) === String(value) ? 'text-brand-text bg-brand-primary/20' : 'text-brand-text'}`}
-            >
-              {stop.stopName}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+        <option value="">{disabled ? 'Đang tải trạm...' : 'Chọn trạm mặc định'}</option>
+        {stops.map((stop) => (
+          <option key={stop.stopId} value={String(stop.stopId)}>
+            {stop.stopName}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 

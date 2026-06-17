@@ -1,8 +1,12 @@
 {
   "version": "1.0.0",
   "project": {
-    "name": "UniBus API - Iteration 1 Backend",
+    "name": "UniBus - Vé & Tuyến Sinh Viên",
     "languages": [
+      "Java",
+      "JavaScript",
+      "Markdown",
+      "SQL",
       "http",
       "java",
       "json",
@@ -13,18 +17,21 @@
       "xml"
     ],
     "frameworks": [
+      "Flyway",
+      "Jakarta Validation",
+      "Next.js",
+      "PostgreSQL",
+      "React",
       "Spring Boot",
-      "Spring Web MVC",
       "Spring Data JPA",
       "Spring Security",
       "Spring Security OAuth2 Client",
-      "Jakarta Validation",
-      "Flyway",
-      "PostgreSQL"
+      "Spring Web MVC",
+      "Tailwind CSS"
     ],
-    "description": "Backend API cho Iteration 1 của UniBus, phục vụ xác thực, hồ sơ sinh viên, tra cứu tuyến và điểm dừng, ETA, đăng ký tuyến cùng lịch sử di chuyển. Ứng dụng sử dụng PostgreSQL và Flyway để quản lý dữ liệu và migration.",
-    "analyzedAt": "2026-05-25T04:38:48.154Z",
-    "gitCommitHash": "11e4c975f83da6d2da0583fcbe9c3cfb7a412a54"
+    "description": "Spring Boot + Next.js system for student route registration, monthly-pass purchase, QR validation, internal payment records and invoices.",
+    "analyzedAt": "2026-06-17T12:36:30.535341Z",
+    "gitCommitHash": "2e562c9f88ad9df09296911b35f7a3ace3f8facf"
   },
   "nodes": [
     {
@@ -32,13 +39,11 @@
       "type": "file",
       "name": "RouteRegistrationRepository.java",
       "filePath": "backend/src/main/java/com/unibus/api/registration/RouteRegistrationRepository.java",
-      "summary": "Khai báo Spring Data JPA repository cho đăng ký tuyến, hỗ trợ truy vấn đăng ký gần nhất của sinh viên theo trạng thái và tải sẵn các liên kết trạm, tuyến.",
+      "summary": "Repository đăng ký tuyến, gồm query kiểm tra monthly pass active để service khóa đổi route/hủy route khi cần.",
       "tags": [
         "repository",
-        "dang-ky-tuyen",
-        "spring-data-jpa",
-        "truy-van-du-lieu",
-        "tested"
+        "route-registration",
+        "monthly-pass-lock"
       ],
       "complexity": "simple",
       "languageNotes": "Java interface dùng derived query kèm EntityGraph để hạn chế lazy loading khi trả về đăng ký tuyến."
@@ -1834,13 +1839,12 @@
       "type": "file",
       "name": "RouteRegistrationService.java",
       "filePath": "backend/src/main/java/com/unibus/api/registration/RouteRegistrationService.java",
-      "summary": "Cung cấp nghiệp vụ đăng ký, đổi và hủy tuyến xe của sinh viên, đồng thời kiểm tra lựa chọn tuyến và trạng thái đăng ký hiện tại.",
+      "summary": "Điều phối đăng ký tuyến sinh viên; cho cập nhật trạm mặc định trên cùng tuyến và chặn đổi/hủy tuyến khi còn vé tháng active.",
       "tags": [
-        "spring-service",
-        "dang-ky-tuyen",
-        "nghiep-vu",
-        "transaction",
-        "tested"
+        "service",
+        "route-registration",
+        "monthly-pass-lock",
+        "student-flow"
       ],
       "complexity": "moderate",
       "languageNotes": "Sử dụng `@Transactional` để bảo vệ việc hủy bản đăng ký cũ và tạo bản đăng ký mới trong cùng một luồng nghiệp vụ."
@@ -1923,11 +1927,11 @@
         64,
         75
       ],
-      "summary": "Hủy đăng ký đang hoạt động và tạo bản ghi thay thế sau khi xác minh tuyến mới.",
+      "summary": "Nếu route không đổi thì cập nhật boarding/alighting stop tại chỗ; nếu đổi route thì kiểm tra active monthly pass và trả 409 khi route đang bị khóa.",
       "tags": [
-        "dang-ky-tuyen",
-        "cap-nhat",
-        "transaction"
+        "route-registration",
+        "monthly-pass-lock",
+        "default-stops"
       ],
       "complexity": "simple"
     },
@@ -1940,11 +1944,11 @@
         77,
         85
       ],
-      "summary": "Đánh dấu đăng ký của sinh viên là đã hủy và chuẩn hóa lý do hủy nếu bị bỏ trống.",
+      "summary": "Chặn hủy đăng ký tuyến khi sinh viên còn monthly pass active; nếu không bị khóa thì đánh dấu CANCELLED với lý do chuẩn hóa.",
       "tags": [
-        "dang-ky-tuyen",
-        "huy-dang-ky",
-        "transaction"
+        "route-registration",
+        "monthly-pass-lock",
+        "cancel"
       ],
       "complexity": "simple"
     },
@@ -2572,14 +2576,136 @@
       "type": "document",
       "name": "README.md",
       "filePath": "README.md",
-      "summary": "Tài liệu tổng quan backend Iteration 1, mô tả use case, database/Flyway, biến môi trường, danh mục REST endpoint và quy trình chạy test thủ công lẫn tự động.",
+      "summary": "Tài liệu tổng quan UniBus hiện mô tả backend/frontend, luồng sinh viên Vé & Tuyến, rule vé tháng theo tuyến, thanh toán nội bộ, QR, invoice và test commands.",
       "tags": [
-        "tài-liệu",
-        "api",
-        "hướng-dẫn-chạy",
-        "backend"
+        "documentation",
+        "student-flow",
+        "ticketing",
+        "route-registration"
       ],
       "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/src/main/java/com/unibus/api/ticketing/TicketingRepository.java",
+      "type": "file",
+      "name": "TicketingRepository.java",
+      "filePath": "backend/src/main/java/com/unibus/api/ticketing/TicketingRepository.java",
+      "summary": "JDBC repository cho monthly passes, payments, invoices và ticket dashboard; tạo key bằng GeneratedKeyHolder và query default stops tương thích H2/PostgreSQL.",
+      "tags": [
+        "repository",
+        "ticketing",
+        "monthly-pass",
+        "payment",
+        "invoice",
+        "qr-code"
+      ]
+    },
+    {
+      "id": "file:frontend/src/app/student/page.js",
+      "type": "file",
+      "name": "student/page.js",
+      "filePath": "frontend/src/app/student/page.js",
+      "summary": "Dashboard sinh viên hiển thị QR compact thật khi có vé active; khi chưa có vé hoặc thiếu QR thì hiển thị trạng thái kế tiếp và CTA thay vì QR rỗng.",
+      "tags": [
+        "frontend",
+        "student-dashboard",
+        "qr-code",
+        "nextjs"
+      ]
+    },
+    {
+      "id": "file:frontend/src/app/student/passes/page.js",
+      "type": "file",
+      "name": "student/passes/page.js",
+      "filePath": "frontend/src/app/student/passes/page.js",
+      "summary": "Hub Vé & Tuyến với stepper xác minh, chọn tuyến, thanh toán, QR/hóa đơn; chỉ render QR từ qrCode thật và dùng payment method chuyển khoản/xác nhận hệ thống.",
+      "tags": [
+        "frontend",
+        "student-ticket-hub",
+        "monthly-pass",
+        "payment",
+        "invoice",
+        "qr-code"
+      ]
+    },
+    {
+      "id": "file:frontend/src/app/student/routes/page.js",
+      "type": "file",
+      "name": "student/routes/page.js",
+      "filePath": "frontend/src/app/student/routes/page.js",
+      "summary": "Trang tìm tuyến sinh viên dùng wording trạm mặc định, native select nhẹ hơn và chặn UI đổi sang route khác khi có monthly pass active.",
+      "tags": [
+        "frontend",
+        "route-search",
+        "default-stops",
+        "monthly-pass-lock"
+      ]
+    },
+    {
+      "id": "file:frontend/src/components/tickets/TicketQrCode.js",
+      "type": "file",
+      "name": "TicketQrCode.js",
+      "filePath": "frontend/src/components/tickets/TicketQrCode.js",
+      "summary": "Component render QR SVG bằng qrcode.react khi có value; trả null nếu thiếu qrCode để tránh placeholder QR rỗng.",
+      "tags": [
+        "frontend",
+        "component",
+        "qr-code",
+        "svg"
+      ]
+    },
+    {
+      "id": "file:frontend/src/services/api.js",
+      "type": "file",
+      "name": "api.js",
+      "filePath": "frontend/src/services/api.js",
+      "summary": "Axios API client và service modules; ánh xạ lỗi route lock sang thông báo tiếng Việt cho student route/ticket flow.",
+      "tags": [
+        "frontend",
+        "api-client",
+        "error-mapping",
+        "student-flow"
+      ]
+    },
+    {
+      "id": "file:backend/src/test/java/com/unibus/api/ticketing/TicketingAndRoutePassServiceTests.java",
+      "type": "file",
+      "name": "TicketingAndRoutePassServiceTests.java",
+      "filePath": "backend/src/test/java/com/unibus/api/ticketing/TicketingAndRoutePassServiceTests.java",
+      "summary": "Service tests cho mua vé tháng, tạo payment/invoice, idempotency, route lock, same-route default-stop update và cancel guard.",
+      "tags": [
+        "test",
+        "ticketing",
+        "monthly-pass",
+        "route-lock",
+        "invoice"
+      ]
+    },
+    {
+      "id": "file:backend/src/test/java/com/unibus/api/operations/OperationsServiceTests.java",
+      "type": "file",
+      "name": "OperationsServiceTests.java",
+      "filePath": "backend/src/test/java/com/unibus/api/operations/OperationsServiceTests.java",
+      "summary": "Operations/conductor tests xác minh QR monthly pass hợp lệ trên cùng route và bị từ chối trên route khác, không khóa theo cặp trạm mặc định.",
+      "tags": [
+        "test",
+        "conductor",
+        "qr-scan",
+        "route-validation"
+      ]
+    },
+    {
+      "id": "document:docs/Ve_Tuyen_QR_Thanh_Toan_Report.docx",
+      "type": "document",
+      "name": "Ve_Tuyen_QR_Thanh_Toan_Report.docx",
+      "filePath": "docs/Ve_Tuyen_QR_Thanh_Toan_Report.docx",
+      "summary": "Báo cáo Word tóm tắt phạm vi hoàn thiện Hub Vé & Tuyến, thay đổi backend/frontend, test evidence và ghi chú liên kết trường là hướng tương lai.",
+      "tags": [
+        "documentation",
+        "report",
+        "student-flow",
+        "test-evidence"
+      ]
     }
   ],
   "edges": [
@@ -4885,6 +5011,97 @@
       "type": "tested_by",
       "direction": "forward",
       "weight": 0.5
+    },
+    {
+      "source": "document:README.md",
+      "target": "file:frontend/src/app/student/passes/page.js",
+      "type": "documents",
+      "weight": 0.5,
+      "summary": "README mô tả hub Vé & Tuyến và luồng thanh toán/QR."
+    },
+    {
+      "source": "document:README.md",
+      "target": "file:backend/src/main/java/com/unibus/api/registration/RouteRegistrationService.java",
+      "type": "documents",
+      "weight": 0.5,
+      "summary": "README mô tả rule route lock khi có monthly pass active."
+    },
+    {
+      "source": "document:README.md",
+      "target": "file:backend/src/main/java/com/unibus/api/ticketing/TicketingRepository.java",
+      "type": "documents",
+      "weight": 0.5,
+      "summary": "README mô tả API mua vé tháng tạo monthly pass, payment và invoice."
+    },
+    {
+      "source": "document:docs/Ve_Tuyen_QR_Thanh_Toan_Report.docx",
+      "target": "file:frontend/src/app/student/passes/page.js",
+      "type": "documents",
+      "weight": 0.5,
+      "summary": "Report ghi nhận thay đổi UI hub Vé & Tuyến và browser QA."
+    },
+    {
+      "source": "document:docs/Ve_Tuyen_QR_Thanh_Toan_Report.docx",
+      "target": "file:backend/src/main/java/com/unibus/api/registration/RouteRegistrationService.java",
+      "type": "documents",
+      "weight": 0.5,
+      "summary": "Report ghi nhận backend guard route lock."
+    },
+    {
+      "source": "file:frontend/src/app/student/page.js",
+      "target": "file:frontend/src/components/tickets/TicketQrCode.js",
+      "type": "imports",
+      "weight": 0.7,
+      "summary": "Dashboard render QR compact bằng TicketQrCode khi có qrCode."
+    },
+    {
+      "source": "file:frontend/src/app/student/passes/page.js",
+      "target": "file:frontend/src/components/tickets/TicketQrCode.js",
+      "type": "imports",
+      "weight": 0.7,
+      "summary": "Hub Vé & Tuyến render QR vé tháng bằng TicketQrCode."
+    },
+    {
+      "source": "file:frontend/src/app/student/page.js",
+      "target": "file:frontend/src/services/api.js",
+      "type": "imports",
+      "weight": 0.7,
+      "summary": "Dashboard gọi student, route registration, ticketing và travel APIs."
+    },
+    {
+      "source": "file:frontend/src/app/student/passes/page.js",
+      "target": "file:frontend/src/services/api.js",
+      "type": "imports",
+      "weight": 0.7,
+      "summary": "Hub gọi profile, verification, route registration, ticketing/payment APIs."
+    },
+    {
+      "source": "file:frontend/src/app/student/routes/page.js",
+      "target": "file:frontend/src/services/api.js",
+      "type": "imports",
+      "weight": 0.7,
+      "summary": "Routes page gọi transport, registration và ticketing APIs."
+    },
+    {
+      "source": "file:backend/src/main/java/com/unibus/api/registration/RouteRegistrationService.java",
+      "target": "file:backend/src/main/java/com/unibus/api/registration/RouteRegistrationRepository.java",
+      "type": "depends_on",
+      "weight": 0.6,
+      "summary": "Service dùng repository helper để phát hiện active monthly pass và khóa route."
+    },
+    {
+      "source": "file:backend/src/test/java/com/unibus/api/ticketing/TicketingAndRoutePassServiceTests.java",
+      "target": "file:backend/src/main/java/com/unibus/api/registration/RouteRegistrationService.java",
+      "type": "tested_by",
+      "weight": 0.5,
+      "summary": "Test bao phủ đổi route bị chặn và update trạm mặc định cùng route."
+    },
+    {
+      "source": "file:backend/src/test/java/com/unibus/api/ticketing/TicketingAndRoutePassServiceTests.java",
+      "target": "file:backend/src/main/java/com/unibus/api/ticketing/TicketingRepository.java",
+      "type": "tested_by",
+      "weight": 0.5,
+      "summary": "Test bao phủ monthly pass/payment/invoice creation và idempotency."
     }
   ],
   "layers": [
@@ -4943,7 +5160,7 @@
     {
       "id": "layer:data",
       "name": "Dữ liệu và lưu trữ",
-      "description": "Chứa entity JPA, repository Spring Data hoặc JDBC và migration Flyway để lưu trữ tài khoản, tuyến xe, phiên đăng nhập, OTP và đăng ký.",
+      "description": "Chứa entity JPA, repository Spring Data/JDBC, ticketing persistence và migration Flyway.",
       "nodeIds": [
         "file:backend/src/main/java/com/unibus/api/registration/RouteRegistrationRepository.java",
         "file:backend/src/main/java/com/unibus/api/registration/model/RegistrationStatus.java",
@@ -4968,7 +5185,8 @@
         "file:backend/src/main/java/com/unibus/api/user/StudentRepository.java",
         "file:backend/src/main/java/com/unibus/api/user/model/Student.java",
         "table:backend/src/main/resources/db/migration/V2__add_verification_codes.sql:verification_codes",
-        "file:backend/src/main/java/com/unibus/api/transport/EtaRepository.java"
+        "file:backend/src/main/java/com/unibus/api/transport/EtaRepository.java",
+        "file:backend/src/main/java/com/unibus/api/ticketing/TicketingRepository.java"
       ]
     },
     {
@@ -4984,24 +5202,39 @@
     {
       "id": "layer:test",
       "name": "Kiểm thử tích hợp",
-      "description": "Xác minh application context và các hành trình HTTP, dịch vụ xác thực, sinh viên bằng cấu hình database kiểm thử cô lập.",
+      "description": "Xác minh auth, route, ticketing, route lock và QR scan behavior.",
       "nodeIds": [
         "file:backend/src/test/java/com/unibus/api/student/StudentIteration1ServiceTests.java",
         "file:backend/src/test/java/com/unibus/api/auth/AuthHttpIntegrationTests.java",
         "file:backend/src/test/java/com/unibus/api/auth/AuthServiceTests.java",
         "file:backend/src/test/java/com/unibus/api/UnibusApiApplicationTests.java",
-        "config:backend/src/test/resources/application.properties"
+        "config:backend/src/test/resources/application.properties",
+        "file:backend/src/test/java/com/unibus/api/ticketing/TicketingAndRoutePassServiceTests.java",
+        "file:backend/src/test/java/com/unibus/api/operations/OperationsServiceTests.java"
       ]
     },
     {
       "id": "layer:documentation",
       "name": "Tài liệu và công cụ dự án",
-      "description": "Ghi lại cách vận hành backend, cung cấp request mẫu để thử API và giữ cấu hình phục vụ quá trình phân tích knowledge graph.",
+      "description": "Ghi lại cách vận hành, REST API, luồng Vé & Tuyến và test evidence.",
       "nodeIds": [
         "file:.understand-anything/.understandignore",
         "config:.understand-anything/config.json",
         "file:backend/requests/iteration1.http",
-        "document:README.md"
+        "document:README.md",
+        "document:docs/Ve_Tuyen_QR_Thanh_Toan_Report.docx"
+      ]
+    },
+    {
+      "id": "layer:student-frontend",
+      "name": "Frontend sinh viên",
+      "description": "Next.js student pages/components/services cho dashboard, Vé & Tuyến, tìm tuyến, QR và payment UX.",
+      "nodeIds": [
+        "file:frontend/src/app/student/page.js",
+        "file:frontend/src/app/student/passes/page.js",
+        "file:frontend/src/app/student/routes/page.js",
+        "file:frontend/src/components/tickets/TicketQrCode.js",
+        "file:frontend/src/services/api.js"
       ]
     }
   ],
@@ -5118,6 +5351,19 @@
         "config:backend/src/test/resources/application.properties"
       ],
       "languageLesson": "Integration test của Spring Boot có thể nạp application context thật với datasource kiểm thử, nhờ đó xác minh cả wiring, persistence và chính sách security trong cùng một kịch bản."
+    },
+    {
+      "order": 12,
+      "title": "Luồng Vé & Tuyến sinh viên",
+      "description": "Theo dõi cách frontend student hub kết nối backend route lock, monthly pass, QR, payment và invoice.",
+      "nodeIds": [
+        "document:README.md",
+        "file:frontend/src/app/student/passes/page.js",
+        "file:frontend/src/app/student/routes/page.js",
+        "file:backend/src/main/java/com/unibus/api/registration/RouteRegistrationService.java",
+        "file:backend/src/main/java/com/unibus/api/ticketing/TicketingRepository.java",
+        "document:docs/Ve_Tuyen_QR_Thanh_Toan_Report.docx"
+      ]
     }
   ]
 }

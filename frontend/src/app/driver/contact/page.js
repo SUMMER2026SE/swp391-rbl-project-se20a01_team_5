@@ -21,11 +21,11 @@ export default function CoordinatorContactPage() {
 
     setMessages([...messages, newMsg]);
     setNewMessage('');
-    setNotice('Tin nhắn đang chỉ hiển thị tạm trên UI; API chat chưa được kết nối.');
+    setNotice('Chat nội bộ đang được giữ ngoài luồng demo Iter1.');
   };
 
   const handleSOS = (type) => {
-    setNotice(`Chức năng SOS "${type}" chưa được kết nối với backend.`);
+    setNotice(`SOS "${type}" đang được giữ ngoài luồng demo Iter1.`);
   };
 
   return (
