@@ -154,7 +154,7 @@ export default function RouteTrackingPage() {
 
           {!boardingStopId ? (
             <div className="text-sm font-bold text-brand-text/50 bg-brand-surface p-4 rounded-2xl">
-              Chưa có điểm lên. Hãy chọn điểm lên/xuống từ màn tìm tuyến để xem ETA.
+              Chưa có điểm lên mặc định. Hãy chọn điểm lên/xuống mặc định từ màn tìm tuyến để xem ETA.
             </div>
           ) : nextEta ? (
             <div className="p-6 bg-brand-primary/10 rounded-3xl border border-brand-primary/20 text-center relative overflow-hidden flex flex-col items-center justify-center min-h-[200px]">
