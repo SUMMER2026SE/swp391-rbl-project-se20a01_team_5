@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { MapPin, Navigation, Clock, Ticket, QrCode, UserCircle, History } from 'lucide-react';
-import { registrationApi, studentApi, toApiAssetUrl, travelApi } from '@/services/api';
-import { recentTripMocks } from '@/services/mockTrips';
+import { MapPin, Navigation, Clock, Ticket, UserCircle, History } from 'lucide-react';
+import { registrationApi, studentApi, ticketingApi, toApiAssetUrl, travelApi } from '@/services/api';
+import TicketQrCode from '@/components/tickets/TicketQrCode';
 
 export default function StudentDashboard() {
   const [profile, setProfile] = useState(null);
   const [registration, setRegistration] = useState(null);
+  const [activeMonthlyTicket, setActiveMonthlyTicket] = useState(null);
   const [recentTrips, setRecentTrips] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -19,13 +20,15 @@ export default function StudentDashboard() {
     Promise.all([
       studentApi.getProfile(),
       registrationApi.getCurrent().catch(() => null),
-      travelApi.getHistory({ page: 0, size: 3 }).catch(() => recentTripMocks),
+      ticketingApi.dashboard().catch(() => null),
+      travelApi.getHistory({ page: 0, size: 3 }).catch(() => []),
     ])
-      .then(([profileData, currentRegistration, trips]) => {
+      .then(([profileData, currentRegistration, ticketDashboard, trips]) => {
         if (cancelled) return;
         setProfile(profileData);
         setRegistration(currentRegistration);
-        setRecentTrips(trips?.length ? trips : recentTripMocks);
+        setActiveMonthlyTicket((ticketDashboard?.tickets || []).find((ticket) => ticket.ticketType === 'MONTHLY' && ticket.status === 'ACTIVE') || null);
+        setRecentTrips(trips || []);
       })
       .catch((err) => {
         if (!cancelled) setError(err.message);
@@ -42,6 +45,30 @@ export default function StudentDashboard() {
   if (isLoading) {
     return <DashboardSkeleton />;
   }
+
+  const hasApprovedRegistration = registration?.status === 'APPROVED';
+  const ticketAction = activeMonthlyTicket && !activeMonthlyTicket.qrCode
+    ? {
+        href: '/student/passes',
+        label: 'Kiểm tra vé',
+        title: 'Thiếu mã QR vé tháng',
+        description: 'Vé tháng đang hoạt động nhưng chưa có mã QR. Vào Hub Vé & Tuyến để làm mới dữ liệu.',
+      }
+    : activeMonthlyTicket
+      ? null
+      : hasApprovedRegistration
+        ? {
+            href: '/student/passes',
+            label: 'Thanh toán vé tháng',
+            title: 'Chưa mua vé tháng',
+            description: 'Tuyến mặc định đã sẵn sàng. Thanh toán để nhận QR lên xe.',
+          }
+        : {
+            href: '/student/routes',
+            label: 'Chọn tuyến',
+            title: 'Chưa có tuyến mặc định',
+            description: 'Chọn tuyến và điểm lên/xuống mặc định trước khi mua vé tháng.',
+          };
 
   return (
     <div className="h-full flex flex-col gap-6 font-sans">
@@ -60,7 +87,7 @@ export default function StudentDashboard() {
       <div className="flex-1 grid grid-cols-1 xl:grid-cols-3 gap-6 overflow-y-auto custom-scrollbar pr-2 pb-6">
         <div className="flex flex-col gap-6 xl:col-span-1">
           <div className="bg-white rounded-3xl p-8 shadow-sm border border-black/5 flex flex-col items-center text-center relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-brand-primary/40 to-transparent"></div>
+            <div className="absolute top-0 left-0 w-full h-24 bg-brand-primary/30"></div>
 
             <div className="w-24 h-24 rounded-full bg-brand-primary flex items-center justify-center text-2xl font-bold text-brand-text border-4 border-white shadow-sm z-10 mb-4 mt-6 overflow-hidden">
               {profile?.avatarUrl ? (
@@ -74,9 +101,25 @@ export default function StudentDashboard() {
             <p className="text-brand-text/50 font-mono text-sm mb-6 relative z-10">{profile?.studentCode || 'Chưa có mã sinh viên'}</p>
 
             <div className="bg-brand-surface p-4 rounded-3xl border border-black/5 mb-6 w-full flex justify-center relative z-10">
-              <div className="w-48 h-48 bg-white rounded-xl p-2 shadow-sm border border-black/5 flex items-center justify-center relative">
-                <QrCode className="w-full h-full text-brand-text/40" strokeWidth={1} />
-              </div>
+              {activeMonthlyTicket?.qrCode ? (
+                <div className="w-full flex flex-col items-center gap-3">
+                  <TicketQrCode value={activeMonthlyTicket.qrCode} compact className="w-full max-w-56" />
+                  <p className="text-xs font-bold text-brand-text/50 leading-relaxed">
+                    Vé tháng {activeMonthlyTicket.effectiveMonth}/{activeMonthlyTicket.effectiveYear} - {activeMonthlyTicket.routeName}
+                  </p>
+                </div>
+              ) : (
+                <div className="w-full min-h-48 rounded-2xl bg-white border border-black/5 p-5 flex flex-col items-center justify-center text-center">
+                  <div className="w-12 h-12 rounded-2xl bg-brand-primary/20 flex items-center justify-center mb-4">
+                    <Ticket className="w-6 h-6 text-brand-text" />
+                  </div>
+                  <p className="text-sm font-black text-brand-text">{ticketAction.title}</p>
+                  <p className="mt-2 text-xs font-bold text-brand-text/50 leading-relaxed max-w-56">{ticketAction.description}</p>
+                  <Link href={ticketAction.href} className="mt-4 px-4 py-2.5 rounded-xl bg-brand-text text-white text-xs font-black hover:bg-black transition-colors">
+                    {ticketAction.label}
+                  </Link>
+                </div>
+              )}
             </div>
 
           </div>
@@ -88,7 +131,9 @@ export default function StudentDashboard() {
               </div>
               <div>
                 <p className="text-sm font-bold text-brand-text">Vé tháng</p>
-                <p className="text-xs font-medium text-brand-text/50 mt-0.5">Chưa có API vé</p>
+                <p className="text-xs font-medium text-brand-text/50 mt-0.5">
+                  {activeMonthlyTicket ? `${activeMonthlyTicket.effectiveMonth}/${activeMonthlyTicket.effectiveYear} đang hoạt động` : 'Chưa có vé tháng đang hoạt động'}
+                </p>
               </div>
             </div>
             <Link href="/student/passes" className="text-xs font-bold text-brand-secondary hover:underline">Chi tiết</Link>
@@ -97,8 +142,6 @@ export default function StudentDashboard() {
 
         <div className="xl:col-span-2 flex flex-col gap-6">
           <div className="bg-brand-primary rounded-3xl p-6 md:p-8 shadow-sm border border-black/5 relative overflow-hidden flex flex-col justify-between">
-            <div className="absolute -right-10 -top-10 w-64 h-64 bg-white/20 rounded-full blur-3xl"></div>
-
             <div className="flex flex-wrap items-center justify-between mb-8 relative z-10 gap-4">
               <h3 className="text-2xl font-bold flex items-center gap-2">
                 <Navigation className="w-7 h-7" /> Tuyến đã đăng ký
@@ -113,7 +156,7 @@ export default function StudentDashboard() {
                 <h4 className="text-xl font-bold text-brand-text">{registration.routeName}</h4>
                 <p className="text-sm font-medium text-brand-text/60 flex items-center gap-1.5 mt-2">
                   <MapPin className="w-4 h-4 text-brand-secondary" />
-                  {registration.boardingStopName} → {registration.alightingStopName}
+                  Trạm mặc định: {registration.boardingStopName} → {registration.alightingStopName}
                 </p>
                 <div className="mt-4 flex flex-col gap-3">
                   <div className="text-xs font-black text-brand-success uppercase">{registration.status}</div>
@@ -128,7 +171,7 @@ export default function StudentDashboard() {
             ) : (
               <div className="bg-white rounded-3xl p-6 shadow-sm relative z-10 border border-white/50">
                 <h4 className="text-xl font-bold text-brand-text">Chưa đăng ký tuyến</h4>
-                <p className="text-sm font-medium text-brand-text/60 mt-2">Chọn điểm lên/xuống để tìm tuyến phù hợp.</p>
+                <p className="text-sm font-medium text-brand-text/60 mt-2">Chọn tuyến và điểm lên/xuống mặc định để mua vé tháng.</p>
               </div>
             )}
           </div>
