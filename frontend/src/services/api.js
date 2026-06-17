@@ -357,6 +357,27 @@ export const feedbackApi = {
   },
 };
 
+export const driverRatingApi = {
+  async submit(payload) {
+    const response = await apiClient.post('/students/me/driver-ratings', payload);
+    return unwrap(response);
+  },
+
+  async listByDriver(driverId, { page = 0, size = 20 } = {}) {
+    if (!driverId) return [];
+    const response = await apiClient.get(`/drivers/${driverId}/ratings`, {
+      params: { page, size },
+    });
+    return unwrap(response);
+  },
+
+  async summarize(driverId) {
+    if (!driverId) return null;
+    const response = await apiClient.get(`/drivers/${driverId}/ratings/summary`);
+    return unwrap(response);
+  },
+};
+
 export const coordinatorScheduleApi = {
   async getDashboard(serviceDate) {
     const response = await apiClient.get('/operations/schedules', {

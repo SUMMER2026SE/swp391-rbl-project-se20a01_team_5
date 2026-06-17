@@ -1,27 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from 'react';
-import { MessageSquare, Send, Star, RefreshCw } from 'lucide-react';
-import { feedbackApi, travelApi } from '@/services/api';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { MessageSquare, RefreshCw, Send, Star, UserRound } from 'lucide-react';
+import { driverRatingApi, travelApi } from '@/services/api';
 import { recentTripMocks } from '@/services/mockTrips';
-
-const categories = [
-  { value: 'SERVICE_QUALITY', label: 'Chất lượng dịch vụ' },
-  { value: 'LATE_BUS', label: 'Xe đến trễ' },
-  { value: 'DRIVER_ATTITUDE', label: 'Thái độ tài xế' },
-  { value: 'CLEANLINESS', label: 'Vệ sinh xe' },
-  { value: 'OTHER', label: 'Khác' },
-];
 
 export default function StudentFeedbackPage() {
   const [trips, setTrips] = useState([]);
-  const [feedbacks, setFeedbacks] = useState([]);
+  const [ratings, setRatings] = useState([]);
+  const [summary, setSummary] = useState(null);
   const [form, setForm] = useState({
     tripId: '',
-    routeId: '',
+    driverId: '',
     rating: 5,
-    category: 'SERVICE_QUALITY',
-    content: '',
+    comment: '',
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -33,44 +25,67 @@ export default function StudentFeedbackPage() {
     [trips, form.tripId],
   );
 
-  const loadData = () => {
+  const loadDriverRatings = useCallback(async (driverId) => {
+    if (!driverId) {
+      setRatings([]);
+      setSummary(null);
+      return;
+    }
+
+    const [ratingItems, ratingSummary] = await Promise.all([
+      driverRatingApi.listByDriver(driverId, { page: 0, size: 20 }),
+      driverRatingApi.summarize(driverId),
+    ]);
+    setRatings(ratingItems || []);
+    setSummary(ratingSummary || null);
+  }, []);
+
+  const loadData = useCallback(() => {
     setIsLoading(true);
     setError('');
-    Promise.all([
-      travelApi.getHistory({ page: 0, size: 20 }).catch(() => []),
-      feedbackApi.listMine({ page: 0, size: 20 }),
-    ])
-      .then(([tripItems, feedbackItems]) => {
+
+    travelApi.getHistory({ page: 0, size: 20 })
+      .catch(() => recentTripMocks)
+      .then(async (tripItems) => {
         const normalizedTrips = tripItems?.length ? tripItems : recentTripMocks;
         setTrips(normalizedTrips);
-        setFeedbacks(feedbackItems || []);
 
         const params = new URLSearchParams(window.location.search);
         const tripId = params.get('tripId');
-        const routeId = params.get('routeId');
-        const firstTrip = normalizedTrips[0];
+        const firstTrip = normalizedTrips.find((trip) => trip.driverId) || normalizedTrips[0];
+        const selected = normalizedTrips.find((trip) => String(trip.tripId) === String(tripId)) || firstTrip;
+
         setForm((current) => ({
           ...current,
-          tripId: tripId || current.tripId || firstTrip?.tripId || '',
-          routeId: routeId || current.routeId || firstTrip?.routeId || '',
+          tripId: selected?.tripId || '',
+          driverId: selected?.driverId || '',
         }));
+        await loadDriverRatings(selected?.driverId);
       })
       .catch((err) => setError(err.message))
       .finally(() => setIsLoading(false));
-  };
+  }, [loadDriverRatings]);
 
   useEffect(() => {
     const handle = window.setTimeout(loadData, 0);
     return () => window.clearTimeout(handle);
-  }, []);
+  }, [loadData]);
 
-  const handleTripChange = (tripId) => {
+  const handleTripChange = async (tripId) => {
     const trip = trips.find((item) => String(item.tripId) === String(tripId));
     setForm((current) => ({
       ...current,
       tripId,
-      routeId: trip?.routeId || '',
+      driverId: trip?.driverId || '',
     }));
+    setError('');
+    setNotice('');
+
+    try {
+      await loadDriverRatings(trip?.driverId);
+    } catch (err) {
+      setError(err.message);
+    }
   };
 
   const handleSubmit = async (event) => {
@@ -79,17 +94,23 @@ export default function StudentFeedbackPage() {
     setError('');
     setNotice('');
 
+    if (!form.driverId) {
+      setError('Chuyến này chưa có thông tin tài xế để đánh giá.');
+      setIsSubmitting(false);
+      return;
+    }
+
     try {
-      const submitted = await feedbackApi.submit({
-        tripId: form.tripId ? Number(form.tripId) : null,
-        routeId: form.routeId ? Number(form.routeId) : null,
+      const submitted = await driverRatingApi.submit({
+        driverId: Number(form.driverId),
+        tripId: Number(form.tripId),
         rating: Number(form.rating),
-        category: form.category,
-        content: form.content.trim(),
+        comment: form.comment.trim(),
       });
-      setFeedbacks((items) => [submitted, ...items]);
-      setForm((current) => ({ ...current, content: '', rating: 5 }));
-      setNotice('Đã gửi phản hồi. Điều phối viên sẽ tiếp nhận và xử lý.');
+      setRatings((items) => [submitted, ...items]);
+      setForm((current) => ({ ...current, comment: '', rating: 5 }));
+      setNotice('Đã gửi đánh giá tài xế.');
+      await loadDriverRatings(form.driverId);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -102,9 +123,9 @@ export default function StudentFeedbackPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight text-brand-text mb-2 flex items-center gap-3">
-            <MessageSquare className="w-8 h-8 text-brand-primary" /> Phản hồi chuyến xe
+            <MessageSquare className="w-8 h-8 text-brand-primary" /> Đánh giá tài xế
           </h1>
-          <p className="text-brand-text/60 font-medium">Gửi góp ý về chuyến xe đã đi để đội điều phối cải thiện dịch vụ.</p>
+          <p className="text-brand-text/60 font-medium">Gửi đánh giá sau chuyến đi để giúp nhà trường cải thiện chất lượng vận hành.</p>
         </div>
         <button
           onClick={loadData}
@@ -122,7 +143,7 @@ export default function StudentFeedbackPage() {
 
       <div className="flex-1 grid grid-cols-1 xl:grid-cols-[0.9fr_1.1fr] gap-6 overflow-hidden pb-6">
         <form onSubmit={handleSubmit} className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-black/5 flex flex-col gap-5 overflow-y-auto custom-scrollbar">
-          <h2 className="text-xl font-bold">Tạo phản hồi mới</h2>
+          <h2 className="text-xl font-bold">Tạo đánh giá mới</h2>
 
           <label className="block">
             <span className="block text-sm font-bold text-brand-text/70 mb-2">Chuyến xe</span>
@@ -145,24 +166,14 @@ export default function StudentFeedbackPage() {
               <div className="font-bold text-brand-text">{selectedTrip.routeName}</div>
               <div className="mt-1">Lên xe: {selectedTrip.boardingStopName || 'Chưa ghi nhận'}</div>
               <div>Xuống xe: {selectedTrip.alightingStopName || 'Chưa ghi nhận'}</div>
+              <div className="mt-3 flex items-center gap-2 font-bold text-brand-text">
+                <UserRound className="w-4 h-4" /> Tài xế: {selectedTrip.driverName || 'Chưa có thông tin'}
+              </div>
             </div>
           )}
 
-          <label className="block">
-            <span className="block text-sm font-bold text-brand-text/70 mb-2">Loại phản hồi</span>
-            <select
-              value={form.category}
-              onChange={(event) => setForm({ ...form, category: event.target.value })}
-              className="w-full bg-brand-surface border border-black/5 rounded-2xl p-4 text-sm font-bold focus:outline-none focus:border-brand-primary"
-            >
-              {categories.map((category) => (
-                <option key={category.value} value={category.value}>{category.label}</option>
-              ))}
-            </select>
-          </label>
-
           <div>
-            <span className="block text-sm font-bold text-brand-text/70 mb-2">Đánh giá</span>
+            <span className="block text-sm font-bold text-brand-text/70 mb-2">Số sao</span>
             <div className="flex gap-2">
               {[1, 2, 3, 4, 5].map((rating) => (
                 <button
@@ -179,64 +190,71 @@ export default function StudentFeedbackPage() {
           </div>
 
           <label className="flex-1 flex flex-col">
-            <span className="block text-sm font-bold text-brand-text/70 mb-2">Nội dung</span>
+            <span className="block text-sm font-bold text-brand-text/70 mb-2">Nhận xét</span>
             <textarea
-              required
-              value={form.content}
-              onChange={(event) => setForm({ ...form, content: event.target.value })}
-              placeholder="Nhập phản hồi của bạn..."
+              value={form.comment}
+              onChange={(event) => setForm({ ...form, comment: event.target.value })}
+              placeholder="Nhập nhận xét về tài xế..."
               className="w-full flex-1 min-h-40 bg-brand-surface border border-black/5 rounded-2xl p-4 text-sm font-medium focus:outline-none focus:border-brand-primary resize-none"
+              maxLength={1000}
             />
           </label>
 
           <button
             type="submit"
-            disabled={isSubmitting || !form.content.trim()}
+            disabled={isSubmitting || !form.tripId || !form.driverId}
             className="w-full py-4 bg-brand-text text-white font-bold rounded-2xl hover:bg-black transition-colors flex justify-center items-center gap-2 shadow-xl disabled:opacity-70 disabled:cursor-not-allowed"
           >
-            <Send className="w-5 h-5" /> {isSubmitting ? 'Đang gửi...' : 'Gửi phản hồi'}
+            <Send className="w-5 h-5" /> {isSubmitting ? 'Đang gửi...' : 'Gửi đánh giá'}
           </button>
         </form>
 
         <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-black/5 overflow-y-auto custom-scrollbar">
-          <h2 className="text-xl font-bold mb-5">Phản hồi đã gửi</h2>
+          <div className="flex items-start justify-between gap-4 mb-5">
+            <div>
+              <h2 className="text-xl font-bold">Đánh giá của tài xế này</h2>
+              {selectedTrip?.driverName && (
+                <div className="text-sm font-bold text-brand-text/50 mt-1">{selectedTrip.driverName}</div>
+              )}
+            </div>
+            {summary && (
+              <div className="rounded-2xl bg-brand-warning/10 px-4 py-3 text-right">
+                <div className="text-lg font-black text-brand-warning">{Number(summary.averageRating || 0).toFixed(2)}/5</div>
+                <div className="text-xs font-bold text-brand-text/50">{summary.totalReviews || 0} đánh giá</div>
+              </div>
+            )}
+          </div>
+
           {isLoading ? (
             <div className="py-20 text-center text-brand-text/50 font-bold">Đang tải dữ liệu...</div>
-          ) : feedbacks.length ? (
+          ) : ratings.length ? (
             <div className="flex flex-col gap-4">
-              {feedbacks.map((feedback) => (
-                <div key={feedback.feedbackId} className="border border-black/5 rounded-2xl p-5">
+              {ratings.map((rating) => (
+                <div key={rating.driverRatingId} className="border border-black/5 rounded-2xl p-5">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="font-bold text-brand-text">{labelForCategory(feedback.category)}</div>
+                      <div className="font-bold text-brand-text">{rating.studentName || rating.studentCode}</div>
                       <div className="text-xs font-bold text-brand-text/40 mt-1">
-                        Chuyến #{feedback.tripId || 'N/A'} • {feedback.routeName || 'Tuyến chưa xác định'} • {formatDateTime(feedback.createdAt)}
+                        Chuyến #{rating.tripId || 'N/A'} • {formatDateTime(rating.createdAt)}
                       </div>
                     </div>
-                    <span className={`px-3 py-1 rounded-xl text-xs font-black ${feedback.status === 'RESOLVED' ? 'bg-brand-success/10 text-brand-success' : 'bg-brand-warning/10 text-brand-warning'}`}>
-                      {feedback.status === 'RESOLVED' ? 'Đã xử lý' : 'Chờ xử lý'}
+                    <span className="px-3 py-1 rounded-xl text-xs font-black bg-brand-warning/10 text-brand-warning">
+                      {rating.rating}/5 sao
                     </span>
                   </div>
-                  <p className="mt-3 text-sm font-medium text-brand-text/70">{feedback.content}</p>
-                  {feedback.response && (
-                    <div className="mt-3 rounded-2xl bg-brand-surface p-4 text-sm font-medium text-brand-text/70">
-                      <span className="font-bold text-brand-text">Phản hồi từ điều phối: </span>{feedback.response}
-                    </div>
+                  {rating.comment && (
+                    <p className="mt-3 text-sm font-medium text-brand-text/70">{rating.comment}</p>
                   )}
                 </div>
               ))}
             </div>
           ) : (
-            <div className="py-20 text-center text-brand-text/50 font-bold">Bạn chưa gửi phản hồi nào.</div>
+            <div className="py-20 text-center text-brand-text/50 font-bold">Chưa có đánh giá nào cho tài xế này.</div>
           )}
         </div>
       </div>
     </div>
   );
-}
-
-function labelForCategory(value) {
-  return categories.find((category) => category.value === value)?.label || 'Phản hồi';
 }
 
 function formatDate(value) {

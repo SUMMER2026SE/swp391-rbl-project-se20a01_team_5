@@ -141,7 +141,7 @@ class StudentIteration1ServiceTests {
    }
 
    private void createQueryTables() {
-      this.jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS trips (\n    trip_id INTEGER PRIMARY KEY,\n    route_id INTEGER NOT NULL,\n    bus_id INTEGER NOT NULL,\n    service_date DATE NOT NULL,\n    status VARCHAR(20) NOT NULL\n)\n");
+      this.jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS trips (\n    trip_id INTEGER PRIMARY KEY,\n    route_id INTEGER NOT NULL,\n    bus_id INTEGER NOT NULL,\n    driver_id INTEGER,\n    service_date DATE NOT NULL,\n    status VARCHAR(20) NOT NULL\n)\n");
       this.jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS travel_history (\n    travel_history_id INTEGER PRIMARY KEY,\n    student_code VARCHAR(20) NOT NULL,\n    trip_id INTEGER NOT NULL,\n    boarding_stop_id INTEGER,\n    alighting_stop_id INTEGER,\n    boarded_at TIMESTAMP WITH TIME ZONE,\n    alighted_at TIMESTAMP WITH TIME ZONE\n)\n");
    }
 }
