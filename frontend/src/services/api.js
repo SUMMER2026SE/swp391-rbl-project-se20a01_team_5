@@ -378,6 +378,20 @@ export const driverRatingApi = {
   },
 };
 
+export const lostItemApi = {
+  async listMine({ page = 0, size = 20 } = {}) {
+    const response = await apiClient.get('/students/me/lost-items', {
+      params: { page, size },
+    });
+    return unwrap(response);
+  },
+
+  async submit(payload) {
+    const response = await apiClient.post('/students/me/lost-items', payload);
+    return unwrap(response);
+  },
+};
+
 export const coordinatorScheduleApi = {
   async getDashboard(serviceDate) {
     const response = await apiClient.get('/operations/schedules', {
