@@ -66,7 +66,7 @@ public class TicketingService {
 
     private String method(PurchaseMonthlyPassRequest request) {
         return request == null || request.method() == null || request.method().isBlank()
-                ? "E_WALLET"
+                ? "BANK_TRANSFER"
                 : request.method();
     }
 }

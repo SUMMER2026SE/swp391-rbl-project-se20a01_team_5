@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { MessageSquare, Send, Star, RefreshCw } from 'lucide-react';
 import { feedbackApi, travelApi } from '@/services/api';
-import { recentTripMocks } from '@/services/mockTrips';
 
 const categories = [
   { value: 'SERVICE_QUALITY', label: 'Chất lượng dịch vụ' },
@@ -41,7 +40,7 @@ export default function StudentFeedbackPage() {
       feedbackApi.listMine({ page: 0, size: 20 }),
     ])
       .then(([tripItems, feedbackItems]) => {
-        const normalizedTrips = tripItems?.length ? tripItems : recentTripMocks;
+        const normalizedTrips = tripItems || [];
         setTrips(normalizedTrips);
         setFeedbacks(feedbackItems || []);
 

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Ticket, MapPin, Receipt, XCircle, RefreshCw, Calendar, AlertCircle, Navigation, CreditCard, Loader2 } from 'lucide-react';
+import { Ticket, MapPin, Receipt, XCircle, RefreshCw, Calendar, AlertCircle, Navigation, CreditCard, Loader2, QrCode } from 'lucide-react';
 import { registrationApi, ticketingApi } from '@/services/api';
 
 const money = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' });
@@ -11,7 +11,7 @@ export default function PassesPage() {
   const [registration, setRegistration] = useState(null);
   const [tickets, setTickets] = useState([]);
   const [payments, setPayments] = useState([]);
-  const [paymentMethod, setPaymentMethod] = useState('E_WALLET');
+  const [paymentMethod, setPaymentMethod] = useState('BANK_TRANSFER');
   const [isLoading, setIsLoading] = useState(true);
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
@@ -88,8 +88,8 @@ export default function PassesPage() {
   return (
     <div className="h-full flex flex-col gap-6 font-sans relative">
       <div>
-        <h1 className="text-3xl font-extrabold tracking-tight text-brand-text mb-2">Vé & đăng ký tuyến</h1>
-        <p className="text-brand-text/60 font-medium">Mua vé tháng, xem hóa đơn và quản lý tuyến đã đăng ký.</p>
+        <h1 className="text-3xl font-extrabold tracking-tight text-brand-text mb-2">Vé tháng & hóa đơn</h1>
+        <p className="text-brand-text/60 font-medium">Thanh toán vé tháng cho tuyến đã đăng ký và dùng mã QR để lên xe.</p>
       </div>
 
       {error && (
@@ -132,21 +132,29 @@ export default function PassesPage() {
                     <TicketInfo label="Hiệu lực" value={`${activeMonthlyTicket.effectiveMonth}/${activeMonthlyTicket.effectiveYear}`} />
                     <TicketInfo label="Lên xe" value={activeMonthlyTicket.boardingStopName} />
                     <TicketInfo label="Xuống xe" value={activeMonthlyTicket.alightingStopName} />
+                    <div className="md:col-span-2 rounded-2xl bg-white/10 border border-white/10 p-4">
+                      <div className="text-xs text-white/40 font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
+                        <QrCode className="w-4 h-4" /> Mã QR vé
+                      </div>
+                      <div className="rounded-xl bg-white text-brand-text p-4 font-mono text-xs font-black break-all">
+                        {activeMonthlyTicket.qrCode || 'Chưa có mã QR'}
+                      </div>
+                    </div>
                   </div>
                 ) : (
                   <div>
                     <div className="text-sm text-white/50 font-bold uppercase tracking-wider mb-1">Trạng thái</div>
-                    <div className="text-lg font-bold">Đăng ký tuyến được duyệt là điều kiện để mua vé tháng.</div>
+                    <div className="text-lg font-bold">Cần có tuyến đã đăng ký để thanh toán vé tháng.</div>
                     <div className="mt-5 flex flex-col md:flex-row gap-3">
                       <select
                         value={paymentMethod}
                         onChange={(event) => setPaymentMethod(event.target.value)}
                         className="flex-1 bg-white/10 border border-white/10 rounded-xl px-4 py-3 text-sm font-bold text-white focus:outline-none"
                       >
-                        <option value="E_WALLET">Ví điện tử</option>
                         <option value="BANK_TRANSFER">Chuyển khoản</option>
                         <option value="CARD">Thẻ</option>
                         <option value="CASH">Tiền mặt</option>
+                        <option value="E_WALLET">Ví điện tử đối tác</option>
                       </select>
                       <button
                         onClick={purchaseMonthlyPass}
@@ -154,9 +162,14 @@ export default function PassesPage() {
                         className="px-5 py-3 rounded-xl bg-brand-primary text-brand-text font-black hover:bg-white transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
                       >
                         {isPurchasing ? <Loader2 className="w-5 h-5 animate-spin" /> : <CreditCard className="w-5 h-5" />}
-                        Mua vé tháng
+                        Thanh toán vé tháng
                       </button>
                     </div>
+                    {registration?.status !== 'APPROVED' && (
+                      <div className="mt-4 text-sm font-bold text-white/60">
+                        Hãy đăng ký tuyến trước khi thanh toán vé tháng.
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

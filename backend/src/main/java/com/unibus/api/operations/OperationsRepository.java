@@ -4,17 +4,22 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Time;
 import java.sql.Timestamp;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import com.unibus.api.operations.OperationsDtos.BusOption;
 import com.unibus.api.operations.OperationsDtos.DriverTripView;
+import com.unibus.api.operations.OperationsDtos.ConductorTicketView;
+import com.unibus.api.operations.OperationsDtos.ConductorTripView;
+import com.unibus.api.operations.OperationsDtos.LiveFleetVehicle;
 import com.unibus.api.operations.OperationsDtos.RouteOption;
 import com.unibus.api.operations.OperationsDtos.ShiftAssignment;
 import com.unibus.api.operations.OperationsDtos.ShiftView;
@@ -178,6 +183,30 @@ public class OperationsRepository {
                 """, (rs, rowNum) -> mapDriverTrip(rs), serviceDate, serviceDate, driverId, serviceDate.getDayOfWeek().getValue());
     }
 
+    public List<ConductorTripView> findConductorTrips(Integer conductorId, LocalDate serviceDate) {
+        return jdbcTemplate.query("""
+                SELECT bs.schedule_id, t.trip_id, bs.route_id, r.route_name,
+                       bs.bus_id, b.license_plate, du.full_name AS driver_name, du.phone_number AS driver_phone,
+                       ?::date AS service_date, bs.departure_time, t.departed_at, t.ended_at,
+                       COALESCE(t.status, 'NOT_CREATED') AS status
+                FROM bus_schedules bs
+                JOIN routes r ON r.route_id = bs.route_id
+                LEFT JOIN buses b ON b.bus_id = bs.bus_id
+                LEFT JOIN drivers d ON d.driver_id = bs.driver_id
+                LEFT JOIN users du ON du.user_id = d.user_id
+                LEFT JOIN LATERAL (
+                    SELECT trip_id, departed_at, ended_at, status
+                    FROM trips
+                    WHERE schedule_id = bs.schedule_id AND service_date = ?
+                    ORDER BY trip_id DESC
+                    LIMIT 1
+                ) t ON TRUE
+                WHERE bs.conductor_id = ?
+                  AND bs.weekday_number = ?
+                ORDER BY bs.departure_time
+                """, (rs, rowNum) -> mapConductorTrip(rs), serviceDate, serviceDate, conductorId, serviceDate.getDayOfWeek().getValue());
+    }
+
     public DriverTripView findDriverTrip(Integer tripId, Integer driverId) {
         List<DriverTripView> rows = jdbcTemplate.query("""
                 SELECT bs.schedule_id, t.trip_id, t.route_id, r.route_name,
@@ -205,6 +234,195 @@ public class OperationsRepository {
                 )
                 """, Boolean.class, tripId, driverId);
         return Boolean.TRUE.equals(owns);
+    }
+
+    public boolean conductorOwnsTrip(Integer tripId, Integer conductorId) {
+        Boolean owns = jdbcTemplate.queryForObject("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM trips
+                    WHERE trip_id = ?
+                      AND conductor_id = ?
+                )
+                """, Boolean.class, tripId, conductorId);
+        return Boolean.TRUE.equals(owns);
+    }
+
+    public Optional<TripRouteInfo> tripRouteInfo(Integer tripId) {
+        List<TripRouteInfo> rows = jdbcTemplate.query("""
+                SELECT trip_id, route_id, service_date
+                FROM trips
+                WHERE trip_id = ?
+                """, (rs, rowNum) -> new TripRouteInfo(
+                        rs.getInt("trip_id"),
+                        rs.getInt("route_id"),
+                        rs.getObject("service_date", LocalDate.class)), tripId);
+        return rows.stream().findFirst();
+    }
+
+    public List<ConductorTicketView> findTicketsForTrip(Integer tripId) {
+        return jdbcTemplate.query("""
+                WITH trip_scope AS (
+                    SELECT route_id, service_date
+                    FROM trips
+                    WHERE trip_id = ?
+                )
+                SELECT 'MONTHLY' AS ticket_kind, mp.monthly_pass_id AS ticket_id, mp.qr_code,
+                       mp.student_code, u.full_name AS student_name, mp.route_id, r.route_name,
+                       bs.stop_name AS boarding_stop_name, als.stop_name AS alighting_stop_name,
+                       mp.status, mp.valid_from::timestamptz AS valid_from, mp.expires_on::timestamptz AS expires_at,
+                       mp.last_scanned_at
+                FROM monthly_passes mp
+                JOIN trip_scope ts ON ts.route_id = mp.route_id
+                JOIN students s ON s.student_code = mp.student_code
+                JOIN users u ON u.user_id = s.user_id
+                JOIN routes r ON r.route_id = mp.route_id
+                LEFT JOIN LATERAL (
+                    SELECT boarding_stop_id, alighting_stop_id
+                    FROM route_registrations rr
+                    WHERE rr.student_code = mp.student_code
+                      AND rr.route_id = mp.route_id
+                      AND rr.status = 'APPROVED'
+                    ORDER BY rr.approved_at DESC NULLS LAST, rr.registered_at DESC
+                    LIMIT 1
+                ) reg ON TRUE
+                LEFT JOIN stops bs ON bs.stop_id = reg.boarding_stop_id
+                LEFT JOIN stops als ON als.stop_id = reg.alighting_stop_id
+                WHERE mp.status = 'ACTIVE'
+                  AND ts.service_date >= mp.valid_from
+                  AND ts.service_date < mp.expires_on
+                UNION ALL
+                SELECT 'SINGLE' AS ticket_kind, st.single_trip_ticket_id AS ticket_id, st.qr_code,
+                       st.student_code, u.full_name AS student_name, st.route_id, r.route_name,
+                       bs.stop_name AS boarding_stop_name, als.stop_name AS alighting_stop_name,
+                       st.status, st.purchased_at AS valid_from, st.expires_at,
+                       st.last_scanned_at
+                FROM single_trip_tickets st
+                JOIN trip_scope ts ON ts.route_id = st.route_id
+                JOIN students s ON s.student_code = st.student_code
+                JOIN users u ON u.user_id = s.user_id
+                JOIN routes r ON r.route_id = st.route_id
+                LEFT JOIN stops bs ON bs.stop_id = st.boarding_stop_id
+                LEFT JOIN stops als ON als.stop_id = st.alighting_stop_id
+                WHERE st.status IN ('UNUSED', 'USED')
+                  AND st.expires_at >= CURRENT_TIMESTAMP
+                ORDER BY student_name, ticket_kind
+                """, (rs, rowNum) -> mapConductorTicket(rs), tripId);
+    }
+
+    public Optional<ConductorTicketView> findMonthlyTicketByQr(String qrCode) {
+        List<ConductorTicketView> rows = jdbcTemplate.query("""
+                SELECT 'MONTHLY' AS ticket_kind, mp.monthly_pass_id AS ticket_id, mp.qr_code,
+                       mp.student_code, u.full_name AS student_name, mp.route_id, r.route_name,
+                       bs.stop_name AS boarding_stop_name, als.stop_name AS alighting_stop_name,
+                       mp.status, mp.valid_from::timestamptz AS valid_from, mp.expires_on::timestamptz AS expires_at,
+                       mp.last_scanned_at
+                FROM monthly_passes mp
+                JOIN students s ON s.student_code = mp.student_code
+                JOIN users u ON u.user_id = s.user_id
+                JOIN routes r ON r.route_id = mp.route_id
+                LEFT JOIN LATERAL (
+                    SELECT boarding_stop_id, alighting_stop_id
+                    FROM route_registrations rr
+                    WHERE rr.student_code = mp.student_code
+                      AND rr.route_id = mp.route_id
+                      AND rr.status = 'APPROVED'
+                    ORDER BY rr.approved_at DESC NULLS LAST, rr.registered_at DESC
+                    LIMIT 1
+                ) reg ON TRUE
+                LEFT JOIN stops bs ON bs.stop_id = reg.boarding_stop_id
+                LEFT JOIN stops als ON als.stop_id = reg.alighting_stop_id
+                WHERE mp.qr_code = ?
+                """, (rs, rowNum) -> mapConductorTicket(rs), qrCode);
+        return rows.stream().findFirst();
+    }
+
+    public Optional<ConductorTicketView> findSingleTicketByQr(String qrCode) {
+        List<ConductorTicketView> rows = jdbcTemplate.query("""
+                SELECT 'SINGLE' AS ticket_kind, st.single_trip_ticket_id AS ticket_id, st.qr_code,
+                       st.student_code, u.full_name AS student_name, st.route_id, r.route_name,
+                       bs.stop_name AS boarding_stop_name, als.stop_name AS alighting_stop_name,
+                       st.status, st.purchased_at AS valid_from, st.expires_at,
+                       st.last_scanned_at
+                FROM single_trip_tickets st
+                JOIN students s ON s.student_code = st.student_code
+                JOIN users u ON u.user_id = s.user_id
+                JOIN routes r ON r.route_id = st.route_id
+                LEFT JOIN stops bs ON bs.stop_id = st.boarding_stop_id
+                LEFT JOIN stops als ON als.stop_id = st.alighting_stop_id
+                WHERE st.qr_code = ?
+                """, (rs, rowNum) -> mapConductorTicket(rs), qrCode);
+        return rows.stream().findFirst();
+    }
+
+    public void markMonthlyPassScanned(Integer monthlyPassId) {
+        jdbcTemplate.update("""
+                UPDATE monthly_passes
+                SET scans_today = CASE
+                        WHEN last_scanned_at IS NOT NULL AND last_scanned_at::date = CURRENT_DATE THEN scans_today + 1
+                        ELSE 1
+                    END,
+                    last_scanned_at = CURRENT_TIMESTAMP
+                WHERE monthly_pass_id = ?
+                """, monthlyPassId);
+    }
+
+    public void markSingleTicketUsed(Integer singleTicketId, Integer tripId, Integer conductorId) {
+        jdbcTemplate.update("""
+                UPDATE single_trip_tickets
+                SET status = 'USED',
+                    used_on_trip_id = ?,
+                    scanned_by_conductor_id = ?,
+                    last_scanned_at = CURRENT_TIMESTAMP
+                WHERE single_trip_ticket_id = ?
+                """, tripId, conductorId, singleTicketId);
+    }
+
+    public Integer ensureTravelHistoryForScan(String studentCode, Integer tripId, Integer conductorId, Integer routeId) {
+        List<Integer> existing = jdbcTemplate.queryForList("""
+                SELECT travel_history_id
+                FROM travel_history
+                WHERE student_code = ?
+                  AND trip_id = ?
+                ORDER BY travel_history_id DESC
+                LIMIT 1
+                """, Integer.class, studentCode, tripId);
+        if (!existing.isEmpty()) {
+            jdbcTemplate.update("""
+                    UPDATE travel_history
+                    SET confirmation_method = COALESCE(confirmation_method, 'QR_SCAN'),
+                        confirmed_by_conductor_id = COALESCE(confirmed_by_conductor_id, ?)
+                    WHERE travel_history_id = ?
+                    """, conductorId, existing.get(0));
+            return existing.get(0);
+        }
+
+        List<RouteStopsForStudent> stops = jdbcTemplate.query("""
+                SELECT boarding_stop_id, alighting_stop_id
+                FROM route_registrations
+                WHERE student_code = ?
+                  AND route_id = ?
+                  AND status = 'APPROVED'
+                ORDER BY approved_at DESC NULLS LAST, registered_at DESC
+                LIMIT 1
+                """, (rs, rowNum) -> new RouteStopsForStudent(
+                        (Integer) rs.getObject("boarding_stop_id"),
+                        (Integer) rs.getObject("alighting_stop_id")), studentCode, routeId);
+        RouteStopsForStudent selectedStops = stops.isEmpty() ? new RouteStopsForStudent(null, null) : stops.get(0);
+        Integer id = jdbcTemplate.queryForObject("""
+                INSERT INTO travel_history(
+                    student_code,
+                    trip_id,
+                    boarding_stop_id,
+                    alighting_stop_id,
+                    boarded_at,
+                    confirmation_method,
+                    confirmed_by_conductor_id
+                )
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, 'QR_SCAN', ?)
+                RETURNING travel_history_id
+                """, Integer.class, studentCode, tripId, selectedStops.boardingStopId(), selectedStops.alightingStopId(), conductorId);
+        return id == null ? 0 : id;
     }
 
     public void startTrip(Integer tripId) {
@@ -250,6 +468,36 @@ public class OperationsRepository {
                 INSERT INTO vehicle_locations(bus_id, trip_id, longitude, latitude, speed_kmh)
                 VALUES (?, ?, ?, ?, ?)
                 """, busId, tripId, longitude, latitude, speedKmh);
+    }
+
+    public List<LiveFleetVehicle> findLiveFleet(LocalDate serviceDate) {
+        return jdbcTemplate.query("""
+                SELECT t.trip_id, t.route_id, r.route_name, t.bus_id, b.license_plate,
+                       du.full_name AS driver_name, cu.full_name AS conductor_name,
+                       t.service_date, bs.departure_time, t.status,
+                       vl.longitude, vl.latitude, vl.speed_kmh, vl.updated_at AS location_updated_at
+                FROM trips t
+                JOIN routes r ON r.route_id = t.route_id
+                JOIN buses b ON b.bus_id = t.bus_id
+                LEFT JOIN bus_schedules bs ON bs.schedule_id = t.schedule_id
+                LEFT JOIN drivers d ON d.driver_id = t.driver_id
+                LEFT JOIN users du ON du.user_id = d.user_id
+                LEFT JOIN conductors c ON c.conductor_id = t.conductor_id
+                LEFT JOIN users cu ON cu.user_id = c.user_id
+                LEFT JOIN LATERAL (
+                    SELECT longitude, latitude, speed_kmh, updated_at
+                    FROM vehicle_locations
+                    WHERE trip_id = t.trip_id
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                ) vl ON TRUE
+                WHERE t.service_date = ?
+                  AND t.status IN ('NOT_STARTED', 'RUNNING', 'COMPLETED')
+                ORDER BY
+                    CASE t.status WHEN 'RUNNING' THEN 0 WHEN 'NOT_STARTED' THEN 1 ELSE 2 END,
+                    bs.departure_time NULLS LAST,
+                    r.route_name
+                """, (rs, rowNum) -> mapLiveFleetVehicle(rs), serviceDate);
     }
 
     private StaffOption mapStaff(ResultSet rs) throws SQLException {
@@ -299,11 +547,84 @@ public class OperationsRepository {
                 findTripStopsBySchedule(scheduleId));
     }
 
+    private ConductorTripView mapConductorTrip(ResultSet rs) throws SQLException {
+        Integer scheduleId = rs.getInt("schedule_id");
+        return new ConductorTripView(
+                scheduleId,
+                (Integer) rs.getObject("trip_id"),
+                rs.getInt("route_id"),
+                rs.getString("route_name"),
+                (Integer) rs.getObject("bus_id"),
+                rs.getString("license_plate"),
+                rs.getString("driver_name"),
+                rs.getString("driver_phone"),
+                rs.getObject("service_date", LocalDate.class),
+                toLocalTime(rs.getTime("departure_time")),
+                toOffsetDateTime(rs.getTimestamp("departed_at")),
+                toOffsetDateTime(rs.getTimestamp("ended_at")),
+                rs.getString("status"),
+                findTripStopsBySchedule(scheduleId));
+    }
+
+    private ConductorTicketView mapConductorTicket(ResultSet rs) throws SQLException {
+        return new ConductorTicketView(
+                rs.getString("ticket_kind"),
+                rs.getInt("ticket_id"),
+                rs.getString("qr_code"),
+                rs.getString("student_code"),
+                rs.getString("student_name"),
+                rs.getInt("route_id"),
+                rs.getString("route_name"),
+                rs.getString("boarding_stop_name"),
+                rs.getString("alighting_stop_name"),
+                rs.getString("status"),
+                toOffsetDateTime(rs.getTimestamp("valid_from")),
+                toOffsetDateTime(rs.getTimestamp("expires_at")),
+                toOffsetDateTime(rs.getTimestamp("last_scanned_at")));
+    }
+
+    private LiveFleetVehicle mapLiveFleetVehicle(ResultSet rs) throws SQLException {
+        return new LiveFleetVehicle(
+                rs.getInt("trip_id"),
+                rs.getInt("route_id"),
+                rs.getString("route_name"),
+                rs.getInt("bus_id"),
+                rs.getString("license_plate"),
+                rs.getString("driver_name"),
+                rs.getString("conductor_name"),
+                rs.getObject("service_date", LocalDate.class),
+                toLocalTime(rs.getTime("departure_time")),
+                rs.getString("status"),
+                toDouble(rs.getObject("longitude")),
+                toDouble(rs.getObject("latitude")),
+                toDouble(rs.getObject("speed_kmh")),
+                toOffsetDateTime(rs.getTimestamp("location_updated_at")));
+    }
+
     private LocalTime toLocalTime(Time time) {
         return time == null ? null : time.toLocalTime();
     }
 
     private OffsetDateTime toOffsetDateTime(Timestamp timestamp) {
         return timestamp == null ? null : timestamp.toInstant().atOffset(ZoneOffset.UTC);
+    }
+
+    private Double toDouble(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof BigDecimal decimal) {
+            return decimal.doubleValue();
+        }
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        return Double.valueOf(value.toString());
+    }
+
+    public record TripRouteInfo(Integer tripId, Integer routeId, LocalDate serviceDate) {
+    }
+
+    private record RouteStopsForStudent(Integer boardingStopId, Integer alightingStopId) {
     }
 }

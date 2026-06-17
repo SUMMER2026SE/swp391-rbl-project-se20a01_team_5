@@ -5,33 +5,9 @@ import Link from 'next/link';
 import { Search, Map, Clock, ArrowRight, BusFront, MapPin, Activity, CheckCircle2 } from 'lucide-react';
 import { registrationApi, transportApi } from '@/services/api';
 
-const mockPopularRoutes = [
-  {
-    routeId: 1,
-    routeName: 'Tuyến số 1',
-    stops: [{ stopName: 'Ký túc xá DMC' }, { stopName: 'Đại học FPT' }],
-    estimatedMinutes: 45,
-    distanceKm: 12.5,
-  },
-  {
-    routeId: 2,
-    routeName: 'Tuyến số 2',
-    stops: [{ stopName: 'Ngã Ba Huế' }, { stopName: 'Đại học Bách Khoa' }],
-    estimatedMinutes: 30,
-    distanceKm: 8.2,
-  },
-  {
-    routeId: 3,
-    routeName: 'Tuyến số 3',
-    stops: [{ stopName: 'Bến xe Nam' }, { stopName: 'Cầu Rồng' }],
-    estimatedMinutes: 50,
-    distanceKm: 15.0,
-  }
-];
-
 export default function StudentRoutesPage() {
   const [stops, setStops] = useState([]);
-  const [routes, setRoutes] = useState(mockPopularRoutes);
+  const [routes, setRoutes] = useState([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [currentRegistration, setCurrentRegistration] = useState(null);
   const [boardingStopId, setBoardingStopId] = useState('');
@@ -190,7 +166,7 @@ export default function StudentRoutesPage() {
       <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 pb-6">
         {!hasSearched && filteredRoutes.length > 0 && (
           <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-            <Activity className="w-5 h-5 text-brand-secondary" /> Các tuyến xe phổ biến
+            <Activity className="w-5 h-5 text-brand-secondary" /> Tuyến xe phù hợp
           </h2>
         )}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
@@ -252,6 +228,7 @@ export default function StudentRoutesPage() {
             <div className="col-span-full flex flex-col items-center justify-center py-20 text-brand-text/40 bg-white rounded-3xl border border-black/5">
               <Map className="w-16 h-16 mb-4 opacity-50" />
               <p className="font-bold text-lg">{hasSearched ? 'Không tìm thấy tuyến phù hợp.' : 'Chưa có dữ liệu tuyến.'}</p>
+              {!hasSearched && <p className="text-sm font-medium mt-2">Chọn điểm lên và điểm xuống để tìm tuyến thật từ hệ thống.</p>}
             </div>
           )}
         </div>

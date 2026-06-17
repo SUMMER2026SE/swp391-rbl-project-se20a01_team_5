@@ -5,6 +5,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -26,12 +27,30 @@ public class AdminUserRepository {
         String like = keyword == null || keyword.isBlank() ? null : "%" + keyword.trim().toLowerCase() + "%";
         String normalizedRole = role == null || role.equalsIgnoreCase("all") ? null : role.toUpperCase();
         String normalizedStatus = status == null || status.equalsIgnoreCase("all") ? null : status.toUpperCase();
-        return jdbcTemplate.query(userQuery("""
-                WHERE (? IS NULL OR LOWER(u.email) LIKE ? OR LOWER(u.full_name) LIKE ? OR LOWER(COALESCE(d.license_number, c.employee_code, dp.employee_code, s.student_code, '')) LIKE ?)
-                  AND (? IS NULL OR u.role = ?)
-                  AND (? IS NULL OR u.status = ?)
-                ORDER BY u.created_at DESC, u.user_id DESC
-                """), (rs, rowNum) -> mapUser(rs), like, like, like, like, normalizedRole, normalizedRole, normalizedStatus, normalizedStatus);
+        List<Object> params = new ArrayList<>();
+        StringBuilder where = new StringBuilder("WHERE 1 = 1\n");
+        if (like != null) {
+            where.append("""
+                    AND (
+                        LOWER(u.email) LIKE ?
+                        OR LOWER(u.full_name) LIKE ?
+                        OR LOWER(COALESCE(d.license_number, c.employee_code, dp.employee_code, s.student_code, '')) LIKE ?
+                    )
+                    """);
+            params.add(like);
+            params.add(like);
+            params.add(like);
+        }
+        if (normalizedRole != null) {
+            where.append("AND u.role = ?\n");
+            params.add(normalizedRole);
+        }
+        if (normalizedStatus != null) {
+            where.append("AND u.status = ?\n");
+            params.add(normalizedStatus);
+        }
+        where.append("ORDER BY u.created_at DESC, u.user_id DESC\n");
+        return jdbcTemplate.query(userQuery(where.toString()), (rs, rowNum) -> mapUser(rs), params.toArray());
     }
 
     public Optional<UserView> findUser(Integer userId) {

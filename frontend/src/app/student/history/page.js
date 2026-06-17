@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { History, MapPin, Clock, BusFront, RefreshCw, MessageSquare } from 'lucide-react';
 import { travelApi } from '@/services/api';
-import { recentTripMocks } from '@/services/mockTrips';
 
 export default function TripHistoryPage() {
   const [trips, setTrips] = useState([]);
@@ -16,7 +15,7 @@ export default function TripHistoryPage() {
     setError('');
 
     travelApi.getHistory({ page: 0, size: 20 })
-      .then((items) => setTrips(items?.length ? items : recentTripMocks))
+      .then((items) => setTrips(items || []))
       .catch((err) => setError(err.message))
       .finally(() => setIsLoading(false));
   };

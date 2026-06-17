@@ -3,12 +3,12 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { MapPin, Navigation, Clock, Ticket, QrCode, UserCircle, History } from 'lucide-react';
-import { registrationApi, studentApi, toApiAssetUrl, travelApi } from '@/services/api';
-import { recentTripMocks } from '@/services/mockTrips';
+import { registrationApi, studentApi, ticketingApi, toApiAssetUrl, travelApi } from '@/services/api';
 
 export default function StudentDashboard() {
   const [profile, setProfile] = useState(null);
   const [registration, setRegistration] = useState(null);
+  const [activeMonthlyTicket, setActiveMonthlyTicket] = useState(null);
   const [recentTrips, setRecentTrips] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -19,13 +19,15 @@ export default function StudentDashboard() {
     Promise.all([
       studentApi.getProfile(),
       registrationApi.getCurrent().catch(() => null),
-      travelApi.getHistory({ page: 0, size: 3 }).catch(() => recentTripMocks),
+      ticketingApi.dashboard().catch(() => null),
+      travelApi.getHistory({ page: 0, size: 3 }).catch(() => []),
     ])
-      .then(([profileData, currentRegistration, trips]) => {
+      .then(([profileData, currentRegistration, ticketDashboard, trips]) => {
         if (cancelled) return;
         setProfile(profileData);
         setRegistration(currentRegistration);
-        setRecentTrips(trips?.length ? trips : recentTripMocks);
+        setActiveMonthlyTicket((ticketDashboard?.tickets || []).find((ticket) => ticket.ticketType === 'MONTHLY' && ticket.status === 'ACTIVE') || null);
+        setRecentTrips(trips || []);
       })
       .catch((err) => {
         if (!cancelled) setError(err.message);
@@ -88,7 +90,9 @@ export default function StudentDashboard() {
               </div>
               <div>
                 <p className="text-sm font-bold text-brand-text">Vé tháng</p>
-                <p className="text-xs font-medium text-brand-text/50 mt-0.5">Chưa có API vé</p>
+                <p className="text-xs font-medium text-brand-text/50 mt-0.5">
+                  {activeMonthlyTicket ? `${activeMonthlyTicket.effectiveMonth}/${activeMonthlyTicket.effectiveYear} đang hoạt động` : 'Chưa có vé tháng active'}
+                </p>
               </div>
             </div>
             <Link href="/student/passes" className="text-xs font-bold text-brand-secondary hover:underline">Chi tiết</Link>

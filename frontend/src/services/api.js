@@ -395,13 +395,43 @@ export const driverTripApi = {
   },
 };
 
+export const conductorApi = {
+  async listTrips(serviceDate) {
+    const response = await apiClient.get('/conductor/trips', {
+      params: serviceDate ? { date: serviceDate } : undefined,
+    });
+    return unwrap(response);
+  },
+
+  async listTickets(tripId) {
+    const response = await apiClient.get('/conductor/tickets', {
+      params: { tripId },
+    });
+    return unwrap(response);
+  },
+
+  async scanTicket({ tripId, qrCode }) {
+    const response = await apiClient.post('/conductor/tickets/scan', { tripId, qrCode });
+    return unwrap(response);
+  },
+};
+
+export const fleetApi = {
+  async live(serviceDate) {
+    const response = await apiClient.get('/coordinator/fleet/live', {
+      params: serviceDate ? { date: serviceDate } : undefined,
+    });
+    return unwrap(response);
+  },
+};
+
 export const ticketingApi = {
   async dashboard() {
     const response = await apiClient.get('/students/me/tickets');
     return unwrap(response);
   },
 
-  async purchaseMonthlyPass(paymentMethod = 'E_WALLET') {
+  async purchaseMonthlyPass(paymentMethod = 'BANK_TRANSFER') {
     const response = await apiClient.post('/students/me/tickets/monthly-pass', { method: paymentMethod });
     return unwrap(response);
   },

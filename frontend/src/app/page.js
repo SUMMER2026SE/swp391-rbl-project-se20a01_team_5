@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, ShieldCheck, Map, Smartphone, Wallet, CheckCircle2, ChevronRight, Play } from 'lucide-react';
+import { ArrowRight, ShieldCheck, Map, Smartphone, Receipt, CheckCircle2, ChevronRight, Play } from 'lucide-react';
 import { getAuthSession, getDefaultRouteForRole } from '@/services/api';
 
 export default function Home() {
@@ -101,16 +101,16 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Feature 2: E-Wallet */}
+            {/* Feature 2: Monthly pass and invoices */}
             <div className="bg-brand-primary rounded-[2rem] p-8 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between group relative overflow-hidden">
               <div className="absolute top-0 right-0 w-40 h-40 bg-white/30 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2"></div>
               <div className="w-14 h-14 rounded-2xl bg-white/40 flex items-center justify-center mb-8 shadow-sm">
-                <Wallet className="w-7 h-7 text-brand-text" />
+                <Receipt className="w-7 h-7 text-brand-text" />
               </div>
               <div>
-                <h3 className="text-2xl font-bold mb-3">Ví điện tử</h3>
+                <h3 className="text-2xl font-bold mb-3">Vé tháng & hóa đơn</h3>
                 <p className="text-brand-text/80 leading-relaxed">
-                  Nạp tiền, mua vé tháng dễ dàng. Quản lý số dư và lịch sử giao dịch rõ ràng ngay trên ứng dụng.
+                  Thanh toán vé tháng cho tuyến đã đăng ký, nhận hóa đơn rõ ràng và dùng mã QR để lên xe.
                 </p>
               </div>
             </div>
