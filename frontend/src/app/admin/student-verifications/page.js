@@ -1,3 +1,4 @@
+﻿/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -370,3 +371,4 @@ function formatDateTime(value) {
     timeStyle: 'short',
   }).format(new Date(value));
 }
+
