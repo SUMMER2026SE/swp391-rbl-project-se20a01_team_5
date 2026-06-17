@@ -24,3 +24,4 @@ frontend/frontend-run*.log
 .idea/
 .vs/
 *.iml
+.vscode/

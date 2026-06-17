@@ -17,6 +17,21 @@ export const mockGetRoutes = () => {
   });
 };
 
+export const mockAddRoute = (routeData) => {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      const newRoute = { 
+        ...routeData, 
+        id: `T${MOCK_ROUTES.length + 1}`, 
+        stopsCount: 0, 
+        active: true 
+      };
+      MOCK_ROUTES.push(newRoute);
+      resolve({ success: true, data: newRoute });
+    }, 600);
+  });
+};
+
 export const mockGetRouteStops = (routeId) => {
   return new Promise((resolve) => {
     setTimeout(() => resolve([...INITIAL_STOPS]), 600); // In mock, return same stops for all
