@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Phone, MessageSquare, PhoneCall, AlertCircle, RefreshCw } from 'lucide-react';
 import { conductorApi } from '@/services/api';
 
@@ -9,7 +9,7 @@ export default function AssistantContactPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const loadContactInfo = async () => {
+  const loadContactInfo = useCallback(async () => {
     setIsLoading(true);
     setError('');
     try {
@@ -21,11 +21,12 @@ export default function AssistantContactPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    loadContactInfo();
-  }, []);
+    const handle = window.setTimeout(loadContactInfo, 0);
+    return () => window.clearTimeout(handle);
+  }, [loadContactInfo]);
 
   const handleSendMessage = async (recipientType, tripId) => {
     const content = window.prompt(`Nhập tin nhắn gửi đến ${recipientType}:`);

@@ -35,7 +35,8 @@ export default function PassengerSupportPage() {
   }, [serviceDate]);
 
   useEffect(() => {
-    loadTrips();
+    const handle = window.setTimeout(loadTrips, 0);
+    return () => window.clearTimeout(handle);
   }, [loadTrips]);
 
   const handleSubmit = async (e) => {
