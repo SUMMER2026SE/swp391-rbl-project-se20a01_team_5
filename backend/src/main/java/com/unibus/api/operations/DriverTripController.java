@@ -38,6 +38,20 @@ public class DriverTripController {
         return ApiResponse.ok("Driver trips retrieved", operationsService.getDriverTrips(currentUser, date));
     }
 
+    @PostMapping("/{tripId}/start")
+    ApiResponse<DriverTripView> start(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @PathVariable Integer tripId) {
+        return ApiResponse.ok("Trip started", operationsService.startTrip(currentUser, tripId));
+    }
+
+    @PostMapping("/{tripId}/end")
+    ApiResponse<DriverTripView> end(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @PathVariable Integer tripId) {
+        return ApiResponse.ok("Trip ended", operationsService.endTrip(currentUser, tripId));
+    }
+
     @PostMapping("/{tripId}/location")
     ApiResponse<Void> updateLocation(
             @AuthenticationPrincipal CurrentUser currentUser,

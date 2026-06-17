@@ -1,7 +1,7 @@
 "use client";
 
 import BentoDashboardLayout from '@/components/layout/BentoDashboardLayout';
-import { AlertTriangle, Clock, Navigation } from 'lucide-react';
+import { Clock, Navigation, AlertTriangle } from 'lucide-react';
 
 export default function DriverLayout({ children }) {
   const menus = [

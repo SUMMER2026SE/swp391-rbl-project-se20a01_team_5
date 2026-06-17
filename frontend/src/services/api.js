@@ -438,48 +438,6 @@ export const adminUsersApi = {
   },
 };
 
-export const driverApi = {
-  async getDashboard() {
-    const response = await apiClient.get('/driver/dashboard');
-    return unwrap(response);
-  },
-
-  async getCurrentTrip() {
-    const response = await apiClient.get('/driver/trips/current');
-    return unwrap(response);
-  },
-
-  async startTrip(tripId) {
-    const response = await apiClient.post(`/driver/trips/${tripId}/start`);
-    return unwrap(response);
-  },
-
-  async endTrip(tripId) {
-    const response = await apiClient.post(`/driver/trips/${tripId}/end`);
-    return unwrap(response);
-  },
-
-  async getContact() {
-    const response = await apiClient.get('/driver/contact');
-    return unwrap(response);
-  },
-
-  async sendMessage(message) {
-    const response = await apiClient.post('/driver/contact/messages', { message });
-    return unwrap(response);
-  },
-
-  async reportIncident(incidentType, note = '') {
-    const response = await apiClient.post('/driver/incidents', { incidentType, note });
-    return unwrap(response);
-  },
-
-  async getProfile() {
-    const response = await apiClient.get('/driver/profile');
-    return unwrap(response);
-  },
-};
-
 export const studentApi = {
   async getProfile() {
     const response = await apiClient.get('/students/me/profile');
