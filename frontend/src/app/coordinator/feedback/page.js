@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MessageSquare, BellRing, Send, AlertCircle, ShieldAlert, CheckCircle2, User, Search, Filter, RefreshCw } from 'lucide-react';
-import { dispatcherInboxApi, feedbackApi, notificationApi } from '@/services/api';
+import { feedbackApi, notificationApi } from '@/services/api';
 
 export default function CoordinatorFeedbackPage() {
   const [feedbacks, setFeedbacks] = useState([]);
@@ -11,7 +11,6 @@ export default function CoordinatorFeedbackPage() {
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
-  const [driverInbox, setDriverInbox] = useState({ incidents: [], messages: [] });
 
   const [notifyTarget, setNotifyTarget] = useState('all_students');
   const [notifyTitle, setNotifyTitle] = useState('');
@@ -21,14 +20,8 @@ export default function CoordinatorFeedbackPage() {
   const loadFeedbacks = useCallback(() => {
     setIsLoading(true);
     setError('');
-    Promise.all([
-      feedbackApi.listAll({ status: statusFilter, page: 0, size: 50 }),
-      dispatcherInboxApi.inbox(),
-    ])
-      .then(([items, inbox]) => {
-        setFeedbacks(items || []);
-        setDriverInbox(inbox || { incidents: [], messages: [] });
-      })
+    feedbackApi.listAll({ status: statusFilter, page: 0, size: 50 })
+      .then((items) => setFeedbacks(items || []))
       .catch((err) => setError(err.message))
       .finally(() => setIsLoading(false));
   }, [statusFilter]);
@@ -200,97 +193,58 @@ export default function CoordinatorFeedbackPage() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-6 overflow-hidden">
-          <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-black/5 flex flex-col min-h-[260px]">
-            <h2 className="text-xl font-bold mb-4 flex items-center gap-2 shrink-0">
-              <ShieldAlert className="w-6 h-6 text-brand-danger" /> Tin từ tài xế
-            </h2>
+        <div className="bg-brand-primary/10 rounded-3xl p-6 md:p-8 shadow-sm border border-brand-primary/20 flex flex-col">
+          <h2 className="text-xl font-bold mb-6 flex items-center gap-2 shrink-0">
+            <BellRing className="w-6 h-6 text-brand-primary" /> Phát thông báo mới
+          </h2>
 
-            <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4 pr-1">
-              {driverInbox.incidents?.length > 0 && driverInbox.incidents.slice(0, 4).map((incident) => (
-                <div key={`incident-${incident.incidentId}`} className="rounded-2xl border border-brand-danger/20 bg-brand-danger/5 p-4">
-                  <div className="flex items-start justify-between gap-3 mb-2">
-                    <div className="font-black text-sm text-brand-danger">SOS #{incident.incidentId}</div>
-                    <span className="rounded-lg bg-white px-2 py-1 text-[10px] font-black text-brand-text/60">{incident.status}</span>
-                  </div>
-                  <div className="text-sm font-bold text-brand-text">{incident.driverName || 'Tài xế'} • {incident.routeName || 'Tuyến chưa xác định'}</div>
-                  <p className="mt-2 text-sm font-medium text-brand-text/70">{incident.description}</p>
-                  <div className="mt-2 text-[11px] font-bold text-brand-text/40">{formatDateTime(incident.reportedAt)}</div>
-                </div>
-              ))}
-
-              {driverInbox.messages?.length > 0 && driverInbox.messages.slice(0, 6).map((message) => (
-                <div key={`message-${message.messageId}`} className="rounded-2xl border border-black/5 bg-brand-surface/40 p-4">
-                  <div className="flex items-start justify-between gap-3 mb-2">
-                    <div className="font-bold text-sm text-brand-text">{message.senderName || 'Tài xế'}</div>
-                    <span className="text-[11px] font-bold text-brand-text/40">{formatDateTime(message.sentAt)}</span>
-                  </div>
-                  <p className="text-sm font-medium text-brand-text/70">{message.content}</p>
-                  {message.tripId && <div className="mt-2 text-[11px] font-black text-brand-secondary">Chuyến #{message.tripId}</div>}
-                </div>
-              ))}
-
-              {!isLoading && !driverInbox.incidents?.length && !driverInbox.messages?.length && (
-                <div className="rounded-2xl border border-dashed border-black/10 bg-brand-surface/40 p-8 text-center text-sm font-bold text-brand-text/50">
-                  Chưa có SOS hoặc chat từ tài xế.
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="bg-brand-primary/10 rounded-3xl p-6 md:p-8 shadow-sm border border-brand-primary/20 flex flex-col">
-            <h2 className="text-xl font-bold mb-6 flex items-center gap-2 shrink-0">
-              <BellRing className="w-6 h-6 text-brand-primary" /> Phát thông báo mới
-            </h2>
-
-            <form onSubmit={handleSendNotification} className="flex flex-col gap-6 flex-1">
-              <div>
-                <label className="block text-sm font-bold text-brand-text/70 mb-2">Gửi đến</label>
-                <select
-                  value={notifyTarget}
-                  onChange={(event) => setNotifyTarget(event.target.value)}
-                  className="w-full bg-white border border-transparent rounded-2xl p-4 text-sm font-bold focus:outline-none focus:border-brand-primary transition-all"
-                >
-                  <option value="all_students">Tất cả sinh viên</option>
-                  <option value="all_drivers">Tất cả tài xế</option>
-                  <option value="all_conductors">Tất cả phụ xe</option>
-                  <option value="route_1">Sinh viên đăng ký tuyến 1</option>
-                  <option value="route_2">Sinh viên đăng ký tuyến 2</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-bold text-brand-text/70 mb-2">Tiêu đề thông báo</label>
-                <input
-                  type="text"
-                  required
-                  value={notifyTitle}
-                  onChange={(event) => setNotifyTitle(event.target.value)}
-                  placeholder="VD: Thay đổi lộ trình tuyến 1..."
-                  className="w-full bg-white border border-transparent rounded-2xl p-4 text-sm font-bold focus:outline-none focus:border-brand-primary transition-all"
-                />
-              </div>
-
-              <div className="flex-1 flex flex-col">
-                <label className="block text-sm font-bold text-brand-text/70 mb-2">Nội dung chi tiết</label>
-                <textarea
-                  required
-                  value={notifyContent}
-                  onChange={(event) => setNotifyContent(event.target.value)}
-                  placeholder="Nhập nội dung chi tiết thông báo..."
-                  className="w-full flex-1 min-h-[150px] bg-white border border-transparent rounded-2xl p-4 text-sm font-medium focus:outline-none focus:border-brand-primary transition-all resize-none"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={isSending}
-                className="w-full py-4 mt-auto bg-brand-text text-white font-bold rounded-2xl hover:bg-black transition-colors flex justify-center items-center gap-2 shadow-xl disabled:opacity-70 disabled:cursor-not-allowed"
+          <form onSubmit={handleSendNotification} className="flex flex-col gap-6 flex-1">
+            <div>
+              <label className="block text-sm font-bold text-brand-text/70 mb-2">Gửi đến</label>
+              <select
+                value={notifyTarget}
+                onChange={(event) => setNotifyTarget(event.target.value)}
+                className="w-full bg-white border border-transparent rounded-2xl p-4 text-sm font-bold focus:outline-none focus:border-brand-primary transition-all"
               >
-                <Send className="w-5 h-5" /> {isSending ? 'Đang gửi...' : 'Phát thông báo'}
-              </button>
-            </form>
-          </div>
+                <option value="all_students">Tất cả sinh viên</option>
+                <option value="all_drivers">Tất cả tài xế</option>
+                <option value="all_conductors">Tất cả phụ xe</option>
+                <option value="route_1">Sinh viên đăng ký tuyến 1</option>
+                <option value="route_2">Sinh viên đăng ký tuyến 2</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-brand-text/70 mb-2">Tiêu đề thông báo</label>
+              <input
+                type="text"
+                required
+                value={notifyTitle}
+                onChange={(event) => setNotifyTitle(event.target.value)}
+                placeholder="VD: Thay đổi lộ trình tuyến 1..."
+                className="w-full bg-white border border-transparent rounded-2xl p-4 text-sm font-bold focus:outline-none focus:border-brand-primary transition-all"
+              />
+            </div>
+
+            <div className="flex-1 flex flex-col">
+              <label className="block text-sm font-bold text-brand-text/70 mb-2">Nội dung chi tiết</label>
+              <textarea
+                required
+                value={notifyContent}
+                onChange={(event) => setNotifyContent(event.target.value)}
+                placeholder="Nhập nội dung chi tiết thông báo..."
+                className="w-full flex-1 min-h-[150px] bg-white border border-transparent rounded-2xl p-4 text-sm font-medium focus:outline-none focus:border-brand-primary transition-all resize-none"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={isSending}
+              className="w-full py-4 mt-auto bg-brand-text text-white font-bold rounded-2xl hover:bg-black transition-colors flex justify-center items-center gap-2 shadow-xl disabled:opacity-70 disabled:cursor-not-allowed"
+            >
+              <Send className="w-5 h-5" /> {isSending ? 'Đang gửi...' : 'Phát thông báo'}
+            </button>
+          </form>
         </div>
       </div>
     </div>

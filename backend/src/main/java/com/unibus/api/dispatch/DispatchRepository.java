@@ -11,7 +11,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import com.unibus.api.dispatch.DispatchDtos.DispatchMessageView;
-import com.unibus.api.dispatch.DispatchDtos.DriverIncidentView;
 import com.unibus.api.dispatch.DispatchDtos.DispatcherContact;
 
 @Repository
@@ -180,35 +179,6 @@ public class DispatchRepository {
                 """, (rs, rowNum) -> mapMessage(rs), userA, userB, userB, userA, limit);
     }
 
-    public List<DispatchMessageView> findMessagesForDispatcher(Integer dispatcherUserId, int limit) {
-        return jdbcTemplate.query("""
-                SELECT m.message_id, m.sender_user_id, sender.full_name AS sender_name,
-                       m.recipient_user_id, recipient.full_name AS recipient_name,
-                       m.trip_id, m.content, m.is_read, m.sent_at
-                FROM internal_messages m
-                JOIN users sender ON sender.user_id = m.sender_user_id
-                JOIN users recipient ON recipient.user_id = m.recipient_user_id
-                WHERE m.recipient_user_id = ?
-                   OR m.sender_user_id = ?
-                ORDER BY m.sent_at DESC, m.message_id DESC
-                LIMIT ?
-                """, (rs, rowNum) -> mapMessage(rs), dispatcherUserId, dispatcherUserId, limit);
-    }
-
-    public List<DriverIncidentView> findIncidentsForDispatcher(int limit) {
-        return jdbcTemplate.query("""
-                SELECT i.incident_id, i.trip_id, i.incident_type, i.description, i.status,
-                       r.route_name, du.full_name AS driver_name, i.reported_at
-                FROM incidents i
-                JOIN trips t ON t.trip_id = i.trip_id
-                JOIN routes r ON r.route_id = t.route_id
-                JOIN drivers d ON d.driver_id = t.driver_id
-                JOIN users du ON du.user_id = d.user_id
-                ORDER BY i.reported_at DESC, i.incident_id DESC
-                LIMIT ?
-                """, (rs, rowNum) -> mapIncident(rs), limit);
-    }
-
     private DispatchMessageView mapMessage(ResultSet rs) throws SQLException {
         return new DispatchMessageView(
                 rs.getLong("message_id"),
@@ -220,18 +190,6 @@ public class DispatchRepository {
                 rs.getString("content"),
                 rs.getBoolean("is_read"),
                 toOffsetDateTime(rs.getTimestamp("sent_at")));
-    }
-
-    private DriverIncidentView mapIncident(ResultSet rs) throws SQLException {
-        return new DriverIncidentView(
-                rs.getLong("incident_id"),
-                rs.getInt("trip_id"),
-                rs.getString("incident_type"),
-                rs.getString("description"),
-                rs.getString("status"),
-                rs.getString("route_name"),
-                rs.getString("driver_name"),
-                toOffsetDateTime(rs.getTimestamp("reported_at")));
     }
 
     private OffsetDateTime toOffsetDateTime(Timestamp timestamp) {

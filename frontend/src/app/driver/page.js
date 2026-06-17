@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { MapPin, Navigation, Phone, Clock, Play, Square, AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
+import { AlertTriangle, Clock, Loader2, MapPin, Navigation, Phone, Play, RefreshCw, Square } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { driverTripApi } from '@/services/api';
 
@@ -117,7 +117,7 @@ export default function DriverDashboard() {
                 <MapPin className="w-10 h-10 text-brand-primary mx-auto mb-3 group-hover:scale-110 transition-all" />
                 <h3 className="text-2xl font-black text-brand-text mb-2">{currentTrip.routeName}</h3>
                 <p className="font-bold text-brand-text/70">
-                  {currentTrip.departureTime?.slice(0, 5) || '--:--'} • {currentTrip.licensePlate || 'Chưa gán xe'}
+                  {currentTrip.departureTime?.slice(0, 5) || '--:--'} - {currentTrip.licensePlate || 'Chưa gán xe'}
                 </p>
                 <p className="text-xs text-brand-text/40 mt-2">Nhấn vào để xem lộ trình chi tiết</p>
               </div>
@@ -200,10 +200,16 @@ export default function DriverDashboard() {
             </p>
 
             <div className="space-y-3">
-              <button className="w-full py-3 rounded-xl bg-brand-surface text-brand-text font-bold hover:bg-brand-text hover:text-white transition-all text-sm flex justify-center items-center gap-2 border border-black/5 hover:border-brand-text">
+              <button
+                onClick={() => router.push('/driver/contact')}
+                className="w-full py-3 rounded-xl bg-brand-surface text-brand-text font-bold hover:bg-brand-text hover:text-white transition-all text-sm flex justify-center items-center gap-2 border border-black/5 hover:border-brand-text"
+              >
                 <Phone className="w-4 h-4" /> Gọi điều phối viên
               </button>
-              <button className="w-full py-3 rounded-xl bg-brand-danger/10 text-brand-danger font-bold hover:bg-brand-danger hover:text-white transition-all text-sm flex justify-center items-center gap-2 border border-brand-danger/20">
+              <button
+                onClick={() => router.push('/driver/contact')}
+                className="w-full py-3 rounded-xl bg-brand-danger/10 text-brand-danger font-bold hover:bg-brand-danger hover:text-white transition-all text-sm flex justify-center items-center gap-2 border border-brand-danger/20"
+              >
                 <AlertTriangle className="w-4 h-4" /> Báo cáo sự cố
               </button>
             </div>

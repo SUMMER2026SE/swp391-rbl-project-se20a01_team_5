@@ -63,6 +63,8 @@ function toApiError(error) {
       'Email or password is incorrect': 'Email hoặc mật khẩu không chính xác',
       'Account is locked': 'Tài khoản đã bị khóa',
       'Session is no longer active': 'Phiên đăng nhập đã hết hạn',
+      'Active monthly pass locks the current route until the pass expires': 'Bạn đang có vé tháng đang hoạt động. Có thể đổi tuyến sau khi hết kỳ vé hiện tại.',
+      'Active monthly pass locks the current route registration until the pass expires': 'Bạn không thể hủy tuyến mặc định khi vé tháng còn hiệu lực.',
     };
     if (msgMap[message]) message = msgMap[message];
   }
@@ -412,9 +414,32 @@ export const driverDispatchApi = {
   },
 };
 
-export const dispatcherInboxApi = {
-  async inbox() {
-    const response = await apiClient.get('/dispatch/inbox');
+export const conductorApi = {
+  async listTrips(serviceDate) {
+    const response = await apiClient.get('/conductor/trips', {
+      params: serviceDate ? { date: serviceDate } : undefined,
+    });
+    return unwrap(response);
+  },
+
+  async listTickets(tripId) {
+    const response = await apiClient.get('/conductor/tickets', {
+      params: { tripId },
+    });
+    return unwrap(response);
+  },
+
+  async scanTicket({ tripId, qrCode }) {
+    const response = await apiClient.post('/conductor/tickets/scan', { tripId, qrCode });
+    return unwrap(response);
+  },
+};
+
+export const fleetApi = {
+  async live(serviceDate) {
+    const response = await apiClient.get('/coordinator/fleet/live', {
+      params: serviceDate ? { date: serviceDate } : undefined,
+    });
     return unwrap(response);
   },
 };
@@ -425,7 +450,7 @@ export const ticketingApi = {
     return unwrap(response);
   },
 
-  async purchaseMonthlyPass(paymentMethod = 'E_WALLET') {
+  async purchaseMonthlyPass(paymentMethod = 'BANK_TRANSFER') {
     const response = await apiClient.post('/students/me/tickets/monthly-pass', { method: paymentMethod });
     return unwrap(response);
   },

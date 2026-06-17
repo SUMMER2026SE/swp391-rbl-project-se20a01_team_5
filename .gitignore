@@ -1,8 +1,5 @@
 # Local secrets
 dbauth.txt
-.env*.local
-*.env.local
-run-local.env
 frontend/.env*.local
 backend/.env*.local
 unibus-vision-ocr.json
@@ -12,7 +9,6 @@ unibus-vision-ocr.json
 # Build output and scratch data
 target/
 backend/backend-run*.log
-backend/*-run*.log
 backend/uploads/
 frontend/frontend-run*.log
 .codex-tmp/
@@ -22,6 +18,5 @@ frontend/frontend-run*.log
 
 # IDE settings
 .idea/
-.vs/
 *.iml
 .vscode/

@@ -43,19 +43,4 @@ public final class DispatchDtos {
             OffsetDateTime sentAt) {
     }
 
-    public record DriverIncidentView(
-            Long incidentId,
-            Integer tripId,
-            String incidentType,
-            String description,
-            String status,
-            String routeName,
-            String driverName,
-            OffsetDateTime reportedAt) {
-    }
-
-    public record DispatcherInbox(
-            List<DriverIncidentView> incidents,
-            List<DispatchMessageView> messages) {
-    }
 }

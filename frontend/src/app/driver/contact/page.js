@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Phone, AlertTriangle, MessageSquare, Send, Wrench, ShieldAlert, AlertCircle, PhoneCall, Loader2, RefreshCw } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Loader2, MessageSquare, PhoneCall, RefreshCw, Send, ShieldAlert, Wrench } from 'lucide-react';
 import { driverDispatchApi } from '@/services/api';
 
 const SOS_OPTIONS = [
@@ -49,7 +49,7 @@ function formatTime(value) {
   }).format(new Date(value));
 }
 
-export default function CoordinatorContactPage() {
+export default function DriverContactPage() {
   const [contact, setContact] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
@@ -257,8 +257,8 @@ export default function CoordinatorContactPage() {
               type="text"
               placeholder="Nhập tin nhắn..."
               value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              className="flex-1 bg-brand-surface border border-black/5 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:border-brand-primary transition-colors"
+              onChange={(event) => setNewMessage(event.target.value)}
+              className="flex-1 bg-brand-surface border border-black/5 rounded-2xl px-4 focus:outline-none focus:border-brand-primary text-sm"
             />
             <button
               type="submit"

@@ -11,7 +11,6 @@ import com.unibus.api.common.ApiException;
 import com.unibus.api.dispatch.DispatchDtos.DispatchMessageRequest;
 import com.unibus.api.dispatch.DispatchDtos.DispatchMessageView;
 import com.unibus.api.dispatch.DispatchDtos.DispatcherContact;
-import com.unibus.api.dispatch.DispatchDtos.DispatcherInbox;
 import com.unibus.api.dispatch.DispatchDtos.IncidentReportRequest;
 import com.unibus.api.security.CurrentUser;
 
@@ -62,8 +61,7 @@ public class DispatchService {
         }
         dispatchRepository.createDriverSosFeedback(currentUser.userId(), tripId, incidentType, description);
 
-        String message = "[SOS] " + incidentType + " - " + description
-                + incidentContext(tripId, incidentId);
+        String message = "[SOS] " + incidentType + " - " + description + incidentContext(tripId, incidentId);
         DispatchMessageView first = null;
         for (Integer dispatcherUserId : requireDispatchers()) {
             DispatchMessageView created = dispatchRepository.createMessage(currentUser.userId(), dispatcherUserId, tripId, message);
@@ -73,13 +71,6 @@ public class DispatchService {
             }
         }
         return first;
-    }
-
-    @Transactional(readOnly = true)
-    public DispatcherInbox getDispatcherInbox(CurrentUser currentUser) {
-        return new DispatcherInbox(
-                dispatchRepository.findIncidentsForDispatcher(50),
-                dispatchRepository.findMessagesForDispatcher(currentUser.userId(), 50));
     }
 
     private Integer requireDriverId(CurrentUser currentUser) {

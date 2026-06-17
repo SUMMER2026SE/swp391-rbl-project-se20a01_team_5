@@ -62,7 +62,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     ResponseEntity<ApiResponse<Void>> handleUnexpected(Exception exception) {
-        log.error("Unexpected API error", exception);
+        log.error("Unhandled API exception", exception);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(new ApiResponse<>(false, "An unexpected error occurred", null));
     }
