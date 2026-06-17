@@ -14,7 +14,12 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.unibus.api.common.ApiResponse;
 import com.unibus.api.operations.OperationsDtos.ConductorTicketView;
+import com.unibus.api.operations.OperationsDtos.ConductorContactView;
+import com.unibus.api.operations.OperationsDtos.ConductorMessageRequest;
+import com.unibus.api.operations.OperationsDtos.ConductorSupportRequest;
+import com.unibus.api.operations.OperationsDtos.ConductorSupportResult;
 import com.unibus.api.operations.OperationsDtos.ConductorTripView;
+import com.unibus.api.operations.OperationsDtos.InternalMessageView;
 import com.unibus.api.operations.OperationsDtos.TicketScanRequest;
 import com.unibus.api.operations.OperationsDtos.TicketScanResult;
 import com.unibus.api.security.CurrentUser;
@@ -51,5 +56,24 @@ public class ConductorTripController {
             @AuthenticationPrincipal CurrentUser currentUser,
             @Valid @RequestBody TicketScanRequest request) {
         return ApiResponse.ok("Ticket scan completed", operationsService.scanTicket(currentUser, request));
+    }
+
+    @GetMapping("/contact")
+    ApiResponse<ConductorContactView> contact(@AuthenticationPrincipal CurrentUser currentUser) {
+        return ApiResponse.ok("Conductor contacts retrieved", operationsService.getConductorContact(currentUser));
+    }
+
+    @PostMapping("/messages")
+    ApiResponse<InternalMessageView> sendMessage(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @Valid @RequestBody ConductorMessageRequest request) {
+        return ApiResponse.ok("Message sent", operationsService.sendConductorMessage(currentUser, request));
+    }
+
+    @PostMapping("/support")
+    ApiResponse<ConductorSupportResult> support(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @Valid @RequestBody ConductorSupportRequest request) {
+        return ApiResponse.ok("Support report submitted", operationsService.submitConductorSupport(currentUser, request));
     }
 }

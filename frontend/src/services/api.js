@@ -433,6 +433,21 @@ export const conductorApi = {
     const response = await apiClient.post('/conductor/tickets/scan', { tripId, qrCode });
     return unwrap(response);
   },
+
+  async contact() {
+    const response = await apiClient.get('/conductor/contact');
+    return unwrap(response);
+  },
+
+  async sendMessage(payload) {
+    const response = await apiClient.post('/conductor/messages', payload);
+    return unwrap(response);
+  },
+
+  async submitSupport(payload) {
+    const response = await apiClient.post('/conductor/support', payload);
+    return unwrap(response);
+  },
 };
 
 export const fleetApi = {

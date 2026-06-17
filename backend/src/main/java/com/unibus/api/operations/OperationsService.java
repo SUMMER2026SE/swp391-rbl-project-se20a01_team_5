@@ -9,9 +9,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.unibus.api.common.ApiException;
+import com.unibus.api.operations.OperationsDtos.ConductorContactView;
+import com.unibus.api.operations.OperationsDtos.ConductorMessageRequest;
+import com.unibus.api.operations.OperationsDtos.ConductorSupportRequest;
+import com.unibus.api.operations.OperationsDtos.ConductorSupportResult;
 import com.unibus.api.operations.OperationsDtos.ConductorTicketView;
 import com.unibus.api.operations.OperationsDtos.ConductorTripView;
 import com.unibus.api.operations.OperationsDtos.DriverTripView;
+import com.unibus.api.operations.OperationsDtos.InternalMessageView;
 import com.unibus.api.operations.OperationsDtos.LiveFleetVehicle;
 import com.unibus.api.operations.OperationsDtos.SaveSchedulesRequest;
 import com.unibus.api.operations.OperationsDtos.ScheduleDashboard;
@@ -95,6 +100,60 @@ public class OperationsService {
         }
 
         return new TicketScanResult(false, "Không tìm thấy vé với mã QR này.", null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public ConductorContactView getConductorContact(CurrentUser currentUser) {
+        Integer conductorStaffId = requireConductorStaffId(currentUser);
+        Integer activeTripId = operationsRepository.activeConductorTripId(conductorStaffId);
+        return operationsRepository.findConductorContact(currentUser.userId(), conductorStaffId, activeTripId);
+    }
+
+    @Transactional
+    public InternalMessageView sendConductorMessage(CurrentUser currentUser, ConductorMessageRequest request) {
+        Integer conductorStaffId = requireConductorStaffId(currentUser);
+        Integer tripId = resolveOptionalConductorTripId(conductorStaffId, request.tripId());
+        Integer recipientUserId = resolveConductorMessageRecipient(request.recipientType(), tripId);
+        String content = request.content().trim();
+        InternalMessageView message = operationsRepository.createInternalMessage(currentUser.userId(), recipientUserId, tripId, content);
+        operationsRepository.createNotification(currentUser.userId(), recipientUserId, "Tin nhắn từ phụ xe", content);
+        return message;
+    }
+
+    @Transactional
+    public ConductorSupportResult submitConductorSupport(CurrentUser currentUser, ConductorSupportRequest request) {
+        Integer conductorStaffId = requireConductorStaffId(currentUser);
+        Integer tripId = resolveRequiredConductorTripId(conductorStaffId, request.tripId());
+        String reportType = normalizeSupportType(request.reportType());
+        String description = buildSupportDescription(request);
+
+        Long reportId;
+        String resultType;
+        if ("LOST_ITEM".equals(reportType)) {
+            reportId = operationsRepository.createLostItemReport(currentUser.userId(), tripId, description, currentUser.userId());
+            resultType = "LOST_ITEM";
+        } else {
+            reportId = operationsRepository.createIncident(conductorStaffId, tripId, reportType, description);
+            resultType = "INCIDENT";
+        }
+
+        Integer recipientUserId = operationsRepository.driverUserIdForTrip(tripId)
+                .orElseGet(() -> operationsRepository.firstDispatcherUserId().orElse(null));
+        InternalMessageView notification = null;
+        if (recipientUserId != null) {
+            String messageContent = "[" + resultType + "] " + description;
+            notification = operationsRepository.createInternalMessage(currentUser.userId(), recipientUserId, tripId, messageContent);
+            operationsRepository.createNotification(currentUser.userId(), recipientUserId, "Báo cáo từ phụ xe", messageContent);
+        }
+        operationsRepository.firstDispatcherUserId()
+                .filter(userId -> !userId.equals(recipientUserId))
+                .ifPresent(dispatcherUserId -> operationsRepository.createNotification(
+                        currentUser.userId(),
+                        dispatcherUserId,
+                        "Báo cáo từ phụ xe",
+                        "[" + resultType + "] " + description));
+
+        return new ConductorSupportResult(resultType, reportId, "Đã gửi báo cáo cho bộ phận liên quan.", notification);
     }
 
     @Transactional
@@ -210,6 +269,54 @@ public class OperationsService {
         if (tripId == null || !operationsRepository.conductorOwnsTrip(tripId, conductorStaffId)) {
             throw new ApiException(HttpStatus.NOT_FOUND, "Trip not found");
         }
+    }
+
+    private Integer resolveOptionalConductorTripId(Integer conductorStaffId, Integer requestedTripId) {
+        Integer tripId = requestedTripId == null ? operationsRepository.activeConductorTripId(conductorStaffId) : requestedTripId;
+        if (tripId == null) {
+            return null;
+        }
+        requireOwnedConductorTrip(tripId, conductorStaffId);
+        return tripId;
+    }
+
+    private Integer resolveRequiredConductorTripId(Integer conductorStaffId, Integer requestedTripId) {
+        Integer tripId = resolveOptionalConductorTripId(conductorStaffId, requestedTripId);
+        if (tripId == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Support report requires a conductor trip");
+        }
+        return tripId;
+    }
+
+    private Integer resolveConductorMessageRecipient(String recipientType, Integer tripId) {
+        String target = recipientType == null ? "" : recipientType.trim().toUpperCase();
+        if ("DRIVER".equals(target) && tripId != null) {
+            return operationsRepository.driverUserIdForTrip(tripId)
+                    .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Driver contact not found"));
+        }
+        return operationsRepository.firstDispatcherUserId()
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Dispatcher contact not found"));
+    }
+
+    private String normalizeSupportType(String value) {
+        String normalized = value == null ? "" : value.trim().toUpperCase();
+        return switch (normalized) {
+            case "LOST_ITEM" -> "LOST_ITEM";
+            case "OVERCROWDED", "EMERGENCY", "TECHNICAL", "OTHER" -> normalized;
+            case "OVERLOAD" -> "OVERCROWDED";
+            default -> "OTHER";
+        };
+    }
+
+    private String buildSupportDescription(ConductorSupportRequest request) {
+        StringBuilder builder = new StringBuilder(request.description().trim());
+        if (request.passengerName() != null && !request.passengerName().isBlank()) {
+            builder.append(" | Hành khách: ").append(request.passengerName().trim());
+        }
+        if (request.location() != null && !request.location().isBlank()) {
+            builder.append(" | Vị trí: ").append(request.location().trim());
+        }
+        return builder.toString();
     }
 
     private void validateShift(ShiftAssignment shift, LocalDate serviceDate) {
