@@ -1,0 +1,34 @@
+@baseUrl = http://localhost:8080/api/v1
+@accessToken = paste-student-access-token-here
+
+### 1. Log in as a verified student, then paste accessToken above
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "student@example.com",
+  "password": "strong-password",
+  "device": "vnpay-sandbox-test"
+}
+
+### 2. Create a VNPay sandbox payment URL for the student's approved monthly route
+POST {{baseUrl}}/students/me/payments/vnpay-url
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{}
+
+### 3. After opening paymentUrl in a browser, pay with VNPay sandbox card
+# Bank: NCB
+# Card: 9704198526191432198
+# Issue date: 07/15
+# CVV: 123
+# OTP: 123456
+
+### 4. Check payment/invoice status after VNPay redirects back
+GET {{baseUrl}}/students/me/payments
+Authorization: Bearer {{accessToken}}
+
+### 5. Check active monthly pass and QR after successful payment
+GET {{baseUrl}}/students/me/tickets
+Authorization: Bearer {{accessToken}}

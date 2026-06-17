@@ -436,13 +436,29 @@ export const ticketingApi = {
     return unwrap(response);
   },
 
-  async purchaseMonthlyPass(paymentMethod = 'E_WALLET') {
-    const response = await apiClient.post('/students/me/tickets/monthly-pass', { method: paymentMethod });
+  async purchaseMonthlyPass(payload = { method: 'E_WALLET' }) {
+    const body = typeof payload === 'string' ? { method: payload } : payload;
+    const response = await apiClient.post('/students/me/tickets/monthly-pass', body);
     return unwrap(response);
   },
 
   async payments() {
     const response = await apiClient.get('/students/me/payments');
+    return unwrap(response);
+  },
+
+  async createVnpayPaymentUrl(payload = {}) {
+    const response = await apiClient.post('/students/me/payments/vnpay-url', payload);
+    return unwrap(response);
+  },
+
+  async completeMockVnpayPayment(paymentId) {
+    const response = await apiClient.post(`/students/me/payments/mock-vnpay/${paymentId}/complete`);
+    return unwrap(response);
+  },
+
+  async failMockVnpayPayment(paymentId) {
+    const response = await apiClient.post(`/students/me/payments/mock-vnpay/${paymentId}/fail`);
     return unwrap(response);
   },
 };
@@ -469,6 +485,21 @@ export const adminUsersApi = {
 
   async create(payload) {
     const response = await apiClient.post('/admin/users', payload);
+    return unwrap(response);
+  },
+};
+
+export const adminMonthlyPassApi = {
+  async list({ keyword = '', status = 'ACTIVE' } = {}) {
+    const params = {};
+    if (keyword) params.keyword = keyword;
+    if (status && status !== 'ALL') params.status = status;
+    const response = await apiClient.get('/admin/monthly-passes', { params });
+    return unwrap(response);
+  },
+
+  async cancel(monthlyPassId) {
+    const response = await apiClient.post(`/admin/monthly-passes/${monthlyPassId}/cancel`);
     return unwrap(response);
   },
 };

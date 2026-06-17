@@ -96,17 +96,78 @@ public class TicketingRepository {
         return findTicket(monthlyPassId).orElseThrow();
     }
 
-    public PaymentView createPaidPayment(Integer monthlyPassId, BigDecimal amount, String method) {
+    public PaymentView createPayment(Integer monthlyPassId, BigDecimal amount, String method, String status,
+            String transactionCode, String notes) {
         Integer paymentId = jdbcTemplate.queryForObject("""
                 INSERT INTO payments(student_code, monthly_pass_id, amount, method, status, transaction_code, notes)
-                SELECT student_code, monthly_pass_id, ?, ?, 'PAID', ?, 'MVP internal payment confirmation'
+                SELECT student_code, monthly_pass_id, ?, ?, ?, ?, ?
                 FROM monthly_passes
                 WHERE monthly_pass_id = ?
                 RETURNING payment_id
-                """, Integer.class, amount, method, "MVP-" + UUID.randomUUID(), monthlyPassId);
+                """, Integer.class, amount, method, status, transactionCode, notes, monthlyPassId);
         jdbcTemplate.update("""
                 INSERT INTO invoices(payment_id, student_code, description, amount)
                 SELECT p.payment_id, p.student_code, 'Monthly bus pass payment', p.amount
+                FROM payments p
+                WHERE p.payment_id = ?
+                ON CONFLICT (payment_id) DO NOTHING
+                """, paymentId);
+        return findPayment(paymentId).orElseThrow();
+    }
+
+    public PaymentView createPendingVnpayPayment(String studentCode, BigDecimal amount, String transactionCode) {
+        Integer paymentId = jdbcTemplate.queryForObject("""
+                INSERT INTO payments(student_code, amount, method, status, transaction_code, notes)
+                VALUES (?, ?, 'E_WALLET', 'PENDING', ?, 'VNPay payment pending')
+                RETURNING payment_id
+                """, Integer.class, studentCode, amount, transactionCode);
+        return findPayment(paymentId).orElseThrow();
+    }
+
+    public Optional<PaymentView> findByTransactionCode(String transactionCode) {
+        List<PaymentView> rows = jdbcTemplate.query(paymentQuery("WHERE p.transaction_code = ?"), (rs, rowNum) -> mapPayment(rs), transactionCode);
+        return rows.stream().findFirst();
+    }
+
+    public Optional<String> studentCodeForPayment(Integer paymentId) {
+        List<String> rows = jdbcTemplate.queryForList("""
+                SELECT student_code
+                FROM payments
+                WHERE payment_id = ?
+                """, String.class, paymentId);
+        return rows.stream().findFirst();
+    }
+
+    public Optional<TicketView> paidMonthlyPassForPayment(Integer paymentId) {
+        List<TicketView> rows = jdbcTemplate.query(ticketQuery("""
+                JOIN payments p ON p.monthly_pass_id = mp.monthly_pass_id
+                WHERE p.payment_id = ?
+                """), (rs, rowNum) -> mapTicket(rs), paymentId);
+        return rows.stream().findFirst();
+    }
+
+    public PaymentView markPaymentFailed(Integer paymentId, String notes) {
+        jdbcTemplate.update("""
+                UPDATE payments
+                SET status = 'FAILED',
+                    notes = ?
+                WHERE payment_id = ?
+                  AND status = 'PENDING'
+                """, notes, paymentId);
+        return findPayment(paymentId).orElseThrow();
+    }
+
+    public PaymentView attachPaidMonthlyPass(Integer paymentId, Integer monthlyPassId) {
+        jdbcTemplate.update("""
+                UPDATE payments
+                SET monthly_pass_id = ?,
+                    status = 'PAID',
+                    notes = 'VNPay payment confirmed'
+                WHERE payment_id = ?
+                """, monthlyPassId, paymentId);
+        jdbcTemplate.update("""
+                INSERT INTO invoices(payment_id, student_code, description, amount)
+                SELECT p.payment_id, p.student_code, 'Monthly bus pass payment via VNPay', p.amount
                 FROM payments p
                 WHERE p.payment_id = ?
                 ON CONFLICT (payment_id) DO NOTHING
@@ -133,7 +194,7 @@ public class TicketingRepository {
         return rows.stream().findFirst();
     }
 
-    private Optional<PaymentView> findPayment(Integer paymentId) {
+    public Optional<PaymentView> findPayment(Integer paymentId) {
         List<PaymentView> rows = jdbcTemplate.query(paymentQuery("WHERE p.payment_id = ?"), (rs, rowNum) -> mapPayment(rs), paymentId);
         return rows.stream().findFirst();
     }

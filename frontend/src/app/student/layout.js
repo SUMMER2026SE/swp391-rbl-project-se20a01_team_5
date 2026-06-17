@@ -1,7 +1,7 @@
 "use client";
 
 import BentoDashboardLayout from '@/components/layout/BentoDashboardLayout';
-import { BadgeCheck, Bell, Bot, History, LayoutDashboard, Map, MessageSquare, Package, Ticket, Wallet } from 'lucide-react';
+import { BadgeCheck, Bell, Bot, CreditCard, History, LayoutDashboard, Map, MessageSquare, Package, Ticket, Wallet } from 'lucide-react';
 
 export default function StudentLayout({ children }) {
   const menus = [
@@ -10,6 +10,7 @@ export default function StudentLayout({ children }) {
     { name: 'Tuyến xe & Theo dõi', href: '/student/routes', icon: Map },
     { name: 'Ví cá nhân', href: '/student/wallet', icon: Wallet },
     { name: 'Vé & Thanh toán', href: '/student/passes', icon: Ticket },
+    { name: 'Thanh toán VNPay', href: '/student/payment', icon: CreditCard },
     { name: 'Lịch sử chuyến đi', href: '/student/history', icon: History },
     { name: 'Báo mất đồ', href: '/student/lost-items', icon: Package },
     { name: 'Thông báo', href: '/student/notifications', icon: Bell },

@@ -2,10 +2,24 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Wallet, CreditCard, History, AlertCircle, Loader2, RefreshCw, Receipt } from 'lucide-react';
+import { AlertCircle, CreditCard, History, Loader2, Receipt, RefreshCw, Wallet } from 'lucide-react';
 import { ticketingApi } from '@/services/api';
 
 const money = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' });
+
+const paymentMethodLabels = {
+  E_WALLET: 'Ví điện tử',
+  BANK_TRANSFER: 'Chuyển khoản',
+  CARD: 'Thẻ',
+  CASH: 'Tiền mặt',
+};
+
+const paymentStatusLabels = {
+  PAID: 'Đã thanh toán',
+  PENDING: 'Chưa thanh toán',
+  FAILED: 'Thất bại',
+  REFUNDED: 'Đã hoàn tiền',
+};
 
 export default function StudentWalletPage() {
   const [payments, setPayments] = useState([]);
@@ -14,6 +28,10 @@ export default function StudentWalletPage() {
 
   const paidTotal = useMemo(() => payments
     .filter((payment) => payment.status === 'PAID')
+    .reduce((total, payment) => total + Number(payment.amount || 0), 0), [payments]);
+
+  const pendingTotal = useMemo(() => payments
+    .filter((payment) => payment.status === 'PENDING')
     .reduce((total, payment) => total + Number(payment.amount || 0), 0), [payments]);
 
   const loadPayments = useCallback(async () => {
@@ -40,7 +58,7 @@ export default function StudentWalletPage() {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight text-brand-text mb-2">Ví cá nhân</h1>
-          <p className="text-brand-text/60 font-medium">Theo dõi các thanh toán vé đã ghi nhận trong hệ thống.</p>
+          <p className="text-brand-text/60 font-medium">Theo dõi thanh toán phí dịch vụ, hóa đơn và trạng thái giao dịch.</p>
         </div>
         <button
           onClick={loadPayments}
@@ -58,7 +76,7 @@ export default function StudentWalletPage() {
 
       <div className="flex-1 grid grid-cols-1 xl:grid-cols-3 gap-6 overflow-y-auto custom-scrollbar pr-2 pb-6">
         <div className="flex flex-col gap-6">
-          <div className="bg-white rounded-3xl p-8 shadow-sm border border-black/5 text-brand-text">
+          <section className="bg-white rounded-3xl p-8 shadow-sm border border-black/5 text-brand-text">
             <div className="flex justify-between items-start mb-8">
               <div>
                 <div className="text-sm font-bold uppercase tracking-wider mb-1 text-brand-text/50">Đã thanh toán</div>
@@ -71,75 +89,85 @@ export default function StudentWalletPage() {
 
             <div className="p-4 rounded-2xl bg-brand-warning/10 border border-brand-warning/20 text-brand-warning text-sm font-bold flex items-start gap-3">
               <AlertCircle className="w-5 h-5 shrink-0" />
-              MVP đang ghi nhận thanh toán nội bộ cho vé tháng, chưa tích hợp số dư ví nạp/rút.
+              Ví đang dùng để ghi nhận thanh toán vé tháng. Chuyển khoản không có mã giao dịch sẽ nằm ở trạng thái chưa thanh toán.
             </div>
-          </div>
+          </section>
 
-          <div className="bg-white rounded-3xl p-6 shadow-sm border border-black/5 flex-1">
+          <section className="bg-white rounded-3xl p-6 shadow-sm border border-black/5">
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-              <CreditCard className="w-5 h-5 text-brand-text/60" /> Phương thức đã dùng
+              <CreditCard className="w-5 h-5 text-brand-text/60" /> Tổng quan hóa đơn
             </h3>
-            {payments.length === 0 ? (
-              <EmptyText text="Chưa có thanh toán nào." />
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {[...new Set(payments.map((payment) => payment.method))].map((method) => (
-                  <span key={method} className="px-3 py-2 rounded-xl bg-brand-surface text-xs font-black text-brand-text/70">
-                    {method}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
+            <div className="grid grid-cols-1 gap-3">
+              <SummaryRow label="Đã thanh toán" value={money.format(paidTotal)} />
+              <SummaryRow label="Chưa thanh toán" value={money.format(pendingTotal)} />
+              <SummaryRow label="Số hóa đơn" value={`${payments.length}`} />
+            </div>
+          </section>
         </div>
 
-        <div className="xl:col-span-2 flex flex-col gap-6">
-          <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-black/5 flex-1 flex flex-col">
-            <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
-              <History className="w-6 h-6 text-brand-text/60" /> Lịch sử giao dịch
-            </h3>
+        <section className="xl:col-span-2 bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-black/5 flex flex-col">
+          <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
+            <History className="w-6 h-6 text-brand-text/60" /> Lịch sử hóa đơn
+          </h3>
 
-            {isLoading ? (
-              <div className="flex-1 flex items-center justify-center gap-3 text-brand-text/50 font-bold">
-                <Loader2 className="w-5 h-5 animate-spin" /> Đang tải thanh toán...
-              </div>
-            ) : payments.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-center text-brand-text/50">
-                <Wallet className="w-16 h-16 mb-4 opacity-40" />
-                <p className="font-bold">Chưa có giao dịch vé.</p>
-                <Link href="/student/passes" className="mt-6 px-5 py-3 rounded-xl bg-brand-text text-white font-bold hover:bg-black transition-colors">
-                  Mua vé tháng
-                </Link>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-3">
-                {payments.map((payment) => (
-                  <div key={payment.paymentId} className="rounded-2xl border border-black/5 bg-brand-surface/40 p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-brand-primary/20 text-brand-text flex items-center justify-center">
-                        <Receipt className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <div className="font-black">{payment.invoiceNumber || `PAY-${payment.paymentId}`}</div>
-                        <div className="text-xs font-bold text-brand-text/50 mt-1">{payment.method} • {payment.status}</div>
-                      </div>
-                    </div>
-                    <div className="font-black text-brand-text">{money.format(Number(payment.amount || 0))}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+          {isLoading ? (
+            <div className="flex-1 flex items-center justify-center gap-3 text-brand-text/50 font-bold">
+              <Loader2 className="w-5 h-5 animate-spin" /> Đang tải thanh toán...
+            </div>
+          ) : payments.length === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-center text-brand-text/50">
+              <Wallet className="w-16 h-16 mb-4 opacity-40" />
+              <p className="font-bold">Chưa có giao dịch vé.</p>
+              <Link href="/student/passes" className="mt-6 px-5 py-3 rounded-xl bg-brand-text text-white font-bold hover:bg-black transition-colors">
+                Mua vé tháng
+              </Link>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {payments.map((payment) => (
+                <PaymentItem key={payment.paymentId} payment={payment} />
+              ))}
+            </div>
+          )}
+        </section>
       </div>
     </div>
   );
 }
 
-function EmptyText({ text }) {
+function PaymentItem({ payment }) {
+  const status = paymentStatusLabels[payment.status] || payment.status;
+  const method = paymentMethodLabels[payment.method] || payment.method;
+  const isPaid = payment.status === 'PAID';
+
   return (
-    <div className="py-12 flex items-center justify-center text-center text-brand-text/50 font-bold">
-      {text}
+    <div className="rounded-2xl border border-black/5 bg-brand-surface/40 p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-brand-primary/20 text-brand-text flex items-center justify-center">
+          <Receipt className="w-5 h-5" />
+        </div>
+        <div>
+          <div className="font-black">{payment.invoiceNumber || `PAY-${payment.paymentId}`}</div>
+          <div className="text-xs font-bold text-brand-text/50 mt-1">
+            {method} • {payment.transactionCode || 'Chưa có mã giao dịch'}
+          </div>
+        </div>
+      </div>
+      <div className="flex flex-col md:items-end gap-1">
+        <div className="font-black text-brand-text">{money.format(Number(payment.amount || 0))}</div>
+        <span className={`rounded-lg px-2 py-1 text-xs font-black ${isPaid ? 'bg-brand-success/10 text-brand-success' : 'bg-brand-warning/10 text-brand-warning'}`}>
+          {status}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function SummaryRow({ label, value }) {
+  return (
+    <div className="flex items-center justify-between rounded-2xl bg-brand-surface p-4">
+      <span className="text-sm font-bold text-brand-text/60">{label}</span>
+      <span className="font-black text-brand-text">{value}</span>
     </div>
   );
 }

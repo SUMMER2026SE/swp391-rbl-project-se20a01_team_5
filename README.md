@@ -61,6 +61,11 @@ STORAGE_PROVIDER=local
 UPLOAD_BASE_DIR=uploads
 S3_UPLOAD_BUCKET=
 S3_UPLOAD_PREFIX=
+FRONTEND_URL=http://localhost:3000
+VNPAY_TMN_CODE=<sandbox-tmn-code>
+VNPAY_HASH_SECRET=<sandbox-hash-secret>
+VNPAY_PAY_URL=https://sandbox.vnpayment.vn/paymentv2/vpcpay.html
+VNPAY_RETURN_URL=<public-backend-url>/api/v1/payments/vnpay-return
 ```
 
 Set `SMTP_ENABLED=true` and `OTP_LOG_CODE=false` outside a development environment. For Gmail,
@@ -136,3 +141,8 @@ mvn test
 
 It exercises authentication/session state, OTP attempt limits, route lookup, route registration
 rules, ETA, and travel history against an isolated H2 database.
+
+For VNPay sandbox verification, the backend must run with a return URL that VNPay can redirect to.
+Use a public dev URL or tunnel for `VNPAY_RETURN_URL`; `localhost` only works for local API calls,
+not for a real VNPay browser return flow. The sandbox test card is NCB / `9704198526191432198` /
+`07/15` / `123` / OTP `123456`.
