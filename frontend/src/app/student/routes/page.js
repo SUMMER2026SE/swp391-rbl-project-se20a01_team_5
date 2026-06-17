@@ -197,10 +197,10 @@ export default function StudentRoutesPage() {
             const lastStop = route.stops?.[route.stops.length - 1]?.stopName;
 
             return (
-              <div key={route.routeId} className="bg-white rounded-3xl p-6 shadow-sm border border-black/5 hover:shadow-md hover:border-brand-primary/30 transition-all group flex flex-col justify-between">
+              <div key={route.routeId} className="bg-white rounded-3xl p-6 shadow-sm border border-black/5 hover:border-brand-primary/30 transition-colors flex flex-col justify-between">
                 <div className="flex items-start justify-between mb-6">
                   <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 rounded-2xl bg-brand-primary/20 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                    <div className="w-14 h-14 rounded-2xl bg-brand-primary/20 flex items-center justify-center shrink-0">
                       <BusFront className="w-7 h-7 text-brand-primary" />
                     </div>
                     <div>
@@ -273,49 +273,23 @@ export default function StudentRoutesPage() {
 }
 
 function StopSelect({ label, value, onChange, stops, disabled }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const selectedStop = stops.find((s) => String(s.stopId) === String(value));
-
   return (
-    <div className="block relative">
+    <label className="block">
       <span className="block text-xs font-black text-brand-text/40 uppercase mb-2">{label}</span>
-      <button
-        type="button"
+      <select
+        value={value}
         disabled={disabled}
-        onClick={() => setIsOpen(!isOpen)}
-        onBlur={() => setTimeout(() => setIsOpen(false), 200)}
-        className={`w-full bg-brand-surface border border-black/5 rounded-2xl py-3.5 px-4 text-sm font-bold flex items-center justify-between focus:outline-none focus:border-brand-primary transition-all text-left ${isOpen ? 'border-brand-primary ring-2 ring-brand-primary/20 bg-white' : ''}`}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full min-h-12 bg-brand-surface border border-black/5 rounded-2xl py-3.5 px-4 text-sm font-bold text-brand-text focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 transition-colors disabled:opacity-60"
       >
-        <span className={value ? 'text-brand-text' : 'text-brand-text/50'}>
-          {disabled ? 'Đang tải trạm...' : selectedStop ? selectedStop.stopName : 'Chọn trạm mặc định'}
-        </span>
-        <svg className={`w-4 h-4 text-brand-text/40 transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-
-      {isOpen && !disabled && (
-        <div className="absolute z-50 w-full mt-2 bg-white border border-black/5 rounded-2xl shadow-2xl max-h-60 overflow-y-auto py-2 custom-scrollbar">
-          <button
-            type="button"
-            onClick={() => { onChange(''); setIsOpen(false); }}
-            className={`w-full text-left px-4 py-3 text-sm font-bold hover:bg-brand-surface transition-colors ${!value ? 'text-brand-text bg-brand-primary/20' : 'text-brand-text/50'}`}
-          >
-            Chọn trạm mặc định
-          </button>
-          {stops.map((stop) => (
-            <button
-              key={stop.stopId}
-              type="button"
-              onClick={() => { onChange(String(stop.stopId)); setIsOpen(false); }}
-              className={`w-full text-left px-4 py-3 text-sm font-bold hover:bg-brand-surface transition-colors ${String(stop.stopId) === String(value) ? 'text-brand-text bg-brand-primary/20' : 'text-brand-text'}`}
-            >
-              {stop.stopName}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+        <option value="">{disabled ? 'Đang tải trạm...' : 'Chọn trạm mặc định'}</option>
+        {stops.map((stop) => (
+          <option key={stop.stopId} value={String(stop.stopId)}>
+            {stop.stopName}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 

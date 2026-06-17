@@ -47,21 +47,28 @@ export default function StudentDashboard() {
   }
 
   const hasApprovedRegistration = registration?.status === 'APPROVED';
-  const ticketAction = activeMonthlyTicket
-    ? null
-    : hasApprovedRegistration
-      ? {
-          href: '/student/passes',
-          label: 'Thanh toán vé tháng',
-          title: 'Chưa mua vé tháng',
-          description: 'Tuyến mặc định đã sẵn sàng. Thanh toán để nhận QR lên xe.',
-        }
-      : {
-          href: '/student/routes',
-          label: 'Chọn tuyến',
-          title: 'Chưa có tuyến mặc định',
-          description: 'Chọn tuyến và điểm lên/xuống mặc định trước khi mua vé tháng.',
-        };
+  const ticketAction = activeMonthlyTicket && !activeMonthlyTicket.qrCode
+    ? {
+        href: '/student/passes',
+        label: 'Kiểm tra vé',
+        title: 'Thiếu mã QR vé tháng',
+        description: 'Vé tháng đang hoạt động nhưng chưa có mã QR. Vào Hub Vé & Tuyến để làm mới dữ liệu.',
+      }
+    : activeMonthlyTicket
+      ? null
+      : hasApprovedRegistration
+        ? {
+            href: '/student/passes',
+            label: 'Thanh toán vé tháng',
+            title: 'Chưa mua vé tháng',
+            description: 'Tuyến mặc định đã sẵn sàng. Thanh toán để nhận QR lên xe.',
+          }
+        : {
+            href: '/student/routes',
+            label: 'Chọn tuyến',
+            title: 'Chưa có tuyến mặc định',
+            description: 'Chọn tuyến và điểm lên/xuống mặc định trước khi mua vé tháng.',
+          };
 
   return (
     <div className="h-full flex flex-col gap-6 font-sans">
@@ -80,7 +87,7 @@ export default function StudentDashboard() {
       <div className="flex-1 grid grid-cols-1 xl:grid-cols-3 gap-6 overflow-y-auto custom-scrollbar pr-2 pb-6">
         <div className="flex flex-col gap-6 xl:col-span-1">
           <div className="bg-white rounded-3xl p-8 shadow-sm border border-black/5 flex flex-col items-center text-center relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-brand-primary/40 to-transparent"></div>
+            <div className="absolute top-0 left-0 w-full h-24 bg-brand-primary/30"></div>
 
             <div className="w-24 h-24 rounded-full bg-brand-primary flex items-center justify-center text-2xl font-bold text-brand-text border-4 border-white shadow-sm z-10 mb-4 mt-6 overflow-hidden">
               {profile?.avatarUrl ? (
@@ -135,8 +142,6 @@ export default function StudentDashboard() {
 
         <div className="xl:col-span-2 flex flex-col gap-6">
           <div className="bg-brand-primary rounded-3xl p-6 md:p-8 shadow-sm border border-black/5 relative overflow-hidden flex flex-col justify-between">
-            <div className="absolute -right-10 -top-10 w-64 h-64 bg-white/20 rounded-full blur-3xl"></div>
-
             <div className="flex flex-wrap items-center justify-between mb-8 relative z-10 gap-4">
               <h3 className="text-2xl font-bold flex items-center gap-2">
                 <Navigation className="w-7 h-7" /> Tuyến đã đăng ký

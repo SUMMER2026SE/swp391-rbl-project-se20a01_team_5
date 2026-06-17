@@ -189,7 +189,6 @@ export default function PassesPage() {
 
           <div className="mt-6 grid grid-cols-1 2xl:grid-cols-[1.05fr_.95fr] gap-6">
             <section id="ticket" className="bg-brand-text text-white rounded-3xl p-6 md:p-8 shadow-sm border border-black/5 overflow-hidden relative">
-              <div className="absolute -top-12 -right-12 w-64 h-64 bg-brand-primary/20 rounded-full blur-3xl"></div>
               {hasActivePass ? (
                 <div className="relative z-10 grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-8 items-center">
                   <div>
@@ -208,7 +207,11 @@ export default function PassesPage() {
                     </div>
                   </div>
                   <div className="w-full lg:w-72">
-                    <TicketQrCode value={activeMonthlyTicket.qrCode} showCode className="w-full" />
+                    {activeMonthlyTicket.qrCode ? (
+                      <TicketQrCode value={activeMonthlyTicket.qrCode} showCode className="w-full" />
+                    ) : (
+                      <MissingQrState onReload={loadDashboard} />
+                    )}
                   </div>
                 </div>
               ) : (
@@ -375,9 +378,34 @@ function EmptyTicketState({ isVerified, hasApprovedRegistration, canPurchase, is
           {isPurchasing ? 'Đang thanh toán...' : 'Thanh toán vé tháng'}
         </button>
       </div>
-      <div className="w-full lg:w-72">
-        <TicketQrCode value="" showCode className="w-full" />
+      <div className="w-full lg:w-72 rounded-2xl bg-white/10 border border-white/10 p-5 text-center">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-primary/20">
+          <Ticket className="h-7 w-7 text-brand-primary" />
+        </div>
+        <p className="text-sm font-black text-white">QR sẽ xuất hiện sau thanh toán</p>
+        <p className="mt-2 text-xs font-bold leading-relaxed text-white/60">
+          Hệ thống chỉ render QR khi backend đã cấp mã thật cho vé tháng.
+        </p>
       </div>
+    </div>
+  );
+}
+
+function MissingQrState({ onReload }) {
+  return (
+    <div className="rounded-2xl bg-white p-5 text-center text-brand-text shadow-sm border border-black/5">
+      <AlertCircle className="mx-auto mb-3 h-9 w-9 text-brand-warning" />
+      <p className="text-sm font-black">Thiếu mã QR vé tháng</p>
+      <p className="mt-2 text-xs font-bold leading-relaxed text-brand-text/55">
+        Vé đang hoạt động nhưng backend chưa trả về mã QR. Vui lòng làm mới dữ liệu trước khi lên xe.
+      </p>
+      <button
+        type="button"
+        onClick={onReload}
+        className="mt-4 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-brand-text px-4 py-2 text-xs font-black text-white hover:bg-black transition-colors"
+      >
+        <RefreshCw className="h-4 w-4" /> Làm mới
+      </button>
     </div>
   );
 }
@@ -521,12 +549,9 @@ function AmountRow({ label, value, strong = false, muted = false }) {
 
 function labelPaymentMethod(value) {
   const labels = {
-    BANK_TRANSFER: 'Chuyển khoản',
-    CASH: 'Tiền mặt',
-    CARD: 'Thẻ',
-    E_WALLET: 'Ví điện tử',
+    BANK_TRANSFER: 'Chuyển khoản / xác nhận hệ thống',
   };
-  return labels[value] || value || 'Chưa rõ';
+  return labels[value] || 'Xác nhận hệ thống';
 }
 
 function formatDate(value) {
