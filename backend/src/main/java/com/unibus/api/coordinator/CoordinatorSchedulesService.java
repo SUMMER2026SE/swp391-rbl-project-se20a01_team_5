@@ -10,13 +10,13 @@ import com.unibus.api.coordinator.dto.CoordinatorSchedulesDtos.BusDropdownDto;
 import com.unibus.api.coordinator.dto.CoordinatorSchedulesDtos.CreateScheduleRequest;
 import com.unibus.api.coordinator.dto.CoordinatorSchedulesDtos.DriverDropdownDto;
 import com.unibus.api.coordinator.dto.CoordinatorSchedulesDtos.ScheduleListItem;
-import com.unibus.api.transport.BusRepository;
+import com.unibus.api.transport.CoordinatorBusRepository;
 import com.unibus.api.transport.BusRouteRepository;
-import com.unibus.api.transport.BusScheduleRepository;
+import com.unibus.api.transport.CoordinatorBusScheduleRepository;
 import com.unibus.api.transport.model.Bus;
 import com.unibus.api.transport.model.BusRoute;
 import com.unibus.api.transport.model.BusSchedule;
-import com.unibus.api.user.DriverRepository;
+import com.unibus.api.user.CoordinatorDriverRepository;
 import com.unibus.api.user.model.Driver;
 
 import lombok.RequiredArgsConstructor;
@@ -25,10 +25,10 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class CoordinatorSchedulesService {
 
-    private final BusScheduleRepository scheduleRepository;
+    private final CoordinatorBusScheduleRepository scheduleRepository;
     private final BusRouteRepository routeRepository;
-    private final BusRepository busRepository;
-    private final DriverRepository driverRepository;
+    private final CoordinatorBusRepository busRepository;
+    private final CoordinatorDriverRepository driverRepository;
 
     @Transactional(readOnly = true)
     public List<ScheduleListItem> getAllSchedules() {

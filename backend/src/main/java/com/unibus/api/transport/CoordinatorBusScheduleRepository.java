@@ -1,15 +1,13 @@
 package com.unibus.api.transport;
 
+import com.unibus.api.transport.model.BusSchedule;
 import java.util.List;
-
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-import com.unibus.api.transport.model.BusSchedule;
-
-public interface BusScheduleRepository extends JpaRepository<BusSchedule, Integer> {
+public interface CoordinatorBusScheduleRepository extends JpaRepository<BusSchedule, Integer> {
     List<BusSchedule> findByRouteId(Integer routeId);
 
     @Modifying
