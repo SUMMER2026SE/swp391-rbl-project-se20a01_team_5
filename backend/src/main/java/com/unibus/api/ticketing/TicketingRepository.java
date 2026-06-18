@@ -18,6 +18,7 @@ import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 
+import com.unibus.api.ticketing.TicketingDtos.MonthlyPassQuote;
 import com.unibus.api.ticketing.TicketingDtos.PaymentView;
 import com.unibus.api.ticketing.TicketingDtos.TicketView;
 
@@ -87,14 +88,16 @@ public class TicketingRepository {
     }
 
     public TicketView createMonthlyTicket(String studentCode, ApprovedRegistration registration, int year, int month,
-            OffsetDateTime validFrom, OffsetDateTime expiresAt, BigDecimal amount) {
+            OffsetDateTime validFrom, OffsetDateTime expiresAt, MonthlyPassQuote quote) {
         String qrCode = "UB-MONTHLY-" + UUID.randomUUID();
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update(connection -> {
             PreparedStatement statement = connection.prepareStatement("""
                 INSERT INTO monthly_passes(student_code, route_id, effective_month, effective_year,
-                                           valid_from, expires_on, fare_amount, qr_code, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE')
+                                           valid_from, expires_on, fare_amount,
+                                           original_fare_amount, subsidy_amount, final_fare_amount,
+                                           subsidy_policy_id, qr_code, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE')
                 """, new String[] { "monthly_pass_id" });
             statement.setString(1, studentCode);
             statement.setInt(2, registration.routeId());
@@ -102,8 +105,16 @@ public class TicketingRepository {
             statement.setInt(4, year);
             statement.setObject(5, validFrom.toLocalDate());
             statement.setObject(6, expiresAt.toLocalDate());
-            statement.setBigDecimal(7, amount);
-            statement.setString(8, qrCode);
+            statement.setBigDecimal(7, quote.finalFareAmount());
+            statement.setBigDecimal(8, quote.originalFareAmount());
+            statement.setBigDecimal(9, quote.subsidyAmount());
+            statement.setBigDecimal(10, quote.finalFareAmount());
+            if (quote.subsidyPolicyId() == null) {
+                statement.setNull(11, java.sql.Types.INTEGER);
+            } else {
+                statement.setInt(11, quote.subsidyPolicyId());
+            }
+            statement.setString(12, qrCode);
             return statement;
         }, keyHolder);
         Integer monthlyPassId = generatedId(keyHolder, "monthly pass");
@@ -127,9 +138,13 @@ public class TicketingRepository {
         }, keyHolder);
         Integer paymentId = generatedId(keyHolder, "payment");
         jdbcTemplate.update("""
-                INSERT INTO invoices(payment_id, student_code, description, amount)
-                SELECT p.payment_id, p.student_code, 'Monthly bus pass payment', p.amount
+                INSERT INTO invoices(payment_id, student_code, description, amount, original_amount, subsidy_amount, final_amount)
+                SELECT p.payment_id, p.student_code, 'Monthly bus pass payment', p.amount,
+                       COALESCE(mp.original_fare_amount, mp.fare_amount),
+                       COALESCE(mp.subsidy_amount, 0),
+                       COALESCE(mp.final_fare_amount, mp.fare_amount)
                 FROM payments p
+                JOIN monthly_passes mp ON mp.monthly_pass_id = p.monthly_pass_id
                 WHERE p.payment_id = ?
                   AND NOT EXISTS (
                       SELECT 1
@@ -177,7 +192,13 @@ public class TicketingRepository {
                 SELECT mp.monthly_pass_id AS ticket_id, 'MONTHLY' AS ticket_type, mp.route_id, r.route_name,
                        bs.stop_name AS boarding_stop_name, als.stop_name AS alighting_stop_name,
                        mp.effective_month, mp.effective_year, mp.valid_from, mp.expires_on AS expires_at,
-                       mp.fare_amount, mp.qr_code, mp.status, mp.purchased_at
+                       mp.fare_amount,
+                       COALESCE(mp.original_fare_amount, mp.fare_amount) AS original_fare_amount,
+                       COALESCE(mp.subsidy_amount, 0) AS subsidy_amount,
+                       COALESCE(mp.final_fare_amount, mp.fare_amount) AS final_fare_amount,
+                       mp.subsidy_policy_id,
+                       CASE WHEN mp.subsidy_policy_id IS NOT NULL THEN 'APPLIED' ELSE 'NOT_CONFIGURED' END AS subsidy_status,
+                       mp.qr_code, mp.status, mp.purchased_at
                 FROM monthly_passes mp
                 JOIN routes r ON r.route_id = mp.route_id
                 LEFT JOIN stops bs ON bs.stop_id = (
@@ -204,6 +225,9 @@ public class TicketingRepository {
     private String paymentQuery(String whereClause) {
         return """
                 SELECT p.payment_id, p.monthly_pass_id AS ticket_id, p.amount, p.method, p.status,
+                       COALESCE(i.original_amount, p.amount) AS original_amount,
+                       COALESCE(i.subsidy_amount, 0) AS subsidy_amount,
+                       COALESCE(i.final_amount, p.amount) AS final_amount,
                        p.transaction_code, i.invoice_id, i.issued_at AS invoice_issued_at, p.created_at
                 FROM payments p
                 LEFT JOIN invoices i ON i.payment_id = p.payment_id
@@ -223,6 +247,11 @@ public class TicketingRepository {
                 toOffsetDateTime(rs.getDate("valid_from")),
                 toOffsetDateTime(rs.getDate("expires_at")),
                 rs.getBigDecimal("fare_amount"),
+                rs.getBigDecimal("original_fare_amount"),
+                rs.getBigDecimal("subsidy_amount"),
+                rs.getBigDecimal("final_fare_amount"),
+                (Integer) rs.getObject("subsidy_policy_id"),
+                rs.getString("subsidy_status"),
                 rs.getString("qr_code"),
                 rs.getString("status"),
                 toOffsetDateTime(rs.getTimestamp("purchased_at")));
@@ -234,6 +263,9 @@ public class TicketingRepository {
                 rs.getInt("payment_id"),
                 (Integer) rs.getObject("ticket_id"),
                 rs.getBigDecimal("amount"),
+                rs.getBigDecimal("original_amount"),
+                rs.getBigDecimal("subsidy_amount"),
+                rs.getBigDecimal("final_amount"),
                 rs.getString("method"),
                 rs.getString("status"),
                 rs.getString("transaction_code"),

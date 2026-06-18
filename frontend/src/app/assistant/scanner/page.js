@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { CheckCircle2, Loader2, QrCode, RefreshCw, Search, XCircle } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Camera, CameraOff, CheckCircle2, Loader2, QrCode, RefreshCw, Repeat2, Search, XCircle } from 'lucide-react';
 import { conductorApi } from '@/services/api';
 
 function todayInput() {
@@ -9,68 +9,83 @@ function todayInput() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 
+function tripLabel(trip) {
+  if (!trip) return 'Chọn chuyến';
+  const time = trip.departureTime?.slice(0, 5) || '--:--';
+  return `${time} • TRIP-${trip.tripId} • ${trip.routeName} • ${trip.status}`;
+}
+
 export default function ScannerPage() {
   const videoRef = useRef(null);
+  const scannerRef = useRef(null);
   const lastAutoScanRef = useRef({ code: '', at: 0 });
+  const [queryTripId] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    return new URLSearchParams(window.location.search).get('tripId') || '';
+  });
   const [serviceDate, setServiceDate] = useState(todayInput());
   const [trips, setTrips] = useState([]);
-  const [tripId, setTripId] = useState('');
+  const [tripId, setTripId] = useState(queryTripId);
   const [qrCode, setQrCode] = useState('');
   const [scanResult, setScanResult] = useState(null);
-  const [cameraStatus, setCameraStatus] = useState('');
+  const [cameraStatus, setCameraStatus] = useState('Chọn chuyến rồi bật camera để quét QR.');
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraFacing, setCameraFacing] = useState('environment');
   const [isLoading, setIsLoading] = useState(true);
   const [isScanning, setIsScanning] = useState(false);
   const [error, setError] = useState('');
+
+  const scanReadyTrips = useMemo(() => trips.filter((trip) => trip.tripId), [trips]);
+  const selectedTrip = useMemo(
+    () => scanReadyTrips.find((trip) => String(trip.tripId) === String(tripId)) || null,
+    [scanReadyTrips, tripId],
+  );
+
+  const disposeScanner = useCallback(() => {
+    scannerRef.current?.stop();
+    scannerRef.current?.destroy();
+    scannerRef.current = null;
+  }, []);
+
+  const stopCamera = useCallback(() => {
+    disposeScanner();
+    setCameraActive(false);
+  }, [disposeScanner]);
 
   const loadTrips = useCallback(async () => {
     setIsLoading(true);
     setError('');
     try {
       const data = await conductorApi.listTrips(serviceDate);
-      setTrips(data || []);
-      setTripId((current) => current || data?.find((trip) => trip.tripId)?.tripId || '');
+      const nextTrips = data || [];
+      const scanTrips = nextTrips.filter((trip) => trip.tripId);
+      setTrips(nextTrips);
+      setCameraStatus(scanTrips.length ? 'Sẵn sàng bật camera hoặc nhập mã QR thủ công.' : 'Chọn chuyến rồi bật camera để quét QR.');
+      setTripId((current) => {
+        if (current && scanTrips.some((trip) => String(trip.tripId) === String(current))) {
+          return current;
+        }
+        if (queryTripId && scanTrips.some((trip) => String(trip.tripId) === String(queryTripId))) {
+          return queryTripId;
+        }
+        return scanTrips[0]?.tripId || '';
+      });
     } catch (err) {
       setError(err.message);
       setTrips([]);
+      setTripId('');
+      setCameraStatus('Không tải được chuyến. Hãy thử tải lại hoặc nhập mã sau khi có chuyến.');
     } finally {
       setIsLoading(false);
     }
-  }, [serviceDate]);
+  }, [queryTripId, serviceDate]);
 
   useEffect(() => {
     const handle = window.setTimeout(loadTrips, 0);
     return () => window.clearTimeout(handle);
   }, [loadTrips]);
 
-  useEffect(() => {
-    let stream;
-    let statusHandle;
-    let isCancelled = false;
-    if (!navigator.mediaDevices?.getUserMedia) {
-      statusHandle = window.setTimeout(() => setCameraStatus('Trình duyệt không hỗ trợ camera. Hãy nhập mã QR thủ công.'), 0);
-      return () => window.clearTimeout(statusHandle);
-    }
-
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-      .then((mediaStream) => {
-        if (isCancelled) {
-          mediaStream.getTracks().forEach((track) => track.stop());
-          return;
-        }
-        stream = mediaStream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = mediaStream;
-        }
-        setCameraStatus('Đưa mã QR vào khung quét hoặc nhập mã thủ công.');
-      })
-      .catch(() => setCameraStatus('Không mở được camera. Hãy nhập mã QR thủ công.'));
-
-    return () => {
-      isCancelled = true;
-      window.clearTimeout(statusHandle);
-      stream?.getTracks().forEach((track) => track.stop());
-    };
-  }, []);
+  useEffect(() => () => disposeScanner(), [disposeScanner]);
 
   const scanTicket = useCallback(async (rawCode, { auto = false } = {}) => {
     const normalizedCode = rawCode.trim();
@@ -97,46 +112,60 @@ export default function ScannerPage() {
     }
   }, [isScanning, tripId]);
 
-  useEffect(() => {
-    if (!tripId) return undefined;
-    if (!('BarcodeDetector' in window)) {
-      const handle = window.setTimeout(() => {
-        setCameraStatus('Trình duyệt chưa hỗ trợ tự quét QR. Hãy nhập mã QR thủ công.');
-      }, 0);
-      return () => window.clearTimeout(handle);
-    }
-
-    let isActive = true;
-    let frameId;
-    const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
-
-    const scanFrame = async () => {
-      const video = videoRef.current;
-      if (isActive && video?.readyState >= 2 && !isScanning) {
-        try {
-          const [barcode] = await detector.detect(video);
-          const code = barcode?.rawValue?.trim();
+  const startCamera = useCallback(async (preferredFacing = cameraFacing) => {
+    if (!tripId || !videoRef.current || scannerRef.current) return;
+    setError('');
+    setCameraStatus('Đang mở camera...');
+    try {
+      const { default: QrScanner } = await import('qr-scanner');
+      const scanner = new QrScanner(
+        videoRef.current,
+        (result) => {
+          const code = (result?.data || result || '').trim();
           const now = Date.now();
-          if (code && (lastAutoScanRef.current.code !== code || now - lastAutoScanRef.current.at > 3500)) {
-            lastAutoScanRef.current = { code, at: now };
-            setQrCode(code);
-            scanTicket(code, { auto: true });
+          if (!code || (lastAutoScanRef.current.code === code && now - lastAutoScanRef.current.at <= 3500)) {
+            return;
           }
-        } catch {
-          // Keep manual input available if native detection fails on a frame.
-        }
-      }
-      if (isActive) {
-        frameId = window.requestAnimationFrame(scanFrame);
-      }
-    };
+          lastAutoScanRef.current = { code, at: now };
+          setQrCode(code);
+          scanTicket(code, { auto: true });
+        },
+        {
+          preferredCamera: preferredFacing,
+          highlightScanRegion: true,
+          highlightCodeOutline: true,
+          returnDetailedScanResult: true,
+        },
+      );
+      scannerRef.current = scanner;
+      await scanner.start();
+      setCameraActive(true);
+      setCameraStatus('Đưa mã QR vào khung quét hoặc nhập mã thủ công.');
+    } catch {
+      scannerRef.current?.destroy();
+      scannerRef.current = null;
+      setCameraActive(false);
+      setCameraStatus('Không mở được camera. Hãy nhập mã QR thủ công.');
+    }
+  }, [cameraFacing, scanTicket, tripId]);
 
-    frameId = window.requestAnimationFrame(scanFrame);
-    return () => {
-      isActive = false;
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [isScanning, scanTicket, tripId]);
+  const toggleCameraFacing = async () => {
+    const nextFacing = cameraFacing === 'environment' ? 'user' : 'environment';
+    setCameraFacing(nextFacing);
+    const shouldRestart = Boolean(scannerRef.current);
+    stopCamera();
+    if (shouldRestart) {
+      window.setTimeout(() => startCamera(nextFacing), 150);
+    }
+  };
+
+  const handleTripChange = (value) => {
+    stopCamera();
+    setTripId(value);
+    setScanResult(null);
+    setError('');
+    setCameraStatus(value ? 'Sẵn sàng bật camera hoặc nhập mã QR thủ công.' : 'Chọn chuyến rồi bật camera để quét QR.');
+  };
 
   const handleScan = async (event) => {
     event.preventDefault();
@@ -144,97 +173,172 @@ export default function ScannerPage() {
   };
 
   return (
-    <div className="h-full flex flex-col font-sans">
-      <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-brand-text mb-2">Quét vé QR</h1>
-          <p className="text-brand-text/60 font-medium">Kiểm tra mã vé thật và ghi nhận sinh viên lên xe.</p>
-        </div>
-        <button onClick={loadTrips} className="px-4 py-3 bg-white border border-black/5 rounded-2xl hover:bg-brand-surface flex items-center gap-2 font-bold">
-          <RefreshCw className="w-5 h-5" /> Tải chuyến
-        </button>
-      </div>
-
-      {(error || scanResult) && (
-        <div className={`mb-4 p-4 rounded-2xl text-sm font-bold border ${error || scanResult?.valid === false ? 'bg-brand-danger/10 border-brand-danger/20 text-brand-danger' : 'bg-brand-success/10 border-brand-success/20 text-brand-success'}`}>
-          {error || scanResult?.message}
-        </div>
-      )}
-
-      <div className="flex-1 flex flex-col lg:flex-row gap-6 h-full min-h-0">
-        <div className="flex-1 bg-black rounded-3xl relative overflow-hidden flex items-center justify-center shadow-lg">
-          <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 h-full w-full object-cover" />
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="relative w-64 h-64 sm:w-80 sm:h-80">
-              <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-white/80 rounded-tl-lg"></div>
-              <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-white/80 rounded-tr-lg"></div>
-              <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-white/80 rounded-bl-lg"></div>
-              <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-white/80 rounded-br-lg"></div>
-            </div>
+    <div className="h-full overflow-y-auto custom-scrollbar pr-1 font-sans">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 pb-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="mb-2 text-2xl font-extrabold tracking-tight text-brand-text md:text-3xl">Quét vé QR</h1>
+            <p className="text-sm font-medium text-brand-text/60 md:text-base">Chọn chuyến được phân công trước khi quét vé.</p>
           </div>
-          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 text-white/80 font-medium text-sm bg-black/50 px-4 py-2 rounded-full backdrop-blur-md text-center">
-            {cameraStatus}
-          </div>
+          <button
+            type="button"
+            onClick={loadTrips}
+            className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-black/5 bg-white px-4 py-3 font-bold transition-colors hover:bg-brand-surface"
+          >
+            <RefreshCw className="h-5 w-5" /> Tải chuyến
+          </button>
         </div>
 
-        <div className="w-full lg:w-96 flex flex-col gap-6">
-          <form onSubmit={handleScan} className="bg-white rounded-3xl p-6 shadow-sm border border-black/5 flex flex-col gap-5">
-            <h3 className="text-xl font-bold flex items-center gap-2">
-              <QrCode className="w-5 h-5 text-brand-text/60" /> Kiểm tra mã vé
-            </h3>
+        <section className="rounded-3xl border border-black/5 bg-white p-4 shadow-sm md:p-6">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[14rem_1fr]">
+            <label className="block">
+              <span className="mb-2 block text-sm font-bold text-brand-text/70">Ngày chạy</span>
+              <input
+                type="date"
+                value={serviceDate}
+                onChange={(event) => {
+                  stopCamera();
+                  setServiceDate(event.target.value);
+                }}
+                className="min-h-12 w-full rounded-2xl border border-black/5 bg-brand-surface px-4 py-3 text-base font-bold outline-none transition-colors focus:border-brand-primary focus:bg-white"
+              />
+            </label>
 
             <label className="block">
-              <span className="block text-sm font-bold text-brand-text/70 mb-2">Chuyến xe</span>
+              <span className="mb-2 block text-sm font-bold text-brand-text/70">Chuyến xe</span>
               <select
                 value={tripId}
-                onChange={(event) => setTripId(event.target.value)}
-                disabled={isLoading}
-                className="w-full bg-brand-surface border border-black/5 rounded-2xl p-4 text-sm font-bold focus:outline-none focus:border-brand-primary"
+                onChange={(event) => handleTripChange(event.target.value)}
+                disabled={isLoading || !scanReadyTrips.length}
+                className="min-h-12 w-full rounded-2xl border border-black/5 bg-brand-surface px-4 py-3 text-base font-bold outline-none transition-colors focus:border-brand-primary focus:bg-white disabled:opacity-60"
               >
-                <option value="">Chọn chuyến</option>
-                {trips.filter((trip) => trip.tripId).map((trip) => (
+                <option value="">{isLoading ? 'Đang tải chuyến...' : 'Chọn chuyến để quét vé'}</option>
+                {scanReadyTrips.map((trip) => (
                   <option key={trip.tripId} value={trip.tripId}>
-                    TRIP-{trip.tripId} • {trip.routeName} • {trip.status}
+                    {tripLabel(trip)}
                   </option>
                 ))}
               </select>
             </label>
+          </div>
 
-            <label className="block">
-              <span className="block text-sm font-bold text-brand-text/70 mb-2">Mã QR vé</span>
-              <input
-                type="text"
-                value={qrCode}
-                onChange={(event) => setQrCode(event.target.value)}
-                placeholder="Dán hoặc nhập mã QR"
-                className="w-full bg-brand-surface border border-black/5 rounded-2xl p-4 text-sm font-mono font-bold focus:outline-none focus:border-brand-primary"
-              />
-            </label>
-
-            <button
-              type="submit"
-              disabled={isScanning || !tripId || !qrCode.trim()}
-              className="w-full py-4 rounded-2xl bg-brand-text text-white font-black hover:bg-black transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
-            >
-              {isScanning ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
-              Kiểm tra vé
-            </button>
-          </form>
-
-          {scanResult?.ticket && (
-            <div className="bg-white rounded-3xl p-6 shadow-sm border border-black/5">
-              <div className="flex items-center gap-3 mb-4">
-                {scanResult.valid ? <CheckCircle2 className="w-6 h-6 text-brand-success" /> : <XCircle className="w-6 h-6 text-brand-danger" />}
-                <h3 className="font-black">Kết quả vé</h3>
-              </div>
-              <div className="space-y-3 text-sm font-bold">
-                <Info label="Sinh viên" value={scanResult.ticket.studentName} />
-                <Info label="MSSV" value={scanResult.ticket.studentCode} />
-                <Info label="Tuyến" value={scanResult.ticket.routeName} />
-                <Info label="Trạng thái" value={scanResult.ticket.status} />
-              </div>
+          {!isLoading && !scanReadyTrips.length && (
+            <div className="mt-4 rounded-2xl border border-brand-danger/20 bg-brand-danger/10 p-4 text-sm font-bold text-brand-danger">
+              Chưa có chuyến được phân công cho ngày này. Vui lòng kiểm tra lịch phân công hoặc tải lại sau khi điều phối tạo chuyến.
             </div>
           )}
+
+          {selectedTrip && (
+            <div className="mt-4 flex flex-col gap-2 rounded-2xl bg-brand-surface p-4 text-sm font-bold text-brand-text/70 md:flex-row md:items-center md:justify-between">
+              <span>{selectedTrip.routeName}</span>
+              <span className="font-mono text-brand-text">TRIP-{selectedTrip.tripId} • {selectedTrip.status}</span>
+            </div>
+          )}
+        </section>
+
+        {(error || scanResult) && (
+          <div className={`rounded-2xl border p-4 text-sm font-bold ${error || scanResult?.valid === false ? 'border-brand-danger/20 bg-brand-danger/10 text-brand-danger' : 'border-brand-success/20 bg-brand-success/10 text-brand-success'}`}>
+            {error || scanResult?.message}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_25rem]">
+          <section className="overflow-hidden rounded-3xl border border-black/5 bg-black shadow-sm">
+            <div className="relative aspect-[3/4] w-full md:aspect-video xl:max-h-[34rem]">
+              <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 h-full w-full object-cover" />
+              {!cameraActive && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black text-center text-white">
+                  <QrCode className="h-16 w-16 text-white/70" />
+                  <div className="max-w-xs px-6">
+                    <p className="text-lg font-black">Camera chưa bật</p>
+                    <p className="mt-2 text-sm font-medium text-white/65">{cameraStatus}</p>
+                  </div>
+                </div>
+              )}
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <div className="relative h-56 w-56 sm:h-72 sm:w-72">
+                  <div className="absolute left-0 top-0 h-8 w-8 rounded-tl-lg border-l-4 border-t-4 border-white/85" />
+                  <div className="absolute right-0 top-0 h-8 w-8 rounded-tr-lg border-r-4 border-t-4 border-white/85" />
+                  <div className="absolute bottom-0 left-0 h-8 w-8 rounded-bl-lg border-b-4 border-l-4 border-white/85" />
+                  <div className="absolute bottom-0 right-0 h-8 w-8 rounded-br-lg border-b-4 border-r-4 border-white/85" />
+                </div>
+              </div>
+              <div className="absolute bottom-4 left-4 right-4 rounded-2xl bg-black/60 px-4 py-3 text-center text-sm font-bold text-white/85 backdrop-blur-md">
+                {cameraStatus}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 bg-white p-4 sm:grid-cols-3">
+              <button
+                type="button"
+                onClick={startCamera}
+                disabled={!tripId || cameraActive}
+                className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-brand-text px-4 py-3 font-black text-white transition-colors hover:bg-black disabled:opacity-50"
+              >
+                <Camera className="h-5 w-5" /> Bật camera
+              </button>
+              <button
+                type="button"
+                onClick={stopCamera}
+                disabled={!cameraActive}
+                className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-black/5 bg-brand-surface px-4 py-3 font-bold text-brand-text transition-colors hover:bg-white disabled:opacity-50"
+              >
+                <CameraOff className="h-5 w-5" /> Tắt camera
+              </button>
+              <button
+                type="button"
+                onClick={toggleCameraFacing}
+                disabled={!tripId}
+                className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-black/5 bg-brand-surface px-4 py-3 font-bold text-brand-text transition-colors hover:bg-white disabled:opacity-50"
+              >
+                <Repeat2 className="h-5 w-5" /> Đổi camera
+              </button>
+            </div>
+          </section>
+
+          <aside className="flex flex-col gap-5">
+            <form onSubmit={handleScan} className="rounded-3xl border border-black/5 bg-white p-5 shadow-sm md:p-6">
+              <h3 className="mb-5 flex items-center gap-2 text-xl font-bold">
+                <QrCode className="h-5 w-5 text-brand-text/60" /> Nhập mã thủ công
+              </h3>
+
+              <label className="block">
+                <span className="mb-2 block text-sm font-bold text-brand-text/70">Mã QR vé</span>
+                <input
+                  type="text"
+                  value={qrCode}
+                  onChange={(event) => setQrCode(event.target.value)}
+                  placeholder="Dán hoặc nhập mã QR"
+                  className="min-h-12 w-full rounded-2xl border border-black/5 bg-brand-surface p-4 font-mono text-base font-bold outline-none transition-colors focus:border-brand-primary focus:bg-white"
+                />
+              </label>
+
+              <button
+                type="submit"
+                disabled={isScanning || !tripId || !qrCode.trim()}
+                className="mt-5 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-brand-text px-4 py-4 font-black text-white transition-colors hover:bg-black disabled:opacity-60"
+              >
+                {isScanning ? <Loader2 className="h-5 w-5 animate-spin" /> : <Search className="h-5 w-5" />}
+                Kiểm tra vé
+              </button>
+            </form>
+
+            {scanResult?.ticket && (
+              <div className="rounded-3xl border border-black/5 bg-white p-5 shadow-sm md:p-6">
+                <div className="mb-4 flex items-center gap-3">
+                  {scanResult.valid ? <CheckCircle2 className="h-6 w-6 text-brand-success" /> : <XCircle className="h-6 w-6 text-brand-danger" />}
+                  <h3 className="font-black">Kết quả vé</h3>
+                </div>
+                <div className="space-y-3 text-sm font-bold">
+                  <Info label="Sinh viên" value={scanResult.ticket.studentName} />
+                  <Info label="MSSV" value={scanResult.ticket.studentCode} />
+                  <Info label="Tuyến" value={scanResult.ticket.routeName} />
+                  <Info label="Trạng thái" value={scanResult.ticket.status} />
+                  <Info label="Lần quét gần nhất" value={formatDateTime(scanResult.ticket.lastScannedAt)} />
+                </div>
+              </div>
+            )}
+          </aside>
         </div>
       </div>
     </div>
@@ -244,8 +348,18 @@ export default function ScannerPage() {
 function Info({ label, value }) {
   return (
     <div className="rounded-2xl bg-brand-surface p-3">
-      <div className="text-[10px] uppercase text-brand-text/40 font-black">{label}</div>
-      <div className="text-brand-text break-words">{value || '--'}</div>
+      <div className="text-[10px] font-black uppercase text-brand-text/40">{label}</div>
+      <div className="break-words text-brand-text">{value || '--'}</div>
     </div>
   );
+}
+
+function formatDateTime(value) {
+  if (!value) return '';
+  return new Intl.DateTimeFormat('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    day: '2-digit',
+    month: '2-digit',
+  }).format(new Date(value));
 }

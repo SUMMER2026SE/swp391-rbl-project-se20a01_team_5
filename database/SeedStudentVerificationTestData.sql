@@ -281,6 +281,99 @@ WITH seed_routes AS (
     SELECT route_id
     FROM routes
     WHERE description LIKE 'ITER1 seed route:%'
+),
+seed_trips AS (
+    SELECT trip_id
+    FROM trips
+    WHERE route_id IN (SELECT route_id FROM seed_routes)
+)
+DELETE FROM vehicle_locations
+WHERE trip_id IN (SELECT trip_id FROM seed_trips);
+
+WITH seed_routes AS (
+    SELECT route_id
+    FROM routes
+    WHERE description LIKE 'ITER1 seed route:%'
+),
+seed_registrations AS (
+    SELECT registration_id
+    FROM route_registrations
+    WHERE route_id IN (SELECT route_id FROM seed_routes)
+)
+DELETE FROM travel_history
+WHERE registration_id IN (SELECT registration_id FROM seed_registrations);
+
+WITH seed_routes AS (
+    SELECT route_id
+    FROM routes
+    WHERE description LIKE 'ITER1 seed route:%'
+),
+seed_passes AS (
+    SELECT monthly_pass_id
+    FROM monthly_passes
+    WHERE route_id IN (SELECT route_id FROM seed_routes)
+),
+seed_payments AS (
+    SELECT payment_id
+    FROM payments
+    WHERE monthly_pass_id IN (SELECT monthly_pass_id FROM seed_passes)
+)
+DELETE FROM invoices
+WHERE payment_id IN (SELECT payment_id FROM seed_payments);
+
+WITH seed_routes AS (
+    SELECT route_id
+    FROM routes
+    WHERE description LIKE 'ITER1 seed route:%'
+),
+seed_passes AS (
+    SELECT monthly_pass_id
+    FROM monthly_passes
+    WHERE route_id IN (SELECT route_id FROM seed_routes)
+)
+DELETE FROM payments
+WHERE monthly_pass_id IN (SELECT monthly_pass_id FROM seed_passes);
+
+WITH seed_routes AS (
+    SELECT route_id
+    FROM routes
+    WHERE description LIKE 'ITER1 seed route:%'
+)
+DELETE FROM monthly_passes
+WHERE route_id IN (SELECT route_id FROM seed_routes);
+
+WITH seed_routes AS (
+    SELECT route_id
+    FROM routes
+    WHERE description LIKE 'ITER1 seed route:%'
+)
+DELETE FROM single_trip_tickets
+WHERE route_id IN (SELECT route_id FROM seed_routes);
+
+WITH seed_routes AS (
+    SELECT route_id
+    FROM routes
+    WHERE description LIKE 'ITER1 seed route:%'
+)
+DELETE FROM daily_statistics
+WHERE route_id IN (SELECT route_id FROM seed_routes);
+
+DO $$
+BEGIN
+    IF to_regclass('public.route_universities') IS NOT NULL THEN
+        DELETE FROM route_universities
+        WHERE route_id IN (
+            SELECT route_id
+            FROM routes
+            WHERE description LIKE 'ITER1 seed route:%'
+        );
+    END IF;
+END $$;
+
+WITH seed_routes AS (
+    SELECT route_id
+    FROM routes
+    WHERE description LIKE 'ITER1 seed route:%'
 )
 DELETE FROM route_registrations
 WHERE route_id IN (SELECT route_id FROM seed_routes);

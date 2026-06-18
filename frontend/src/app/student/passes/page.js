@@ -45,8 +45,22 @@ export default function PassesPage() {
   const hasApprovedRegistration = registration?.status === 'APPROVED';
   const hasActivePass = Boolean(activeMonthlyTicket);
   const canPurchase = isVerified && hasApprovedRegistration && !hasActivePass && !isPurchasing;
-  const payableAmount = Number(monthlyPassQuote?.payableAmount ?? activeMonthlyTicket?.fareAmount ?? 0);
-  const subsidyAmount = Number(monthlyPassQuote?.subsidyAmount ?? 0);
+  const originalFareAmount = Number(
+    monthlyPassQuote?.originalFareAmount
+      ?? monthlyPassQuote?.baseAmount
+      ?? activeMonthlyTicket?.originalFareAmount
+      ?? activeMonthlyTicket?.fareAmount
+      ?? 0
+  );
+  const subsidyAmount = Number(monthlyPassQuote?.subsidyAmount ?? activeMonthlyTicket?.subsidyAmount ?? 0);
+  const finalFareAmount = Number(
+    monthlyPassQuote?.finalFareAmount
+      ?? monthlyPassQuote?.payableAmount
+      ?? activeMonthlyTicket?.finalFareAmount
+      ?? activeMonthlyTicket?.fareAmount
+      ?? 0
+  );
+  const subsidyStatus = monthlyPassQuote?.subsidyStatus ?? activeMonthlyTicket?.subsidyStatus;
 
   const loadDashboard = useCallback(async () => {
     setIsLoading(true);
@@ -86,7 +100,7 @@ export default function PassesPage() {
     setMessage('');
     try {
       await ticketingApi.purchaseMonthlyPass('BANK_TRANSFER');
-      setMessage('Đã ghi nhận thanh toán nội bộ, tạo vé tháng và hóa đơn.');
+      setMessage('Đã thanh toán vé tháng và tạo hóa đơn.');
       const refreshed = await ticketingApi.dashboard();
       setTickets(refreshed?.tickets || []);
       setPayments(refreshed?.payments || []);
@@ -201,7 +215,9 @@ export default function PassesPage() {
                     </p>
                     <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <TicketInfo label="Hiệu lực" value={`${activeMonthlyTicket.effectiveMonth}/${activeMonthlyTicket.effectiveYear}`} />
-                      <TicketInfo label="Giá vé" value={money.format(Number(activeMonthlyTicket.fareAmount || 0))} />
+                      <TicketInfo label="Giá gốc" value={money.format(Number(activeMonthlyTicket.originalFareAmount ?? activeMonthlyTicket.fareAmount ?? 0))} />
+                      <TicketInfo label="Trợ giá" value={formatSubsidyAmount(activeMonthlyTicket.subsidyAmount, activeMonthlyTicket.subsidyStatus)} />
+                      <TicketInfo label="Thanh toán" value={money.format(Number(activeMonthlyTicket.finalFareAmount ?? activeMonthlyTicket.fareAmount ?? 0))} />
                       <TicketInfo label="Lên mặc định" value={activeMonthlyTicket.boardingStopName} />
                       <TicketInfo label="Xuống mặc định" value={activeMonthlyTicket.alightingStopName} />
                     </div>
@@ -244,15 +260,15 @@ export default function PassesPage() {
                 </div>
 
                 <div className="space-y-3">
-                  <AmountRow label="Giá gốc" value={monthlyPassQuote ? money.format(Number(monthlyPassQuote.baseAmount || 0)) : 'Chưa có tuyến'} />
-                  <AmountRow label="Trợ giá trường" value={subsidyAmount > 0 ? money.format(subsidyAmount) : 'Chưa cấu hình'} muted />
-                  <AmountRow label="Sinh viên thanh toán" value={monthlyPassQuote ? money.format(payableAmount) : 'Chưa có'} strong />
+                  <AmountRow label="Giá gốc" value={monthlyPassQuote ? money.format(originalFareAmount) : 'Chưa có tuyến'} />
+                  <AmountRow label="Trợ giá trường" value={formatSubsidyAmount(subsidyAmount, subsidyStatus)} muted />
+                  <AmountRow label="Sinh viên thanh toán" value={monthlyPassQuote ? money.format(finalFareAmount) : 'Chưa có'} strong />
                 </div>
 
                 <div className="mt-5 rounded-2xl bg-brand-surface border border-black/5 p-4 flex items-start gap-3">
                   <AlertCircle className="w-5 h-5 text-brand-text/40 shrink-0 mt-0.5" />
                   <p className="text-sm font-bold text-brand-text/60 leading-relaxed">
-                    Hiện tại hệ thống dùng phương thức Chuyển khoản / xác nhận hệ thống. Cổng thanh toán và trợ giá trường sẽ nối vào cùng khu vực này sau.
+                    Phương thức hiện tại là Chuyển khoản / xác nhận hệ thống. Nếu có trợ giá, số tiền được tự động trừ trước khi thanh toán.
                   </p>
                 </div>
 
@@ -272,7 +288,7 @@ export default function PassesPage() {
                 )}
               </section>
 
-              <SchoolContext profile={profile} />
+              <SchoolContext profile={profile} monthlyPassQuote={monthlyPassQuote} />
             </div>
           </div>
 
@@ -366,7 +382,7 @@ function EmptyTicketState({ isVerified, hasApprovedRegistration, canPurchase, is
         </div>
         <h2 className="text-3xl font-extrabold leading-tight">Mua vé tháng cho tuyến đã đăng ký</h2>
         <p className="mt-3 text-white/70 font-bold leading-relaxed max-w-xl">
-          Bấm thanh toán để hệ thống ghi nhận payment, tạo hóa đơn và cấp QR dùng khi lên xe. Đây là dữ liệu thật trong database, không phải ví mô phỏng hay checkout tạm.
+          Sau khi thanh toán, vé tháng và mã QR sẽ sẵn sàng để sử dụng khi lên xe.
         </p>
         <button
           type="button"
@@ -384,7 +400,7 @@ function EmptyTicketState({ isVerified, hasApprovedRegistration, canPurchase, is
         </div>
         <p className="text-sm font-black text-white">QR sẽ xuất hiện sau thanh toán</p>
         <p className="mt-2 text-xs font-bold leading-relaxed text-white/60">
-          Hệ thống chỉ render QR khi backend đã cấp mã thật cho vé tháng.
+          Mã QR được cấp cùng vé tháng của bạn.
         </p>
       </div>
     </div>
@@ -397,7 +413,7 @@ function MissingQrState({ onReload }) {
       <AlertCircle className="mx-auto mb-3 h-9 w-9 text-brand-warning" />
       <p className="text-sm font-black">Thiếu mã QR vé tháng</p>
       <p className="mt-2 text-xs font-bold leading-relaxed text-brand-text/55">
-        Vé đang hoạt động nhưng backend chưa trả về mã QR. Vui lòng làm mới dữ liệu trước khi lên xe.
+        Vé đang hoạt động nhưng chưa có mã QR. Vui lòng làm mới dữ liệu trước khi lên xe.
       </p>
       <button
         type="button"
@@ -482,17 +498,26 @@ function RouteCard({ registration, activeMonthlyTicket, isCancelling, onCancel }
   );
 }
 
-function SchoolContext({ profile }) {
+function SchoolContext({ profile, monthlyPassQuote }) {
+  const status = monthlyPassQuote?.subsidyStatus || 'NOT_CONFIGURED';
+
   return (
     <section className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-black/5">
       <h2 className="text-xl font-bold flex items-center gap-2 mb-5">
         <School className="w-6 h-6 text-brand-text/50" /> Trường & trợ giá
       </h2>
       <div className="rounded-2xl bg-brand-surface border border-black/5 p-5">
-        <div className="text-xs font-black uppercase text-brand-text/35 mb-1">Trường hiện tại</div>
-        <div className="font-black text-brand-text">{profile?.university || 'Chưa có dữ liệu trường'}</div>
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          <div>
+            <div className="text-xs font-black uppercase text-brand-text/35 mb-1">Trường hiện tại</div>
+            <div className="font-black text-brand-text">{profile?.university || 'Chưa có dữ liệu trường'}</div>
+          </div>
+          <span className={`self-start rounded-xl px-3 py-1 text-xs font-black uppercase ${status === 'APPLIED' ? 'bg-brand-success/10 text-brand-success' : 'bg-white text-brand-text/45'}`}>
+            {subsidyStatusLabel(status)}
+          </span>
+        </div>
         <p className="mt-3 text-sm font-bold text-brand-text/55 leading-relaxed">
-          Giai đoạn liên kết trường/campus sẽ dùng thông tin này để lọc tuyến phù hợp và áp dụng trợ giá. Hiện tại chưa cấu hình trợ giá tự động.
+          Trường dùng để lọc tuyến được phép đăng ký và tính trợ giá vé tháng. Campus, roster và import từ trường sẽ nối vào cùng nền dữ liệu này ở giai đoạn sau.
         </p>
       </div>
     </section>
@@ -512,17 +537,30 @@ function Invoices({ payments }) {
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          {payments.map((payment) => (
-            <div key={payment.paymentId} className="rounded-2xl border border-black/5 bg-brand-surface/50 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div>
-                <div className="font-black text-brand-text">{payment.invoiceNumber || `PAY-${payment.paymentId}`}</div>
-                <div className="text-xs font-bold text-brand-text/50 mt-1">
-                  {labelPaymentMethod(payment.method)} - {payment.status} - {formatDate(payment.createdAt)}
+          {payments.map((payment) => {
+            const originalAmount = Number(payment.originalAmount ?? payment.amount ?? 0);
+            const subsidyAmount = Number(payment.subsidyAmount ?? 0);
+            const finalAmount = Number(payment.finalAmount ?? payment.amount ?? 0);
+
+            return (
+              <div key={payment.paymentId} className="rounded-2xl border border-black/5 bg-brand-surface/50 p-4">
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                  <div>
+                    <div className="font-black text-brand-text">{payment.invoiceNumber || `PAY-${payment.paymentId}`}</div>
+                    <div className="text-xs font-bold text-brand-text/50 mt-1">
+                      {labelPaymentMethod(payment.method)} - {payment.status} - {formatDate(payment.createdAt)}
+                    </div>
+                  </div>
+                  <div className="font-black text-brand-text">{money.format(finalAmount)}</div>
+                </div>
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <InvoiceAmount label="Giá gốc" value={money.format(originalAmount)} />
+                  <InvoiceAmount label="Trợ giá" value={subsidyAmount > 0 ? `-${money.format(subsidyAmount)}` : '0 ₫'} muted />
+                  <InvoiceAmount label="Thanh toán" value={money.format(finalAmount)} strong />
                 </div>
               </div>
-              <div className="font-black text-brand-text">{money.format(Number(payment.amount || 0))}</div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </section>
@@ -545,6 +583,33 @@ function AmountRow({ label, value, strong = false, muted = false }) {
       <span className="font-black text-right">{value}</span>
     </div>
   );
+}
+
+function InvoiceAmount({ label, value, strong = false, muted = false }) {
+  return (
+    <div className={`rounded-xl px-3 py-2 ${strong ? 'bg-brand-text text-white' : 'bg-white text-brand-text'}`}>
+      <div className={`text-[10px] font-black uppercase ${muted ? 'opacity-45' : 'opacity-55'}`}>{label}</div>
+      <div className="mt-1 text-sm font-black">{value}</div>
+    </div>
+  );
+}
+
+function formatSubsidyAmount(amount, status) {
+  const numericAmount = Number(amount || 0);
+  if (numericAmount > 0) return money.format(numericAmount);
+  return subsidyStatusLabel(status);
+}
+
+function subsidyStatusLabel(status) {
+  const labels = {
+    APPLIED: 'Đang áp dụng',
+    NOT_VERIFIED: 'Chưa xác minh',
+    NO_UNIVERSITY: 'Chưa liên kết trường',
+    ROUTE_NOT_LINKED: 'Tuyến chưa liên kết',
+    NO_ACTIVE_POLICY: 'Chưa có chính sách',
+    NOT_CONFIGURED: 'Chưa cấu hình',
+  };
+  return labels[status] || 'Chưa cấu hình';
 }
 
 function labelPaymentMethod(value) {

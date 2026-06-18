@@ -23,8 +23,12 @@ export default function VerifyTicketPage() {
     setError('');
     try {
       const data = await conductorApi.listTrips(serviceDate);
-      setTrips(data || []);
-      const nextTripId = tripId || data?.find((trip) => trip.tripId)?.tripId || '';
+      const nextTrips = data || [];
+      const scanTrips = nextTrips.filter((trip) => trip.tripId);
+      setTrips(nextTrips);
+      const nextTripId = tripId && scanTrips.some((trip) => String(trip.tripId) === String(tripId))
+        ? tripId
+        : scanTrips[0]?.tripId || '';
       setTripId(nextTripId);
       if (nextTripId) {
         const ticketData = await conductorApi.listTickets(nextTripId);
@@ -91,9 +95,10 @@ export default function VerifyTicketPage() {
           <select
             value={tripId}
             onChange={(event) => handleTripChange(event.target.value)}
+            disabled={isLoading || !trips.some((trip) => trip.tripId)}
             className="bg-brand-surface border border-black/5 rounded-2xl px-4 py-4 text-sm font-bold focus:outline-none focus:border-brand-primary"
           >
-            <option value="">Chọn chuyến</option>
+            <option value="">{isLoading ? 'Đang tải chuyến...' : 'Chọn chuyến'}</option>
             {trips.filter((trip) => trip.tripId).map((trip) => (
               <option key={trip.tripId} value={trip.tripId}>
                 TRIP-{trip.tripId} • {trip.routeName} • {trip.status}

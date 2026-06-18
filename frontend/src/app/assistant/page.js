@@ -18,17 +18,25 @@ export default function AssistantDashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
+  const scanReadyTrips = useMemo(() => trips.filter((trip) => trip.tripId), [trips]);
   const currentTrip = useMemo(() => (
-    trips.find((trip) => String(trip.tripId || trip.scheduleId) === String(selectedTripId)) || trips[0] || null
-  ), [trips, selectedTripId]);
+    scanReadyTrips.find((trip) => String(trip.tripId) === String(selectedTripId)) || scanReadyTrips[0] || trips[0] || null
+  ), [scanReadyTrips, trips, selectedTripId]);
 
   const loadTrips = useCallback(async () => {
     setIsLoading(true);
     setError('');
     try {
       const data = await conductorApi.listTrips(serviceDate);
-      setTrips(data || []);
-      setSelectedTripId((current) => current || data?.[0]?.tripId || data?.[0]?.scheduleId || '');
+      const nextTrips = data || [];
+      const scanTrips = nextTrips.filter((trip) => trip.tripId);
+      setTrips(nextTrips);
+      setSelectedTripId((current) => {
+        if (current && scanTrips.some((trip) => String(trip.tripId) === String(current))) {
+          return current;
+        }
+        return scanTrips[0]?.tripId || '';
+      });
     } catch (err) {
       setError(err.message);
       setTrips([]);
@@ -103,14 +111,14 @@ export default function AssistantDashboard() {
                   <h2 className="text-3xl font-black mb-2">{currentTrip.routeName}</h2>
                   <p className="font-medium text-brand-text/80">Biển số: {currentTrip.licensePlate || 'Chưa gán'} • Tài xế: {currentTrip.driverName || 'Chưa gán'}</p>
                 </div>
-                {trips.length > 1 && (
+                {scanReadyTrips.length > 1 && (
                   <select
-                    value={currentTrip.tripId || currentTrip.scheduleId}
+                    value={selectedTripId}
                     onChange={(event) => setSelectedTripId(event.target.value)}
                     className="bg-white/70 border border-white/50 rounded-xl px-3 py-2 text-sm font-bold focus:outline-none"
                   >
-                    {trips.map((trip) => (
-                      <option key={trip.tripId || trip.scheduleId} value={trip.tripId || trip.scheduleId}>
+                    {scanReadyTrips.map((trip) => (
+                      <option key={trip.tripId} value={trip.tripId}>
                         {trip.departureTime?.slice(0, 5)} • {trip.routeName}
                       </option>
                     ))}
@@ -127,7 +135,7 @@ export default function AssistantDashboard() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Link href="/assistant/scanner" className="bg-white rounded-3xl p-6 shadow-sm border border-black/5 flex items-center justify-between hover:border-brand-primary transition-colors">
+              <Link href={currentTrip?.tripId ? `/assistant/scanner?tripId=${currentTrip.tripId}` : '/assistant/scanner'} className="bg-white rounded-3xl p-6 shadow-sm border border-black/5 flex items-center justify-between hover:border-brand-primary transition-colors">
                 <div>
                   <p className="text-sm font-bold text-brand-text/60 uppercase tracking-wider mb-2">Quét vé</p>
                   <div className="text-xl font-black text-brand-text">Mở camera / nhập QR</div>

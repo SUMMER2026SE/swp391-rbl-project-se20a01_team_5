@@ -18,6 +18,7 @@ import com.unibus.api.storage.StoredFile;
 import com.unibus.api.student.dto.StudentVerificationDtos.VerificationView;
 import com.unibus.api.student.model.StudentVerification;
 import com.unibus.api.student.model.StudentVerificationStatus;
+import com.unibus.api.university.SubsidyService;
 import com.unibus.api.user.StudentRepository;
 import com.unibus.api.user.UserRepository;
 import com.unibus.api.user.model.Student;
@@ -31,6 +32,7 @@ public class StudentVerificationService {
     private final UserRepository userRepository;
     private final StudentRepository studentRepository;
     private final UniversityCatalog universityCatalog;
+    private final SubsidyService subsidyService;
     private final StudentCardOcrService studentCardOcrService;
     private final FileStorageService fileStorageService;
 
@@ -39,12 +41,14 @@ public class StudentVerificationService {
             UserRepository userRepository,
             StudentRepository studentRepository,
             UniversityCatalog universityCatalog,
+            SubsidyService subsidyService,
             StudentCardOcrService studentCardOcrService,
             FileStorageService fileStorageService) {
         this.verificationRepository = verificationRepository;
         this.userRepository = userRepository;
         this.studentRepository = studentRepository;
         this.universityCatalog = universityCatalog;
+        this.subsidyService = subsidyService;
         this.studentCardOcrService = studentCardOcrService;
         this.fileStorageService = fileStorageService;
     }
@@ -89,6 +93,7 @@ public class StudentVerificationService {
         StudentVerification verification = new StudentVerification();
         verification.setUser(user);
         verification.setUniversity(allowedUniversity);
+        verification.setUniversityId(subsidyService.universityIdForName(allowedUniversity));
         verification.setStudentCode(normalizedStudentCode);
         verification.setCardImageUrl(storeCardImage(user.getId(), cardImage));
         verification.setOcrFullName(blankToNull(ocrResult.fullName()));
@@ -136,6 +141,9 @@ public class StudentVerificationService {
         student.setStudentCode(verification.getStudentCode());
         student.setUser(user);
         student.setUniversity(verification.getUniversity());
+        student.setUniversityId(verification.getUniversityId() == null
+                ? subsidyService.universityIdForName(verification.getUniversity())
+                : verification.getUniversityId());
         studentRepository.save(student);
 
         OffsetDateTime timestamp = now();
@@ -260,6 +268,7 @@ public class StudentVerificationService {
                 null,
                 null,
                 null,
+                null,
                 null);
     }
 
@@ -276,6 +285,7 @@ public class StudentVerificationService {
                 user.getFullName(),
                 verification.getStatus(),
                 verification.getUniversity(),
+                verification.getUniversityId(),
                 verification.getStudentCode(),
                 cardImageUrl,
                 verification.getOcrFullName(),
