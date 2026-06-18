@@ -1,3 +1,4 @@
+﻿/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -278,3 +279,4 @@ function dataUrlToFile(dataUrl, fileName) {
   }
   return new File([bytes], fileName, { type: mime });
 }
+

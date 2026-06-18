@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect } from 'react';
 import { MapPin, Route, Plus, Edit2, Trash2, Search, ArrowRight, Save, X, Loader2, AlertTriangle } from 'lucide-react';
@@ -40,7 +40,7 @@ export default function CoordinatorRoutesPage() {
     return () => {
       document.body.style.overflow = 'unset';
     };
-  }, [isModalOpen, isDeleteModalOpen]);
+  }, [isModalOpen, isDeleteModalOpen, isRouteModalOpen]);
 
   useEffect(() => {
     const fetchRoutes = async () => {
@@ -521,3 +521,4 @@ export default function CoordinatorRoutesPage() {
     </div>
   );
 }
+

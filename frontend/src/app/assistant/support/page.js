@@ -1,22 +1,83 @@
 "use client";
 
-import { useState } from 'react';
-import { AlertTriangle, Package, Users, ShieldAlert, MessageSquare, Send, User, Camera } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { AlertTriangle, Package, Users, ShieldAlert, MessageSquare, Send, User, Camera, RefreshCw } from 'lucide-react';
+import { conductorApi } from '@/services/api';
+
+function todayInput() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
 
 export default function PassengerSupportPage() {
   const [incidentType, setIncidentType] = useState('other');
   const [notice, setNotice] = useState('');
+  const [serviceDate] = useState(todayInput());
+  const [trips, setTrips] = useState([]);
+  const [tripId, setTripId] = useState('');
+  const [passengerName, setPassengerName] = useState('');
+  const [location, setLocation] = useState('');
+  const [description, setDescription] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const handleSubmit = (e) => {
+  const loadTrips = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const data = await conductorApi.listTrips(serviceDate);
+      setTrips(data || []);
+      setTripId((current) => current || data?.find((trip) => trip.tripId)?.tripId || '');
+    } catch (err) {
+      setTrips([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [serviceDate]);
+
+  useEffect(() => {
+    const handle = window.setTimeout(loadTrips, 0);
+    return () => window.clearTimeout(handle);
+  }, [loadTrips]);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setNotice('Báo cáo sự cố đang được giữ ngoài luồng demo Iter1.');
+    if (!tripId || !description.trim()) {
+      setNotice('Vui lòng chọn chuyến xe và nhập mô tả chi tiết.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setNotice('');
+
+    try {
+      const result = await conductorApi.submitSupport({
+        tripId: Number(tripId),
+        reportType: incidentType,
+        passengerName: passengerName.trim(),
+        location: location.trim(),
+        description: description.trim(),
+      });
+      setNotice(`Thành công: ${result.message}`);
+      setPassengerName('');
+      setLocation('');
+      setDescription('');
+    } catch (err) {
+      setNotice(`Lỗi: ${err.message}`);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <div className="h-full flex flex-col gap-6 font-sans">
-      <div>
-        <h1 className="text-3xl font-extrabold tracking-tight text-brand-text mb-2">Hỗ trợ Hành khách</h1>
-        <p className="text-brand-text/60 font-medium">Ghi nhận sự cố và hỗ trợ khẩn cấp trên chuyến xe.</p>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-extrabold tracking-tight text-brand-text mb-2">Hỗ trợ Hành khách</h1>
+          <p className="text-brand-text/60 font-medium">Ghi nhận sự cố và hỗ trợ khẩn cấp trên chuyến xe.</p>
+        </div>
+        <button onClick={loadTrips} className="px-4 py-3 bg-white border border-black/5 rounded-2xl hover:bg-brand-surface flex items-center gap-2 font-bold shadow-sm">
+          <RefreshCw className="w-5 h-5" /> Tải chuyến
+        </button>
       </div>
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 overflow-y-auto custom-scrollbar pr-2 pb-6">
@@ -92,13 +153,30 @@ export default function PassengerSupportPage() {
             </h3>
 
             {notice && (
-              <div className="mb-4 rounded-2xl border border-brand-secondary/20 bg-brand-secondary/10 p-4 text-sm font-bold text-brand-text">
+              <div className={`mb-4 rounded-2xl border p-4 text-sm font-bold ${notice.startsWith('Lỗi') ? 'border-brand-danger/20 bg-brand-danger/10 text-brand-danger' : 'border-brand-success/20 bg-brand-success/10 text-brand-success'}`}>
                 {notice}
               </div>
             )}
 
             <form onSubmit={handleSubmit} className="flex-1 flex flex-col">
               <div className="space-y-6 flex-1">
+                <div>
+                  <label className="block text-sm font-bold text-brand-text/70 mb-2">Chuyến xe</label>
+                  <select
+                    value={tripId}
+                    onChange={(event) => setTripId(event.target.value)}
+                    disabled={isLoading}
+                    className="w-full bg-brand-surface border border-transparent rounded-2xl p-4 text-sm font-bold focus:outline-none focus:border-brand-primary focus:bg-white transition-all"
+                  >
+                    <option value="">Chọn chuyến</option>
+                    {trips.filter((trip) => trip.tripId).map((trip) => (
+                      <option key={trip.tripId} value={trip.tripId}>
+                        TRIP-{trip.tripId} • {trip.routeName} • {trip.status}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-bold text-brand-text/70 mb-2 flex items-center gap-2">
@@ -106,6 +184,8 @@ export default function PassengerSupportPage() {
                     </label>
                     <input
                       type="text"
+                      value={passengerName}
+                      onChange={(e) => setPassengerName(e.target.value)}
                       placeholder="Nhập tên nếu có"
                       className="w-full bg-brand-surface border border-transparent rounded-2xl p-4 text-sm font-bold focus:outline-none focus:border-brand-primary focus:bg-white transition-all"
                     />
@@ -116,6 +196,8 @@ export default function PassengerSupportPage() {
                     </label>
                     <input
                       type="text"
+                      value={location}
+                      onChange={(e) => setLocation(e.target.value)}
                       placeholder="VD: Hàng ghế cuối, Cửa lên xuống..."
                       className="w-full bg-brand-surface border border-transparent rounded-2xl p-4 text-sm font-bold focus:outline-none focus:border-brand-primary focus:bg-white transition-all"
                     />
@@ -129,6 +211,8 @@ export default function PassengerSupportPage() {
                   <textarea
                     required
                     rows="6"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
                     placeholder="Hãy mô tả chi tiết những gì đã xảy ra..."
                     className="w-full bg-brand-surface border border-transparent rounded-2xl p-4 text-sm font-medium focus:outline-none focus:border-brand-primary focus:bg-white transition-all resize-none custom-scrollbar"
                   ></textarea>
@@ -145,10 +229,10 @@ export default function PassengerSupportPage() {
               </div>
 
               <div className="mt-8 pt-6 border-t border-black/5 flex justify-end gap-4">
-                <button type="button" className="px-6 py-4 rounded-xl font-bold text-brand-text/60 hover:bg-black/5 transition-colors">
-                  Hủy bỏ
+                <button type="button" onClick={() => { setPassengerName(''); setLocation(''); setDescription(''); setNotice(''); }} className="px-6 py-4 rounded-xl font-bold text-brand-text/60 hover:bg-black/5 transition-colors">
+                  Xóa trắng
                 </button>
-                <button type="submit" className="px-8 py-4 bg-brand-text text-white rounded-xl font-bold flex items-center gap-2 hover:bg-black transition-colors shadow-md">
+                <button type="submit" disabled={isSubmitting || !tripId} className="px-8 py-4 bg-brand-text text-white rounded-xl font-bold flex items-center gap-2 hover:bg-black transition-colors shadow-md disabled:opacity-60">
                   <Send className="w-5 h-5" /> Gửi báo cáo
                 </button>
               </div>

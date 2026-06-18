@@ -1,3 +1,4 @@
+﻿/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import { UserCircle, Mail, Phone, MapPin, Building2, ShieldCheck, KeyRound, Save, Server, Camera } from 'lucide-react';
@@ -240,3 +241,4 @@ export default function AdminProfilePage() {
     </div>
   );
 }
+

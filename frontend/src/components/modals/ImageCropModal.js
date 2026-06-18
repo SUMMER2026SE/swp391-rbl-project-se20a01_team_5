@@ -1,3 +1,4 @@
+﻿/* eslint-disable @next/next/no-img-element */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, RotateCw, Image as ImageIcon } from 'lucide-react';
 
@@ -281,3 +282,4 @@ export default function ImageCropModal({ isOpen, imageUrl, onClose, onConfirm })
     </div>
   );
 }
+

@@ -17,8 +17,11 @@ import org.springframework.stereotype.Repository;
 
 import com.unibus.api.operations.OperationsDtos.BusOption;
 import com.unibus.api.operations.OperationsDtos.DriverTripView;
+import com.unibus.api.operations.OperationsDtos.ContactPersonView;
+import com.unibus.api.operations.OperationsDtos.ConductorContactView;
 import com.unibus.api.operations.OperationsDtos.ConductorTicketView;
 import com.unibus.api.operations.OperationsDtos.ConductorTripView;
+import com.unibus.api.operations.OperationsDtos.InternalMessageView;
 import com.unibus.api.operations.OperationsDtos.LiveFleetVehicle;
 import com.unibus.api.operations.OperationsDtos.RouteOption;
 import com.unibus.api.operations.OperationsDtos.ShiftAssignment;
@@ -161,26 +164,45 @@ public class OperationsRepository {
 
     public List<DriverTripView> findDriverTrips(Integer driverId, LocalDate serviceDate) {
         return jdbcTemplate.query("""
-                SELECT bs.schedule_id, t.trip_id, bs.route_id, r.route_name,
-                       bs.bus_id, b.license_plate, cu.full_name AS conductor_name, cu.phone_number AS conductor_phone,
-                       ?::date AS service_date, bs.departure_time, t.departed_at, t.ended_at,
-                       COALESCE(t.status, 'NOT_CREATED') AS status
-                FROM bus_schedules bs
-                JOIN routes r ON r.route_id = bs.route_id
-                LEFT JOIN buses b ON b.bus_id = bs.bus_id
-                LEFT JOIN conductors c ON c.conductor_id = bs.conductor_id
-                LEFT JOIN users cu ON cu.user_id = c.user_id
-                LEFT JOIN LATERAL (
-                    SELECT trip_id, departed_at, ended_at, status
-                    FROM trips
-                    WHERE schedule_id = bs.schedule_id AND service_date = ?
-                    ORDER BY trip_id DESC
-                    LIMIT 1
-                ) t ON TRUE
-                WHERE bs.driver_id = ?
-                  AND bs.weekday_number = ?
-                ORDER BY bs.departure_time
-                """, (rs, rowNum) -> mapDriverTrip(rs), serviceDate, serviceDate, driverId, serviceDate.getDayOfWeek().getValue());
+                SELECT schedule_id, trip_id, route_id, route_name, bus_id, license_plate,
+                       conductor_name, conductor_phone, service_date, departure_time,
+                       departed_at, ended_at, status
+                FROM (
+                    SELECT bs.schedule_id, t.trip_id, t.route_id, r.route_name,
+                           t.bus_id, b.license_plate, cu.full_name AS conductor_name, cu.phone_number AS conductor_phone,
+                           t.service_date, bs.departure_time, t.departed_at, t.ended_at, t.status
+                    FROM trips t
+                    LEFT JOIN bus_schedules bs ON bs.schedule_id = t.schedule_id
+                    JOIN routes r ON r.route_id = t.route_id
+                    LEFT JOIN buses b ON b.bus_id = t.bus_id
+                    LEFT JOIN conductors c ON c.conductor_id = COALESCE(t.conductor_id, bs.conductor_id)
+                    LEFT JOIN users cu ON cu.user_id = c.user_id
+                    WHERE t.driver_id = ?
+                      AND t.service_date = ?
+
+                    UNION ALL
+
+                    SELECT bs.schedule_id, NULL AS trip_id, bs.route_id, r.route_name,
+                           bs.bus_id, b.license_plate, cu.full_name AS conductor_name, cu.phone_number AS conductor_phone,
+                           ?::date AS service_date, bs.departure_time, NULL AS departed_at, NULL AS ended_at,
+                           'NOT_CREATED' AS status
+                    FROM bus_schedules bs
+                    JOIN routes r ON r.route_id = bs.route_id
+                    LEFT JOIN buses b ON b.bus_id = bs.bus_id
+                    LEFT JOIN conductors c ON c.conductor_id = bs.conductor_id
+                    LEFT JOIN users cu ON cu.user_id = c.user_id
+                    WHERE bs.driver_id = ?
+                      AND bs.weekday_number = ?
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM trips t
+                          WHERE t.schedule_id = bs.schedule_id
+                            AND t.service_date = ?
+                      )
+                ) driver_trips
+                ORDER BY departure_time NULLS LAST, route_name, trip_id
+                """, (rs, rowNum) -> mapDriverTrip(rs),
+                driverId, serviceDate, serviceDate, driverId, serviceDate.getDayOfWeek().getValue(), serviceDate);
     }
 
     public List<ConductorTripView> findConductorTrips(Integer conductorId, LocalDate serviceDate) {
@@ -246,6 +268,140 @@ public class OperationsRepository {
                 )
                 """, Boolean.class, tripId, conductorId);
         return Boolean.TRUE.equals(owns);
+    }
+
+    public Integer activeConductorTripId(Integer conductorId) {
+        List<Integer> ids = jdbcTemplate.queryForList("""
+                SELECT trip_id
+                FROM trips
+                WHERE conductor_id = ?
+                  AND service_date = CURRENT_DATE
+                  AND status IN ('RUNNING', 'NOT_STARTED')
+                ORDER BY CASE status WHEN 'RUNNING' THEN 0 ELSE 1 END, departed_at NULLS LAST, trip_id DESC
+                LIMIT 1
+                """, Integer.class, conductorId);
+        return ids.isEmpty() ? null : ids.get(0);
+    }
+
+    public ConductorContactView findConductorContact(Integer conductorUserId, Integer conductorId, Integer activeTripId) {
+        List<ConductorTripContact> tripRows = activeTripId == null ? List.of() : jdbcTemplate.query("""
+                SELECT t.trip_id, r.route_name, du.full_name AS driver_name, du.phone_number AS driver_phone
+                FROM trips t
+                JOIN routes r ON r.route_id = t.route_id
+                LEFT JOIN drivers d ON d.driver_id = t.driver_id
+                LEFT JOIN users du ON du.user_id = d.user_id
+                WHERE t.trip_id = ?
+                  AND t.conductor_id = ?
+                """, (rs, rowNum) -> new ConductorTripContact(
+                        rs.getInt("trip_id"),
+                        rs.getString("route_name"),
+                        rs.getString("driver_name"),
+                        rs.getString("driver_phone")), activeTripId, conductorId);
+        ConductorTripContact trip = tripRows.isEmpty() ? null : tripRows.get(0);
+        return new ConductorContactView(
+                activeTripId,
+                trip == null ? null : trip.routeName(),
+                trip == null ? null : trip.driverName(),
+                trip == null ? null : trip.driverPhone(),
+                findConductorContacts(activeTripId),
+                findConductorMessages(conductorUserId, activeTripId, 50));
+    }
+
+    public List<ContactPersonView> findConductorContacts(Integer activeTripId) {
+        return jdbcTemplate.query("""
+                SELECT user_id, full_name, role, phone_number, primary_order
+                FROM (
+                    SELECT du.user_id, du.full_name, 'DRIVER' AS role, du.phone_number, 0 AS primary_order
+                    FROM trips t
+                    JOIN drivers d ON d.driver_id = t.driver_id
+                    JOIN users du ON du.user_id = d.user_id
+                    WHERE t.trip_id = ?
+                    UNION ALL
+                    SELECT u.user_id, u.full_name, 'DISPATCHER' AS role, u.phone_number, 1 AS primary_order
+                    FROM users u
+                    WHERE u.role = 'DISPATCHER'
+                      AND u.status = 'ACTIVE'
+                ) contacts
+                ORDER BY primary_order, full_name
+                """, (rs, rowNum) -> new ContactPersonView(
+                        rs.getInt("user_id"),
+                        rs.getString("full_name"),
+                        rs.getString("role"),
+                        rs.getString("phone_number"),
+                        rs.getInt("primary_order") == 0), activeTripId);
+    }
+
+    public Optional<Integer> driverUserIdForTrip(Integer tripId) {
+        List<Integer> ids = jdbcTemplate.queryForList("""
+                SELECT u.user_id
+                FROM trips t
+                JOIN drivers d ON d.driver_id = t.driver_id
+                JOIN users u ON u.user_id = d.user_id
+                WHERE t.trip_id = ?
+                """, Integer.class, tripId);
+        return ids.stream().findFirst();
+    }
+
+    public Optional<Integer> firstDispatcherUserId() {
+        List<Integer> ids = jdbcTemplate.queryForList("""
+                SELECT user_id
+                FROM users
+                WHERE role = 'DISPATCHER'
+                  AND status = 'ACTIVE'
+                ORDER BY user_id
+                LIMIT 1
+                """, Integer.class);
+        return ids.stream().findFirst();
+    }
+
+    public InternalMessageView createInternalMessage(Integer senderUserId, Integer recipientUserId, Integer tripId, String content) {
+        return jdbcTemplate.queryForObject("""
+                INSERT INTO internal_messages(sender_user_id, recipient_user_id, trip_id, content)
+                VALUES (?, ?, ?, ?)
+                RETURNING message_id, sender_user_id,
+                          (SELECT full_name FROM users WHERE user_id = internal_messages.sender_user_id) AS sender_name,
+                          recipient_user_id,
+                          (SELECT full_name FROM users WHERE user_id = internal_messages.recipient_user_id) AS recipient_name,
+                          trip_id, content, is_read, sent_at
+                """, (rs, rowNum) -> mapInternalMessage(rs), senderUserId, recipientUserId, tripId, content);
+    }
+
+    public List<InternalMessageView> findConductorMessages(Integer conductorUserId, Integer tripId, int limit) {
+        return jdbcTemplate.query("""
+                SELECT m.message_id, m.sender_user_id, sender.full_name AS sender_name,
+                       m.recipient_user_id, recipient.full_name AS recipient_name,
+                       m.trip_id, m.content, m.is_read, m.sent_at
+                FROM internal_messages m
+                JOIN users sender ON sender.user_id = m.sender_user_id
+                JOIN users recipient ON recipient.user_id = m.recipient_user_id
+                WHERE (m.sender_user_id = ? OR m.recipient_user_id = ?)
+                  AND (? IS NULL OR m.trip_id = ?)
+                ORDER BY m.sent_at DESC, m.message_id DESC
+                LIMIT ?
+                """, (rs, rowNum) -> mapInternalMessage(rs), conductorUserId, conductorUserId, tripId, tripId, limit);
+    }
+
+    public void createNotification(Integer senderUserId, Integer recipientUserId, String title, String content) {
+        jdbcTemplate.update("""
+                INSERT INTO notifications(recipient_user_id, sender_user_id, title, content, notification_type)
+                VALUES (?, ?, ?, ?, 'ALERT')
+                """, recipientUserId, senderUserId, title, content);
+    }
+
+    public Long createIncident(Integer conductorId, Integer tripId, String incidentType, String description) {
+        return jdbcTemplate.queryForObject("""
+                INSERT INTO incidents(conductor_id, trip_id, incident_type, description)
+                VALUES (?, ?, ?, ?)
+                RETURNING incident_id
+                """, Long.class, conductorId, tripId, incidentType, description);
+    }
+
+    public Long createLostItemReport(Integer reportedByUserId, Integer tripId, String itemDescription, Integer assistedByUserId) {
+        return jdbcTemplate.queryForObject("""
+                INSERT INTO lost_item_reports(reported_by_user_id, trip_id, item_description, assisted_by_user_id)
+                VALUES (?, ?, ?, ?)
+                RETURNING lost_item_report_id
+                """, Long.class, reportedByUserId, tripId, itemDescription, assistedByUserId);
     }
 
     public Optional<TripRouteInfo> tripRouteInfo(Integer tripId) {
@@ -446,6 +602,9 @@ public class OperationsRepository {
     }
 
     public List<TripStopView> findTripStopsBySchedule(Integer scheduleId) {
+        if (scheduleId == null) {
+            return List.of();
+        }
         return jdbcTemplate.query("""
                 SELECT rs.route_stop_id, s.stop_id, s.stop_name, rs.stop_order, rs.minutes_from_previous_stop
                 FROM bus_schedules bs
@@ -529,7 +688,7 @@ public class OperationsRepository {
     }
 
     private DriverTripView mapDriverTrip(ResultSet rs) throws SQLException {
-        Integer scheduleId = rs.getInt("schedule_id");
+        Integer scheduleId = (Integer) rs.getObject("schedule_id");
         return new DriverTripView(
                 scheduleId,
                 (Integer) rs.getObject("trip_id"),
@@ -583,6 +742,19 @@ public class OperationsRepository {
                 toOffsetDateTime(rs.getTimestamp("last_scanned_at")));
     }
 
+    private InternalMessageView mapInternalMessage(ResultSet rs) throws SQLException {
+        return new InternalMessageView(
+                rs.getLong("message_id"),
+                rs.getInt("sender_user_id"),
+                rs.getString("sender_name"),
+                rs.getInt("recipient_user_id"),
+                rs.getString("recipient_name"),
+                (Integer) rs.getObject("trip_id"),
+                rs.getString("content"),
+                rs.getBoolean("is_read"),
+                toOffsetDateTime(rs.getTimestamp("sent_at")));
+    }
+
     private LiveFleetVehicle mapLiveFleetVehicle(ResultSet rs) throws SQLException {
         return new LiveFleetVehicle(
                 rs.getInt("trip_id"),
@@ -626,5 +798,8 @@ public class OperationsRepository {
     }
 
     private record RouteStopsForStudent(Integer boardingStopId, Integer alightingStopId) {
+    }
+
+    private record ConductorTripContact(Integer tripId, String routeName, String driverName, String driverPhone) {
     }
 }

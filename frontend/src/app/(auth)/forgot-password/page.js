@@ -1,3 +1,4 @@
+﻿/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import { useState } from 'react';
@@ -247,3 +248,4 @@ function InputWithIcon({ label, icon: Icon, children }) {
     </label>
   );
 }
+

@@ -1,3 +1,4 @@
+﻿/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import { UserCircle, Map, Clock, ShieldCheck, Mail, Phone, Award, CreditCard, Camera, Save, MapPin, KeyRound } from 'lucide-react';
@@ -208,3 +209,4 @@ function CredentialCard({ title, subtitle, status, mark, icon: Icon }) {
     </div>
   );
 }
+

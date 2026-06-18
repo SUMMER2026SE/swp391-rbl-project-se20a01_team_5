@@ -1,3 +1,4 @@
+﻿/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import { useEffect, useMemo, useState } from 'react';
@@ -363,4 +364,5 @@ function normalize(value) {
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
 }
+
 
