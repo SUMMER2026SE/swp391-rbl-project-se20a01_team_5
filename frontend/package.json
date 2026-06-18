@@ -9,8 +9,11 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@material/material-color-utilities": "^0.4.0",
     "axios": "^1.16.1",
     "lucide-react": "^1.16.0",
+    "material-symbols": "^0.45.2",
+    "motion": "^12.40.0",
     "next": "16.2.6",
     "qr-scanner": "^1.4.2",
     "qrcode.react": "^4.2.0",

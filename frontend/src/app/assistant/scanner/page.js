@@ -189,7 +189,7 @@ export default function ScannerPage() {
           </button>
         </div>
 
-        <section className="rounded-3xl border border-black/5 bg-white p-4 shadow-sm md:p-6">
+        <section className="m3-surface rounded-[2rem] p-4 md:p-6">
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-[14rem_1fr]">
             <label className="block">
               <span className="mb-2 block text-sm font-bold text-brand-text/70">Ngày chạy</span>
@@ -200,7 +200,7 @@ export default function ScannerPage() {
                   stopCamera();
                   setServiceDate(event.target.value);
                 }}
-                className="min-h-12 w-full rounded-2xl border border-black/5 bg-brand-surface px-4 py-3 text-base font-bold outline-none transition-colors focus:border-brand-primary focus:bg-white"
+                className="m3-focus-ring min-h-14 w-full rounded-[var(--md-sys-shape-corner-large)] border border-[var(--md-sys-color-outline-variant)] bg-[var(--md-sys-color-surface-container-high)] px-4 py-3 text-base font-bold outline-none transition-colors focus:border-[var(--md-sys-color-primary)] focus:bg-[var(--md-sys-color-surface-container-lowest)]"
               />
             </label>
 
@@ -210,7 +210,7 @@ export default function ScannerPage() {
                 value={tripId}
                 onChange={(event) => handleTripChange(event.target.value)}
                 disabled={isLoading || !scanReadyTrips.length}
-                className="min-h-12 w-full rounded-2xl border border-black/5 bg-brand-surface px-4 py-3 text-base font-bold outline-none transition-colors focus:border-brand-primary focus:bg-white disabled:opacity-60"
+                className="m3-focus-ring min-h-14 w-full rounded-[var(--md-sys-shape-corner-large)] border border-[var(--md-sys-color-outline-variant)] bg-[var(--md-sys-color-surface-container-high)] px-4 py-3 text-base font-bold outline-none transition-colors focus:border-[var(--md-sys-color-primary)] focus:bg-[var(--md-sys-color-surface-container-lowest)] disabled:opacity-60"
               >
                 <option value="">{isLoading ? 'Đang tải chuyến...' : 'Chọn chuyến để quét vé'}</option>
                 {scanReadyTrips.map((trip) => (
@@ -229,7 +229,7 @@ export default function ScannerPage() {
           )}
 
           {selectedTrip && (
-            <div className="mt-4 flex flex-col gap-2 rounded-2xl bg-brand-surface p-4 text-sm font-bold text-brand-text/70 md:flex-row md:items-center md:justify-between">
+            <div className="mt-4 flex flex-col gap-2 rounded-[1.5rem] bg-[var(--md-sys-color-primary-container)] p-4 text-sm font-bold text-[var(--md-sys-color-on-primary-container)] md:flex-row md:items-center md:justify-between">
               <span>{selectedTrip.routeName}</span>
               <span className="font-mono text-brand-text">TRIP-{selectedTrip.tripId} • {selectedTrip.status}</span>
             </div>
@@ -243,7 +243,7 @@ export default function ScannerPage() {
         )}
 
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_25rem]">
-          <section className="overflow-hidden rounded-3xl border border-black/5 bg-black shadow-sm">
+          <section className="overflow-hidden rounded-[2rem] border border-[var(--md-sys-color-outline-variant)] bg-black shadow-[var(--md-sys-elevation-2)]">
             <div className="relative aspect-[3/4] w-full md:aspect-video xl:max-h-[34rem]">
               <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 h-full w-full object-cover" />
               {!cameraActive && (
@@ -268,12 +268,12 @@ export default function ScannerPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 bg-white p-4 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 bg-[var(--md-sys-color-surface-container-lowest)] p-4 sm:grid-cols-3">
               <button
                 type="button"
                 onClick={startCamera}
                 disabled={!tripId || cameraActive}
-                className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-brand-text px-4 py-3 font-black text-white transition-colors hover:bg-black disabled:opacity-50"
+                className="m3-state-layer flex min-h-12 items-center justify-center gap-2 rounded-full bg-[var(--md-sys-color-primary)] px-4 py-3 font-black text-[var(--md-sys-color-on-primary)] transition-colors disabled:opacity-50"
               >
                 <Camera className="h-5 w-5" /> Bật camera
               </button>
@@ -281,7 +281,7 @@ export default function ScannerPage() {
                 type="button"
                 onClick={stopCamera}
                 disabled={!cameraActive}
-                className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-black/5 bg-brand-surface px-4 py-3 font-bold text-brand-text transition-colors hover:bg-white disabled:opacity-50"
+                className="m3-state-layer flex min-h-12 items-center justify-center gap-2 rounded-full border border-[var(--md-sys-color-outline-variant)] bg-[var(--md-sys-color-secondary-container)] px-4 py-3 font-bold text-[var(--md-sys-color-on-secondary-container)] transition-colors disabled:opacity-50"
               >
                 <CameraOff className="h-5 w-5" /> Tắt camera
               </button>
@@ -289,7 +289,7 @@ export default function ScannerPage() {
                 type="button"
                 onClick={toggleCameraFacing}
                 disabled={!tripId}
-                className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-black/5 bg-brand-surface px-4 py-3 font-bold text-brand-text transition-colors hover:bg-white disabled:opacity-50"
+                className="m3-state-layer flex min-h-12 items-center justify-center gap-2 rounded-full border border-[var(--md-sys-color-outline-variant)] bg-[var(--md-sys-color-secondary-container)] px-4 py-3 font-bold text-[var(--md-sys-color-on-secondary-container)] transition-colors disabled:opacity-50"
               >
                 <Repeat2 className="h-5 w-5" /> Đổi camera
               </button>
@@ -297,7 +297,7 @@ export default function ScannerPage() {
           </section>
 
           <aside className="flex flex-col gap-5">
-            <form onSubmit={handleScan} className="rounded-3xl border border-black/5 bg-white p-5 shadow-sm md:p-6">
+            <form onSubmit={handleScan} className="m3-surface rounded-[2rem] p-5 md:p-6">
               <h3 className="mb-5 flex items-center gap-2 text-xl font-bold">
                 <QrCode className="h-5 w-5 text-brand-text/60" /> Nhập mã thủ công
               </h3>
@@ -309,14 +309,14 @@ export default function ScannerPage() {
                   value={qrCode}
                   onChange={(event) => setQrCode(event.target.value)}
                   placeholder="Dán hoặc nhập mã QR"
-                  className="min-h-12 w-full rounded-2xl border border-black/5 bg-brand-surface p-4 font-mono text-base font-bold outline-none transition-colors focus:border-brand-primary focus:bg-white"
+                  className="m3-focus-ring min-h-14 w-full rounded-[var(--md-sys-shape-corner-large)] border border-[var(--md-sys-color-outline-variant)] bg-[var(--md-sys-color-surface-container-high)] p-4 font-mono text-base font-bold outline-none transition-colors focus:border-[var(--md-sys-color-primary)] focus:bg-[var(--md-sys-color-surface-container-lowest)]"
                 />
               </label>
 
               <button
                 type="submit"
                 disabled={isScanning || !tripId || !qrCode.trim()}
-                className="mt-5 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-brand-text px-4 py-4 font-black text-white transition-colors hover:bg-black disabled:opacity-60"
+                className="m3-state-layer mt-5 flex min-h-14 w-full items-center justify-center gap-2 rounded-full bg-[var(--md-sys-color-primary)] px-4 py-4 font-black text-[var(--md-sys-color-on-primary)] transition-colors disabled:opacity-60"
               >
                 {isScanning ? <Loader2 className="h-5 w-5 animate-spin" /> : <Search className="h-5 w-5" />}
                 Kiểm tra vé
@@ -324,7 +324,7 @@ export default function ScannerPage() {
             </form>
 
             {scanResult?.ticket && (
-              <div className="rounded-3xl border border-black/5 bg-white p-5 shadow-sm md:p-6">
+              <div className="m3-surface rounded-[2rem] p-5 md:p-6">
                 <div className="mb-4 flex items-center gap-3">
                   {scanResult.valid ? <CheckCircle2 className="h-6 w-6 text-brand-success" /> : <XCircle className="h-6 w-6 text-brand-danger" />}
                   <h3 className="font-black">Kết quả vé</h3>

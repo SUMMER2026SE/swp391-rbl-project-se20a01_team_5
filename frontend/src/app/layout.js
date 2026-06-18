@@ -1,4 +1,5 @@
 import { Inter, JetBrains_Mono } from "next/font/google";
+import "material-symbols/rounded.css";
 import "./globals.css";
 
 const inter = Inter({

@@ -89,7 +89,7 @@ export default function CoordinatorDashboard() {
           <Stat label="Xe đang chạy" value={`${runningCount} / ${vehicles.length}`} />
           <Stat label="Có GPS live" value={vehiclesWithLocation.length} tone="success" />
           <Stat label="Chưa gửi GPS" value={vehicles.length - vehiclesWithLocation.length} tone="warning" />
-          <div className="bg-brand-text text-white rounded-2xl p-4 shadow-sm flex flex-col justify-center">
+          <div className="bg-[var(--md-sys-color-inverse-surface)] text-[var(--md-sys-color-inverse-on-surface)] rounded-[1.5rem] p-4 shadow-[var(--md-sys-elevation-1)] flex flex-col justify-center">
             <div className="text-sm font-bold text-white/50 uppercase mb-1">Ngày vận hành</div>
             <input
               type="date"
@@ -108,7 +108,7 @@ export default function CoordinatorDashboard() {
       )}
 
       <div className="flex-1 grid grid-cols-1 xl:grid-cols-4 gap-6 overflow-hidden pb-6">
-        <div className="xl:col-span-3 bg-brand-surface/30 rounded-3xl shadow-sm border border-black/5 relative overflow-hidden flex flex-col">
+        <div className="xl:col-span-3 m3-surface rounded-[2rem] relative overflow-hidden flex flex-col">
           <div className="absolute top-6 left-6 z-20 flex gap-2 flex-wrap">
             <div className="bg-white px-4 py-2 rounded-xl shadow-sm font-bold text-sm flex items-center gap-2 border border-black/5">
               <span className="w-3 h-3 rounded-full bg-brand-success"></span> Đang chạy
@@ -122,8 +122,8 @@ export default function CoordinatorDashboard() {
             <RefreshCw className="w-5 h-5 text-brand-text" />
           </button>
 
-          <div className="flex-1 relative bg-[#EBEFE8] overflow-hidden">
-            <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'linear-gradient(#000 1px, transparent 1px), linear-gradient(90deg, #000 1px, transparent 1px)', backgroundSize: '60px 60px' }}></div>
+          <div className="flex-1 relative m3-map-surface overflow-hidden">
+            <div className="absolute inset-0 opacity-20"></div>
 
             {isLoading && (
               <div className="absolute inset-0 z-10 flex items-center justify-center text-center text-sm font-bold text-brand-text/50">
@@ -152,7 +152,7 @@ export default function CoordinatorDashboard() {
           </div>
         </div>
 
-        <div className="bg-white rounded-3xl p-6 shadow-sm border border-black/5 flex flex-col overflow-hidden">
+        <div className="m3-surface rounded-[2rem] p-6 flex flex-col overflow-hidden">
           <div className="flex items-center justify-between mb-4 shrink-0">
             <h2 className="text-xl font-bold flex items-center gap-2">
               <Navigation className="w-5 h-5 text-brand-primary" /> Đội xe live
@@ -166,7 +166,7 @@ export default function CoordinatorDashboard() {
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
               placeholder="Tìm biển số, tài xế..."
-              className="w-full bg-brand-surface border border-black/5 rounded-xl py-2.5 pl-10 pr-4 text-sm font-medium focus:outline-none focus:border-brand-primary transition-all"
+              className="m3-focus-ring w-full bg-[var(--md-sys-color-surface-container-high)] border border-[var(--md-sys-color-outline-variant)] rounded-full py-3 pl-10 pr-4 text-sm font-medium focus:outline-none focus:border-[var(--md-sys-color-primary)] transition-all"
             />
           </div>
 
@@ -177,7 +177,7 @@ export default function CoordinatorDashboard() {
               </div>
             )}
             {visibleVehicles.map((bus) => (
-              <div key={bus.tripId} className={`p-4 rounded-2xl border ${bus.status === 'RUNNING' ? 'bg-brand-success/5 border-brand-success/30' : 'bg-white border-black/5 hover:border-brand-primary/50'} transition-colors`}>
+              <div key={bus.tripId} className={`p-4 rounded-[1.5rem] border ${bus.status === 'RUNNING' ? 'bg-brand-success/5 border-brand-success/30' : 'bg-[var(--md-sys-color-surface-container-lowest)] border-[var(--md-sys-color-outline-variant)] hover:border-brand-primary/50'} transition-colors`}>
                 <div className="flex justify-between items-start mb-2">
                   <div className="font-black text-brand-text">{bus.licensePlate || 'Chưa gán xe'}</div>
                   <div className="text-[10px] font-black uppercase px-2 py-1 rounded-md bg-brand-surface text-brand-text/60">
@@ -215,7 +215,7 @@ function Stat({ label, value, tone = 'neutral' }) {
       ? 'text-brand-warning'
       : 'text-brand-primary';
   return (
-    <div className="bg-white rounded-2xl p-4 shadow-sm border border-black/5 flex flex-col justify-center">
+    <div className="m3-surface rounded-[1.5rem] p-4 flex flex-col justify-center">
       <div className="text-sm font-bold text-brand-text/50 uppercase mb-1">{label}</div>
       <div className={`text-2xl font-black ${toneClass}`}>{value}</div>
     </div>

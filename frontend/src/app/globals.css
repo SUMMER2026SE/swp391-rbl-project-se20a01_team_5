@@ -1,22 +1,164 @@
 @import "tailwindcss";
 @plugin "tailwindcss-animate";
 @theme inline {
-  --color-brand-primary: #FAD4C0;
-  --color-brand-secondary: #80A1C1;
-  --color-brand-success: #16A34A;
-  --color-brand-warning: #D97706;
-  --color-brand-danger: #DC2626;
-  --color-brand-surface: #FFF5E6;
-  --color-brand-text: #111827;
+  --color-brand-primary: var(--md-sys-color-primary);
+  --color-brand-secondary: var(--md-sys-color-secondary);
+  --color-brand-success: var(--unibus-success);
+  --color-brand-warning: var(--unibus-warning);
+  --color-brand-danger: var(--unibus-danger);
+  --color-brand-surface: var(--md-sys-color-surface-container-low);
+  --color-brand-text: var(--md-sys-color-on-surface);
 
   --font-sans: var(--font-inter);
   --font-mono: var(--font-jetbrains-mono);
 }
 
+:root {
+  color-scheme: light;
+
+  --md-source-color: #315fda;
+
+  --md-sys-color-primary: #315fda;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-container: #dce5ff;
+  --md-sys-color-on-primary-container: #001947;
+  --md-sys-color-secondary: #5b6380;
+  --md-sys-color-on-secondary: #ffffff;
+  --md-sys-color-secondary-container: #dfe6ff;
+  --md-sys-color-on-secondary-container: #171e35;
+  --md-sys-color-tertiary: #7a4d7f;
+  --md-sys-color-on-tertiary: #ffffff;
+  --md-sys-color-tertiary-container: #ffd6ff;
+  --md-sys-color-on-tertiary-container: #301038;
+  --md-sys-color-surface: #fbf8ff;
+  --md-sys-color-surface-dim: #dad9e2;
+  --md-sys-color-surface-bright: #fbf8ff;
+  --md-sys-color-surface-container-lowest: #ffffff;
+  --md-sys-color-surface-container-low: #f5f2fb;
+  --md-sys-color-surface-container: #efedf5;
+  --md-sys-color-surface-container-high: #e9e7ef;
+  --md-sys-color-surface-container-highest: #e3e1ea;
+  --md-sys-color-on-surface: #1b1b21;
+  --md-sys-color-on-surface-variant: #45464f;
+  --md-sys-color-outline: #767680;
+  --md-sys-color-outline-variant: #c6c6d0;
+  --md-sys-color-inverse-surface: #303036;
+  --md-sys-color-inverse-on-surface: #f2eff8;
+
+  --unibus-success: #146c2e;
+  --unibus-success-container: #b9f1bf;
+  --unibus-warning: #8a5100;
+  --unibus-warning-container: #ffddb0;
+  --unibus-danger: #ba1a1a;
+  --unibus-danger-container: #ffdad6;
+
+  --md-sys-shape-corner-extra-small: 4px;
+  --md-sys-shape-corner-small: 8px;
+  --md-sys-shape-corner-medium: 12px;
+  --md-sys-shape-corner-large: 18px;
+  --md-sys-shape-corner-extra-large: 28px;
+  --md-sys-shape-corner-full: 999px;
+
+  --md-sys-elevation-1: 0 1px 2px rgba(27, 27, 33, 0.12), 0 1px 3px rgba(27, 27, 33, 0.08);
+  --md-sys-elevation-2: 0 2px 6px rgba(27, 27, 33, 0.12), 0 6px 14px rgba(27, 27, 33, 0.08);
+  --md-sys-elevation-3: 0 6px 12px rgba(27, 27, 33, 0.12), 0 14px 28px rgba(27, 27, 33, 0.08);
+
+  --md-sys-motion-duration-short: 160ms;
+  --md-sys-motion-duration-medium: 280ms;
+  --md-sys-motion-duration-long: 440ms;
+  --md-sys-motion-easing-standard: cubic-bezier(0.2, 0, 0, 1);
+  --md-sys-motion-easing-emphasized: cubic-bezier(0.2, 0, 0, 1);
+}
+
+html {
+  background: var(--md-sys-color-surface);
+}
+
 body {
-  background-color: var(--color-brand-surface);
-  color: var(--color-brand-text);
+  background:
+    radial-gradient(circle at 10% 0%, color-mix(in srgb, var(--md-sys-color-primary-container) 72%, transparent), transparent 28rem),
+    radial-gradient(circle at 92% 8%, color-mix(in srgb, var(--md-sys-color-tertiary-container) 52%, transparent), transparent 24rem),
+    linear-gradient(180deg, var(--md-sys-color-surface) 0%, var(--md-sys-color-surface-container-low) 100%);
+  color: var(--md-sys-color-on-surface);
   font-family: var(--font-sans), sans-serif;
+}
+
+::selection {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+}
+
+.material-symbols-rounded {
+  font-family: "Material Symbols Rounded";
+  font-size: 24px;
+  line-height: 1;
+  font-variation-settings: "FILL" 0, "wght" 500, "GRAD" 0, "opsz" 24;
+  vertical-align: middle;
+}
+
+.m3-app-bg {
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--md-sys-color-primary-container) 65%, transparent), transparent 26rem),
+    radial-gradient(circle at top right, color-mix(in srgb, var(--md-sys-color-tertiary-container) 48%, transparent), transparent 24rem),
+    linear-gradient(135deg, var(--md-sys-color-surface) 0%, var(--md-sys-color-surface-container-low) 100%);
+}
+
+.m3-surface {
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-lowest) 88%, transparent);
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 78%, transparent);
+  box-shadow: var(--md-sys-elevation-1);
+}
+
+.m3-surface-high {
+  background: var(--md-sys-color-surface-container-high);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  box-shadow: var(--md-sys-elevation-2);
+}
+
+.m3-state-layer {
+  position: relative;
+  overflow: hidden;
+}
+
+.m3-state-layer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity var(--md-sys-motion-duration-short) var(--md-sys-motion-easing-standard);
+  pointer-events: none;
+}
+
+.m3-state-layer:hover::after {
+  opacity: 0.08;
+}
+
+.m3-state-layer:active::after {
+  opacity: 0.12;
+}
+
+.m3-focus-ring:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--md-sys-color-primary) 48%, transparent);
+  outline-offset: 3px;
+}
+
+.m3-map-surface {
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--md-sys-color-outline-variant) 55%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--md-sys-color-outline-variant) 55%, transparent) 1px, transparent 1px),
+    radial-gradient(circle at 20% 20%, color-mix(in srgb, var(--md-sys-color-primary-container) 70%, transparent), transparent 18rem),
+    radial-gradient(circle at 80% 70%, color-mix(in srgb, var(--md-sys-color-tertiary-container) 58%, transparent), transparent 20rem);
+  background-size: 48px 48px, 48px 48px, auto, auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+  }
 }
 
 /* Custom Scrollbar cho Bento */

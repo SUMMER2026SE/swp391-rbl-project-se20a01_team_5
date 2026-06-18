@@ -7,6 +7,7 @@ import { Lock, UserPlus, User, Mail, ArrowRight } from 'lucide-react';
 import GoogleSignInButton from '@/components/auth/GoogleSignInButton';
 import { authApi, getAuthSession, getDefaultRouteForRole, setAuthSession } from '@/services/api';
 import OtpInput from '@/components/auth/OtpInput';
+import { MaterialCard } from '@/components/ui/material';
 
 const initialForm = {
   fullName: '',
@@ -121,9 +122,9 @@ export default function RegisterPage() {
   }, [redirectAfterLogin]);
 
   return (
-    <div className="min-h-screen p-4 md:p-8 flex items-center justify-center font-sans">
+    <div className="min-h-screen m3-app-bg p-4 md:p-8 flex items-center justify-center font-sans">
       <div className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-        <div className="hidden lg:flex bg-brand-text rounded-3xl p-12 shadow-sm flex-col justify-between relative overflow-hidden border border-black/5 text-white">
+        <div className="hidden lg:flex bg-[var(--md-sys-color-inverse-surface)] rounded-[2rem] p-12 shadow-[var(--md-sys-elevation-2)] flex-col justify-between relative overflow-hidden border border-black/5 text-[var(--md-sys-color-inverse-on-surface)]">
           <div className="absolute -bottom-10 -left-10 w-64 h-64 bg-brand-primary/20 rounded-full blur-3xl"></div>
           <div className="relative z-10">
             <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center mb-8 backdrop-blur-sm border border-white/10">
@@ -139,7 +140,7 @@ export default function RegisterPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-3xl p-8 md:p-12 shadow-sm border border-black/5 flex flex-col justify-center">
+        <MaterialCard className="rounded-[2rem] p-8 md:p-12 flex flex-col justify-center">
           <div className="mb-8">
             <h2 className="text-3xl font-bold tracking-tight">Tạo tài khoản mới</h2>
             <p className="text-brand-text/60 mt-2 text-sm">Tài khoản được tạo sau khi xác thực OTP email</p>
@@ -173,7 +174,7 @@ export default function RegisterPage() {
                         type="text"
                         required
                         placeholder="Nguyễn Văn A"
-                        className="w-full pl-10 pr-4 py-3 rounded-xl bg-brand-surface border border-black/5 focus:bg-white focus:border-brand-text focus:ring-2 focus:ring-brand-text/20 outline-none transition-all font-medium text-sm"
+                        className="m3-focus-ring w-full min-h-14 pl-10 pr-4 py-3 rounded-[var(--md-sys-shape-corner-large)] bg-[var(--md-sys-color-surface-container-high)] border border-[var(--md-sys-color-outline-variant)] focus:bg-[var(--md-sys-color-surface-container-lowest)] focus:border-[var(--md-sys-color-primary)] outline-none transition-all font-medium text-sm"
                         value={formData.fullName}
                         onChange={(e) => updateField('fullName', e.target.value)}
                       />
@@ -188,7 +189,7 @@ export default function RegisterPage() {
                         type="email"
                         required
                         placeholder="name@example.com"
-                        className="w-full pl-10 pr-4 py-3 rounded-xl bg-brand-surface border border-black/5 focus:bg-white focus:border-brand-text focus:ring-2 focus:ring-brand-text/20 outline-none transition-all font-medium text-sm"
+                        className="m3-focus-ring w-full min-h-14 pl-10 pr-4 py-3 rounded-[var(--md-sys-shape-corner-large)] bg-[var(--md-sys-color-surface-container-high)] border border-[var(--md-sys-color-outline-variant)] focus:bg-[var(--md-sys-color-surface-container-lowest)] focus:border-[var(--md-sys-color-primary)] outline-none transition-all font-medium text-sm"
                         value={formData.email}
                         onChange={(e) => updateField('email', e.target.value)}
                       />
@@ -211,7 +212,7 @@ export default function RegisterPage() {
                   <button
                     type="submit"
                     disabled={isRequestingOtp || isGoogleSubmitting}
-                    className="w-full py-4 mt-4 rounded-xl bg-brand-text text-white font-bold hover:bg-black transition-colors flex justify-center items-center gap-2 shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="m3-state-layer m3-focus-ring w-full min-h-14 py-4 mt-4 rounded-full bg-[var(--md-sys-color-primary)] text-[var(--md-sys-color-on-primary)] font-black transition-colors flex justify-center items-center gap-2 shadow-[var(--md-sys-elevation-1)] disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     <ArrowRight className="w-5 h-5" />
                     {isRequestingOtp ? 'Đang xử lý...' : 'Tiếp tục'}
@@ -251,7 +252,7 @@ export default function RegisterPage() {
                     id="btn-register-submit"
                     type="submit"
                     disabled={isSubmitting || isGoogleSubmitting}
-                    className="w-full py-4 mt-4 rounded-xl bg-brand-text text-white font-bold hover:bg-black transition-colors flex justify-center items-center gap-2 shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="m3-state-layer m3-focus-ring w-full min-h-14 py-4 mt-4 rounded-full bg-[var(--md-sys-color-primary)] text-[var(--md-sys-color-on-primary)] font-black transition-colors flex justify-center items-center gap-2 shadow-[var(--md-sys-elevation-1)] disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     <ArrowRight className="w-5 h-5" />
                     {isSubmitting ? 'Đang xử lý...' : 'Hoàn tất'}
@@ -279,7 +280,7 @@ export default function RegisterPage() {
           <p className="text-center text-sm font-medium text-brand-text/60">
             Đã có tài khoản? <Link href="/login" className="text-brand-secondary hover:text-brand-text font-bold ml-1 transition-colors">Đăng nhập ngay</Link>
           </p>
-        </div>
+        </MaterialCard>
       </div>
     </div>
   );
@@ -296,7 +297,7 @@ function PasswordField({ label, value, onChange, disabled }) {
           required
           minLength={8}
           placeholder="••••••••"
-          className="w-full pl-10 pr-4 py-3 rounded-xl bg-brand-surface border border-black/5 focus:bg-white focus:border-brand-text focus:ring-2 focus:ring-brand-text/20 outline-none transition-all font-medium text-sm disabled:opacity-70 disabled:cursor-not-allowed"
+          className="m3-focus-ring w-full min-h-14 pl-10 pr-4 py-3 rounded-[var(--md-sys-shape-corner-large)] bg-[var(--md-sys-color-surface-container-high)] border border-[var(--md-sys-color-outline-variant)] focus:bg-[var(--md-sys-color-surface-container-lowest)] focus:border-[var(--md-sys-color-primary)] outline-none transition-all font-medium text-sm disabled:opacity-70 disabled:cursor-not-allowed"
           value={value}
           disabled={disabled}
           onChange={(e) => onChange(e.target.value)}

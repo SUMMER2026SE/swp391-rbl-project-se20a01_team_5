@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Lock, LogIn, Mail } from 'lucide-react';
 import GoogleSignInButton from '@/components/auth/GoogleSignInButton';
+import { MaterialCard } from '@/components/ui/material';
 import { authApi, getAuthSession, getDefaultRouteForRole, setAuthSession } from '@/services/api';
 
 export default function LoginPage() {
@@ -56,9 +57,9 @@ export default function LoginPage() {
   }, [redirectAfterLogin]);
 
   return (
-    <div className="min-h-screen bg-brand-surface font-sans text-brand-text flex items-center justify-center p-4">
+    <div className="min-h-screen m3-app-bg font-sans text-brand-text flex items-center justify-center p-4">
       <div className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-        <div className="hidden lg:flex bg-gradient-to-br from-brand-primary via-[#ffecd2] to-brand-primary rounded-3xl p-12 shadow-sm flex-col justify-between relative overflow-hidden border border-black/5">
+        <div className="hidden lg:flex bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] rounded-[2rem] p-12 shadow-[var(--md-sys-elevation-2)] flex-col justify-between relative overflow-hidden border border-[var(--md-sys-color-outline-variant)]">
           {/* Decorative Grid Pattern */}
           <div className="absolute inset-0 bg-[linear-gradient(to_right,#0000000a_1px,transparent_1px),linear-gradient(to_bottom,#0000000a_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none"></div>
           
@@ -68,7 +69,7 @@ export default function LoginPage() {
 
           <div className="relative z-10">
             <Link href="/" className="inline-block transition-transform hover:scale-105 active:scale-95 mb-10">
-              <div className="bg-white/50 backdrop-blur-md p-4 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/60">
+              <div className="bg-white/55 backdrop-blur-md p-4 rounded-[1.75rem] shadow-[var(--md-sys-elevation-1)] border border-white/60">
                 <img
                   src="/logo.png"
                   alt="UniBus Logo"
@@ -90,7 +91,7 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-3xl p-8 md:p-12 shadow-sm border border-black/5 flex flex-col justify-center">
+        <MaterialCard className="rounded-[2rem] p-8 md:p-12 flex flex-col justify-center">
           <div className="mb-8">
             <h2 className="text-3xl font-bold tracking-tight">Đăng Nhập</h2>
             <p className="text-brand-text/60 mt-2 text-sm">Điền thông tin tài khoản của bạn để truy cập</p>
@@ -112,7 +113,7 @@ export default function LoginPage() {
                   required
                   tabIndex={1}
                   placeholder="name@example.com"
-                  className="w-full pl-12 pr-4 py-3.5 rounded-xl bg-brand-surface/50 border border-black/5 focus:bg-white focus:border-brand-secondary focus:ring-4 focus:ring-brand-secondary/20 outline-none transition-all font-medium text-sm"
+                className="m3-focus-ring w-full min-h-14 pl-12 pr-4 py-3.5 rounded-[var(--md-sys-shape-corner-large)] bg-[var(--md-sys-color-surface-container-high)] border border-[var(--md-sys-color-outline-variant)] focus:bg-[var(--md-sys-color-surface-container-lowest)] focus:border-[var(--md-sys-color-primary)] outline-none transition-all font-medium text-sm"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
@@ -136,7 +137,7 @@ export default function LoginPage() {
                   type="password"
                   required
                   tabIndex={2}
-                  className="w-full pl-12 pr-4 py-3.5 rounded-xl bg-brand-surface/50 border border-black/5 focus:bg-white focus:border-brand-secondary focus:ring-4 focus:ring-brand-secondary/20 outline-none transition-all font-mono text-sm"
+                  className="m3-focus-ring w-full min-h-14 pl-12 pr-4 py-3.5 rounded-[var(--md-sys-shape-corner-large)] bg-[var(--md-sys-color-surface-container-high)] border border-[var(--md-sys-color-outline-variant)] focus:bg-[var(--md-sys-color-surface-container-lowest)] focus:border-[var(--md-sys-color-primary)] outline-none transition-all font-mono text-sm"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
@@ -147,7 +148,7 @@ export default function LoginPage() {
               type="submit"
               tabIndex={3}
               disabled={isSubmitting || isGoogleSubmitting}
-              className="w-full py-4 mt-2 rounded-xl bg-brand-text text-white font-bold hover:bg-black transition-colors flex justify-center items-center gap-2 shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+              className="m3-state-layer m3-focus-ring w-full min-h-14 py-4 mt-2 rounded-full bg-[var(--md-sys-color-primary)] text-[var(--md-sys-color-on-primary)] font-black transition-colors flex justify-center items-center gap-2 shadow-[var(--md-sys-elevation-1)] disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <LogIn className="w-5 h-5" /> {isSubmitting ? 'Đang đăng nhập...' : 'Đăng Nhập'}
             </button>
@@ -171,7 +172,7 @@ export default function LoginPage() {
           <p className="text-center text-sm font-medium text-brand-text/60">
             Chưa có tài khoản? <Link href="/register" className="text-brand-secondary hover:text-brand-text font-bold ml-1 transition-colors">Đăng ký ngay</Link>
           </p>
-        </div>
+        </MaterialCard>
       </div>
     </div>
   );

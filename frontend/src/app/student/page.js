@@ -86,8 +86,8 @@ export default function StudentDashboard() {
 
       <div className="flex-1 grid grid-cols-1 xl:grid-cols-3 gap-6 overflow-y-auto custom-scrollbar pr-2 pb-6">
         <div className="flex flex-col gap-6 xl:col-span-1">
-          <div className="bg-white rounded-3xl p-8 shadow-sm border border-black/5 flex flex-col items-center text-center relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-24 bg-brand-primary/30"></div>
+          <div className="m3-surface rounded-[2rem] p-8 flex flex-col items-center text-center relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-28 bg-[var(--md-sys-color-primary-container)]"></div>
 
             <div className="w-24 h-24 rounded-full bg-brand-primary flex items-center justify-center text-2xl font-bold text-brand-text border-4 border-white shadow-sm z-10 mb-4 mt-6 overflow-hidden">
               {profile?.avatarUrl ? (
@@ -100,7 +100,7 @@ export default function StudentDashboard() {
             <h2 className="text-xl font-bold mb-1 relative z-10">{profile?.fullName || 'Chưa có tên'}</h2>
             <p className="text-brand-text/50 font-mono text-sm mb-6 relative z-10">{profile?.studentCode || 'Chưa có mã sinh viên'}</p>
 
-            <div className="bg-brand-surface p-4 rounded-3xl border border-black/5 mb-6 w-full flex justify-center relative z-10">
+            <div className="bg-[var(--md-sys-color-surface-container)] p-4 rounded-[1.75rem] border border-[var(--md-sys-color-outline-variant)] mb-6 w-full flex justify-center relative z-10">
               {activeMonthlyTicket?.qrCode ? (
                 <div className="w-full flex flex-col items-center gap-3">
                   <TicketQrCode value={activeMonthlyTicket.qrCode} compact className="w-full max-w-56" />
@@ -109,13 +109,13 @@ export default function StudentDashboard() {
                   </p>
                 </div>
               ) : (
-                <div className="w-full min-h-48 rounded-2xl bg-white border border-black/5 p-5 flex flex-col items-center justify-center text-center">
+                <div className="w-full min-h-48 rounded-[1.5rem] bg-[var(--md-sys-color-surface-container-lowest)] border border-[var(--md-sys-color-outline-variant)] p-5 flex flex-col items-center justify-center text-center">
                   <div className="w-12 h-12 rounded-2xl bg-brand-primary/20 flex items-center justify-center mb-4">
                     <Ticket className="w-6 h-6 text-brand-text" />
                   </div>
                   <p className="text-sm font-black text-brand-text">{ticketAction.title}</p>
                   <p className="mt-2 text-xs font-bold text-brand-text/50 leading-relaxed max-w-56">{ticketAction.description}</p>
-                  <Link href={ticketAction.href} className="mt-4 px-4 py-2.5 rounded-xl bg-brand-text text-white text-xs font-black hover:bg-black transition-colors">
+                  <Link href={ticketAction.href} className="m3-state-layer mt-4 px-5 py-3 rounded-full bg-[var(--md-sys-color-primary)] text-[var(--md-sys-color-on-primary)] text-xs font-black transition-colors">
                     {ticketAction.label}
                   </Link>
                 </div>
@@ -124,7 +124,7 @@ export default function StudentDashboard() {
 
           </div>
 
-          <div className="bg-white rounded-3xl p-6 border border-black/5 flex items-center justify-between">
+          <div className="m3-surface rounded-[1.75rem] p-6 flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-brand-surface rounded-2xl flex items-center justify-center shadow-sm">
                 <Ticket className="w-6 h-6 text-brand-text/50" />
@@ -141,18 +141,18 @@ export default function StudentDashboard() {
         </div>
 
         <div className="xl:col-span-2 flex flex-col gap-6">
-          <div className="bg-brand-primary rounded-3xl p-6 md:p-8 shadow-sm border border-black/5 relative overflow-hidden flex flex-col justify-between">
+          <div className="bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] rounded-[2rem] p-6 md:p-8 shadow-[var(--md-sys-elevation-2)] border border-[var(--md-sys-color-outline-variant)] relative overflow-hidden flex flex-col justify-between">
             <div className="flex flex-wrap items-center justify-between mb-8 relative z-10 gap-4">
               <h3 className="text-2xl font-bold flex items-center gap-2">
                 <Navigation className="w-7 h-7" /> Tuyến đã đăng ký
               </h3>
-              <Link href="/student/routes" className="px-4 py-2 bg-white/30 text-brand-text font-bold text-xs rounded-xl uppercase tracking-widest backdrop-blur-sm shadow-sm border border-white/20">
+              <Link href="/student/routes" className="m3-state-layer px-4 py-2 bg-white/45 text-[var(--md-sys-color-on-primary-container)] font-black text-xs rounded-full backdrop-blur-sm shadow-sm border border-white/30">
                 Tìm tuyến
               </Link>
             </div>
 
             {registration ? (
-              <div className="bg-white rounded-3xl p-6 shadow-sm relative z-10 border border-white/50">
+              <div className="bg-[var(--md-sys-color-surface-container-lowest)] rounded-[1.75rem] p-6 shadow-[var(--md-sys-elevation-1)] relative z-10 border border-white/50">
                 <h4 className="text-xl font-bold text-brand-text">{registration.routeName}</h4>
                 <p className="text-sm font-medium text-brand-text/60 flex items-center gap-1.5 mt-2">
                   <MapPin className="w-4 h-4 text-brand-secondary" />
@@ -162,21 +162,21 @@ export default function StudentDashboard() {
                   <div className="text-xs font-black text-brand-success uppercase">{registration.status}</div>
                   <Link 
                     href={`/student/routes/${registration.routeId}?boardingStopId=${registration.boardingStopId}&alightingStopId=${registration.alightingStopId}`}
-                    className="w-full py-3.5 bg-brand-text text-white font-extrabold text-sm rounded-xl hover:bg-black transition-colors flex items-center justify-center gap-2 shadow-sm"
+                    className="m3-state-layer w-full py-3.5 bg-[var(--md-sys-color-primary)] text-[var(--md-sys-color-on-primary)] font-extrabold text-sm rounded-full transition-colors flex items-center justify-center gap-2 shadow-sm"
                   >
                     <Navigation className="w-4 h-4" /> Theo dõi xe & ETA
                   </Link>
                 </div>
               </div>
             ) : (
-              <div className="bg-white rounded-3xl p-6 shadow-sm relative z-10 border border-white/50">
+              <div className="bg-[var(--md-sys-color-surface-container-lowest)] rounded-[1.75rem] p-6 shadow-[var(--md-sys-elevation-1)] relative z-10 border border-white/50">
                 <h4 className="text-xl font-bold text-brand-text">Chưa đăng ký tuyến</h4>
                 <p className="text-sm font-medium text-brand-text/60 mt-2">Chọn tuyến và điểm lên/xuống mặc định để mua vé tháng.</p>
               </div>
             )}
           </div>
 
-          <div className="bg-white rounded-3xl p-6 shadow-sm border border-black/5 flex-1">
+          <div className="m3-surface rounded-[2rem] p-6 flex-1">
             <h3 className="font-bold mb-5 flex items-center gap-2">
               <History className="w-5 h-5 text-brand-secondary" /> Chuyến đi gần đây
             </h3>
@@ -184,7 +184,7 @@ export default function StudentDashboard() {
             {recentTrips.length ? (
               <div className="space-y-3">
                 {recentTrips.map((trip) => (
-                  <div key={trip.travelHistoryId} className="p-4 bg-brand-surface rounded-2xl border border-black/5">
+                  <div key={trip.travelHistoryId} className="p-4 bg-[var(--md-sys-color-surface-container)] rounded-[1.5rem] border border-[var(--md-sys-color-outline-variant)]">
                     <p className="text-sm font-bold text-brand-text mb-1">{trip.routeName}</p>
                     <p className="text-xs font-medium text-brand-text/60 leading-relaxed flex items-center gap-1">
                       <Clock className="w-3.5 h-3.5" /> {formatDate(trip.serviceDate)}
