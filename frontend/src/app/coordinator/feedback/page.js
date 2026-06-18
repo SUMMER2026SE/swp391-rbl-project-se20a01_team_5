@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MessageSquare, BellRing, Send, AlertCircle, ShieldAlert, CheckCircle2, User, Search, Filter, RefreshCw } from 'lucide-react';
-import { feedbackApi, notificationApi } from '@/services/api';
+import { coordinatorFeedbackApi, coordinatorNotificationApi } from '@/services/api';
 
 export default function CoordinatorFeedbackPage() {
   const [feedbacks, setFeedbacks] = useState([]);
@@ -20,7 +20,7 @@ export default function CoordinatorFeedbackPage() {
   const loadFeedbacks = useCallback(() => {
     setIsLoading(true);
     setError('');
-    feedbackApi.listAll({ status: statusFilter, page: 0, size: 50 })
+    coordinatorFeedbackApi.listAll({ status: statusFilter, page: 0, size: 50 })
       .then((items) => setFeedbacks(items || []))
       .catch((err) => setError(err.message))
       .finally(() => setIsLoading(false));
@@ -46,7 +46,7 @@ export default function CoordinatorFeedbackPage() {
     setNotice('');
     setError('');
     try {
-      const resolved = await feedbackApi.resolve(feedbackId, 'Đã tiếp nhận và xử lý phản hồi.');
+      const resolved = await coordinatorFeedbackApi.resolve(feedbackId, 'Đã tiếp nhận và xử lý phản hồi.');
       setFeedbacks((items) => items.map((item) => (
         item.feedbackId === feedbackId ? resolved : item
       )));
@@ -63,7 +63,7 @@ export default function CoordinatorFeedbackPage() {
     setError('');
 
     try {
-      await notificationApi.create({
+      await coordinatorNotificationApi.create({
         target: notifyTarget,
         title: notifyTitle.trim(),
         content: notifyContent.trim(),
@@ -209,8 +209,6 @@ export default function CoordinatorFeedbackPage() {
                 <option value="all_students">Tất cả sinh viên</option>
                 <option value="all_drivers">Tất cả tài xế</option>
                 <option value="all_conductors">Tất cả phụ xe</option>
-                <option value="route_1">Sinh viên đăng ký tuyến 1</option>
-                <option value="route_2">Sinh viên đăng ký tuyến 2</option>
               </select>
             </div>
 
