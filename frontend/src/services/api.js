@@ -395,6 +395,11 @@ export const coordinatorScheduleApi = {
 };
 
 export const driverTripApi = {
+  async overview() {
+    const response = await apiClient.get('/driver/trips/overview');
+    return unwrap(response);
+  },
+
   async list(serviceDate) {
     const response = await apiClient.get('/driver/trips', {
       params: serviceDate ? { date: serviceDate } : undefined,
