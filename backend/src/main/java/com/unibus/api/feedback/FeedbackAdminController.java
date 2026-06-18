@@ -21,7 +21,7 @@ import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/v1/feedback")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyRole('DISPATCHER', 'ADMIN')")
 public class FeedbackAdminController {
 
     private final FeedbackService feedbackService;
