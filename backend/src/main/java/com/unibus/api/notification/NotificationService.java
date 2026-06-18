@@ -47,7 +47,9 @@ public class NotificationService {
     @Transactional
     public NotificationView create(CurrentUser currentUser, CreateNotificationRequest request) {
         Audience audience = parseAudience(request.target());
-        List<Integer> recipients = notificationRepository.findRecipientUserIds(audience.targetRole(), audience.routeId());
+        List<Integer> recipients = audience.staffOnly()
+                ? notificationRepository.findStaffRecipientUserIds()
+                : notificationRepository.findRecipientUserIds(audience.targetRole(), audience.routeId());
         if (recipients.isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "No notification recipients found");
         }
@@ -72,9 +74,12 @@ public class NotificationService {
         String normalized = target == null ? "" : target.trim().toLowerCase();
         Matcher matcher = ROUTE_TARGET.matcher(normalized);
         if (matcher.matches()) {
-            return new Audience(UserRole.STUDENT, Integer.parseInt(matcher.group(1)));
+            return new Audience(UserRole.STUDENT, Integer.parseInt(matcher.group(1)), false);
         }
-        return new Audience(notificationRepository.targetRoleFrom(normalized).orElse(null), null);
+        if ("all_staffs".equals(normalized)) {
+            return new Audience(null, null, true);
+        }
+        return new Audience(notificationRepository.targetRoleFrom(normalized).orElse(null), null, false);
     }
 
     private void validatePage(int page, int size) {
@@ -83,6 +88,6 @@ public class NotificationService {
         }
     }
 
-    private record Audience(UserRole targetRole, Integer routeId) {
+    private record Audience(UserRole targetRole, Integer routeId, boolean staffOnly) {
     }
 }

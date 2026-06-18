@@ -430,6 +430,20 @@ export const driverTripApi = {
   },
 };
 
+export const assistantTicketApi = {
+  async dashboard(date) {
+    const response = await apiClient.get('/assistant/dashboard', {
+      params: date ? { date } : undefined,
+    });
+    return unwrap(response);
+  },
+
+  async scan(payload) {
+    const response = await apiClient.post('/assistant/scan', payload);
+    return unwrap(response);
+  },
+};
+
 export const ticketingApi = {
   async dashboard() {
     const response = await apiClient.get('/students/me/tickets');

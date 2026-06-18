@@ -16,6 +16,11 @@ export const coordinatorSchedulesService = {
     return res.data;
   },
 
+  getAvailableConductors: async () => {
+    const res = await apiClient('/coordinator/schedules/conductors');
+    return res.data;
+  },
+
   createSchedule: async (scheduleData) => {
     const res = await apiClient('/coordinator/schedules', {
       method: 'POST',

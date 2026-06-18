@@ -75,6 +75,15 @@ public class NotificationRepository {
                 """, Integer.class);
     }
 
+    public List<Integer> findStaffRecipientUserIds() {
+        return jdbcTemplate.queryForList("""
+                SELECT user_id
+                FROM users
+                WHERE status = 'ACTIVE'
+                  AND role IN ('DRIVER', 'CONDUCTOR', 'DISPATCHER')
+                """, Integer.class);
+    }
+
     public NotificationView createForRecipient(String title, String content, String notificationType, Integer recipientUserId, Integer createdByUserId) {
         return jdbcTemplate.queryForObject("""
                 INSERT INTO notifications(recipient_user_id, sender_user_id, title, content, notification_type)

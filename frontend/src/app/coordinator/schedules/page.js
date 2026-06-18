@@ -5,16 +5,22 @@ import { CalendarDays, Clock, Map, Users, BusFront, CheckCircle2, AlertCircle, C
 import { coordinatorSchedulesService } from '@/services/coordinatorSchedules.service';
 import { coordinatorRoutesService } from '@/services/coordinatorRoutes.service';
 
+function getTodayIsoWeekday() {
+  const day = new Date().getDay();
+  return String(day === 0 ? 7 : day);
+}
+
 export default function CoordinatorSchedulesPage() {
   const [shifts, setShifts] = useState([]);
   const [driversFromBackend, setDriversFromBackend] = useState([]);
+  const [conductorsFromBackend, setConductorsFromBackend] = useState([]);
   const [busesFromBackend, setBusesFromBackend] = useState([]);
   const [routesFromBackend, setRoutesFromBackend] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
   const [notice, setNotice] = useState('');
   
   const [isAddingNew, setIsAddingNew] = useState(false);
-  const [newSchedule, setNewSchedule] = useState({ routeId: '', busId: '', driverId: '', weekdayNumber: '2' });
+  const [newSchedule, setNewSchedule] = useState({ routeId: '', busId: '', driverId: '', conductorId: '', weekdayNumber: getTodayIsoWeekday() });
   const [hour12, setHour12] = useState('08');
   const [minute, setMinute] = useState('00');
   const [ampm, setAmpm] = useState('AM');
@@ -24,10 +30,11 @@ export default function CoordinatorSchedulesPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [shiftsData, busesData, driversData, routesData] = await Promise.all([
+        const [shiftsData, busesData, driversData, conductorsData, routesData] = await Promise.all([
           coordinatorSchedulesService.getAllSchedules(),
           coordinatorSchedulesService.getAvailableBuses(),
           coordinatorSchedulesService.getAvailableDrivers(),
+          coordinatorSchedulesService.getAvailableConductors(),
           coordinatorRoutesService.getRoutes()
         ]);
         
@@ -35,16 +42,18 @@ export default function CoordinatorSchedulesPage() {
           id: s.id,
           routeId: s.routeId,
           weekdayNumber: s.weekdayNumber,
-          status: s.busId && s.driverId ? 'assigned' : 'unassigned',
+          status: s.busId && s.driverId && s.conductorId ? 'assigned' : 'unassigned',
           route: s.routeName,
           time: s.departureTime ? s.departureTime.substring(0, 5) : 'N/A',
           driver: s.driverId || '',
+          conductor: s.conductorId || '',
           bus: s.busId || ''
         }));
         
         setShifts(mappedShifts);
         setBusesFromBackend(busesData.map(b => ({ ...b, type: b.seatCount + ' chỗ', status: 'available' })));
         setDriversFromBackend(driversData.map(d => ({ ...d, name: d.driverName, status: 'available' })));
+        setConductorsFromBackend(conductorsData.map(c => ({ ...c, name: c.conductorName, status: 'available' })));
         setRoutesFromBackend(routesData);
       } catch (err) {
         setNotice('Lỗi tải dữ liệu: ' + err.message);
@@ -57,8 +66,7 @@ export default function CoordinatorSchedulesPage() {
     setShifts(shifts.map(shift => {
       if (shift.id === shiftId) {
         const updatedShift = { ...shift, [field]: value };
-        // Check if both driver and bus are assigned
-        if (updatedShift.driver && updatedShift.bus) {
+        if (updatedShift.driver && updatedShift.bus && updatedShift.conductor) {
           updatedShift.status = 'assigned';
         } else {
           updatedShift.status = 'unassigned';
@@ -76,7 +84,8 @@ export default function CoordinatorSchedulesPage() {
       await Promise.all(shifts.map(shift => {
         return coordinatorSchedulesService.updateSchedule(shift.id, {
           busId: shift.bus || null,
-          driverId: shift.driver || null
+          driverId: shift.driver || null,
+          conductorId: shift.conductor || null
         });
       }));
       setNotice('Lưu phân công thành công!');
@@ -92,7 +101,7 @@ export default function CoordinatorSchedulesPage() {
       setNotice('Vui lòng chọn tuyến đường!');
       return;
     }
-    if (!newSchedule.busId || !newSchedule.driverId) {
+    if (!newSchedule.busId || !newSchedule.driverId || !newSchedule.conductorId) {
       setNotice('Vui lòng chọn Xe Bus và Tài xế! (Database bắt buộc)');
       return;
     }
@@ -109,6 +118,7 @@ export default function CoordinatorSchedulesPage() {
         routeId: parseInt(newSchedule.routeId),
         busId: parseInt(newSchedule.busId),
         driverId: parseInt(newSchedule.driverId),
+        conductorId: parseInt(newSchedule.conductorId),
         weekdayNumber: parseInt(newSchedule.weekdayNumber),
         departureTime: finalDepartureTime
       });
@@ -118,16 +128,17 @@ export default function CoordinatorSchedulesPage() {
         id: created.id,
         routeId: created.routeId,
         weekdayNumber: created.weekdayNumber,
-        status: created.busId && created.driverId ? 'assigned' : 'unassigned',
+        status: created.busId && created.driverId && created.conductorId ? 'assigned' : 'unassigned',
         route: created.routeName,
         time: created.departureTime ? created.departureTime.substring(0, 5) : 'N/A',
         driver: created.driverId || '',
+        conductor: created.conductorId || '',
         bus: created.busId || ''
       };
       
       setShifts([mappedShift, ...shifts]);
       setIsAddingNew(false);
-      setNewSchedule({ routeId: '', busId: '', driverId: '', weekdayNumber: '2' });
+      setNewSchedule({ routeId: '', busId: '', driverId: '', conductorId: '', weekdayNumber: getTodayIsoWeekday() });
       setHour12('08');
       setMinute('00');
       setAmpm('AM');
@@ -159,7 +170,10 @@ export default function CoordinatorSchedulesPage() {
     setEditingSchedule({
       id: shift.id,
       routeId: shift.routeId || '',
-      weekdayNumber: shift.weekdayNumber || '2',
+      busId: shift.bus || '',
+      driverId: shift.driver || '',
+      conductorId: shift.conductor || '',
+      weekdayNumber: shift.weekdayNumber || getTodayIsoWeekday(),
       hour12: h12Str,
       minute: m,
       ampm: ampm
@@ -181,6 +195,9 @@ export default function CoordinatorSchedulesPage() {
     try {
       const updated = await coordinatorSchedulesService.updateSchedule(editingSchedule.id, {
         routeId: parseInt(editingSchedule.routeId),
+        busId: editingSchedule.busId ? parseInt(editingSchedule.busId) : null,
+        driverId: editingSchedule.driverId ? parseInt(editingSchedule.driverId) : null,
+        conductorId: editingSchedule.conductorId ? parseInt(editingSchedule.conductorId) : null,
         weekdayNumber: parseInt(editingSchedule.weekdayNumber),
         departureTime: finalDepartureTime
       });
@@ -190,10 +207,11 @@ export default function CoordinatorSchedulesPage() {
         id: updated.id,
         routeId: updated.routeId,
         weekdayNumber: updated.weekdayNumber,
-        status: updated.busId && updated.driverId ? 'assigned' : 'unassigned',
+        status: updated.busId && updated.driverId && updated.conductorId ? 'assigned' : 'unassigned',
         route: updated.routeName,
         time: updated.departureTime ? updated.departureTime.substring(0, 5) : 'N/A',
         driver: updated.driverId || '',
+        conductor: updated.conductorId || '',
         bus: updated.busId || ''
       };
       
@@ -284,75 +302,77 @@ export default function CoordinatorSchedulesPage() {
                     <h3 className="font-bold text-brand-primary flex items-center gap-2"><Plus className="w-5 h-5"/> Tạo Ca Chạy Mới</h3>
                     <button onClick={() => setIsAddingNew(false)} className="p-1 hover:bg-black/5 rounded-full"><X className="w-5 h-5"/></button>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-                    <div className="lg:col-span-2">
-                      <label className="block text-xs font-bold text-brand-text/70 uppercase mb-1">Tuyến đường</label>
-                      <select value={newSchedule.routeId} onChange={e => setNewSchedule({...newSchedule, routeId: e.target.value})} className="w-full rounded-xl p-2.5 text-sm font-bold border bg-white focus:outline-none focus:border-brand-primary">
-                        <option value="">-- Chọn Tuyến --</option>
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                    <Field className="lg:col-span-5" label="Tuyen duong">
+                      <select value={newSchedule.routeId} onChange={e => setNewSchedule({...newSchedule, routeId: e.target.value})} className="w-full h-12 rounded-xl px-4 text-sm font-bold border bg-white focus:outline-none focus:border-brand-primary">
+                        <option value="">-- Chon tuyen --</option>
                         {routesFromBackend.map(r => <option key={r.id} value={r.id}>{r.name || r.routeName}</option>)}
                       </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-brand-text/70 uppercase mb-1">Thứ</label>
-                      <select value={newSchedule.weekdayNumber} onChange={e => setNewSchedule({...newSchedule, weekdayNumber: e.target.value})} className="w-full rounded-xl p-2.5 text-sm font-bold border bg-white focus:outline-none focus:border-brand-primary">
-                        <option value="2">Thứ 2</option><option value="3">Thứ 3</option><option value="4">Thứ 4</option>
-                        <option value="5">Thứ 5</option><option value="6">Thứ 6</option><option value="7">Thứ 7</option>
-                        <option value="1">Chủ Nhật</option>
+                    </Field>
+                    <Field className="lg:col-span-3" label="Thu">
+                      <select value={newSchedule.weekdayNumber} onChange={e => setNewSchedule({...newSchedule, weekdayNumber: e.target.value})} className="w-full h-12 rounded-xl px-4 text-sm font-bold border bg-white focus:outline-none focus:border-brand-primary">
+                        <option value="1">Thu 2</option><option value="2">Thu 3</option><option value="3">Thu 4</option>
+                        <option value="4">Thu 5</option><option value="5">Thu 6</option><option value="6">Thu 7</option>
+                        <option value="7">Chu nhat</option>
                       </select>
-                    </div>
-                    <div className="lg:col-span-2">
-                      <label className="block text-xs font-bold text-brand-text/70 uppercase mb-1">Giờ chạy</label>
-                      <div className="flex gap-2">
-                        <select value={hour12} onChange={e => setHour12(e.target.value)} className="w-1/3 rounded-xl p-2.5 text-sm font-bold border bg-white focus:outline-none focus:border-brand-primary">
+                    </Field>
+                    <Field className="lg:col-span-4" label="Gio chay">
+                      <div className="grid grid-cols-[1fr_auto_1fr_1fr] gap-2 items-center">
+                        <select value={hour12} onChange={e => setHour12(e.target.value)} className="w-full h-12 rounded-xl px-3 text-sm font-bold border bg-white focus:outline-none focus:border-brand-primary">
                           {Array.from({length: 12}, (_, i) => {
                             const val = (i + 1).toString().padStart(2, '0');
                             return <option key={val} value={val}>{val}</option>;
                           })}
                         </select>
-                        <span className="font-bold self-center">:</span>
-                        <select value={minute} onChange={e => setMinute(e.target.value)} className="w-1/3 rounded-xl p-2.5 text-sm font-bold border bg-white focus:outline-none focus:border-brand-primary">
+                        <span className="font-black text-brand-text/50">:</span>
+                        <select value={minute} onChange={e => setMinute(e.target.value)} className="w-full h-12 rounded-xl px-3 text-sm font-bold border bg-white focus:outline-none focus:border-brand-primary">
                           {Array.from({length: 60}, (_, i) => {
                             const val = i.toString().padStart(2, '0');
                             return <option key={val} value={val}>{val}</option>;
                           })}
                         </select>
-                        <select value={ampm} onChange={e => setAmpm(e.target.value)} className="w-1/3 rounded-xl p-2.5 text-sm font-bold border bg-white focus:outline-none focus:border-brand-primary">
+                        <select value={ampm} onChange={e => setAmpm(e.target.value)} className="w-full h-12 rounded-xl px-3 text-sm font-bold border bg-white focus:outline-none focus:border-brand-primary">
                           <option value="AM">AM</option>
                           <option value="PM">PM</option>
                         </select>
                       </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-brand-text/70 uppercase mb-1">Tài xế</label>
-                      <select value={newSchedule.driverId} onChange={e => setNewSchedule({...newSchedule, driverId: e.target.value})} className="w-full rounded-xl p-2.5 text-sm font-bold border bg-white focus:outline-none focus:border-brand-primary">
-                        <option value="">-- Chọn Tài xế --</option>
+                    </Field>
+                    <Field className="lg:col-span-4" label="Tai xe">
+                      <select value={newSchedule.driverId} onChange={e => setNewSchedule({...newSchedule, driverId: e.target.value})} className="w-full h-12 rounded-xl px-4 text-sm font-bold border bg-white focus:outline-none focus:border-brand-primary">
+                        <option value="">-- Chon tai xe --</option>
                         {driversFromBackend.map(d => (
-                          <option key={d.id} value={d.id} disabled={d.status !== 'available'}>{d.name} {d.status !== 'available' && '- Bận'}</option>
+                          <option key={d.id} value={d.id} disabled={d.status !== 'available'}>{d.name} {d.status !== 'available' && '- Ban'}</option>
                         ))}
                       </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-brand-text/70 uppercase mb-1">Xe Bus</label>
-                      <select value={newSchedule.busId} onChange={e => setNewSchedule({...newSchedule, busId: e.target.value})} className="w-full rounded-xl p-2.5 text-sm font-bold border bg-white focus:outline-none focus:border-brand-primary">
-                        <option value="">-- Chọn Xe Bus --</option>
+                    </Field>
+                    <Field className="lg:col-span-4" label="Phu xe">
+                      <select value={newSchedule.conductorId} onChange={e => setNewSchedule({...newSchedule, conductorId: e.target.value})} className="w-full h-12 rounded-xl px-4 text-sm font-bold border bg-white focus:outline-none focus:border-brand-primary">
+                        <option value="">-- Chon phu xe --</option>
+                        {conductorsFromBackend.map(c => (
+                          <option key={c.id} value={c.id} disabled={c.status !== 'available'}>{c.name} {c.status !== 'available' && '- Ban'}</option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field className="lg:col-span-4" label="Xe bus">
+                      <select value={newSchedule.busId} onChange={e => setNewSchedule({...newSchedule, busId: e.target.value})} className="w-full h-12 rounded-xl px-4 text-sm font-bold border bg-white focus:outline-none focus:border-brand-primary">
+                        <option value="">-- Chon xe --</option>
                         {busesFromBackend.map(b => (
-                          <option key={b.id} value={b.id} disabled={b.status !== 'available'}>{b.id} ({b.type}) {b.status !== 'available' && '- Bận'}</option>
+                          <option key={b.id} value={b.id} disabled={b.status !== 'available'}>{b.id} ({b.type}) {b.status !== 'available' && '- Ban'}</option>
                         ))}
                       </select>
-                    </div>
-                    <div className="flex items-end lg:col-span-3">
-                      <button onClick={handleCreateNew} disabled={isCreating} className="w-full bg-brand-primary text-white font-bold py-2.5 rounded-xl hover:bg-black transition-colors disabled:opacity-50">
-                        {isCreating ? 'Đang tạo...' : 'Tạo mới'}
+                    </Field>
+                    <div className="lg:col-span-12 pt-1">
+                      <button onClick={handleCreateNew} disabled={isCreating} className="w-full bg-brand-text text-white font-black py-3.5 rounded-xl hover:bg-black transition-colors disabled:opacity-50">
+                        {isCreating ? 'Dang tao...' : 'Tao moi'}
                       </button>
                     </div>
-                  </div>
-                </div>
+                  </div>                </div>
               )}
 
               {shifts.map(shift => (
-                <div key={shift.id} className={`border rounded-2xl p-5 flex flex-col xl:flex-row xl:items-center gap-6 transition-colors ${shift.status === 'unassigned' ? 'border-brand-danger/30 bg-brand-danger/5' : 'border-black/5 hover:border-brand-primary/50'}`}>
+                <div key={shift.id} className={`border rounded-2xl p-5 flex flex-col gap-5 transition-colors ${shift.status === 'unassigned' ? 'border-brand-danger/30 bg-brand-danger/5' : 'border-black/5 hover:border-brand-primary/50'}`}>
 
-                  <div className="flex-1">
+                  <div>
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
                         <span className="font-black text-lg">{shift.id}</span>
@@ -377,11 +397,11 @@ export default function CoordinatorSchedulesPage() {
                     </div>
                   </div>
 
-                  <div className="flex flex-col sm:flex-row gap-4 xl:w-1/2">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {/* Driver Selection */}
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <label className="block text-xs font-bold text-brand-text/50 uppercase mb-1 flex items-center gap-1">
-                        <Users className="w-3.5 h-3.5" /> Chọn Tài xế
+                        <Users className="w-3.5 h-3.5" /> Tai xe
                       </label>
                       <div className="relative">
                         <select
@@ -389,21 +409,41 @@ export default function CoordinatorSchedulesPage() {
                           onChange={(e) => handleAssign(shift.id, 'driver', e.target.value)}
                           className={`w-full appearance-none rounded-xl p-3 pr-10 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-brand-primary/50 border transition-colors ${!shift.driver ? 'bg-white border-brand-danger/50 text-brand-danger' : 'bg-brand-surface border-transparent text-brand-text'}`}
                         >
-                          <option value="">-- Chưa gán --</option>
+                          <option value="">-- Chua gan --</option>
                           {driversFromBackend.map(d => (
                             <option key={d.id} value={d.id} disabled={d.status !== 'available' && shift.driver !== d.id}>
-                              {d.name} ({d.id}) {d.status !== 'available' && '- Bận'}
+                              {d.name} ({d.id}) {d.status !== 'available' && '- Ban'}
                             </option>
                           ))}
                         </select>
                         <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-text/40 pointer-events-none" />
                       </div>
                     </div>
-
-                    {/* Bus Selection */}
-                    <div className="flex-1">
+                    {/* Conductor Selection */}
+                    <div className="flex-1 min-w-0">
                       <label className="block text-xs font-bold text-brand-text/50 uppercase mb-1 flex items-center gap-1">
-                        <BusFront className="w-3.5 h-3.5" /> Chọn Xe Bus
+                        <Users className="w-3.5 h-3.5" /> Phu xe
+                      </label>
+                      <div className="relative">
+                        <select
+                          value={shift.conductor}
+                          onChange={(e) => handleAssign(shift.id, 'conductor', e.target.value)}
+                          className={`w-full appearance-none rounded-xl p-3 pr-10 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-brand-primary/50 border transition-colors ${!shift.conductor ? 'bg-white border-brand-danger/50 text-brand-danger' : 'bg-brand-surface border-transparent text-brand-text'}`}
+                        >
+                          <option value="">-- Chua gan --</option>
+                          {conductorsFromBackend.map(c => (
+                            <option key={c.id} value={c.id} disabled={c.status !== 'available' && shift.conductor !== c.id}>
+                              {c.name} ({c.id}) {c.status !== 'available' && '- Ban'}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-text/40 pointer-events-none" />
+                      </div>
+                    </div>
+                    {/* Bus Selection */}
+                    <div className="flex-1 min-w-0">
+                      <label className="block text-xs font-bold text-brand-text/50 uppercase mb-1 flex items-center gap-1">
+                        <BusFront className="w-3.5 h-3.5" /> Xe bus
                       </label>
                       <div className="relative">
                         <select
@@ -411,10 +451,10 @@ export default function CoordinatorSchedulesPage() {
                           onChange={(e) => handleAssign(shift.id, 'bus', e.target.value)}
                           className={`w-full appearance-none rounded-xl p-3 pr-10 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-brand-primary/50 border transition-colors ${!shift.bus ? 'bg-white border-brand-danger/50 text-brand-danger' : 'bg-brand-surface border-transparent text-brand-text'}`}
                         >
-                          <option value="">-- Chưa gán --</option>
+                          <option value="">-- Chua gan --</option>
                           {busesFromBackend.map(b => (
                             <option key={b.id} value={b.id} disabled={b.status !== 'available' && shift.bus !== b.id}>
-                              {b.id} ({b.type}) {b.status !== 'available' && '- Bận'}
+                              {b.id} ({b.type}) {b.status !== 'available' && '- Ban'}
                             </option>
                           ))}
                         </select>
@@ -545,5 +585,14 @@ export default function CoordinatorSchedulesPage() {
       )}
 
     </div>
+  );
+}
+
+function Field({ label, className = '', children }) {
+  return (
+    <label className={`block min-w-0 ${className}`}>
+      <span className="block text-xs font-black text-brand-text/60 uppercase mb-2 tracking-wide">{label}</span>
+      {children}
+    </label>
   );
 }

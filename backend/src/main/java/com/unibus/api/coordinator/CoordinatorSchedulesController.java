@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.unibus.api.common.ApiResponse;
 import com.unibus.api.coordinator.dto.CoordinatorSchedulesDtos.BusDropdownDto;
+import com.unibus.api.coordinator.dto.CoordinatorSchedulesDtos.ConductorDropdownDto;
 import com.unibus.api.coordinator.dto.CoordinatorSchedulesDtos.CreateScheduleRequest;
 import com.unibus.api.coordinator.dto.CoordinatorSchedulesDtos.DriverDropdownDto;
 import com.unibus.api.coordinator.dto.CoordinatorSchedulesDtos.ScheduleListItem;
@@ -61,5 +62,10 @@ public class CoordinatorSchedulesController {
     @GetMapping("/drivers")
     public ResponseEntity<ApiResponse<List<DriverDropdownDto>>> getAvailableDrivers() {
         return ResponseEntity.ok(new ApiResponse<>(true, "Success", schedulesService.getAvailableDrivers()));
+    }
+
+    @GetMapping("/conductors")
+    public ResponseEntity<ApiResponse<List<ConductorDropdownDto>>> getAvailableConductors() {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Success", schedulesService.getAvailableConductors()));
     }
 }
