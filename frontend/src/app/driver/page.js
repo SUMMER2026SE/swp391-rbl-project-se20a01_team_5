@@ -1,16 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Clock, Loader2, MapPin, Navigation, Phone, Play, RefreshCw, Square } from 'lucide-react';
+import { AlertTriangle, CalendarClock, History, Loader2, MapPin, Navigation, Phone, Play, RefreshCw, Square } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { driverTripApi } from '@/services/api';
-
-function toDateInputValue(date = new Date()) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
 
 function statusLabel(status) {
   const labels = {
@@ -24,49 +17,60 @@ function statusLabel(status) {
 }
 
 function tripKey(trip) {
-  return trip?.tripId || trip?.scheduleId;
+  return trip?.tripId || `${trip?.scheduleId}-${trip?.serviceDate}`;
+}
+
+function formatDate(value) {
+  if (!value) return '--/--';
+  const [year, month, day] = value.split('-');
+  return `${day}/${month}/${year}`;
+}
+
+function formatTime(value) {
+  return value?.slice(0, 5) || '--:--';
 }
 
 export default function DriverDashboard() {
   const router = useRouter();
-  const [serviceDate] = useState(toDateInputValue());
-  const [trips, setTrips] = useState([]);
+  const [overview, setOverview] = useState({ nearestTrip: null, upcomingTrips: [], historyTrips: [] });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const loadTrips = useCallback(async () => {
+  const loadOverview = useCallback(async () => {
     setIsLoading(true);
     setError('');
     try {
-      const data = await driverTripApi.list(serviceDate);
-      setTrips(Array.isArray(data) ? data : []);
+      const data = await driverTripApi.overview();
+      setOverview({
+        nearestTrip: data?.nearestTrip || null,
+        upcomingTrips: Array.isArray(data?.upcomingTrips) ? data.upcomingTrips : [],
+        historyTrips: Array.isArray(data?.historyTrips) ? data.historyTrips : [],
+      });
     } catch (err) {
-      setTrips([]);
+      setOverview({ nearestTrip: null, upcomingTrips: [], historyTrips: [] });
       setError(err.message || 'Không tải được lịch chạy.');
     } finally {
       setIsLoading(false);
     }
-  }, [serviceDate]);
+  }, []);
 
   useEffect(() => {
-    const handle = window.setTimeout(loadTrips, 0);
+    const handle = window.setTimeout(loadOverview, 0);
     return () => window.clearTimeout(handle);
-  }, [loadTrips]);
+  }, [loadOverview]);
 
-  const currentTrip = useMemo(() => {
-    return trips.find((trip) => trip.status === 'RUNNING')
-      || trips.find((trip) => trip.status === 'NOT_STARTED' || trip.status === 'NOT_CREATED')
-      || trips.find((trip) => trip.status !== 'COMPLETED')
-      || trips[0]
-      || null;
-  }, [trips]);
+  const currentTrip = overview.nearestTrip;
+  const upcomingTrips = overview.upcomingTrips;
+  const historyTrips = overview.historyTrips;
 
-  const upcomingTrips = useMemo(() => {
-    return trips
-      .filter((trip) => tripKey(trip) !== tripKey(currentTrip))
-      .filter((trip) => trip.status !== 'COMPLETED')
-      .slice(0, 2);
-  }, [trips, currentTrip]);
+  const primaryButton = useMemo(() => {
+    if (currentTrip?.status === 'RUNNING') {
+      return { icon: Square, label: 'Kết thúc chuyến', danger: true };
+    }
+    return { icon: Play, label: 'Mở chuyến được phân công', danger: false };
+  }, [currentTrip?.status]);
+
+  const PrimaryIcon = primaryButton.icon;
 
   return (
     <div className="h-full flex flex-col gap-6 font-sans">
@@ -74,11 +78,11 @@ export default function DriverDashboard() {
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight text-brand-text mb-2">Xin chào bác tài!</h1>
           <p className="text-brand-text/60 font-medium">
-            Theo dõi chuyến được phân công hôm nay từ dữ liệu backend.
+            Theo dõi chuyến được phân công gần nhất và lịch sử chuyến đi từ backend.
           </p>
         </div>
         <button
-          onClick={loadTrips}
+          onClick={loadOverview}
           className="px-4 py-3 bg-white border border-black/5 rounded-2xl text-brand-text hover:bg-brand-surface transition-colors shadow-sm flex items-center gap-2 font-bold text-sm"
         >
           <RefreshCw className="w-5 h-5" /> Làm mới
@@ -95,7 +99,7 @@ export default function DriverDashboard() {
         <div className="lg:col-span-2 bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-black/5 flex flex-col">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-bold flex items-center gap-2">
-              <Navigation className="w-6 h-6 text-brand-primary" /> Chuyến xe hiện tại
+              <Navigation className="w-6 h-6 text-brand-primary" /> Chuyến được phân công gần nhất
             </h2>
             <div className="px-3 py-1 bg-brand-surface text-brand-text font-bold text-xs rounded-full uppercase tracking-widest border border-black/5">
               {statusLabel(currentTrip?.status)}
@@ -117,78 +121,62 @@ export default function DriverDashboard() {
                 <MapPin className="w-10 h-10 text-brand-primary mx-auto mb-3 group-hover:scale-110 transition-all" />
                 <h3 className="text-2xl font-black text-brand-text mb-2">{currentTrip.routeName}</h3>
                 <p className="font-bold text-brand-text/70">
-                  {currentTrip.departureTime?.slice(0, 5) || '--:--'} - {currentTrip.licensePlate || 'Chưa gán xe'}
+                  {formatDate(currentTrip.serviceDate)} • {formatTime(currentTrip.departureTime)} • {currentTrip.licensePlate || 'Chưa gán xe'}
                 </p>
                 <p className="text-xs text-brand-text/40 mt-2">Nhấn vào để xem lộ trình chi tiết</p>
               </div>
             ) : (
               <div className="text-center relative z-10">
                 <MapPin className="w-10 h-10 text-brand-text/30 mx-auto mb-2 group-hover:text-brand-primary group-hover:scale-110 transition-all" />
-                <p className="font-bold text-brand-text/60">Không có chuyến được phân công hôm nay</p>
-                <p className="text-xs text-brand-text/40 mt-1">Kiểm tra lại ngày chạy hoặc tài khoản tài xế</p>
+                <p className="font-bold text-brand-text/60">Chưa có chuyến được phân công từ backend</p>
+                <p className="text-xs text-brand-text/40 mt-1">Kiểm tra tài khoản tài xế hoặc lịch điều phối</p>
               </div>
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            {currentTrip?.status === 'RUNNING' ? (
-              <>
-                <button
-                  onClick={() => router.push('/driver/trips')}
-                  className="col-span-2 md:col-span-1 py-4 rounded-2xl bg-brand-danger/10 text-brand-danger font-bold hover:bg-brand-danger hover:text-white transition-colors flex items-center justify-center gap-2"
-                >
-                  <Square className="w-5 h-5" /> Kết thúc chuyến
-                </button>
-                <div className="col-span-2 md:col-span-1 py-4 rounded-2xl bg-brand-success/10 text-brand-success font-bold flex items-center justify-center gap-2 border border-brand-success/20">
-                  <span className="relative flex h-3 w-3 mr-1">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-success opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-brand-success"></span>
-                  </span>
-                  Đang chạy
-                </div>
-              </>
-            ) : (
-              <button
-                onClick={() => router.push('/driver/trips')}
-                disabled={!currentTrip}
-                className="col-span-2 py-4 rounded-2xl bg-brand-text text-white font-bold hover:bg-black transition-colors flex items-center justify-center gap-2 shadow-sm disabled:opacity-60"
-              >
-                <Play className="w-5 h-5" /> Mở lịch chạy
-              </button>
-            )}
-          </div>
+          <button
+            onClick={() => router.push('/driver/trips')}
+            disabled={!currentTrip}
+            className={`w-full py-4 rounded-2xl font-bold transition-colors flex items-center justify-center gap-2 shadow-sm disabled:opacity-60 ${
+              primaryButton.danger
+                ? 'bg-brand-danger/10 text-brand-danger hover:bg-brand-danger hover:text-white'
+                : 'bg-brand-text text-white hover:bg-black'
+            }`}
+          >
+            <PrimaryIcon className="w-5 h-5" /> {primaryButton.label}
+          </button>
         </div>
 
         <div className="flex flex-col gap-6">
           <div className="bg-brand-primary text-brand-text rounded-3xl p-6 shadow-sm flex flex-col border border-black/5">
             <h3 className="font-bold mb-4 flex items-center gap-2">
-              <Clock className="w-5 h-5" /> Lịch chạy tiếp theo
+              <CalendarClock className="w-5 h-5" /> Lịch chạy tiếp theo
             </h3>
 
             <div className="space-y-3">
               {upcomingTrips.length > 0 ? upcomingTrips.map((trip) => (
-                <div key={tripKey(trip)} className="bg-white/60 p-4 rounded-2xl border border-white">
-                  <div className="flex justify-between items-start mb-1">
-                    <div className="text-sm font-bold">{trip.departureTime?.slice(0, 5) || '--:--'}</div>
-                    <div className="text-[10px] font-bold bg-white px-2 py-1 rounded text-brand-text/60 uppercase">
-                      {statusLabel(trip.status)}
-                    </div>
-                  </div>
-                  <div className="text-xs font-medium text-brand-text/80">{trip.routeName}</div>
-                </div>
+                <TripMiniCard key={tripKey(trip)} trip={trip} />
               )) : (
                 <div className="bg-white/60 p-4 rounded-2xl border border-white text-sm font-bold text-brand-text/60">
                   Chưa có lịch tiếp theo từ backend
                 </div>
               )}
             </div>
+          </div>
 
-            <button
-              onClick={() => router.push('/driver/trips')}
-              className="mt-4 text-xs font-bold text-center w-full py-2 bg-white/20 rounded-xl hover:bg-white/40 transition-colors"
-            >
-              Xem toàn bộ lịch
-            </button>
+          <div className="bg-white rounded-3xl p-6 shadow-sm border border-black/5">
+            <h3 className="font-bold mb-4 flex items-center gap-2">
+              <History className="w-5 h-5 text-brand-secondary" /> Lịch sử chuyến đi
+            </h3>
+            <div className="space-y-3">
+              {historyTrips.length > 0 ? historyTrips.slice(0, 4).map((trip) => (
+                <TripMiniCard key={tripKey(trip)} trip={trip} compact />
+              )) : (
+                <div className="p-4 rounded-2xl border border-dashed border-black/10 text-sm font-bold text-brand-text/50 text-center">
+                  Chưa có lịch sử chuyến đi.
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="bg-white rounded-3xl p-6 shadow-sm border border-black/5">
@@ -216,6 +204,23 @@ export default function DriverDashboard() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function TripMiniCard({ trip, compact = false }) {
+  return (
+    <div className="bg-white/70 p-4 rounded-2xl border border-white">
+      <div className="flex justify-between items-start gap-3 mb-1">
+        <div className="text-sm font-black">{formatDate(trip.serviceDate)} • {formatTime(trip.departureTime)}</div>
+        <div className="text-[10px] font-bold bg-white px-2 py-1 rounded text-brand-text/60 uppercase">
+          {statusLabel(trip.status)}
+        </div>
+      </div>
+      <div className="text-xs font-bold text-brand-text/80">{trip.routeName}</div>
+      {!compact && (
+        <div className="text-xs font-medium text-brand-text/50 mt-1">{trip.licensePlate || 'Chưa gán xe'}</div>
+      )}
     </div>
   );
 }

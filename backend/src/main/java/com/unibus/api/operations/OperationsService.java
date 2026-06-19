@@ -1,7 +1,11 @@
 package com.unibus.api.operations;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 import org.springframework.http.HttpStatus;
@@ -15,6 +19,7 @@ import com.unibus.api.operations.OperationsDtos.ConductorSupportRequest;
 import com.unibus.api.operations.OperationsDtos.ConductorSupportResult;
 import com.unibus.api.operations.OperationsDtos.ConductorTicketView;
 import com.unibus.api.operations.OperationsDtos.ConductorTripView;
+import com.unibus.api.operations.OperationsDtos.DriverTripOverview;
 import com.unibus.api.operations.OperationsDtos.DriverTripView;
 import com.unibus.api.operations.OperationsDtos.InternalMessageView;
 import com.unibus.api.operations.OperationsDtos.LiveFleetVehicle;
@@ -24,6 +29,7 @@ import com.unibus.api.operations.OperationsDtos.ShiftAssignment;
 import com.unibus.api.operations.OperationsDtos.TicketScanRequest;
 import com.unibus.api.operations.OperationsDtos.TicketScanResult;
 import com.unibus.api.operations.OperationsDtos.VehicleLocationRequest;
+import com.unibus.api.operations.OperationsRepository.DriverScheduleTemplate;
 import com.unibus.api.operations.OperationsRepository.TripRouteInfo;
 import com.unibus.api.security.CurrentUser;
 
@@ -66,6 +72,106 @@ public class OperationsService {
     public List<DriverTripView> getDriverTrips(CurrentUser currentUser, LocalDate date) {
         Integer driverStaffId = requireDriverStaffId(currentUser);
         return operationsRepository.findDriverTrips(driverStaffId, date == null ? LocalDate.now() : date);
+    }
+
+    @Transactional(readOnly = true)
+    public DriverTripOverview getDriverTripOverview(CurrentUser currentUser) {
+        Integer driverStaffId = requireDriverStaffId(currentUser);
+        LocalDate today = LocalDate.now();
+        LocalDate horizon = today.plusDays(60);
+        List<DriverTripView> trips = new ArrayList<>(operationsRepository.findDriverUpcomingActualTrips(driverStaffId, today, horizon));
+        trips.addAll(buildUpcomingScheduleTrips(driverStaffId, today, horizon, trips));
+
+        Comparator<DriverTripView> scheduleOrder = Comparator
+                .comparing((DriverTripView trip) -> tripDateTime(trip, false))
+                .thenComparing(trip -> trip.routeName() == null ? "" : trip.routeName())
+                .thenComparing(trip -> trip.tripId() == null ? Integer.MAX_VALUE : trip.tripId());
+
+        DriverTripView nearestTrip = trips.stream()
+                .filter(trip -> "RUNNING".equals(trip.status()))
+                .min(scheduleOrder)
+                .orElseGet(() -> trips.stream()
+                        .filter(trip -> isUpcomingTrip(trip, today))
+                        .min(scheduleOrder)
+                        .orElse(null));
+
+        List<DriverTripView> upcomingTrips = trips.stream()
+                .filter(trip -> isUpcomingTrip(trip, today))
+                .filter(trip -> !sameTrip(trip, nearestTrip))
+                .sorted(scheduleOrder)
+                .limit(5)
+                .toList();
+
+        List<DriverTripView> historyTrips = operationsRepository.findDriverTripHistory(
+                        driverStaffId,
+                        today.minusDays(90),
+                        today.plusDays(60))
+                .stream()
+                .filter(this::isHistoryTrip)
+                .sorted(Comparator.comparing((DriverTripView trip) -> tripDateTime(trip, true)).reversed())
+                .limit(10)
+                .toList();
+
+        return new DriverTripOverview(nearestTrip, upcomingTrips, historyTrips);
+    }
+
+    private List<DriverTripView> buildUpcomingScheduleTrips(
+            Integer driverStaffId,
+            LocalDate today,
+            LocalDate horizon,
+            List<DriverTripView> actualTrips) {
+        return operationsRepository.findDriverScheduleTemplates(driverStaffId).stream()
+                .map(template -> nextScheduleTrip(template, today, horizon, actualTrips))
+                .filter(trip -> trip != null)
+                .toList();
+    }
+
+    private DriverTripView nextScheduleTrip(
+            DriverScheduleTemplate template,
+            LocalDate today,
+            LocalDate horizon,
+            List<DriverTripView> actualTrips) {
+        if (template.weekdayNumber() == null) {
+            return null;
+        }
+
+        LocalDate serviceDate = nextDateForWeekday(today, template.weekdayNumber());
+        while (!serviceDate.isAfter(horizon) && hasActualTrip(actualTrips, template.scheduleId(), serviceDate)) {
+            serviceDate = serviceDate.plusWeeks(1);
+        }
+        if (serviceDate.isAfter(horizon)) {
+            return null;
+        }
+
+        return new DriverTripView(
+                template.scheduleId(),
+                null,
+                template.routeId(),
+                template.routeName(),
+                template.busId(),
+                template.licensePlate(),
+                template.conductorName(),
+                template.conductorPhone(),
+                serviceDate,
+                template.departureTime(),
+                null,
+                null,
+                "NOT_CREATED",
+                template.stops());
+    }
+
+    private LocalDate nextDateForWeekday(LocalDate startDate, int weekdayNumber) {
+        int normalizedWeekday = Math.max(1, Math.min(7, weekdayNumber));
+        int currentWeekday = startDate.getDayOfWeek().getValue();
+        int daysUntil = Math.floorMod(normalizedWeekday - currentWeekday, 7);
+        return startDate.plusDays(daysUntil);
+    }
+
+    private boolean hasActualTrip(List<DriverTripView> actualTrips, Integer scheduleId, LocalDate serviceDate) {
+        return actualTrips.stream()
+                .anyMatch(trip -> scheduleId != null
+                        && scheduleId.equals(trip.scheduleId())
+                        && serviceDate.equals(trip.serviceDate()));
     }
 
     @Transactional(readOnly = true)
@@ -182,6 +288,50 @@ public class OperationsService {
     @Transactional(readOnly = true)
     public List<LiveFleetVehicle> getLiveFleet(LocalDate date) {
         return operationsRepository.findLiveFleet(date == null ? LocalDate.now() : date);
+    }
+
+    private boolean isUpcomingTrip(DriverTripView trip, LocalDate today) {
+        if (trip == null || trip.serviceDate() == null) {
+            return false;
+        }
+        if ("COMPLETED".equals(trip.status()) || "CANCELLED".equals(trip.status())) {
+            return false;
+        }
+        return !trip.serviceDate().isBefore(today);
+    }
+
+    private boolean isHistoryTrip(DriverTripView trip) {
+        if (trip == null || trip.serviceDate() == null) {
+            return false;
+        }
+        return "COMPLETED".equals(trip.status()) || "CANCELLED".equals(trip.status());
+    }
+
+    private boolean sameTrip(DriverTripView left, DriverTripView right) {
+        if (left == null || right == null) {
+            return false;
+        }
+        if (left.tripId() != null && right.tripId() != null) {
+            return left.tripId().equals(right.tripId());
+        }
+        if (left.scheduleId() == null || right.scheduleId() == null) {
+            return false;
+        }
+        return left.scheduleId().equals(right.scheduleId())
+                && left.serviceDate() != null
+                && left.serviceDate().equals(right.serviceDate());
+    }
+
+    private LocalDateTime tripDateTime(DriverTripView trip, boolean preferActualEnd) {
+        LocalDate date = trip.serviceDate() == null ? LocalDate.MAX : trip.serviceDate();
+        LocalTime time = trip.departureTime() == null ? LocalTime.MAX : trip.departureTime();
+        if (preferActualEnd && trip.endedAt() != null) {
+            return trip.endedAt().toLocalDateTime();
+        }
+        if (preferActualEnd && trip.departedAt() != null) {
+            return trip.departedAt().toLocalDateTime();
+        }
+        return LocalDateTime.of(date, time);
     }
 
     private TicketScanResult scanMonthlyPass(

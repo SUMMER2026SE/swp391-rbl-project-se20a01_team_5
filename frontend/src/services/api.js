@@ -359,27 +359,6 @@ export const feedbackApi = {
   },
 };
 
-export const coordinatorFeedbackApi = {
-  async listAll({ status = 'ALL', page = 0, size = 50 } = {}) {
-    const response = await apiClient.get('/coordinator/feedback', {
-      params: { status, page, size },
-    });
-    return unwrap(response);
-  },
-
-  async resolve(feedbackId, responseText = '') {
-    const response = await apiClient.patch(`/coordinator/feedback/${feedbackId}/resolve`, { response: responseText });
-    return unwrap(response);
-  },
-};
-
-export const coordinatorNotificationApi = {
-  async create(payload) {
-    const response = await apiClient.post('/coordinator/notifications', payload);
-    return unwrap(response);
-  },
-};
-
 export const coordinatorScheduleApi = {
   async getDashboard(serviceDate) {
     const response = await apiClient.get('/operations/schedules', {
@@ -395,6 +374,11 @@ export const coordinatorScheduleApi = {
 };
 
 export const driverTripApi = {
+  async overview() {
+    const response = await apiClient.get('/driver/trips/overview');
+    return unwrap(response);
+  },
+
   async list(serviceDate) {
     const response = await apiClient.get('/driver/trips', {
       params: serviceDate ? { date: serviceDate } : undefined,

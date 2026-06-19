@@ -1,20 +1,52 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { MapPin, Navigation, Phone, CheckCircle2, Users, Flag, Loader2, Play, Square, RefreshCw } from 'lucide-react';
+import { CheckCircle2, Flag, History, Loader2, MapPin, Navigation, Phone, Play, RefreshCw, Square, Users } from 'lucide-react';
 import { driverTripApi } from '@/services/api';
 
-function toDateInputValue(date = new Date()) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+function statusLabel(status) {
+  const labels = {
+    RUNNING: 'Đang chạy',
+    NOT_STARTED: 'Chưa bắt đầu',
+    NOT_CREATED: 'Chưa tạo chuyến',
+    COMPLETED: 'Đã hoàn thành',
+    CANCELLED: 'Đã hủy',
+  };
+  return labels[status] || status || 'Chưa có tuyến';
+}
+
+function tripKey(trip) {
+  return trip?.tripId || `${trip?.scheduleId}-${trip?.serviceDate}`;
+}
+
+function formatDate(value) {
+  if (!value) return '--/--';
+  const [year, month, day] = value.split('-');
+  return `${day}/${month}/${year}`;
+}
+
+function formatTime(value) {
+  return value?.slice(0, 5) || '--:--';
+}
+
+function mergeTrips(overview) {
+  const rows = [
+    overview?.nearestTrip,
+    ...(overview?.upcomingTrips || []),
+    ...(overview?.historyTrips || []),
+  ].filter(Boolean);
+  const seen = new Set();
+  return rows.filter((trip) => {
+    const key = tripKey(trip);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export default function DriverTripPage() {
-  const [serviceDate, setServiceDate] = useState(toDateInputValue());
-  const [trips, setTrips] = useState([]);
-  const [selectedTripId, setSelectedTripId] = useState(null);
+  const [overview, setOverview] = useState({ nearestTrip: null, upcomingTrips: [], historyTrips: [] });
+  const [selectedTripKey, setSelectedTripKey] = useState(null);
   const [currentStationIndex, setCurrentStationIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isMutating, setIsMutating] = useState(false);
@@ -22,10 +54,14 @@ export default function DriverTripPage() {
   const [message, setMessage] = useState('');
   const [locationNotice, setLocationNotice] = useState('');
 
+  const trips = useMemo(() => mergeTrips(overview), [overview]);
+
   const currentTrip = useMemo(() => {
     if (!trips.length) return null;
-    return trips.find((trip) => String(trip.tripId || trip.scheduleId) === String(selectedTripId)) || trips[0];
-  }, [trips, selectedTripId]);
+    return trips.find((trip) => String(tripKey(trip)) === String(selectedTripKey))
+      || overview.nearestTrip
+      || trips[0];
+  }, [trips, selectedTripKey, overview.nearestTrip]);
 
   const routeStations = currentTrip?.stops || [];
   const currentStation = routeStations[currentStationIndex];
@@ -36,28 +72,35 @@ export default function DriverTripPage() {
     return Math.min(100, Math.round((currentStationIndex / routeStations.length) * 100));
   }, [currentStationIndex, routeStations.length, currentTrip?.status]);
 
-  const loadTrips = useCallback(async (date) => {
+  const loadOverview = useCallback(async ({ keepSelection = false } = {}) => {
     setIsLoading(true);
     setError('');
     setMessage('');
     try {
-      const data = await driverTripApi.list(date);
-      setTrips(data || []);
-      setSelectedTripId((current) => current || data?.[0]?.tripId || data?.[0]?.scheduleId || null);
+      const data = await driverTripApi.overview();
+      const normalized = {
+        nearestTrip: data?.nearestTrip || null,
+        upcomingTrips: Array.isArray(data?.upcomingTrips) ? data.upcomingTrips : [],
+        historyTrips: Array.isArray(data?.historyTrips) ? data.historyTrips : [],
+      };
+      setOverview(normalized);
+      if (!keepSelection) {
+        setSelectedTripKey(normalized.nearestTrip ? tripKey(normalized.nearestTrip) : null);
+      }
       setCurrentStationIndex(0);
     } catch (err) {
-      setError(err.message);
-      setTrips([]);
-      setSelectedTripId(null);
+      setError(err.message || 'Không tải được lịch chạy.');
+      setOverview({ nearestTrip: null, upcomingTrips: [], historyTrips: [] });
+      setSelectedTripKey(null);
     } finally {
       setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    const handle = window.setTimeout(() => loadTrips(serviceDate), 0);
+    const handle = window.setTimeout(() => loadOverview(), 0);
     return () => window.clearTimeout(handle);
-  }, [loadTrips, serviceDate]);
+  }, [loadOverview]);
 
   useEffect(() => {
     if (currentTrip?.status !== 'RUNNING' || !currentTrip.tripId) {
@@ -105,12 +148,11 @@ export default function DriverTripPage() {
     setError('');
     setMessage('');
     try {
-      const updated = action === 'start'
-        ? await driverTripApi.start(currentTrip.tripId)
-        : await driverTripApi.end(currentTrip.tripId);
-      setTrips((current) => current.map((trip) => trip.tripId === updated.tripId ? updated : trip));
-      setSelectedTripId(updated.tripId);
-      setMessage(action === 'start' ? 'Đã bắt đầu chuyến.' : 'Đã kết thúc chuyến.');
+      await (action === 'start'
+        ? driverTripApi.start(currentTrip.tripId)
+        : driverTripApi.end(currentTrip.tripId));
+      await loadOverview();
+      setMessage(action === 'start' ? 'Đã bắt đầu chuyến.' : 'Đã kết thúc chuyến. Hệ thống đã chuyển sang chuyến được phân công gần nhất.');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -128,25 +170,19 @@ export default function DriverTripPage() {
     <div className="h-full flex flex-col gap-6 font-sans">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-brand-text mb-2">Chuyến đi hiện tại</h1>
+          <h1 className="text-3xl font-extrabold tracking-tight text-brand-text mb-2">Chuyến đi được phân công</h1>
           <p className="text-brand-text/60 font-medium">
-            {currentTrip ? `${currentTrip.routeName} • ${currentTrip.licensePlate}` : 'Lịch chạy lấy trực tiếp từ backend'}
+            {currentTrip
+              ? `${currentTrip.routeName} • ${formatDate(currentTrip.serviceDate)} • ${currentTrip.licensePlate || 'Chưa gán xe'}`
+              : 'Hiển thị chuyến gần nhất và lịch sử từ backend'}
           </p>
         </div>
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          <input
-            type="date"
-            value={serviceDate}
-            onChange={(event) => setServiceDate(event.target.value)}
-            className="bg-white border border-black/5 rounded-2xl px-4 py-3 font-bold text-sm focus:outline-none focus:border-brand-primary shadow-sm"
-          />
-          <button
-            onClick={() => loadTrips(serviceDate)}
-            className="px-4 py-3 bg-white border border-black/5 rounded-2xl text-brand-text hover:bg-brand-surface transition-colors shadow-sm flex justify-center"
-          >
-            <RefreshCw className="w-5 h-5" />
-          </button>
-        </div>
+        <button
+          onClick={() => loadOverview()}
+          className="px-4 py-3 bg-white border border-black/5 rounded-2xl text-brand-text hover:bg-brand-surface transition-colors shadow-sm flex justify-center items-center gap-2 font-bold text-sm"
+        >
+          <RefreshCw className="w-5 h-5" /> Làm mới
+        </button>
       </div>
 
       {error && (
@@ -171,7 +207,7 @@ export default function DriverTripPage() {
         </div>
       ) : !currentTrip ? (
         <div className="flex-1 flex items-center justify-center text-center text-brand-text/50 font-bold">
-          Không có chuyến nào được phân công cho ngày này.
+          Chưa có chuyến nào được phân công cho tài xế này.
         </div>
       ) : (
         <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 overflow-y-auto custom-scrollbar pr-2 pb-6">
@@ -185,16 +221,16 @@ export default function DriverTripPage() {
               <div className="flex flex-col md:flex-row gap-3 md:items-center">
                 {trips.length > 1 && (
                   <select
-                    value={currentTrip.tripId || currentTrip.scheduleId}
+                    value={tripKey(currentTrip)}
                     onChange={(event) => {
-                      setSelectedTripId(event.target.value);
+                      setSelectedTripKey(event.target.value);
                       setCurrentStationIndex(0);
                     }}
                     className="bg-brand-surface border border-black/5 rounded-xl px-3 py-2 text-sm font-bold focus:outline-none focus:border-brand-primary"
                   >
                     {trips.map((trip) => (
-                      <option key={trip.tripId || trip.scheduleId} value={trip.tripId || trip.scheduleId}>
-                        {trip.departureTime?.slice(0, 5)} • {trip.routeName}
+                      <option key={tripKey(trip)} value={tripKey(trip)}>
+                        {formatDate(trip.serviceDate)} • {formatTime(trip.departureTime)} • {trip.routeName} • {statusLabel(trip.status)}
                       </option>
                     ))}
                   </select>
@@ -256,7 +292,7 @@ export default function DriverTripPage() {
             <div className="bg-brand-primary rounded-3xl p-6 md:p-8 shadow-sm border border-black/5 flex flex-col justify-center text-center relative overflow-hidden">
               <div className="px-4 py-2 bg-white/40 text-brand-text rounded-xl font-bold border border-white/50 flex items-center justify-center gap-2 mb-6 relative z-10">
                 <span className={`w-3 h-3 rounded-full ${currentTrip.status === 'RUNNING' ? 'bg-brand-success animate-pulse' : currentTrip.status === 'COMPLETED' ? 'bg-brand-text/50' : 'bg-brand-warning'}`}></span>
-                {currentTrip.status}
+                {statusLabel(currentTrip.status)}
               </div>
               <h3 className="text-sm font-bold uppercase tracking-widest text-brand-text/50 mb-2 relative z-10">
                 Trạm tiếp theo
@@ -303,8 +339,36 @@ export default function DriverTripPage() {
               </div>
 
               <div className="grid grid-cols-2 gap-4 mt-8 relative z-10">
-                <Stat label="Giờ xuất bến" value={currentTrip.departureTime?.slice(0, 5) || '--:--'} />
-                <Stat label="Mã xe" value={currentTrip.licensePlate} />
+                <Stat label="Ngày chạy" value={formatDate(currentTrip.serviceDate)} />
+                <Stat label="Giờ xuất bến" value={formatTime(currentTrip.departureTime)} />
+                <Stat label="Mã xe" value={currentTrip.licensePlate || 'Chưa gán'} />
+                <Stat label="Mã chuyến" value={currentTrip.tripId || 'Chưa tạo'} />
+              </div>
+            </div>
+
+            <div className="bg-white rounded-3xl p-6 shadow-sm border border-black/5">
+              <h3 className="font-bold mb-4 flex items-center gap-2">
+                <History className="w-5 h-5 text-brand-secondary" /> Lịch sử chuyến đi
+              </h3>
+              <div className="space-y-3 max-h-64 overflow-y-auto custom-scrollbar pr-1">
+                {overview.historyTrips.length > 0 ? overview.historyTrips.map((trip) => (
+                  <button
+                    key={tripKey(trip)}
+                    onClick={() => {
+                      setSelectedTripKey(tripKey(trip));
+                      setCurrentStationIndex(0);
+                    }}
+                    className="w-full text-left p-4 bg-brand-surface rounded-2xl border border-black/5 hover:border-brand-primary transition-colors"
+                  >
+                    <div className="text-sm font-black">{formatDate(trip.serviceDate)} • {formatTime(trip.departureTime)}</div>
+                    <div className="text-xs font-bold text-brand-text/70 mt-1">{trip.routeName}</div>
+                    <div className="text-[11px] font-bold text-brand-text/40 mt-1 uppercase">{statusLabel(trip.status)}</div>
+                  </button>
+                )) : (
+                  <div className="rounded-2xl border border-dashed border-black/10 p-4 text-sm text-center font-bold text-brand-text/50">
+                    Chưa có lịch sử chuyến đi.
+                  </div>
+                )}
               </div>
             </div>
 
