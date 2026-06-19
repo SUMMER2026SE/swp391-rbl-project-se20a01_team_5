@@ -292,7 +292,7 @@ function RegistrationScreen() {
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h2 className="text-xl font-bold text-on-surface">{registration.routeName}</h2>
-                <p className="mt-1 text-sm text-on-surface-variant">{registration.boardingStopName} -> {registration.alightingStopName}</p>
+                <p className="mt-1 text-sm text-on-surface-variant">{registration.boardingStopName} {"->"} {registration.alightingStopName}</p>
                 <p className="mt-2 text-xs text-on-surface-variant">Ngày hiệu lực: {formatDate(registration.effectiveDate)}</p>
               </div>
               <div className="flex gap-2">
@@ -349,7 +349,7 @@ function TicketsScreen({ title }: { title: string }) {
                     <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                       <div>
                         <h3 className="font-bold text-on-surface">{ticket.routeName}</h3>
-                        <p className="text-sm text-on-surface-variant">{ticket.boardingStopName} -> {ticket.alightingStopName}</p>
+                        <p className="text-sm text-on-surface-variant">{ticket.boardingStopName} {"->"} {ticket.alightingStopName}</p>
                         <p className="mt-1 text-xs text-on-surface-variant">Hết hạn: {formatDateTime(ticket.expiresAt)}</p>
                         <div className="mt-2"><StatusPill status={ticket.status} /></div>
                       </div>
@@ -412,7 +412,7 @@ function HistoryScreen() {
             {items.map((item) => (
               <ExpressiveCard key={item.travelHistoryId} variant="elevated" className="p-4">
                 <h3 className="font-bold text-on-surface">{item.routeName}</h3>
-                <p className="mt-1 text-sm text-on-surface-variant">{item.boardingStopName || "?"} -> {item.alightingStopName || "?"}</p>
+                <p className="mt-1 text-sm text-on-surface-variant">{item.boardingStopName || "?"} {"->"} {item.alightingStopName || "?"}</p>
                 <p className="mt-2 text-xs text-on-surface-variant">{formatDate(item.serviceDate)} · Lên xe: {formatDateTime(item.boardedAt)}</p>
               </ExpressiveCard>
             ))}

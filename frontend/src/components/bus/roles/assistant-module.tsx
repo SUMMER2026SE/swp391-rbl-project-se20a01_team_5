@@ -40,16 +40,15 @@ function ConductorWorkspace({ mode }: { mode: string }) {
   const [qrCode, setQrCode] = useState("");
   const [scanResult, setScanResult] = useState<TicketScanResult | null>(null);
 
-  const trips = tripsResource.data || [];
+  const trips = useMemo(() => tripsResource.data || [], [tripsResource.data]);
+  const normalizedSelectedTripId = useMemo(() => {
+    if (selectedTripId && trips.some((trip) => trip.tripId === selectedTripId)) return selectedTripId;
+    return trips[0]?.tripId ?? null;
+  }, [selectedTripId, trips]);
   const selectedTrip = useMemo(
-    () => trips.find((trip) => trip.tripId === selectedTripId) || trips[0],
-    [selectedTripId, trips]
+    () => trips.find((trip) => trip.tripId === normalizedSelectedTripId) || null,
+    [normalizedSelectedTripId, trips]
   );
-
-  useEffect(() => {
-    if (!selectedTrip && selectedTripId !== null) setSelectedTripId(null);
-    if (selectedTrip && selectedTripId === null) setSelectedTripId(selectedTrip.tripId);
-  }, [selectedTrip, selectedTripId]);
 
   const loadTickets = useCallback(async (tripId: number) => {
     setTicketsLoading(true);
@@ -64,7 +63,14 @@ function ConductorWorkspace({ mode }: { mode: string }) {
   }, []);
 
   useEffect(() => {
-    if (selectedTrip?.tripId) loadTickets(selectedTrip.tripId);
+    const id = window.setTimeout(() => {
+      if (selectedTrip?.tripId) {
+        loadTickets(selectedTrip.tripId);
+      } else {
+        setTickets([]);
+      }
+    }, 0);
+    return () => window.clearTimeout(id);
   }, [selectedTrip?.tripId, loadTickets]);
 
   const scan = async () => {
@@ -110,7 +116,7 @@ function ConductorWorkspace({ mode }: { mode: string }) {
               <div className="space-y-2">
                 <Label>Chuyến</Label>
                 <select
-                  value={selectedTrip?.tripId || ""}
+                  value={normalizedSelectedTripId || ""}
                   onChange={(event) => setSelectedTripId(Number(event.target.value))}
                   className="h-12 w-full rounded-xl border border-outline-variant bg-surface-container-lowest px-3 text-sm text-on-surface outline-none focus-visible:ring-2 focus-visible:ring-[#144fcc]"
                 >
@@ -149,7 +155,7 @@ function ConductorWorkspace({ mode }: { mode: string }) {
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <h3 className="font-bold text-on-surface">{ticket.studentName || ticket.studentCode || `Ticket #${ticket.ticketId}`}</h3>
-                        <p className="text-sm text-on-surface-variant">{ticket.routeName} · {ticket.boardingStopName || "?"} -> {ticket.alightingStopName || "?"}</p>
+                        <p className="text-sm text-on-surface-variant">{ticket.routeName} · {ticket.boardingStopName || "?"} {"->"} {ticket.alightingStopName || "?"}</p>
                         <p className="mt-1 text-xs text-on-surface-variant">Scan gần nhất: {formatDateTime(ticket.lastScannedAt)}</p>
                       </div>
                       <StatusPill status={ticket.status} />

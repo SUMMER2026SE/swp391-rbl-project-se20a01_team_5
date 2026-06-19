@@ -39,7 +39,6 @@ import {
   GraduationCap,
   Building2,
   Filter,
-  BadgeCheck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 

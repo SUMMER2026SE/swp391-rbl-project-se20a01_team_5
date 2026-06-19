@@ -27,7 +27,10 @@ export function useApiResource<T>(
   }, [loader]);
 
   useEffect(() => {
-    reload();
+    const id = window.setTimeout(() => {
+      reload();
+    }, 0);
+    return () => window.clearTimeout(id);
   }, [reload]);
 
   return { data, error, loading, reload, setData };
