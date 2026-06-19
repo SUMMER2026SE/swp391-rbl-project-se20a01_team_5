@@ -8,13 +8,15 @@ import { coordinatorRoutesService } from '@/services/coordinatorRoutes.service';
 export default function CoordinatorSchedulesPage() {
   const [shifts, setShifts] = useState([]);
   const [driversFromBackend, setDriversFromBackend] = useState([]);
+  const [conductorsFromBackend, setConductorsFromBackend] = useState([]);
   const [busesFromBackend, setBusesFromBackend] = useState([]);
   const [routesFromBackend, setRoutesFromBackend] = useState([]);
+  const [modifiedShiftIds, setModifiedShiftIds] = useState(new Set());
   const [isSaving, setIsSaving] = useState(false);
   const [notice, setNotice] = useState('');
   
   const [isAddingNew, setIsAddingNew] = useState(false);
-  const [newSchedule, setNewSchedule] = useState({ routeId: '', busId: '', driverId: '', weekdayNumber: '2' });
+  const [newSchedule, setNewSchedule] = useState({ routeId: '', busId: '', driverId: '', conductorId: '', weekdayNumber: '2' });
   const [hour12, setHour12] = useState('08');
   const [minute, setMinute] = useState('00');
   const [ampm, setAmpm] = useState('AM');
@@ -24,10 +26,11 @@ export default function CoordinatorSchedulesPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [shiftsData, busesData, driversData, routesData] = await Promise.all([
+        const [shiftsData, busesData, driversData, conductorsData, routesData] = await Promise.all([
           coordinatorSchedulesService.getAllSchedules(),
           coordinatorSchedulesService.getAvailableBuses(),
           coordinatorSchedulesService.getAvailableDrivers(),
+          coordinatorSchedulesService.getAvailableConductors(),
           coordinatorRoutesService.getRoutes()
         ]);
         
@@ -39,12 +42,14 @@ export default function CoordinatorSchedulesPage() {
           route: s.routeName,
           time: s.departureTime ? s.departureTime.substring(0, 5) : 'N/A',
           driver: s.driverId || '',
+          conductor: s.conductorId || '',
           bus: s.busId || ''
         }));
         
         setShifts(mappedShifts);
         setBusesFromBackend(busesData.map(b => ({ ...b, type: b.seatCount + ' chỗ', status: 'available' })));
         setDriversFromBackend(driversData.map(d => ({ ...d, name: d.driverName, status: 'available' })));
+        setConductorsFromBackend(conductorsData.map(c => ({ ...c, name: c.conductorName, status: 'available' })));
         setRoutesFromBackend(routesData);
       } catch (err) {
         setNotice('Lỗi tải dữ liệu: ' + err.message);
@@ -54,6 +59,7 @@ export default function CoordinatorSchedulesPage() {
   }, []);
 
   const handleAssign = (shiftId, field, value) => {
+    setModifiedShiftIds(prev => new Set(prev).add(shiftId));
     setShifts(shifts.map(shift => {
       if (shift.id === shiftId) {
         const updatedShift = { ...shift, [field]: value };
@@ -70,15 +76,23 @@ export default function CoordinatorSchedulesPage() {
   };
 
   const handleSave = async () => {
+    if (modifiedShiftIds.size === 0) {
+      setNotice('Không có thay đổi nào để lưu.');
+      return;
+    }
     setIsSaving(true);
     setNotice('');
     try {
-      await Promise.all(shifts.map(shift => {
+      await Promise.all(shifts.filter(s => modifiedShiftIds.has(s.id)).map(shift => {
         return coordinatorSchedulesService.updateSchedule(shift.id, {
+          routeId: shift.routeId,
+          weekdayNumber: shift.weekdayNumber,
           busId: shift.bus || null,
-          driverId: shift.driver || null
+          driverId: shift.driver || null,
+          conductorId: shift.conductor || null
         });
       }));
+      setModifiedShiftIds(new Set());
       setNotice('Lưu phân công thành công!');
     } catch (err) {
       setNotice('Lỗi khi lưu phân công: ' + err.message);
@@ -109,6 +123,7 @@ export default function CoordinatorSchedulesPage() {
         routeId: parseInt(newSchedule.routeId),
         busId: parseInt(newSchedule.busId),
         driverId: parseInt(newSchedule.driverId),
+        conductorId: newSchedule.conductorId ? parseInt(newSchedule.conductorId) : null,
         weekdayNumber: parseInt(newSchedule.weekdayNumber),
         departureTime: finalDepartureTime
       });
@@ -122,12 +137,13 @@ export default function CoordinatorSchedulesPage() {
         route: created.routeName,
         time: created.departureTime ? created.departureTime.substring(0, 5) : 'N/A',
         driver: created.driverId || '',
+        conductor: created.conductorId || '',
         bus: created.busId || ''
       };
       
       setShifts([mappedShift, ...shifts]);
       setIsAddingNew(false);
-      setNewSchedule({ routeId: '', busId: '', driverId: '', weekdayNumber: '2' });
+      setNewSchedule({ routeId: '', busId: '', driverId: '', conductorId: '', weekdayNumber: '2' });
       setHour12('08');
       setMinute('00');
       setAmpm('AM');
@@ -159,6 +175,9 @@ export default function CoordinatorSchedulesPage() {
     setEditingSchedule({
       id: shift.id,
       routeId: shift.routeId || '',
+      conductorId: shift.conductor || '',
+      busId: shift.bus || '',
+      driverId: shift.driver || '',
       weekdayNumber: shift.weekdayNumber || '2',
       hour12: h12Str,
       minute: m,
@@ -181,6 +200,9 @@ export default function CoordinatorSchedulesPage() {
     try {
       const updated = await coordinatorSchedulesService.updateSchedule(editingSchedule.id, {
         routeId: parseInt(editingSchedule.routeId),
+        busId: editingSchedule.busId ? parseInt(editingSchedule.busId) : null,
+        driverId: editingSchedule.driverId ? parseInt(editingSchedule.driverId) : null,
+        conductorId: editingSchedule.conductorId ? parseInt(editingSchedule.conductorId) : null,
         weekdayNumber: parseInt(editingSchedule.weekdayNumber),
         departureTime: finalDepartureTime
       });
@@ -194,6 +216,7 @@ export default function CoordinatorSchedulesPage() {
         route: updated.routeName,
         time: updated.departureTime ? updated.departureTime.substring(0, 5) : 'N/A',
         driver: updated.driverId || '',
+        conductor: updated.conductorId || '',
         bus: updated.busId || ''
       };
       
@@ -238,6 +261,9 @@ export default function CoordinatorSchedulesPage() {
 
         <div className="flex items-center gap-3">
           <input type="date" className="bg-white border border-black/5 rounded-2xl px-4 py-3 font-bold text-sm focus:outline-none focus:border-brand-primary shadow-sm" defaultValue={new Date().toISOString().split('T')[0]} />
+          <button onClick={() => setIsAddingNew(true)} className="bg-brand-surface border border-black/5 text-brand-text px-6 py-3 rounded-2xl font-bold hover:bg-brand-primary hover:text-white transition-colors flex items-center gap-2 shadow-sm">
+            <Plus className="w-5 h-5" /> Thêm Ca Chạy Mới
+          </button>
           <button
             onClick={handleSave}
             disabled={isSaving}
@@ -332,6 +358,15 @@ export default function CoordinatorSchedulesPage() {
                       </select>
                     </div>
                     <div>
+                      <label className="block text-xs font-bold text-brand-text/70 uppercase mb-1">Phụ xe</label>
+                      <select value={newSchedule.conductorId} onChange={e => setNewSchedule({...newSchedule, conductorId: e.target.value})} className="w-full rounded-xl p-2.5 text-sm font-bold border bg-white focus:outline-none focus:border-brand-primary">
+                        <option value="">-- Chọn Phụ xe --</option>
+                        {conductorsFromBackend.map(c => (
+                          <option key={c.id} value={c.id} disabled={c.status !== 'available'}>{c.name} {c.status !== 'available' && '- Bận'}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
                       <label className="block text-xs font-bold text-brand-text/70 uppercase mb-1">Xe Bus</label>
                       <select value={newSchedule.busId} onChange={e => setNewSchedule({...newSchedule, busId: e.target.value})} className="w-full rounded-xl p-2.5 text-sm font-bold border bg-white focus:outline-none focus:border-brand-primary">
                         <option value="">-- Chọn Xe Bus --</option>
@@ -377,7 +412,7 @@ export default function CoordinatorSchedulesPage() {
                     </div>
                   </div>
 
-                  <div className="flex flex-col sm:flex-row gap-4 xl:w-1/2">
+                  <div className="flex flex-col sm:flex-row gap-4 xl:w-2/3">
                     {/* Driver Selection */}
                     <div className="flex-1">
                       <label className="block text-xs font-bold text-brand-text/50 uppercase mb-1 flex items-center gap-1">
@@ -393,6 +428,28 @@ export default function CoordinatorSchedulesPage() {
                           {driversFromBackend.map(d => (
                             <option key={d.id} value={d.id} disabled={d.status !== 'available' && shift.driver !== d.id}>
                               {d.name} ({d.id}) {d.status !== 'available' && '- Bận'}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-text/40 pointer-events-none" />
+                      </div>
+                    </div>
+
+                    {/* Conductor Selection */}
+                    <div className="flex-1">
+                      <label className="block text-xs font-bold text-brand-text/50 uppercase mb-1 flex items-center gap-1">
+                        <Users className="w-3.5 h-3.5" /> Chọn Phụ xe
+                      </label>
+                      <div className="relative">
+                        <select
+                          value={shift.conductor}
+                          onChange={(e) => handleAssign(shift.id, 'conductor', e.target.value)}
+                          className={`w-full appearance-none rounded-xl p-3 pr-10 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-brand-primary/50 border transition-colors ${!shift.conductor ? 'bg-white border-brand-danger/50 text-brand-danger' : 'bg-brand-surface border-transparent text-brand-text'}`}
+                        >
+                          <option value="">-- Chưa gán --</option>
+                          {conductorsFromBackend.map(c => (
+                            <option key={c.id} value={c.id} disabled={c.status !== 'available' && shift.conductor !== c.id}>
+                              {c.name} ({c.id}) {c.status !== 'available' && '- Bận'}
                             </option>
                           ))}
                         </select>
@@ -427,9 +484,6 @@ export default function CoordinatorSchedulesPage() {
               ))}
             </div>
 
-            <button onClick={() => setIsAddingNew(true)} className="w-full mt-6 py-4 bg-brand-surface border border-black/5 border-dashed text-brand-text font-bold rounded-2xl hover:bg-brand-primary hover:text-white transition-colors flex items-center justify-center gap-2">
-              <Plus className="w-5 h-5"/> Thêm Ca Chạy Mới
-            </button>
           </div>
         </div>
 
@@ -471,6 +525,27 @@ export default function CoordinatorSchedulesPage() {
                     <span className="text-[10px] font-bold text-brand-text/50">{d.id}</span>
                   </div>
                   <span className={`w-2 h-2 rounded-full ${d.status === 'available' ? 'bg-brand-success' : d.status === 'busy' ? 'bg-brand-danger' : 'bg-black/20'}`}></span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Quick List Conductors */}
+          <div className="bg-white rounded-3xl p-6 shadow-sm border border-black/5 mt-6">
+            <h3 className="font-bold mb-4">Danh sách Phụ xe</h3>
+            <div className="flex flex-col gap-2">
+              {conductorsFromBackend.length === 0 && (
+                <div className="rounded-xl border border-dashed border-black/10 bg-brand-surface/40 p-4 text-center text-xs font-bold text-brand-text/50">
+                  Chưa có phụ xe từ backend.
+                </div>
+              )}
+              {conductorsFromBackend.map(c => (
+                <div key={c.id} className="flex justify-between items-center p-2 rounded-lg hover:bg-brand-surface">
+                  <div className="flex flex-col">
+                    <span className="font-bold text-sm">{c.name}</span>
+                    <span className="text-[10px] font-bold text-brand-text/50">{c.id}</span>
+                  </div>
+                  <span className={`w-2 h-2 rounded-full ${c.status === 'available' ? 'bg-brand-success' : c.status === 'busy' ? 'bg-brand-danger' : 'bg-black/20'}`}></span>
                 </div>
               ))}
             </div>

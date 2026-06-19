@@ -3,6 +3,8 @@ package com.unibus.api.transport.model;
 import java.time.LocalTime;
 
 import com.unibus.api.user.model.Driver;
+import com.unibus.api.user.model.User;
+import java.time.OffsetDateTime;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -40,6 +42,10 @@ public class BusSchedule {
     @JoinColumn(name = "driver_id")
     private Driver driver;
 
+    @ManyToOne
+    @JoinColumn(name = "conductor_id")
+    private com.unibus.api.user.model.Conductor conductor;
+
     @Column(name = "weekday_number")
     private Integer weekdayNumber;
 
@@ -51,5 +57,12 @@ public class BusSchedule {
 
     @Column(name = "status")
     private String status;
+
+    @ManyToOne
+    @JoinColumn(name = "assigned_by_user_id")
+    private User assignedByUser;
+
+    @Column(name = "assigned_at")
+    private OffsetDateTime assignedAt;
 
 }

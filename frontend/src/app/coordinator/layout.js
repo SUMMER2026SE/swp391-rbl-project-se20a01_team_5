@@ -1,11 +1,12 @@
 "use client";
 
 import BentoDashboardLayout from '@/components/layout/BentoDashboardLayout';
-import { Activity, CalendarDays, MessageSquare } from 'lucide-react';
+import { Activity, CalendarDays, MessageSquare, Map } from 'lucide-react';
 
 export default function CoordinatorLayout({ children }) {
   const menus = [
     { name: 'Giám sát trực tuyến', href: '/coordinator', icon: Activity },
+    { name: 'Quản lý tuyến', href: '/coordinator/routes', icon: Map },
     { name: 'Lịch trình & Phân công', href: '/coordinator/schedules', icon: CalendarDays },
     { name: 'Phản hồi & Thông báo', href: '/coordinator/feedback', icon: MessageSquare },
   ];

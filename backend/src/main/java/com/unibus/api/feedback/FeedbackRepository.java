@@ -58,13 +58,13 @@ public class FeedbackRepository {
     public List<FeedbackView> findAll(String status, int limit, int offset) {
         String normalizedStatus = status == null || status.equalsIgnoreCase("ALL") ? null : toFeedbackStatus(status);
         return jdbcTemplate.query("""
-                SELECT f.feedback_id, f.student_code, submitter.full_name AS student_name,
+                SELECT f.feedback_id, f.student_code, COALESCE(submitter.full_name, 'Tài xế báo SOS') AS student_name,
                        f.trip_id, t.route_id, r.route_name, f.star_rating AS rating, NULL AS category,
                        f.content, f.status, f.response, handler.full_name AS handler_name,
                        NULL::timestamptz AS handled_at, f.submitted_at AS created_at
                 FROM feedback f
-                JOIN students s ON s.student_code = f.student_code
-                JOIN users submitter ON submitter.user_id = s.user_id
+                LEFT JOIN students s ON s.student_code = f.student_code
+                LEFT JOIN users submitter ON submitter.user_id = s.user_id
                 JOIN trips t ON t.trip_id = f.trip_id
                 JOIN routes r ON r.route_id = t.route_id
                 LEFT JOIN users handler ON handler.user_id = f.handled_by_user_id

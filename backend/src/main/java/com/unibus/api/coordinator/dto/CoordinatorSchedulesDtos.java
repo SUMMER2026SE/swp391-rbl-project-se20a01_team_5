@@ -12,6 +12,8 @@ public class CoordinatorSchedulesDtos {
             String licensePlate,
             Integer driverId,
             String driverName,
+            Integer conductorId,
+            String conductorName,
             Integer weekdayNumber,
             LocalTime departureTime,
             LocalTime endTime,
@@ -22,6 +24,7 @@ public class CoordinatorSchedulesDtos {
             Integer routeId,
             Integer busId,
             Integer driverId,
+            Integer conductorId,
             Integer weekdayNumber,
             LocalTime departureTime) {
     }
@@ -35,5 +38,10 @@ public class CoordinatorSchedulesDtos {
     public record DriverDropdownDto(
             Integer id,
             String driverName) {
+    }
+
+    public record ConductorDropdownDto(
+            Integer id,
+            String conductorName) {
     }
 }

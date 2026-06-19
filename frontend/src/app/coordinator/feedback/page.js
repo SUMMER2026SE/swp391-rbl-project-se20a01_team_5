@@ -11,6 +11,8 @@ export default function CoordinatorFeedbackPage() {
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [resolvingId, setResolvingId] = useState(null);
+  const [resolveText, setResolveText] = useState('');
 
   const [notifyTarget, setNotifyTarget] = useState('all_students');
   const [notifyTitle, setNotifyTitle] = useState('');
@@ -20,7 +22,7 @@ export default function CoordinatorFeedbackPage() {
   const loadFeedbacks = useCallback(() => {
     setIsLoading(true);
     setError('');
-    coordinatorFeedbackApi.listAll({ status: statusFilter, page: 0, size: 50 })
+    coordinatorFeedbackApi.listAll({ status: statusFilter === 'SOS' ? 'ALL' : statusFilter, page: 0, size: 50 })
       .then((items) => setFeedbacks(items || []))
       .catch((err) => setError(err.message))
       .finally(() => setIsLoading(false));
@@ -32,25 +34,34 @@ export default function CoordinatorFeedbackPage() {
   }, [loadFeedbacks]);
 
   const visibleFeedbacks = useMemo(() => {
+    let filtered = feedbacks;
+    if (statusFilter === 'SOS') {
+      filtered = feedbacks.filter((fb) => fb.studentCode === 'DRIVER_SOS' || fb.rating === 1);
+    } else if (statusFilter !== 'ALL') {
+      filtered = feedbacks.filter((fb) => fb.status === statusFilter);
+    }
+    
     const keyword = searchQuery.trim().toLowerCase();
-    if (!keyword) return feedbacks;
-    return feedbacks.filter((feedback) => (
+    if (!keyword) return filtered;
+    return filtered.filter((feedback) => (
       feedback.studentName?.toLowerCase().includes(keyword)
       || feedback.studentCode?.toLowerCase().includes(keyword)
       || feedback.content?.toLowerCase().includes(keyword)
       || feedback.routeName?.toLowerCase().includes(keyword)
     ));
-  }, [feedbacks, searchQuery]);
+  }, [feedbacks, searchQuery, statusFilter]);
 
-  const handleResolve = async (feedbackId) => {
+  const handleResolve = async (feedbackId, text) => {
     setNotice('');
     setError('');
     try {
-      const resolved = await coordinatorFeedbackApi.resolve(feedbackId, 'Đã tiếp nhận và xử lý phản hồi.');
+      const resolved = await coordinatorFeedbackApi.resolve(feedbackId, text || 'Đã tiếp nhận và xử lý phản hồi.');
       setFeedbacks((items) => items.map((item) => (
         item.feedbackId === feedbackId ? resolved : item
       )));
       setNotice(`Đã đánh dấu phản hồi #${feedbackId} là đã xử lý.`);
+      setResolvingId(null);
+      setResolveText('');
     } catch (err) {
       setError(err.message);
     }
@@ -131,6 +142,7 @@ export default function CoordinatorFeedbackPage() {
                   <option value="ALL">Tất cả</option>
                   <option value="PENDING">Chờ xử lý</option>
                   <option value="RESOLVED">Đã xử lý</option>
+                  <option value="SOS">SOS Khẩn cấp</option>
                 </select>
               </div>
             </div>
@@ -145,12 +157,14 @@ export default function CoordinatorFeedbackPage() {
               </div>
             ) : (
               <div className="flex flex-col gap-4">
-                {visibleFeedbacks.map((feedback) => (
+                {visibleFeedbacks.map((feedback) => {
+                  const isSos = feedback.studentCode === 'DRIVER_SOS' || feedback.rating === 1;
+                  return (
                   <div key={feedback.feedbackId} className={`border rounded-2xl p-5 transition-colors ${feedback.status === 'RESOLVED' ? 'border-black/5 bg-brand-surface/30 opacity-80' : feedback.rating <= 2 ? 'border-brand-danger/30 bg-brand-danger/5' : 'border-black/5 bg-white shadow-sm'}`}>
                     <div className="flex justify-between items-start mb-3">
                       <div className="flex items-center gap-2">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${feedback.rating <= 2 ? 'bg-brand-danger text-white' : 'bg-brand-surface text-brand-text'}`}>
-                          {feedback.rating <= 2 ? <ShieldAlert className="w-4 h-4" /> : feedback.category === 'OTHER' ? <AlertCircle className="w-4 h-4" /> : <User className="w-4 h-4" />}
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${isSos ? 'bg-brand-danger text-white' : feedback.rating <= 2 ? 'bg-brand-warning text-white' : 'bg-brand-surface text-brand-text'}`}>
+                          {isSos ? <AlertCircle className="w-4 h-4" /> : feedback.rating <= 2 ? <ShieldAlert className="w-4 h-4" /> : feedback.category === 'OTHER' ? <AlertCircle className="w-4 h-4" /> : <User className="w-4 h-4" />}
                         </div>
                         <div>
                           <div className="font-bold text-sm">{feedback.studentName || feedback.studentCode}</div>
@@ -159,35 +173,72 @@ export default function CoordinatorFeedbackPage() {
                           </div>
                         </div>
                       </div>
-                      {feedback.status === 'PENDING' ? (
-                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-brand-danger text-white">Chờ xử lý</span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-brand-success text-white">Đã xử lý</span>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {feedback.status === 'PENDING' ? (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-brand-warning text-white">Chờ xử lý</span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-brand-success text-white">Đã xử lý</span>
+                        )}
+                      </div>
                     </div>
 
                     <div className="mb-3 flex flex-wrap gap-2 text-[11px] font-black uppercase tracking-wider text-brand-text/50">
                       <span className="rounded-lg bg-brand-surface px-2 py-1">{labelForCategory(feedback.category)}</span>
-                      {feedback.rating && <span className="rounded-lg bg-brand-warning/10 px-2 py-1 text-brand-warning">{feedback.rating}/5 sao</span>}
-                      {feedback.tripId && <span className="rounded-lg bg-brand-secondary/10 px-2 py-1 text-brand-secondary">Chuyến #{feedback.tripId}</span>}
                     </div>
 
                     <p className="text-sm font-medium text-brand-text mb-4">{feedback.content}</p>
 
                     {feedback.status === 'PENDING' ? (
-                      <button
-                        onClick={() => handleResolve(feedback.feedbackId)}
-                        className="w-full py-2 bg-brand-success/10 text-brand-success font-bold text-xs rounded-xl hover:bg-brand-success hover:text-white transition-colors flex items-center justify-center gap-1"
-                      >
-                        <CheckCircle2 className="w-4 h-4" /> Đánh dấu đã xử lý
-                      </button>
+                      resolvingId === feedback.feedbackId ? (
+                        <div className="flex flex-col gap-2 mt-4">
+                          <textarea
+                            value={resolveText}
+                            onChange={(e) => setResolveText(e.target.value)}
+                            placeholder="Nhập nội dung xử lý/phản hồi để lưu lại..."
+                            className="w-full bg-black/5 border border-transparent rounded-xl p-3 text-sm font-medium focus:outline-none focus:border-brand-primary focus:bg-white transition-all min-h-[80px]"
+                            autoFocus
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleResolve(feedback.feedbackId, resolveText)}
+                              className="flex-1 py-2.5 bg-brand-success text-white font-bold text-xs rounded-xl hover:bg-green-600 transition-colors shadow-sm flex items-center justify-center gap-1"
+                            >
+                              <CheckCircle2 className="w-4 h-4" /> Lưu & Đánh dấu đã xử lý
+                            </button>
+                            <button
+                              onClick={() => {
+                                setResolvingId(null);
+                                setResolveText('');
+                              }}
+                              className="px-5 py-2.5 bg-black/5 text-brand-text/60 font-bold text-xs rounded-xl hover:bg-black/10 transition-colors"
+                            >
+                              Hủy
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setResolvingId(feedback.feedbackId);
+                            setResolveText('Đã tiếp nhận và xử lý.');
+                          }}
+                          className="w-full py-2 bg-brand-success/10 text-brand-success font-bold text-xs rounded-xl hover:bg-brand-success hover:text-white transition-colors flex items-center justify-center gap-1"
+                        >
+                          <MessageSquare className="w-4 h-4" /> Viết phản hồi & Xử lý
+                        </button>
+                      )
                     ) : feedback.response ? (
                       <div className="rounded-2xl bg-white p-3 text-xs font-medium text-brand-text/60">
                         <span className="font-bold text-brand-text">Phản hồi xử lý: </span>{feedback.response}
                       </div>
-                    ) : null}
+                    ) : (
+                      <div className="w-full py-2 bg-black/5 text-brand-text/50 font-bold text-xs rounded-xl flex items-center justify-center gap-1">
+                        <CheckCircle2 className="w-4 h-4" /> Đã xử lý xong
+                      </div>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

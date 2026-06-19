@@ -11,11 +11,14 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 
 import com.unibus.api.common.ApiResponse;
+import com.unibus.api.security.CurrentUser;
 import com.unibus.api.coordinator.dto.CoordinatorSchedulesDtos.BusDropdownDto;
 import com.unibus.api.coordinator.dto.CoordinatorSchedulesDtos.CreateScheduleRequest;
 import com.unibus.api.coordinator.dto.CoordinatorSchedulesDtos.DriverDropdownDto;
+import com.unibus.api.coordinator.dto.CoordinatorSchedulesDtos.ConductorDropdownDto;
 import com.unibus.api.coordinator.dto.CoordinatorSchedulesDtos.ScheduleListItem;
 
 import lombok.RequiredArgsConstructor;
@@ -38,13 +41,13 @@ public class CoordinatorSchedulesController {
     }
 
     @PostMapping
-    public ResponseEntity<ApiResponse<ScheduleListItem>> createSchedule(@RequestBody CreateScheduleRequest request) {
-        return ResponseEntity.ok(new ApiResponse<>(true, "Schedule created successfully", schedulesService.createSchedule(request)));
+    public ResponseEntity<ApiResponse<ScheduleListItem>> createSchedule(@RequestBody CreateScheduleRequest request, @AuthenticationPrincipal CurrentUser currentUser) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Schedule created successfully", schedulesService.createSchedule(request, currentUser.userId())));
     }
 
     @PutMapping("/{scheduleId}")
-    public ResponseEntity<ApiResponse<ScheduleListItem>> updateSchedule(@PathVariable Integer scheduleId, @RequestBody CreateScheduleRequest request) {
-        return ResponseEntity.ok(new ApiResponse<>(true, "Schedule updated", schedulesService.updateSchedule(scheduleId, request)));
+    public ResponseEntity<ApiResponse<ScheduleListItem>> updateSchedule(@PathVariable Integer scheduleId, @RequestBody CreateScheduleRequest request, @AuthenticationPrincipal CurrentUser currentUser) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Schedule updated", schedulesService.updateSchedule(scheduleId, request, currentUser.userId())));
     }
 
     @DeleteMapping("/{scheduleId}")
@@ -61,5 +64,10 @@ public class CoordinatorSchedulesController {
     @GetMapping("/drivers")
     public ResponseEntity<ApiResponse<List<DriverDropdownDto>>> getAvailableDrivers() {
         return ResponseEntity.ok(new ApiResponse<>(true, "Success", schedulesService.getAvailableDrivers()));
+    }
+
+    @GetMapping("/conductors")
+    public ResponseEntity<ApiResponse<List<ConductorDropdownDto>>> getAvailableConductors() {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Success", schedulesService.getAvailableConductors()));
     }
 }
