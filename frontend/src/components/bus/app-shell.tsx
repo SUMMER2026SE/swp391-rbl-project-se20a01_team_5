@@ -1,44 +1,51 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
-import { motion, AnimatePresence, useScroll, useMotionValueEvent } from "framer-motion";
-import { QrCode, Search, Bell, LogOut, Menu, ChevronDown, Sparkles, UserCircle, School, ArrowLeft } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { Input } from "@/components/ui/input";
+import { useEffect, useMemo, useState } from "react";
+import { AnimatePresence, motion, useMotionValueEvent, useScroll } from "framer-motion";
+import { ArrowLeft, Bell, ChevronDown, LogOut, Menu, QrCode, Search, School, UserCircle } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
-import { NAV_CONFIG, ROLE_LABELS, ROLE_DESCRIPTIONS, ROLE_COLORS, ROLE_AVATARS } from "./nav-config";
-import type { NavItem } from "./nav-config";
-import type { Role } from "@/lib/types";
-import { users } from "@/lib/mock-data";
-import { toast } from "sonner";
+import { NAV_CONFIG, ROLE_AVATARS, ROLE_COLORS, ROLE_LABELS, type NavItem } from "./nav-config";
 import { PageTransition } from "@/components/m3/motion";
+import { notificationApi, type UserProfile } from "@/lib/api/client";
+import type { Role } from "@/lib/types";
+import { cn } from "@/lib/utils";
+
+function initials(profile?: UserProfile | null, role?: Role) {
+  const name = profile?.fullName || profile?.email || "";
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return role ? ROLE_AVATARS[role] : "UB";
+}
 
 export function AppShell({
   role,
   activeId,
+  profile,
   onNavigate,
-  onSwitchRole,
   onLogout,
   children,
 }: {
   role: Role;
   activeId: string;
+  profile: UserProfile | null;
   onNavigate: (id: string) => void;
-  onSwitchRole: (r: Role) => void;
   onLogout: () => void;
   children: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const nav = NAV_CONFIG[role];
+  const [unread, setUnread] = useState<number | null>(null);
+  const nav = NAV_CONFIG[role] ?? NAV_CONFIG.student;
   const groups = useMemo(() => {
     const map = new Map<string, NavItem[]>();
     nav.forEach((item) => {
@@ -48,9 +55,7 @@ export function AppShell({
     return Array.from(map.entries());
   }, [nav]);
 
-  const currentNav = nav.find((n) => n.id === activeId);
-  const user = users.find((u) => u.role === role) ?? users[0];
-
+  const currentNav = nav.find((n) => n.id === activeId) ?? nav[0];
   const notificationsNavId =
     role === "student" ? "stu-notifications"
     : role === "driver" ? "drv-notifications"
@@ -66,22 +71,33 @@ export function AppShell({
     : role === "admin" ? "adm-profile"
     : "uniadm-profile";
 
-  // On mobile, show a back button when the user is NOT on the first nav item
   const isFirstNav = nav.length > 0 && activeId === nav[0].id;
-  const handleMobileBack = () => {
-    if (nav.length > 0) onNavigate(nav[0].id);
-  };
-
-  // Sticky topbar morph on scroll
   const [scrolled, setScrolled] = useState(false);
   const { scrollY } = useScroll();
-  useMotionValueEvent(scrollY, "change", (y) => {
-    setScrolled(y > 20);
-  });
+  useMotionValueEvent(scrollY, "change", (y) => setScrolled(y > 20));
+
+  useEffect(() => {
+    let mounted = true;
+    notificationApi.unreadCount()
+      .then((count) => {
+        if (mounted) setUnread(Number(count) || 0);
+      })
+      .catch(() => {
+        if (mounted) setUnread(null);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [activeId]);
+
+  const goTo = (id: string) => {
+    onNavigate(id);
+    setMobileOpen(false);
+    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+  };
 
   const SidebarContent = (
     <div className="flex h-full flex-col bg-surface-container-low">
-      {/* Brand */}
       <div className="px-5 pt-6 pb-4">
         <div className="flex items-center gap-3">
           <div className="flex size-11 items-center justify-center rounded-2xl bg-[#beff50] text-[#14140f]">
@@ -89,12 +105,11 @@ export function AppShell({
           </div>
           <div className="min-w-0">
             <p className="text-xl font-bold tracking-tight text-on-surface">UniBus</p>
-            <p className="text-[11px] text-on-surface-variant truncate">{ROLE_LABELS[role]}</p>
+            <p className="truncate text-[11px] text-on-surface-variant">{ROLE_LABELS[role]}</p>
           </div>
         </div>
       </div>
 
-      {/* Nav — sticky, rounded, smooth pill indicator */}
       <nav className="flex-1 overflow-y-auto px-3 pb-4 scrollbar-soft">
         <div className="space-y-5">
           {groups.map(([group, items]) => (
@@ -105,15 +120,14 @@ export function AppShell({
               <div className="space-y-0.5">
                 {items.map((item) => {
                   const active = item.id === activeId;
+                  const badge = item.id === notificationsNavId && unread ? String(unread) : item.badge;
                   return (
                     <button
                       key={item.id}
-                      onClick={() => { onNavigate(item.id); setMobileOpen(false); setTimeout(() => { window.scrollTo({ top: 0, behavior: "smooth" }); }, 50); }}
+                      onClick={() => goTo(item.id)}
                       className={cn(
-                        "group relative flex w-full items-center gap-3 rounded-2xl px-4 py-2.5 text-sm font-medium transition-colors min-h-11 min-w-0",
-                        active
-                          ? "text-[#beff50]"
-                          : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
+                        "group relative flex min-h-11 w-full min-w-0 items-center gap-3 rounded-2xl px-4 py-2.5 text-sm font-medium transition-colors",
+                        active ? "text-[#beff50]" : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
                       )}
                     >
                       {active && (
@@ -123,12 +137,12 @@ export function AppShell({
                           transition={{ type: "spring", stiffness: 400, damping: 32 }}
                         />
                       )}
-                      <item.icon className={cn("relative size-5 shrink-0 transition-colors", active ? "text-[#beff50]" : "text-on-surface-variant group-hover:text-on-surface")} />
-                      <span className="relative flex-1 text-left truncate min-w-0">{item.label}</span>
-                      {item.badge && (
-                        <span className={cn("relative inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[10px] font-bold shrink-0",
+                      <item.icon className={cn("relative size-5 shrink-0", active ? "text-[#beff50]" : "text-on-surface-variant group-hover:text-on-surface")} />
+                      <span className="relative min-w-0 flex-1 truncate text-left">{item.label}</span>
+                      {badge && (
+                        <span className={cn("relative inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[10px] font-bold",
                           active ? "bg-[#beff50] text-[#14140f]" : "bg-[#dc2626] text-white")}>
-                          {item.badge}
+                          {badge}
                         </span>
                       )}
                     </button>
@@ -139,196 +153,126 @@ export function AppShell({
           ))}
         </div>
       </nav>
-
-      {/* Role switcher */}
-      <div className="p-3 border-t border-outline-variant/40">
-        <RoleSwitcherCard current={role} onSwitch={onSwitchRole} />
-      </div>
     </div>
   );
 
   return (
-    <div className="min-h-screen w-full bg-background flex flex-col overflow-x-hidden" data-role-theme={role}>
-      {/* Desktop sidebar — fixed */}
-      <aside className="hidden lg:flex fixed top-0 left-0 w-72 shrink-0 flex-col border-r border-outline-variant/40 h-screen z-40 bg-surface-container-low">
+    <div className="flex min-h-screen w-full flex-col overflow-x-hidden bg-background" data-role-theme={role}>
+      <aside className="fixed left-0 top-0 z-40 hidden h-screen w-72 shrink-0 flex-col border-r border-outline-variant/40 bg-surface-container-low lg:flex">
         {SidebarContent}
       </aside>
 
-      {/* Main content — offset for fixed sidebar */}
-      <div className="flex-1 min-w-0 flex flex-col min-h-screen lg:ml-72">
-          {/* M3 Top App Bar — framer-motion morph on scroll */}
-          <motion.header
-            animate={{
-              height: scrolled ? 52 : 64,
-              marginLeft: scrolled ? 8 : 0,
-              marginRight: scrolled ? 8 : 0,
-              marginTop: scrolled ? 8 : 0,
-              borderRadius: scrolled ? 20 : 0,
-            }}
-            transition={{ type: "spring", stiffness: 400, damping: 30 }}
-            className="sticky top-0 z-30 flex items-center gap-2 sm:gap-3 border border-outline-variant/40 glass-m3 px-3 sm:px-6 overflow-hidden"
-          >
-            {/* Mobile: back button (when not on first nav item) OR hamburger (when on first item) */}
-            {!isFirstNav ? (
-              <button
-                className="lg:hidden state-layer size-10 rounded-full flex items-center justify-center text-on-surface shrink-0"
-                onClick={handleMobileBack}
-                aria-label="Quay lại"
-              >
-                <ArrowLeft className="size-5" />
-              </button>
-            ) : (
-              <button
-                className="lg:hidden state-layer size-10 rounded-full flex items-center justify-center text-on-surface shrink-0"
-                onClick={() => setMobileOpen(true)}
-                aria-label="Mở menu"
-              >
-                <Menu className="size-5" />
-              </button>
-            )}
-
-            <div className="hidden sm:flex items-center gap-2 text-sm min-w-0">
-              <span className="font-medium text-on-surface-variant">{ROLE_LABELS[role]}</span>
-              <span className="text-on-surface-variant/40">/</span>
-              <span className="font-semibold text-on-surface truncate">{currentNav?.label}</span>
-            </div>
-
-            {/* Mobile: show current page title */}
-            <div className="flex sm:hidden flex-1 min-w-0">
-              <span className="font-semibold text-on-surface truncate text-base">{currentNav?.label}</span>
-            </div>
-
-            <div className="flex-1 hidden sm:block" />
-
-            <div className="hidden md:flex relative w-56">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant pointer-events-none" />
-              <Input placeholder="Tìm kiếm..." className="h-9 pl-9 rounded-full bg-surface-container-high border-transparent focus-visible:bg-surface-container-lowest" />
-            </div>
-
+      <div className="flex min-h-screen min-w-0 flex-1 flex-col lg:ml-72">
+        <motion.header
+          animate={{
+            height: scrolled ? 52 : 64,
+            marginLeft: scrolled ? 8 : 0,
+            marginRight: scrolled ? 8 : 0,
+            marginTop: scrolled ? 8 : 0,
+            borderRadius: scrolled ? 20 : 0,
+          }}
+          transition={{ type: "spring", stiffness: 400, damping: 30 }}
+          className="glass-m3 sticky top-0 z-30 flex items-center gap-2 overflow-hidden border border-outline-variant/40 px-3 sm:gap-3 sm:px-6"
+        >
+          {!isFirstNav ? (
             <button
-              className="state-layer relative size-10 rounded-full flex items-center justify-center text-on-surface shrink-0"
-              onClick={() => onNavigate(notificationsNavId)}
-              aria-label="Thông báo"
+              className="state-layer flex size-10 shrink-0 items-center justify-center rounded-full text-on-surface lg:hidden"
+              onClick={() => goTo(nav[0].id)}
+              aria-label="Quay lại"
             >
-              <Bell className="size-5" />
-              <span className="absolute top-2 right-2 size-2 rounded-full bg-error ring-2 ring-surface" />
+              <ArrowLeft className="size-5" />
             </button>
+          ) : (
+            <button
+              className="state-layer flex size-10 shrink-0 items-center justify-center rounded-full text-on-surface lg:hidden"
+              onClick={() => setMobileOpen(true)}
+              aria-label="Mở menu"
+            >
+              <Menu className="size-5" />
+            </button>
+          )}
 
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="state-layer flex items-center gap-2 rounded-full pl-1 pr-1 sm:pr-3 py-1 shrink-0">
-                  <Avatar className="size-9">
-                    <AvatarFallback className={cn("text-white text-xs font-bold", ROLE_COLORS[role])}>
-                      {ROLE_AVATARS[role]}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="hidden sm:flex flex-col items-start leading-tight min-w-0 max-w-32">
-                    <span className="text-sm font-medium text-on-surface truncate max-w-full">{user.name}</span>
-                    <span className="text-[11px] text-on-surface-variant">{ROLE_LABELS[role]}</span>
-                  </div>
-                  <ChevronDown className="hidden sm:block size-4 text-on-surface-variant" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-60 rounded-xl">
-                <DropdownMenuLabel className="flex flex-col gap-0.5">
-                  <span className="truncate">{user.name}</span>
-                  <span className="text-xs font-normal text-on-surface-variant truncate">{user.email}</span>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => onNavigate(profileNavId)} className="rounded-lg">
-                  <UserCircle className="size-4 mr-2" /> Hồ sơ cá nhân
+          <div className="hidden min-w-0 items-center gap-2 text-sm sm:flex">
+            <span className="font-medium text-on-surface-variant">{ROLE_LABELS[role]}</span>
+            <span className="text-on-surface-variant/40">/</span>
+            <span className="truncate font-semibold text-on-surface">{currentNav?.label}</span>
+          </div>
+
+          <div className="flex min-w-0 flex-1 sm:hidden">
+            <span className="truncate text-base font-semibold text-on-surface">{currentNav?.label}</span>
+          </div>
+
+          <div className="hidden flex-1 sm:block" />
+
+          <div className="relative hidden w-56 md:flex">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-on-surface-variant" />
+            <Input placeholder="Tìm trong màn hiện tại..." className="h-9 rounded-full border-transparent bg-surface-container-high pl-9 focus-visible:bg-surface-container-lowest" />
+          </div>
+
+          <button
+            className="state-layer relative flex size-10 shrink-0 items-center justify-center rounded-full text-on-surface"
+            onClick={() => goTo(notificationsNavId)}
+            aria-label="Thông báo"
+          >
+            <Bell className="size-5" />
+            {!!unread && <span className="absolute right-1.5 top-1.5 flex size-4 items-center justify-center rounded-full bg-error text-[9px] font-bold text-white ring-2 ring-surface">{unread}</span>}
+          </button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="state-layer flex shrink-0 items-center gap-2 rounded-full py-1 pl-1 pr-1 sm:pr-3">
+                <Avatar className="size-9">
+                  <AvatarFallback className={cn("text-xs font-bold text-white", ROLE_COLORS[role])}>
+                    {initials(profile, role)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="hidden max-w-40 min-w-0 flex-col items-start leading-tight sm:flex">
+                  <span className="max-w-full truncate text-sm font-medium text-on-surface">{profile?.fullName || "Tài khoản UniBus"}</span>
+                  <span className="max-w-full truncate text-[11px] text-on-surface-variant">{profile?.email || ROLE_LABELS[role]}</span>
+                </div>
+                <ChevronDown className="hidden size-4 text-on-surface-variant sm:block" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64 rounded-xl">
+              <DropdownMenuLabel className="flex flex-col gap-0.5">
+                <span className="truncate">{profile?.fullName || "Tài khoản UniBus"}</span>
+                <span className="truncate text-xs font-normal text-on-surface-variant">{profile?.email || ROLE_LABELS[role]}</span>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => goTo(profileNavId)} className="rounded-lg">
+                <UserCircle className="mr-2 size-4" /> Hồ sơ cá nhân
+              </DropdownMenuItem>
+              {role === "student" && (
+                <DropdownMenuItem onClick={() => goTo("stu-university")} className="rounded-lg">
+                  <School className="mr-2 size-4" /> Trường của tôi
                 </DropdownMenuItem>
-                {role === "student" && (
-                  <DropdownMenuItem onClick={() => onNavigate("stu-university")} className="rounded-lg">
-                    <School className="size-4 mr-2" /> Trường của tôi
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuItem onClick={() => toast.info("Cài đặt tài khoản (demo)")} className="rounded-lg">
-                  <Sparkles className="size-4 mr-2" /> Cài đặt
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-error focus:text-error rounded-lg" onClick={onLogout}>
-                  <LogOut className="size-4 mr-2" /> Đăng xuất
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </motion.header>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="rounded-lg text-error focus:text-error" onClick={onLogout}>
+                <LogOut className="mr-2 size-4" /> Đăng xuất
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </motion.header>
 
-          {/* Main content */}
-          <main className="flex-1 p-3 sm:p-6 lg:p-8">
-            <AnimatePresence mode="wait">
-              <PageTransition key={activeId} id={activeId} className="mx-auto max-w-7xl">
-                {children}
-              </PageTransition>
-            </AnimatePresence>
-          </main>
+        <main className="flex-1 p-3 sm:p-6 lg:p-8">
+          <AnimatePresence mode="wait">
+            <PageTransition key={activeId} id={activeId} className="mx-auto max-w-7xl">
+              {children}
+            </PageTransition>
+          </AnimatePresence>
+        </main>
 
-          <footer className="hidden lg:block mt-auto border-t border-outline-variant/40 bg-surface-container-low px-6 py-4 text-center text-xs text-on-surface-variant">
-            <p>UniBus — Hệ thống Xe bus Sinh viên liên kết trường ĐH · Đà Nẵng · Material 3 Expressive</p>
-          </footer>
-        </div>
+        <footer className="mt-auto hidden border-t border-outline-variant/40 bg-surface-container-low px-6 py-4 text-center text-xs text-on-surface-variant lg:block">
+          <p>UniBus - Hệ thống xe bus sinh viên liên kết trường đại học tại Đà Nẵng</p>
+        </footer>
+      </div>
 
-      {/* Mobile drawer */}
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetContent side="left" className="w-[85vw] max-w-xs p-0 border-outline-variant">
+        <SheetContent side="left" className="w-[85vw] max-w-xs border-outline-variant p-0">
           {SidebarContent}
         </SheetContent>
       </Sheet>
-    </div>
-  );
-}
-
-function RoleSwitcherCard({
-  current,
-  onSwitch,
-}: {
-  current: Role;
-  onSwitch: (r: Role) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const roles: Role[] = ["student", "driver", "assistant", "coordinator", "admin", "university_admin"];
-  return (
-    <div className="rounded-2xl border border-outline-variant/40 bg-surface-container p-2.5">
-      <button onClick={() => setOpen((o) => !o)} className="state-layer flex w-full items-center gap-2.5 rounded-xl p-2">
-        <div className={cn("flex size-9 items-center justify-center rounded-xl text-white text-xs font-bold", ROLE_COLORS[current])}>
-          {ROLE_AVATARS[current]}
-        </div>
-        <div className="flex-1 text-left min-w-0">
-          <p className="text-sm font-semibold text-on-surface truncate">{ROLE_LABELS[current]}</p>
-          <p className="text-[10px] text-on-surface-variant truncate">{ROLE_DESCRIPTIONS[current]}</p>
-        </div>
-        <ChevronDown className={cn("size-4 text-on-surface-variant transition-transform shrink-0", open && "rotate-180")} />
-      </button>
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.22 }}
-            className="overflow-hidden"
-          >
-            <div className="mt-1.5 space-y-0.5">
-              {roles.map((r) => (
-                <button
-                  key={r}
-                  onClick={() => { onSwitch(r); setOpen(false); }}
-                  className={cn(
-                    "state-layer flex w-full items-center gap-2 rounded-full px-3 py-2 text-xs transition-colors min-h-9",
-                    r === current ? "bg-secondary-container text-on-secondary-container font-semibold" : "text-on-surface-variant hover:text-on-surface"
-                  )}
-                >
-                  <div className={cn("size-6 rounded-lg text-white text-[10px] font-bold flex items-center justify-center shrink-0", ROLE_COLORS[r])}>
-                    {ROLE_AVATARS[r]}
-                  </div>
-                  <span className="flex-1 text-left truncate">{ROLE_LABELS[r]}</span>
-                  <Sparkles className="size-3 text-on-surface-variant shrink-0" />
-                </button>
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

@@ -39,6 +39,7 @@ import {
   GraduationCap,
   Building2,
   Filter,
+  BadgeCheck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -110,7 +111,7 @@ export const NAV_CONFIG: Record<Role, NavItem[]> = {
   driver: [
     { id: "drv-dashboard", label: "Lịch hôm nay", icon: LayoutDashboard, group: "Tổng quan" },
     { id: "drv-schedule", label: "Lịch chạy xe", icon: CalendarClock, group: "Chuyến xe" },
-    { id: "drv-active", label: "Chuyến đang chạy", icon: PlayCircle, group: "Chuyến xe", badge: "1" },
+    { id: "drv-active", label: "Chuyến đang chạy", icon: PlayCircle, group: "Chuyến xe" },
     { id: "drv-route", label: "Tuyến được phân", icon: RouteIcon, group: "Chuyến xe" },
     { id: "drv-history", label: "Lịch sử chuyến", icon: History, group: "Chuyến xe" },
     { id: "drv-contact", label: "Liên hệ điều phối", icon: MessageSquare, group: "Hỗ trợ" },
@@ -148,8 +149,8 @@ export const NAV_CONFIG: Record<Role, NavItem[]> = {
     { id: "adm-uni-admins", label: "Tài khoản Admin trường", icon: GraduationCap, group: "Quản lý" },
     { id: "adm-route-uni", label: "Gán tuyến cho trường", icon: RouteIcon, group: "Quản lý" },
     { id: "adm-users", label: "Tài khoản người dùng", icon: Users, group: "Quản lý" },
-    { id: "adm-complaints", label: "Xử lý khiếu nại", icon: ShieldAlert, group: "Quản lý", badge: "2" },
-    { id: "adm-violations", label: "Báo cáo vi phạm", icon: AlertTriangle, group: "Quản lý" },
+    { id: "adm-complaints", label: "Xử lý khiếu nại", icon: ShieldAlert, group: "Quản lý" },
+    { id: "adm-violations", label: "Xác minh sinh viên", icon: BadgeCheck, group: "Quản lý" },
     { id: "adm-audit", label: "Audit log", icon: ScrollText, group: "Quản lý" },
     { id: "adm-fare", label: "Điều chỉnh giá vé", icon: Tag, group: "Quản lý" },
     { id: "adm-notify", label: "Gửi thông báo", icon: Megaphone, group: "Hỗ trợ" },

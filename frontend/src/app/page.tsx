@@ -1,14 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AuthScreens } from "@/components/bus/auth-screens";
 import { AppShell } from "@/components/bus/app-shell";
 import {
-  ProfileScreen,
-  NotificationsScreen,
-  SupportScreen,
-  SettingsScreen,
   MyUniversityScreen,
+  NotificationsScreen,
+  ProfileScreen,
+  SettingsScreen,
+  SupportScreen,
 } from "@/components/bus/common-screens";
 import { StudentModule } from "@/components/bus/roles/student-module";
 import { DriverModule } from "@/components/bus/roles/driver-module";
@@ -17,10 +17,10 @@ import { CoordinatorModule } from "@/components/bus/roles/coordinator-module";
 import { AdminModule } from "@/components/bus/roles/admin-module";
 import { UniversityAdminModule } from "@/components/bus/roles/university-admin-module";
 import { NAV_CONFIG } from "@/components/bus/nav-config";
+import { authApi, clearTokens, getAccessToken, getStoredRole, profileApi, type UserProfile } from "@/lib/api/client";
 import type { Role } from "@/lib/types";
-import { clearTokens, getAccessToken } from "@/lib/api/client";
 
-function mapStoredRole(role?: string | null): Role {
+function mapBackendRole(role?: string | null): Role {
   switch ((role || "").toUpperCase()) {
     case "DRIVER":
       return "driver";
@@ -37,41 +37,89 @@ function mapStoredRole(role?: string | null): Role {
   }
 }
 
-function getInitialSession() {
-  if (typeof window === "undefined" || !getAccessToken()) {
-    return { authed: false, role: "student" as Role, activeId: "stu-dashboard" };
-  }
-
-  const role = mapStoredRole(localStorage.getItem("user_role"));
-  return { authed: true, role, activeId: NAV_CONFIG[role][0].id };
+function firstNav(role: Role) {
+  return NAV_CONFIG[role]?.[0]?.id ?? "stu-dashboard";
 }
 
 export default function Page() {
-  const initialSession = getInitialSession();
-  const [authed, setAuthed] = useState(initialSession.authed);
-  const [role, setRole] = useState<Role>(initialSession.role);
-  const [activeId, setActiveId] = useState<string>(initialSession.activeId);
+  const [ready, setReady] = useState(false);
+  const [authed, setAuthed] = useState(false);
+  const [role, setRole] = useState<Role>("student");
+  const [activeId, setActiveId] = useState(firstNav("student"));
+  const [profile, setProfile] = useState<UserProfile | null>(null);
 
-  const handleSwitchRole = (r: Role) => {
+  const loadProfile = useCallback(async (fallbackRole?: Role) => {
+    const me = await profileApi.me();
+    const resolvedRole = mapBackendRole(me.role) || fallbackRole || "student";
+    setProfile(me);
+    setRole(resolvedRole);
+    setActiveId((current) => {
+      const exists = NAV_CONFIG[resolvedRole].some((item) => item.id === current);
+      return exists ? current : firstNav(resolvedRole);
+    });
+    setAuthed(true);
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    const boot = async () => {
+      if (!getAccessToken()) {
+        if (mounted) setReady(true);
+        return;
+      }
+      const storedRole = mapBackendRole(getStoredRole());
+      try {
+        await loadProfile(storedRole);
+      } catch {
+        clearTokens();
+        if (mounted) {
+          setAuthed(false);
+          setProfile(null);
+          setRole("student");
+          setActiveId(firstNav("student"));
+        }
+      } finally {
+        if (mounted) setReady(true);
+      }
+    };
+    boot();
+    return () => {
+      mounted = false;
+    };
+  }, [loadProfile]);
+
+  const handleLogin = async (r: Role) => {
     setRole(r);
-    setActiveId(NAV_CONFIG[r][0].id);
+    setActiveId(firstNav(r));
+    setAuthed(true);
+    try {
+      await loadProfile(r);
+    } catch {
+      setProfile(null);
+    }
   };
 
-  const handleLogin = (r: Role) => {
-    setRole(r);
-    setActiveId(NAV_CONFIG[r][0].id);
-    setAuthed(true);
+  const handleLogout = async () => {
+    try {
+      await authApi.logout();
+    } catch {
+      // Session cleanup should still happen when the token is already expired.
+    } finally {
+      clearTokens();
+      setAuthed(false);
+      setProfile(null);
+      setRole("student");
+      setActiveId(firstNav("student"));
+    }
   };
 
   const renderContent = () => {
-    // Shared common screens
     if (activeId === "stu-university") return <MyUniversityScreen />;
-    if (activeId.endsWith("-profile")) return <ProfileScreen role={role} />;
+    if (activeId.endsWith("-profile")) return <ProfileScreen />;
     if (activeId.endsWith("-notifications")) return <NotificationsScreen />;
     if (activeId === "stu-support") return <SupportScreen />;
     if (activeId === "stu-settings") return <SettingsScreen />;
 
-    // Role-specific modules
     switch (role) {
       case "student":
         return <StudentModule activeId={activeId} onNavigate={setActiveId} />;
@@ -90,6 +138,10 @@ export default function Page() {
     }
   };
 
+  if (!ready) {
+    return <div className="min-h-screen bg-background" />;
+  }
+
   if (!authed) {
     return <AuthScreens onLogin={handleLogin} />;
   }
@@ -98,12 +150,9 @@ export default function Page() {
     <AppShell
       role={role}
       activeId={activeId}
+      profile={profile}
       onNavigate={setActiveId}
-      onSwitchRole={handleSwitchRole}
-      onLogout={() => {
-        clearTokens();
-        setAuthed(false);
-      }}
+      onLogout={handleLogout}
     >
       {renderContent()}
     </AppShell>

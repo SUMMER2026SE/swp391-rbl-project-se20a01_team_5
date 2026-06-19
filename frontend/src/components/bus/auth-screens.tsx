@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import Script from "next/script";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import {
   Bus,
@@ -18,19 +19,35 @@ import {
   Phone,
   Check,
   QrCode,
-  Gift,
+  Route,
+  Star,
 } from "lucide-react";
-import { ExpressiveButton, ExpressiveCard } from "@/components/m3/primitives";
-import { SplitText, ScrollReveal, Marquee, Counter, ClipReveal } from "@/components/m3/motion";
+import { ExpressiveCard } from "@/components/m3/primitives";
+import { SplitText, Marquee, ClipReveal } from "@/components/m3/motion";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import type { Role } from "@/lib/types";
-import { universities } from "@/lib/mock-data";
-import { authApi, setTokens } from "@/lib/api/client";
+import { authApi, setTokens, universityApi } from "@/lib/api/client";
 
 type AuthScreen = "login" | "register" | "forgot";
+
+declare global {
+  interface Window {
+    google?: {
+      accounts?: {
+        oauth2?: {
+          initTokenClient: (config: {
+            client_id: string;
+            scope: string;
+            callback: (response: { access_token?: string; error?: string }) => void;
+          }) => { requestAccessToken: (options?: { prompt?: string }) => void };
+        };
+      };
+    };
+  }
+}
 
 function mapBackendRole(role?: string): Role {
   switch ((role || "").toUpperCase()) {
@@ -55,6 +72,9 @@ export function AuthScreens({
   onLogin: (role: Role) => void;
 }) {
   const [screen, setScreen] = useState<AuthScreen>("login");
+  const [googleReady, setGoogleReady] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [partnerNames, setPartnerNames] = useState<string[]>([]);
   const authRef = useRef<HTMLDivElement>(null);
 
   const scrollToAuth = (s: AuthScreen) => {
@@ -64,8 +84,60 @@ export function AuthScreens({
     });
   };
 
+  useEffect(() => {
+    universityApi.daNang()
+      .then(setPartnerNames)
+      .catch(() => setPartnerNames([]));
+  }, []);
+
+  const handleGoogleLogin = useCallback(() => {
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+    if (!clientId) {
+      toast.error("Thiếu NEXT_PUBLIC_GOOGLE_CLIENT_ID để đăng nhập Google.");
+      return;
+    }
+    if (!googleReady || !window.google?.accounts?.oauth2) {
+      toast.error("Google Identity chưa sẵn sàng. Vui lòng thử lại sau vài giây.");
+      return;
+    }
+
+    setGoogleLoading(true);
+    const client = window.google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: "openid email profile",
+      callback: async (response) => {
+        if (response.error || !response.access_token) {
+          setGoogleLoading(false);
+          toast.error("Không nhận được token Google hợp lệ.");
+          return;
+        }
+        try {
+          const tokenPair = await authApi.googleLogin({ accessToken: response.access_token });
+          setTokens(
+            tokenPair.accessToken,
+            tokenPair.refreshToken,
+            tokenPair.role,
+            tokenPair.studentVerificationStatus
+          );
+          toast.success("Đăng nhập Google thành công!");
+          onLogin(mapBackendRole(tokenPair.role));
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : "Không thể đăng nhập Google");
+        } finally {
+          setGoogleLoading(false);
+        }
+      },
+    });
+    client.requestAccessToken({ prompt: "select_account" });
+  }, [googleReady, onLogin]);
+
   return (
     <div className="min-h-screen w-full bg-background overflow-x-hidden">
+      <Script
+        src="https://accounts.google.com/gsi/client"
+        strategy="afterInteractive"
+        onLoad={() => setGoogleReady(true)}
+      />
       {/* Top nav */}
       <header className="sticky top-0 z-30 glass-m3 border-b border-outline-variant/40">
         <div className="mx-auto max-w-7xl flex items-center justify-between px-4 sm:px-6 h-16">
@@ -100,7 +172,7 @@ export function AuthScreens({
       </header>
 
       {/* HERO */}
-      <Hero onGetStarted={() => scrollToAuth("register")} onTryDemo={() => onLogin("student")} />
+      <Hero onGetStarted={() => scrollToAuth("register")} />
 
       {/* Auth forms section */}
       <section
@@ -153,12 +225,12 @@ export function AuthScreens({
             <AnimatePresence mode="wait">
               {screen === "login" && (
                 <motion.div key="login" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ type: "spring", stiffness: 260, damping: 26 }}>
-                  <LoginForm onLogin={onLogin} onSwitch={setScreen} />
+                  <LoginForm onLogin={onLogin} onSwitch={setScreen} onGoogleLogin={handleGoogleLogin} googleLoading={googleLoading} />
                 </motion.div>
               )}
               {screen === "register" && (
                 <motion.div key="register" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ type: "spring", stiffness: 260, damping: 26 }}>
-                  <RegisterForm onBack={() => setScreen("login")} />
+                  <RegisterForm onBack={() => setScreen("login")} onGoogleLogin={handleGoogleLogin} googleLoading={googleLoading} />
                 </motion.div>
               )}
               {screen === "forgot" && (
@@ -185,9 +257,9 @@ export function AuthScreens({
         <div className="mt-8 grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {[
             { icon: ShieldCheck, title: "Đăng nhập Google", desc: "Tự nhận diện trường qua domain email", bg: "#14140f", fg: "#beff50" },
-            { icon: Sparkles, title: "AI gợi ý tuyến", desc: "Đề xuất tuyến tối ưu theo lịch học", bg: "#c8a0ff", fg: "#14140f" },
-            { icon: QrCode, title: "Vé QR điện tử", desc: "Quét mã lên xe — không cần vé giấy", bg: "#beff50", fg: "#14140f" },
-            { icon: Gift, title: "Vé tháng trợ giá", desc: "Trường hỗ trợ 30% giá vé tháng", bg: "#ff8c5f", fg: "#14140f" },
+            { icon: Route, title: "Tìm tuyến xe", desc: "Tra cứu trạm, tuyến và ETA từ backend", bg: "#c8a0ff", fg: "#14140f" },
+            { icon: QrCode, title: "Vé QR điện tử", desc: "Vé tháng thật sau khi thanh toán", bg: "#beff50", fg: "#14140f" },
+            { icon: Star, title: "Phản hồi chuyến đi", desc: "Gửi đánh giá trực tiếp cho điều phối", bg: "#ff8c5f", fg: "#14140f" },
           ].map((f, i) => (
             <motion.div
               key={f.title}
@@ -213,55 +285,23 @@ export function AuthScreens({
         <p className="text-center text-sm font-medium text-on-surface-variant mb-6 px-4">
           Đang phục vụ sinh viên các trường đại học tại Đà Nẵng
         </p>
-        <Marquee speed={28}>
-          {universities.map((u) => (
-            <div key={u.id} className="flex items-center gap-3 px-6">
-              <div className="size-12 shrink-0 rounded-2xl bg-white p-1.5 flex items-center justify-center border border-outline-variant/40">
-                {u.logoUrl ? (
-                  <img src={u.logoUrl} alt={`Logo ${u.shortName}`} className="w-full h-full object-contain" />
-                ) : (
-                  <span className="font-bold text-sm" style={{ color: u.color }}>{u.logo}</span>
-                )}
+        {partnerNames.length > 0 ? (
+          <Marquee speed={32}>
+            {partnerNames.map((name) => (
+              <div key={name} className="flex items-center gap-3 px-6">
+                <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl border border-outline-variant/40 bg-white text-sm font-black text-[#144fcc]">
+                  {name.split(/\s+/).slice(-2).map((word) => word[0]).join("").toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <p className="font-semibold text-on-surface">{name}</p>
+                  <p className="text-xs text-on-surface-variant">Từ catalog backend</p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="font-semibold text-on-surface">{u.shortName}</p>
-                <p className="text-xs text-on-surface-variant">{u.studentCount.toLocaleString("vi-VN")} sinh viên</p>
-              </div>
-            </div>
-          ))}
-        </Marquee>
-      </section>
-
-      {/* Stats */}
-      <section className="py-16 sm:py-20">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
-          {[
-            { label: "Sinh viên đang phục vụ", value: 2536, bg: "#14140f", fg: "#beff50" },
-            { label: "Trường đối tác", value: 4, bg: "#144fcc", fg: "#fff" },
-            { label: "Chuyến mỗi tháng", value: 14610, bg: "#ff8c5f", fg: "#14140f" },
-            { label: "Tiền trợ giá / tháng", value: 19296000, vnd: true, bg: "#c8a0ff", fg: "#14140f" },
-          ].map((s, i) => (
-            <ScrollReveal key={s.label} delay={i * 0.08}>
-              <div
-                className="rounded-2xl p-5 sm:p-6 elev-2 h-full min-w-0 transition-transform hover:-translate-y-0.5"
-                style={{ backgroundColor: s.bg, color: s.fg }}
-              >
-                <p className="text-xl sm:text-3xl lg:text-4xl font-bold tracking-tight tabular-nums break-words">
-                  {s.vnd ? (
-                    <Counter to={s.value} format={(n) => {
-                      const v = Math.round(n);
-                      if (v >= 1000000) return (v / 1000000).toFixed(1).replace(".0", "") + "M đ";
-                      return v.toLocaleString("vi-VN") + " đ";
-                    }} />
-                  ) : (
-                    <Counter to={s.value} />
-                  )}
-                </p>
-                <p className="mt-2 text-xs sm:text-sm opacity-80">{s.label}</p>
-              </div>
-            </ScrollReveal>
-          ))}
-        </div>
+            ))}
+          </Marquee>
+        ) : (
+          <p className="text-center text-sm text-on-surface-variant">Danh sách trường sẽ hiển thị khi backend catalog phản hồi.</p>
+        )}
       </section>
 
       <footer className="border-t border-outline-variant/40 py-10 px-6 text-center">
@@ -272,13 +312,7 @@ export function AuthScreens({
 }
 
 /* =========================== HERO =========================== */
-function Hero({
-  onGetStarted,
-  onTryDemo,
-}: {
-  onGetStarted: () => void;
-  onTryDemo: () => void;
-}) {
+function Hero({ onGetStarted }: { onGetStarted: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end start"] });
   const y = useTransform(scrollYProgress, [0, 1], [0, -60]);
@@ -335,7 +369,7 @@ function Hero({
           </motion.button>
         </motion.div>
 
-        {/* Floating preview card */}
+        {/* Floating production status card */}
         <ClipReveal delay={1.1} className="mt-12 sm:mt-16 max-w-md">
           <div className="rounded-2xl bg-[#14140f] text-white p-5 elev-3 relative overflow-hidden">
             <div className="absolute -top-8 -right-8 size-32 rounded-full bg-[#beff50]/20 blur-2xl pointer-events-none" />
@@ -345,8 +379,8 @@ function Hero({
                   <Bus className="size-5" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs text-white/60">Tuyến DN-01</p>
-                  <p className="font-bold truncate">Đang đến trạm</p>
+                  <p className="text-xs text-white/60">Dữ liệu vận hành</p>
+                  <p className="font-bold truncate">Hiển thị sau khi đăng nhập</p>
                 </div>
               </div>
               <span className="size-2.5 rounded-full bg-[#beff50] animate-pulse shrink-0" />
@@ -360,8 +394,8 @@ function Hero({
               />
             </div>
             <div className="relative mt-3 flex items-center justify-between text-sm gap-2">
-              <span className="text-white/70 truncate">Còn 6 phút · 2 trạm</span>
-              <span className="font-bold text-[#beff50] whitespace-nowrap">DTU → Lotte</span>
+              <span className="text-white/70 truncate">Tuyến, ETA, vé QR, phản hồi</span>
+              <span className="font-bold text-[#beff50] whitespace-nowrap">API thật</span>
             </div>
           </div>
         </ClipReveal>
@@ -384,13 +418,17 @@ function Hero({
 function LoginForm({
   onLogin,
   onSwitch,
+  onGoogleLogin,
+  googleLoading,
 }: {
   onLogin: (r: Role) => void;
   onSwitch: (s: AuthScreen) => void;
+  onGoogleLogin: () => void;
+  googleLoading: boolean;
 }) {
   const [showPwd, setShowPwd] = useState(false);
-  const [email, setEmail] = useState("minhanh@duytan.edu.vn");
-  const [password, setPassword] = useState("demo1234");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
   const submitLogin = async () => {
@@ -430,12 +468,11 @@ function LoginForm({
         whileTap={{ scale: 0.98 }}
         transition={{ type: "spring", stiffness: 400, damping: 22 }}
         className="w-full mt-6 inline-flex items-center justify-center gap-3 h-12 rounded-full bg-white text-[#14140f] text-base font-bold border-2 border-[#14140f] elev-1"
-        onClick={() => {
-          toast.info("Google OAuth cần Google Identity token thật; dùng demo để xem UI hoặc đăng nhập email/password.");
-        }}
+        onClick={onGoogleLogin}
+        disabled={googleLoading}
       >
         <GoogleIcon />
-        Tiếp tục với Google
+        {googleLoading ? "Đang mở Google..." : "Tiếp tục với Google"}
       </motion.button>
 
       <div className="flex items-center gap-3 my-5">
@@ -486,8 +523,6 @@ function LoginForm({
         </motion.button>
       </div>
 
-      <DemoLoginButtons onLogin={onLogin} />
-
       <p className="text-center text-sm text-on-surface-variant mt-6">
         Chưa có tài khoản?{" "}
         <button onClick={() => onSwitch("register")} className="font-bold text-[#144fcc] hover:underline">
@@ -498,40 +533,19 @@ function LoginForm({
   );
 }
 
-function DemoLoginButtons({ onLogin }: { onLogin: (r: Role) => void }) {
-  const demoRoles: { role: Role; label: string }[] = [
-    { role: "student", label: "Sinh viên" },
-    { role: "driver", label: "Tài xế" },
-    { role: "assistant", label: "Phụ xe" },
-    { role: "coordinator", label: "Điều phối" },
-    { role: "admin", label: "Quản trị" },
-    { role: "university_admin", label: "Admin trường" },
-  ];
-  return (
-    <div className="mt-4 rounded-2xl border-2 border-dashed border-[#beff50] bg-[#beff50]/5 p-4">
-      <p className="text-xs font-bold text-[#14140f] mb-3 flex items-center gap-1.5">
-        <Sparkles className="size-3.5" /> Demo nhanh
-      </p>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-        {demoRoles.map((r) => (
-          <button
-            key={r.role}
-            onClick={() => onLogin(r.role)}
-            className="state-layer h-9 px-3 rounded-full text-xs font-bold text-[#14140f] border border-[#14140f]/20 bg-white hover:bg-[#beff50] min-w-0 truncate"
-          >
-            {r.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 /* =========================== REGISTER FORM =========================== */
-function RegisterForm({ onBack }: { onBack: () => void }) {
+function RegisterForm({
+  onBack,
+  onGoogleLogin,
+  googleLoading,
+}: {
+  onBack: () => void;
+  onGoogleLogin: () => void;
+  googleLoading: boolean;
+}) {
   const [showPwd, setShowPwd] = useState(false);
-  const [lastName, setLastName] = useState("Nguyễn");
-  const [firstName, setFirstName] = useState("Minh Anh");
+  const [lastName, setLastName] = useState("");
+  const [firstName, setFirstName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
@@ -591,10 +605,11 @@ function RegisterForm({ onBack }: { onBack: () => void }) {
         whileTap={{ scale: 0.98 }}
         transition={{ type: "spring", stiffness: 400, damping: 22 }}
         className="w-full mt-6 inline-flex items-center justify-center gap-3 h-12 rounded-full bg-white text-[#14140f] text-base font-bold border-2 border-[#14140f] elev-1"
-        onClick={() => toast.info("Google signup cần Google Identity token thật; form email/OTP bên dưới đã nối backend.")}
+        onClick={onGoogleLogin}
+        disabled={googleLoading}
       >
         <GoogleIcon />
-        Đăng ký với Google
+        {googleLoading ? "Đang mở Google..." : "Đăng ký với Google"}
       </motion.button>
 
       <div className="flex items-center gap-3 my-5">
