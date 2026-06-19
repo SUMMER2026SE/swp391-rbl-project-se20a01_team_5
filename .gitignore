@@ -20,3 +20,7 @@ frontend/frontend-run*.log
 .idea/
 *.iml
 .vscode/
+
+# Local dev scripts with secrets
+run-backend.bat
+run-frontend.bat

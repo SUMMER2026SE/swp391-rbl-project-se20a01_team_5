@@ -150,7 +150,7 @@ export default function DriverContactPage() {
         </div>
       )}
 
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-6 overflow-y-auto custom-scrollbar pr-2 pb-6">
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-6 overflow-y-auto custom-scrollbar pr-2 pb-6 items-start">
         <div className="flex flex-col gap-6">
           <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-black/5 relative overflow-hidden">
             <div className="absolute top-0 right-0 w-32 h-32 bg-brand-primary/20 rounded-full blur-3xl"></div>
@@ -185,12 +185,12 @@ export default function DriverContactPage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-black/5 flex-1 flex flex-col">
+          <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-black/5 flex flex-col">
             <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
               <AlertTriangle className="w-6 h-6 text-brand-danger" /> Báo cáo sự cố (SOS)
             </h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {SOS_OPTIONS.map((option) => {
                 const Icon = option.icon;
                 const busy = activeIncident === option.type;
@@ -199,7 +199,7 @@ export default function DriverContactPage() {
                     key={option.type}
                     onClick={() => handleSOS(option)}
                     disabled={busy || isLoading || !contact?.dispatcherUserId}
-                    className={`bg-brand-surface border border-black/5 p-6 rounded-2xl flex flex-col items-center justify-center text-center gap-3 transition-colors group disabled:opacity-60 disabled:cursor-not-allowed ${option.className}`}
+                    className={`min-h-[150px] bg-brand-surface border border-black/5 p-6 rounded-2xl flex flex-col items-center justify-center text-center gap-3 transition-colors group disabled:opacity-60 disabled:cursor-not-allowed ${option.className}`}
                   >
                     <div className="w-12 h-12 rounded-full bg-white shadow-sm flex items-center justify-center group-hover:scale-110 transition-transform">
                       {busy ? <Loader2 className="w-6 h-6 animate-spin" /> : <Icon className={`w-6 h-6 ${option.iconClass}`} />}
@@ -212,7 +212,7 @@ export default function DriverContactPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-3xl shadow-sm border border-black/5 flex flex-col overflow-hidden h-[600px] lg:h-auto">
+        <div className="bg-white rounded-3xl shadow-sm border border-black/5 flex flex-col overflow-hidden h-[600px] lg:h-[calc(100vh-220px)] lg:min-h-[560px] lg:max-h-[760px]">
           <div className="p-6 border-b border-black/5 bg-brand-surface/50 flex items-center justify-between shrink-0">
             <h3 className="font-bold flex items-center gap-2">
               <MessageSquare className="w-5 h-5 text-brand-secondary" /> Chat nội bộ
