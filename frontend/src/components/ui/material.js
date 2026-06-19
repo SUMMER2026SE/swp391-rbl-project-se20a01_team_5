@@ -1,6 +1,18 @@
 "use client";
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useEffect, useRef } from 'react';
+
+// Import official Material Web Components
+import '@material/web/button/filled-button.js';
+import '@material/web/button/filled-tonal-button.js';
+import '@material/web/button/text-button.js';
+import '@material/web/textfield/outlined-text-field.js';
+import '@material/web/fab/fab.js';
+import '@material/web/icon/icon.js';
+import '@material/web/elevation/elevation.js';
+import '@material/web/ripple/ripple.js';
 
 export function cn(...classes) {
   return classes.filter(Boolean).join(' ');
@@ -8,13 +20,13 @@ export function cn(...classes) {
 
 export function MaterialIcon({ children, filled = false, className = '' }) {
   return (
-    <span
+    <md-icon
       aria-hidden="true"
-      className={cn('material-symbols-rounded', className)}
+      class={className}
       style={{ fontVariationSettings: `"FILL" ${filled ? 1 : 0}, "wght" 500, "GRAD" 0, "opsz" 24` }}
     >
       {children}
-    </span>
+    </md-icon>
   );
 }
 
@@ -22,72 +34,75 @@ export function MaterialCard({ children, className = '', elevated = false, inter
   return (
     <Component
       className={cn(
-        elevated ? 'm3-surface-high' : 'm3-surface',
-        interactive && 'm3-state-layer m3-focus-ring transition-transform duration-200 hover:-translate-y-0.5 active:translate-y-0',
-        'rounded-[var(--md-sys-shape-corner-extra-large)]',
+        'relative overflow-hidden',
+        elevated ? 'bg-[var(--md-sys-color-surface-container-high)]' : 'bg-[var(--md-sys-color-surface-container)]',
+        'rounded-[var(--md-sys-shape-corner-large)]',
         className,
       )}
       {...props}
     >
+      <md-elevation suppressHydrationWarning></md-elevation>
+      {interactive && <md-ripple suppressHydrationWarning></md-ripple>}
       {children}
     </Component>
   );
 }
 
-export function FilledButton({ children, className = '', as: Component = 'button', ...props }) {
+// Generic Hook for Next.js routing with Web Components
+function useRoutingHandler(href, onClick, disabled) {
+  const router = useRouter();
+  return (e) => {
+    if (onClick) onClick(e);
+    if (!e.defaultPrevented && href && !disabled) {
+      if (href.startsWith('http') || href.startsWith('//')) {
+        window.location.href = href;
+      } else {
+        router.push(href);
+      }
+    }
+  };
+}
+
+export function FilledButton({ children, className = '', href, onClick, disabled, type, ...props }) {
+  const handleClick = useRoutingHandler(href, onClick, disabled);
   return (
-    <Component
-      className={cn(
-        'm3-state-layer m3-focus-ring inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[var(--md-sys-color-primary)] px-6 py-3 text-sm font-black text-[var(--md-sys-color-on-primary)] shadow-[var(--md-sys-elevation-1)] transition-transform duration-200 hover:-translate-y-0.5 active:translate-y-0 disabled:pointer-events-none disabled:opacity-50',
-        className,
-      )}
-      {...props}
-    >
+    <md-filled-button class={className} disabled={disabled ? true : undefined} onClick={handleClick} type={type} {...props}>
       {children}
-    </Component>
+    </md-filled-button>
   );
 }
 
-export function TonalButton({ children, className = '', as: Component = 'button', ...props }) {
+export function TonalButton({ children, className = '', href, onClick, disabled, type, ...props }) {
+  const handleClick = useRoutingHandler(href, onClick, disabled);
   return (
-    <Component
-      className={cn(
-        'm3-state-layer m3-focus-ring inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[var(--md-sys-color-secondary-container)] px-6 py-3 text-sm font-black text-[var(--md-sys-color-on-secondary-container)] transition-transform duration-200 hover:-translate-y-0.5 active:translate-y-0 disabled:pointer-events-none disabled:opacity-50',
-        className,
-      )}
-      {...props}
-    >
+    <md-filled-tonal-button class={className} disabled={disabled ? true : undefined} onClick={handleClick} type={type} {...props}>
       {children}
-    </Component>
+    </md-filled-tonal-button>
   );
 }
 
-export function TextButton({ children, className = '', as: Component = 'button', ...props }) {
+export function TextButton({ children, className = '', href, onClick, disabled, type, ...props }) {
+  const handleClick = useRoutingHandler(href, onClick, disabled);
   return (
-    <Component
-      className={cn(
-        'm3-state-layer m3-focus-ring inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-black text-[var(--md-sys-color-primary)] transition-colors disabled:pointer-events-none disabled:opacity-50',
-        className,
-      )}
-      {...props}
-    >
+    <md-text-button class={className} disabled={disabled ? true : undefined} onClick={handleClick} type={type} {...props}>
       {children}
-    </Component>
+    </md-text-button>
   );
 }
 
-export function MaterialTextField({ label, className = '', inputClassName = '', ...props }) {
+export function MaterialTextField({ label, className = '', inputClassName = '', type = 'text', value, onChange, children, ...props }) {
+  // Web components emit native 'input' events, React captures them correctly in React 19.
   return (
-    <label className={cn('block', className)}>
-      {label && <span className="mb-2 block text-sm font-bold text-[var(--md-sys-color-on-surface-variant)]">{label}</span>}
-      <input
-        className={cn(
-          'm3-focus-ring min-h-14 w-full rounded-[var(--md-sys-shape-corner-large)] border border-[var(--md-sys-color-outline-variant)] bg-[var(--md-sys-color-surface-container-high)] px-4 py-3 text-sm font-bold text-[var(--md-sys-color-on-surface)] outline-none transition-colors placeholder:text-[var(--md-sys-color-on-surface-variant)] focus:border-[var(--md-sys-color-primary)] focus:bg-[var(--md-sys-color-surface-container-lowest)] disabled:opacity-60',
-          inputClassName,
-        )}
-        {...props}
-      />
-    </label>
+    <md-outlined-text-field
+      label={label}
+      class={cn('w-full', className, inputClassName)}
+      type={type}
+      value={value}
+      onChange={onChange}
+      {...props}
+    >
+      {children}
+    </md-outlined-text-field>
   );
 }
 
@@ -107,19 +122,14 @@ export function StatusChip({ children, tone = 'neutral', className = '' }) {
   );
 }
 
-export function FAB({ children, href, className = '', ...props }) {
-  const Component = href ? Link : 'button';
+export function FAB({ children, href, onClick, className = '', ...props }) {
+  const handleClick = useRoutingHandler(href, onClick, false);
   return (
-    <Component
-      href={href}
-      className={cn(
-        'm3-state-layer m3-focus-ring fixed bottom-24 right-5 z-30 inline-flex h-16 min-w-16 items-center justify-center gap-2 rounded-[var(--md-sys-shape-corner-large)] bg-[var(--md-sys-color-primary-container)] px-5 text-sm font-black text-[var(--md-sys-color-on-primary-container)] shadow-[var(--md-sys-elevation-3)] transition-transform hover:-translate-y-1 active:translate-y-0 md:bottom-8',
-        className,
-      )}
-      {...props}
-    >
-      {children}
-    </Component>
+    <md-fab class={cn('fixed bottom-24 right-5 z-30 md:bottom-8', className)} onClick={handleClick} {...props}>
+      <div slot="icon" className="flex h-full w-full items-center justify-center">
+        {children}
+      </div>
+    </md-fab>
   );
 }
 

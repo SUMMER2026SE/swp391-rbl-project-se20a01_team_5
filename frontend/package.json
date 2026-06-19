@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@material/material-color-utilities": "^0.4.0",
+    "@material/web": "^2.4.1",
     "axios": "^1.16.1",
     "lucide-react": "^1.16.0",
     "material-symbols": "^0.45.2",

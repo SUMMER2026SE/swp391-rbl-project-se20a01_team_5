@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { registrationApi, studentApi, studentVerificationApi, ticketingApi } from '@/services/api';
 import TicketQrCode from '@/components/tickets/TicketQrCode';
+import { motion } from 'framer-motion';
 
 const money = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' });
 
@@ -163,46 +164,60 @@ export default function PassesPage() {
     },
   ];
 
+  // Khai báo variants cho animation GSAP style
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: { staggerChildren: 0.1 },
+    },
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 30 },
+    show: { opacity: 1, y: 0, transition: { duration: 0.8, ease: [0.16, 1, 0.3, 1] } },
+  };
+
   return (
-    <div className="h-full flex flex-col gap-6 font-sans relative">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <motion.div variants={containerVariants} initial="hidden" animate="show" className="h-full flex flex-col gap-6 font-sans relative">
+      <motion.div variants={itemVariants} className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-brand-text mb-2">Vé & Tuyến</h1>
-          <p className="text-brand-text/60 font-medium">
+          <h1 className="text-3xl font-extrabold tracking-tight text-[var(--md-sys-color-on-surface)] mb-2">Vé & Tuyến</h1>
+          <p className="text-[var(--md-sys-color-on-surface-variant)] font-medium">
             Chọn tuyến mặc định, thanh toán vé tháng, nhận QR và hóa đơn trên cùng một luồng.
           </p>
         </div>
         <button
           type="button"
           onClick={loadDashboard}
-          className="min-h-12 px-4 py-3 rounded-2xl bg-white border border-black/5 font-bold text-sm hover:bg-brand-surface transition-colors flex items-center justify-center gap-2"
+          className="min-h-12 px-4 py-3 rounded-2xl bg-[var(--md-sys-color-surface-container-lowest)] border border-[var(--md-sys-color-outline-variant)] font-bold text-sm text-[var(--md-sys-color-on-surface)] hover:bg-[var(--md-sys-color-surface-container-low)] transition-colors flex items-center justify-center gap-2"
           aria-label="Làm mới dữ liệu vé và tuyến"
         >
           <RefreshCw className="w-4 h-4" /> Làm mới
         </button>
-      </div>
+      </motion.div>
 
       {error && (
-        <div className="p-4 bg-brand-danger/10 border border-brand-danger/20 rounded-2xl text-sm font-bold text-brand-danger" role="alert">
+        <motion.div variants={itemVariants} className="p-4 bg-[var(--unibus-danger-container)] border border-[var(--unibus-danger)] rounded-2xl text-sm font-bold text-[var(--unibus-danger)]" role="alert">
           {error}
-        </div>
+        </motion.div>
       )}
       {message && (
-        <div className="p-4 bg-brand-success/10 border border-brand-success/20 rounded-2xl text-sm font-bold text-brand-success" role="status">
+        <motion.div variants={itemVariants} className="p-4 bg-[var(--unibus-success-container)] border border-[var(--unibus-success)] rounded-2xl text-sm font-bold text-[var(--unibus-success)]" role="status">
           {message}
-        </div>
+        </motion.div>
       )}
 
       {isLoading ? (
-        <div className="flex-1 flex items-center justify-center gap-3 text-brand-text/50 font-bold">
+        <div className="flex-1 flex items-center justify-center gap-3 text-[var(--md-sys-color-on-surface-variant)] font-bold">
           <Loader2 className="w-5 h-5 animate-spin" /> Đang tải vé, tuyến và hóa đơn...
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 pb-6">
+        <motion.div variants={itemVariants} className="flex-1 overflow-y-auto custom-scrollbar pr-2 pb-6">
           <FlowSteps steps={flowSteps} />
 
           <div className="mt-6 grid grid-cols-1 2xl:grid-cols-[1.05fr_.95fr] gap-6">
-            <section id="ticket" className="bg-brand-text text-white rounded-3xl p-6 md:p-8 shadow-sm border border-black/5 overflow-hidden relative">
+            <section id="ticket" className="bg-[var(--md-sys-color-on-surface)] text-[var(--md-sys-color-surface)] rounded-3xl p-6 md:p-8 border border-[var(--md-sys-color-outline-variant)] overflow-hidden relative">
               {hasActivePass ? (
                 <div className="relative z-10 grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-8 items-center">
                   <div>
@@ -490,11 +505,10 @@ function RouteCard({ registration, activeMonthlyTicket, isCancelling, onCancel }
           <RouteIcon className="w-14 h-14 mx-auto mb-4 opacity-40" />
           <p>Chưa có tuyến mặc định.</p>
           <Link href="/student/routes" className="mt-4 inline-flex min-h-12 px-5 py-3 rounded-2xl bg-brand-text text-white font-black hover:bg-black transition-colors">
-            Chọn tuyến
-          </Link>
-        </div>
+          <Invoices payments={payments} />
+        </motion.div>
       )}
-    </section>
+    </motion.div>
   );
 }
 

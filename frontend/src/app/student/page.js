@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { MapPin, Navigation, Clock, Ticket, UserCircle, History } from 'lucide-react';
 import { registrationApi, studentApi, ticketingApi, toApiAssetUrl, travelApi } from '@/services/api';
 import TicketQrCode from '@/components/tickets/TicketQrCode';
+import { FilledButton, TonalButton, MaterialCard } from '@/components/ui/material';
+import { motion } from 'framer-motion';
 
 export default function StudentDashboard() {
   const [profile, setProfile] = useState(null);
@@ -13,6 +15,7 @@ export default function StudentDashboard() {
   const [recentTrips, setRecentTrips] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const [avatarError, setAvatarError] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -70,37 +73,54 @@ export default function StudentDashboard() {
             description: 'Chọn tuyến và điểm lên/xuống mặc định trước khi mua vé tháng.',
           };
 
+  // Khai báo variants cho animation GSAP style
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: { staggerChildren: 0.1 },
+    },
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 30 },
+    show: { opacity: 1, y: 0, transition: { duration: 0.8, ease: [0.16, 1, 0.3, 1] } },
+  };
+
   return (
-    <div className="h-full flex flex-col gap-6 font-sans">
-      <div>
-        <h1 className="text-3xl font-extrabold tracking-tight text-brand-text mb-2">
+    <motion.div variants={containerVariants} initial="hidden" animate="show" className="h-full flex flex-col gap-6 font-sans">
+      <motion.div variants={itemVariants}>
+        <h1 className="text-3xl font-extrabold tracking-tight text-[var(--md-sys-color-on-surface)] mb-2">
           Xin chào, {profile?.fullName || 'sinh viên'}!
         </h1>
-      </div>
+      </motion.div>
 
       {error && (
-        <div className="p-4 bg-brand-danger/10 border border-brand-danger/20 rounded-2xl text-sm font-bold text-brand-danger">
+        <motion.div variants={itemVariants} className="p-4 bg-[var(--unibus-danger-container)] border border-[var(--unibus-danger)] rounded-2xl text-sm font-bold text-[var(--unibus-danger)]">
           {error}
-        </div>
+        </motion.div>
       )}
 
       <div className="flex-1 grid grid-cols-1 xl:grid-cols-3 gap-6 overflow-y-auto custom-scrollbar pr-2 pb-6">
-        <div className="flex flex-col gap-6 xl:col-span-1">
-          <div className="m3-surface rounded-[2rem] p-8 flex flex-col items-center text-center relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-28 bg-[var(--md-sys-color-primary-container)]"></div>
-
-            <div className="w-24 h-24 rounded-full bg-brand-primary flex items-center justify-center text-2xl font-bold text-brand-text border-4 border-white shadow-sm z-10 mb-4 mt-6 overflow-hidden">
-              {profile?.avatarUrl ? (
-                <img src={toApiAssetUrl(profile.avatarUrl)} alt="Avatar" className="w-full h-full object-cover" />
+        <motion.div variants={itemVariants} className="flex flex-col gap-6 xl:col-span-1">
+          <MaterialCard elevated={false} className="p-8 flex flex-col items-center text-center bg-[var(--md-sys-color-surface-container-lowest)] border border-[var(--md-sys-color-outline-variant)]">
+            <div className="w-24 h-24 rounded-full bg-[var(--md-sys-color-primary)] flex items-center justify-center text-2xl font-bold text-[var(--md-sys-color-on-primary)] border-4 border-[var(--md-sys-color-surface-container-lowest)] shadow-none z-10 mb-4 overflow-hidden">
+              {profile?.avatarUrl && !avatarError ? (
+                <img 
+                  src={toApiAssetUrl(profile.avatarUrl)} 
+                  alt="Avatar" 
+                  className="w-full h-full object-cover" 
+                  onError={() => setAvatarError(true)}
+                />
               ) : (
-                <UserCircle className="w-14 h-14 text-brand-text/50" />
+                <UserCircle className="w-14 h-14 text-[var(--md-sys-color-on-primary)]" />
               )}
             </div>
 
-            <h2 className="text-xl font-bold mb-1 relative z-10">{profile?.fullName || 'Chưa có tên'}</h2>
-            <p className="text-brand-text/50 font-mono text-sm mb-6 relative z-10">{profile?.studentCode || 'Chưa có mã sinh viên'}</p>
+            <h2 className="text-xl font-bold mb-1 relative z-10 text-[var(--md-sys-color-on-surface)]">{profile?.fullName || 'Chưa có tên'}</h2>
+            <p className="text-[var(--md-sys-color-on-surface-variant)] font-mono text-sm mb-6 relative z-10">{profile?.studentCode || 'Chưa có mã sinh viên'}</p>
 
-            <div className="bg-[var(--md-sys-color-surface-container)] p-4 rounded-[1.75rem] border border-[var(--md-sys-color-outline-variant)] mb-6 w-full flex justify-center relative z-10">
+            <div className="bg-[var(--md-sys-color-surface-container-low)] p-4 rounded-xl border border-[var(--md-sys-color-outline-variant)] mb-6 w-full flex justify-center relative z-10">
               {activeMonthlyTicket?.qrCode ? (
                 <div className="w-full flex flex-col items-center gap-3">
                   <TicketQrCode value={activeMonthlyTicket.qrCode} compact className="w-full max-w-56" />
@@ -109,96 +129,97 @@ export default function StudentDashboard() {
                   </p>
                 </div>
               ) : (
-                <div className="w-full min-h-48 rounded-[1.5rem] bg-[var(--md-sys-color-surface-container-lowest)] border border-[var(--md-sys-color-outline-variant)] p-5 flex flex-col items-center justify-center text-center">
+                <div className="w-full min-h-48 rounded-xl bg-[var(--md-sys-color-surface-container-lowest)] border border-[var(--md-sys-color-outline-variant)] p-5 flex flex-col items-center justify-center text-center">
                   <div className="w-12 h-12 rounded-2xl bg-brand-primary/20 flex items-center justify-center mb-4">
                     <Ticket className="w-6 h-6 text-brand-text" />
                   </div>
                   <p className="text-sm font-black text-brand-text">{ticketAction.title}</p>
                   <p className="mt-2 text-xs font-bold text-brand-text/50 leading-relaxed max-w-56">{ticketAction.description}</p>
-                  <Link href={ticketAction.href} className="m3-state-layer mt-4 px-5 py-3 rounded-full bg-[var(--md-sys-color-primary)] text-[var(--md-sys-color-on-primary)] text-xs font-black transition-colors">
+                  <FilledButton href={ticketAction.href} className="mt-4">
                     {ticketAction.label}
-                  </Link>
+                  </FilledButton>
                 </div>
               )}
             </div>
+          </MaterialCard>
 
-          </div>
-
-          <div className="m3-surface rounded-[1.75rem] p-6 flex items-center justify-between">
+          <MaterialCard elevated={false} className="p-6 flex items-center justify-between bg-[var(--md-sys-color-surface-container-lowest)] border border-[var(--md-sys-color-outline-variant)]">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-brand-surface rounded-2xl flex items-center justify-center shadow-sm">
-                <Ticket className="w-6 h-6 text-brand-text/50" />
+              <div className="w-12 h-12 bg-[var(--md-sys-color-surface-container-low)] rounded-full flex items-center justify-center shadow-none">
+                <Ticket className="w-6 h-6 text-[var(--md-sys-color-on-surface)]" />
               </div>
               <div>
-                <p className="text-sm font-bold text-brand-text">Vé tháng</p>
-                <p className="text-xs font-medium text-brand-text/50 mt-0.5">
+                <p className="text-sm font-bold text-[var(--md-sys-color-on-surface)]">Vé tháng</p>
+                <p className="text-xs font-medium text-[var(--md-sys-color-on-surface-variant)] mt-0.5">
                   {activeMonthlyTicket ? `${activeMonthlyTicket.effectiveMonth}/${activeMonthlyTicket.effectiveYear} đang hoạt động` : 'Chưa có vé tháng đang hoạt động'}
                 </p>
               </div>
             </div>
-            <Link href="/student/passes" className="text-xs font-bold text-brand-secondary hover:underline">Chi tiết</Link>
-          </div>
-        </div>
+            <Link href="/student/passes" className="text-xs font-bold text-[var(--md-sys-color-primary)] hover:underline">Chi tiết</Link>
+          </MaterialCard>
+        </motion.div>
 
-        <div className="xl:col-span-2 flex flex-col gap-6">
-          <div className="bg-[var(--md-sys-color-primary-container)] text-[var(--md-sys-color-on-primary-container)] rounded-[2rem] p-6 md:p-8 shadow-[var(--md-sys-elevation-2)] border border-[var(--md-sys-color-outline-variant)] relative overflow-hidden flex flex-col justify-between">
+        <motion.div variants={itemVariants} className="xl:col-span-2 flex flex-col gap-6">
+          <div className="bg-[var(--md-sys-color-surface-container-lowest)] text-[var(--md-sys-color-on-surface)] rounded-2xl p-6 md:p-8 border border-[var(--md-sys-color-outline-variant)] relative overflow-hidden flex flex-col justify-between">
             <div className="flex flex-wrap items-center justify-between mb-8 relative z-10 gap-4">
               <h3 className="text-2xl font-bold flex items-center gap-2">
                 <Navigation className="w-7 h-7" /> Tuyến đã đăng ký
               </h3>
-              <Link href="/student/routes" className="m3-state-layer px-4 py-2 bg-white/45 text-[var(--md-sys-color-on-primary-container)] font-black text-xs rounded-full backdrop-blur-sm shadow-sm border border-white/30">
+              <TonalButton href="/student/routes">
                 Tìm tuyến
-              </Link>
+              </TonalButton>
             </div>
 
             {registration ? (
-              <div className="bg-[var(--md-sys-color-surface-container-lowest)] rounded-[1.75rem] p-6 shadow-[var(--md-sys-elevation-1)] relative z-10 border border-white/50">
-                <h4 className="text-xl font-bold text-brand-text">{registration.routeName}</h4>
-                <p className="text-sm font-medium text-brand-text/60 flex items-center gap-1.5 mt-2">
-                  <MapPin className="w-4 h-4 text-brand-secondary" />
+              <div className="p-6 border border-[var(--md-sys-color-outline-variant)] rounded-2xl bg-[var(--md-sys-color-surface-container-low)]">
+                <h4 className="text-xl font-bold text-[var(--md-sys-color-on-surface)]">{registration.routeName}</h4>
+                <p className="text-sm font-medium text-[var(--md-sys-color-on-surface-variant)] flex items-center gap-1.5 mt-2">
+                  <MapPin className="w-4 h-4 text-[var(--md-sys-color-primary)]" />
                   Trạm mặc định: {registration.boardingStopName} → {registration.alightingStopName}
                 </p>
                 <div className="mt-4 flex flex-col gap-3">
-                  <div className="text-xs font-black text-brand-success uppercase">{registration.status}</div>
-                  <Link 
+                  <div className="text-xs font-black text-[var(--unibus-success)] uppercase">{registration.status}</div>
+                  <FilledButton 
                     href={`/student/routes/${registration.routeId}?boardingStopId=${registration.boardingStopId}&alightingStopId=${registration.alightingStopId}`}
-                    className="m3-state-layer w-full py-3.5 bg-[var(--md-sys-color-primary)] text-[var(--md-sys-color-on-primary)] font-extrabold text-sm rounded-full transition-colors flex items-center justify-center gap-2 shadow-sm"
+                    className="w-full mt-2"
                   >
-                    <Navigation className="w-4 h-4" /> Theo dõi xe & ETA
-                  </Link>
+                    <Navigation className="w-4 h-4 mr-2" /> Theo dõi xe & ETA
+                  </FilledButton>
                 </div>
               </div>
             ) : (
-              <div className="bg-[var(--md-sys-color-surface-container-lowest)] rounded-[1.75rem] p-6 shadow-[var(--md-sys-elevation-1)] relative z-10 border border-white/50">
-                <h4 className="text-xl font-bold text-brand-text">Chưa đăng ký tuyến</h4>
-                <p className="text-sm font-medium text-brand-text/60 mt-2">Chọn tuyến và điểm lên/xuống mặc định để mua vé tháng.</p>
+              <div className="p-6 border border-[var(--md-sys-color-outline-variant)] rounded-2xl bg-[var(--md-sys-color-surface-container-low)]">
+                <h4 className="text-xl font-bold text-[var(--md-sys-color-on-surface)]">Chưa đăng ký tuyến</h4>
+                <p className="text-sm font-medium text-[var(--md-sys-color-on-surface-variant)] mt-2">Chọn tuyến và điểm lên/xuống mặc định để mua vé tháng.</p>
               </div>
             )}
           </div>
 
-          <div className="m3-surface rounded-[2rem] p-6 flex-1">
+          <MaterialCard elevated={false} className="p-6 flex-1 bg-[var(--md-sys-color-surface-container-lowest)] border border-[var(--md-sys-color-outline-variant)]">
             <h3 className="font-bold mb-5 flex items-center gap-2">
-              <History className="w-5 h-5 text-brand-secondary" /> Chuyến đi gần đây
+              <History className="w-5 h-5 text-[var(--md-sys-color-primary)]" /> Chuyến đi gần đây
             </h3>
 
             {recentTrips.length ? (
               <div className="space-y-3">
                 {recentTrips.map((trip) => (
-                  <div key={trip.travelHistoryId} className="p-4 bg-[var(--md-sys-color-surface-container)] rounded-[1.5rem] border border-[var(--md-sys-color-outline-variant)]">
-                    <p className="text-sm font-bold text-brand-text mb-1">{trip.routeName}</p>
-                    <p className="text-xs font-medium text-brand-text/60 leading-relaxed flex items-center gap-1">
+                  <div key={trip.travelHistoryId} className="p-4 bg-[var(--md-sys-color-surface-container-low)] rounded-xl border border-[var(--md-sys-color-outline-variant)]">
+                    <p className="text-sm font-bold text-[var(--md-sys-color-on-surface)] mb-1">{trip.routeName}</p>
+                    <p className="text-xs font-medium text-[var(--md-sys-color-on-surface-variant)] leading-relaxed flex items-center gap-1">
                       <Clock className="w-3.5 h-3.5" /> {formatDate(trip.serviceDate)}
                     </p>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="py-12 text-center text-brand-text/50 font-bold">Chưa có lịch sử chuyến đi.</div>
+              <div className="flex-1 flex items-center justify-center min-h-32 text-sm font-bold text-[var(--md-sys-color-on-surface-variant)]">
+                Chưa có lịch sử chuyến đi.
+              </div>
             )}
-          </div>
-        </div>
+          </MaterialCard>
+        </motion.div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 

@@ -5,6 +5,8 @@ import { UserCircle, Mail, Phone, MapPin, GraduationCap, KeyRound, Save, Camera 
 import ImageCropModal from '@/components/modals/ImageCropModal';
 import ChangePasswordModal from '@/components/modals/ChangePasswordModal';
 import { studentApi, studentVerificationApi, toApiAssetUrl } from '@/services/api';
+import { MaterialCard, MaterialTextField, FilledButton, TonalButton, TextButton } from '@/components/ui/material';
+import { motion } from 'framer-motion';
 
 const emptyProfile = {
   fullName: '',
@@ -161,35 +163,55 @@ export default function StudentProfilePage() {
     return <ProfileSkeleton />;
   }
 
+  // Khai báo variants cho animation mượt mà (GSAP style)
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.1,
+      },
+    },
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 30 },
+    show: { opacity: 1, y: 0, transition: { duration: 0.8, ease: [0.16, 1, 0.3, 1] } },
+  };
+
   return (
-    <div className="h-full flex flex-col gap-6 font-sans relative">
-      <div>
-        <h1 className="text-3xl font-extrabold tracking-tight text-brand-text mb-2">Hồ sơ cá nhân</h1>
-      </div>
+    <motion.div variants={containerVariants} initial="hidden" animate="show" className="h-full flex flex-col gap-6 font-sans relative">
+      <motion.div variants={itemVariants}>
+        <h1 className="text-3xl font-extrabold tracking-tight text-[var(--md-sys-color-on-surface)] mb-2">Hồ sơ cá nhân</h1>
+      </motion.div>
 
       {error && (
-        <div className="p-4 bg-brand-danger/10 border border-brand-danger/20 rounded-2xl text-sm font-bold text-brand-danger">
+        <motion.div variants={itemVariants} className="p-4 bg-brand-danger/10 border border-brand-danger/20 rounded-2xl text-sm font-bold text-brand-danger">
           {error}
-        </div>
+        </motion.div>
       )}
 
       {message && (
-        <div className="p-4 bg-brand-success/10 border border-brand-success/20 rounded-2xl text-sm font-bold text-brand-success">
+        <motion.div variants={itemVariants} className="p-4 bg-brand-success/10 border border-brand-success/20 rounded-2xl text-sm font-bold text-brand-success">
           {message}
-        </div>
+        </motion.div>
       )}
 
       <div className="flex-1 grid grid-cols-1 xl:grid-cols-3 gap-6 overflow-y-auto custom-scrollbar pr-2 pb-6">
-        <div className="flex flex-col gap-6">
-          <div className="bg-white rounded-3xl p-8 shadow-sm border border-black/5 flex flex-col items-center text-center relative overflow-hidden">
-            <div className="absolute top-0 w-full h-32 bg-brand-secondary/20"></div>
+        <motion.div variants={itemVariants} className="flex flex-col gap-6">
+          <MaterialCard elevated={false} className="p-8 flex flex-col items-center text-center relative overflow-visible border border-[var(--md-sys-color-outline-variant)] bg-[var(--md-sys-color-surface-container-lowest)]">
+            <div className="absolute top-0 left-0 w-full h-32 bg-[var(--md-sys-color-primary-container)]"></div>
 
-            <label className="w-32 h-32 rounded-full bg-white border-4 border-white shadow-sm flex items-center justify-center relative z-10 mt-8 mb-4 cursor-pointer group">
+            <label className="w-32 h-32 rounded-full bg-[var(--md-sys-color-surface)] border-4 border-[var(--md-sys-color-surface)] flex items-center justify-center relative z-10 mt-8 mb-4 cursor-pointer group hover:-translate-y-1 transition-transform duration-300">
               {avatar ? (
-                <img src={avatar} alt="Avatar" className="w-full h-full rounded-full object-cover" />
-              ) : (
-                <UserCircle className="w-32 h-32 text-brand-text/20" />
-              )}
+                <img 
+                  src={avatar} 
+                  alt="Avatar" 
+                  className="w-full h-full rounded-full object-cover" 
+                  onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }}
+                />
+              ) : null}
+              <UserCircle className={avatar ? "w-32 h-32 text-[var(--md-sys-color-primary)] hidden" : "w-32 h-32 text-[var(--md-sys-color-primary)]"} />
 
               <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                 <Camera className="w-8 h-8 text-white" />
@@ -204,21 +226,22 @@ export default function StudentProfilePage() {
               <InfoCard icon={GraduationCap} label="Trường" value={formData.university || 'Chưa cập nhật'} />
               <InfoCard icon={UserCircle} label="Mã sinh viên" value={formData.studentCode || 'Chưa cập nhật'} />
             </div>
-          </div>
-        </div>
+          </MaterialCard>
+        </motion.div>
 
-        <div className="xl:col-span-2 flex flex-col gap-6">
-          <form onSubmit={handleSubmit} className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-black/5">
-            <div className="flex items-center justify-between mb-8">
-              <h3 className="text-xl font-bold">Thông tin liên lạc</h3>
-              <button
-                type="submit"
-                disabled={isSaving || !isDirty}
-                className={`text-sm font-bold transition-colors px-4 py-2 rounded-xl flex items-center gap-2 shadow-sm ${!isDirty && !isSaving ? 'bg-brand-surface text-brand-text/50 cursor-not-allowed border border-black/5' : 'bg-brand-text text-white hover:bg-black disabled:opacity-60'}`}
-              >
-                <Save className="w-4 h-4" /> {isSaving ? 'Đang lưu...' : 'Lưu thay đổi'}
-              </button>
-            </div>
+        <motion.div variants={itemVariants} className="xl:col-span-2 flex flex-col gap-6">
+          <form onSubmit={handleSubmit}>
+            <MaterialCard elevated={false} className="p-6 md:p-8 border border-[var(--md-sys-color-outline-variant)] bg-[var(--md-sys-color-surface-container-lowest)]">
+              <div className="flex items-center justify-between mb-8">
+                <h3 className="text-xl font-bold text-[var(--md-sys-color-on-surface)]">Thông tin liên lạc</h3>
+                <FilledButton
+                  type="submit"
+                  disabled={isSaving || !isDirty}
+                  className="shadow-none"
+                >
+                  <Save className="w-4 h-4 mr-2" /> {isSaving ? 'Đang lưu...' : 'Lưu thay đổi'}
+                </FilledButton>
+              </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <ProfileInput icon={UserCircle} label="Họ và tên" name="fullName" value={formData.fullName} onChange={handleChange} />
@@ -233,29 +256,29 @@ export default function StudentProfilePage() {
                 <ProfileInput icon={MapPin} label="Địa chỉ thường trú" name="address" value={formData.address} onChange={handleChange} />
               </div>
             </div>
+            </MaterialCard>
           </form>
 
-          <div className="bg-white rounded-3xl p-6 shadow-sm border border-black/5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <MaterialCard elevated={false} className="p-6 border border-[var(--md-sys-color-outline-variant)] bg-[var(--md-sys-color-surface-container-lowest)] flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-brand-surface flex items-center justify-center">
-                <KeyRound className="w-6 h-6 text-brand-text/60" />
+              <div className="w-12 h-12 rounded-2xl bg-[var(--md-sys-color-surface-container-high)] flex items-center justify-center">
+                <KeyRound className="w-6 h-6 text-[var(--md-sys-color-on-surface)]" />
               </div>
               <div>
-                <h3 className="font-bold">{formData.hasPassword ? 'Mật khẩu đăng nhập' : 'Tạo mật khẩu'}</h3>
-                <p className="text-sm font-medium text-brand-text/60">
+                <h3 className="font-bold text-[var(--md-sys-color-on-surface)]">{formData.hasPassword ? 'Mật khẩu đăng nhập' : 'Tạo mật khẩu'}</h3>
+                <p className="text-sm text-[var(--md-sys-color-on-surface-variant)]">
                   {formData.hasPassword ? 'Đổi mật khẩu tài khoản sinh viên.' : 'Thiết lập mật khẩu để đăng nhập.'}
                 </p>
               </div>
             </div>
-            <button
+            <TonalButton
               type="button"
               onClick={() => setPasswordModalOpen(true)}
-              className="px-6 py-3 bg-brand-surface font-bold text-sm rounded-xl hover:bg-black hover:text-white transition-colors w-full md:w-auto"
             >
               {formData.hasPassword ? 'Đổi mật khẩu' : 'Tạo mật khẩu'}
-            </button>
-          </div>
-        </div>
+            </TonalButton>
+          </MaterialCard>
+        </motion.div>
       </div>
 
       <ImageCropModal
@@ -265,54 +288,59 @@ export default function StudentProfilePage() {
         onConfirm={handleConfirmCrop}
       />
       <ChangePasswordModal isOpen={passwordModalOpen} onClose={() => setPasswordModalOpen(false)} hasPassword={formData.hasPassword} />
-    </div>
+    </motion.div>
   );
 }
 
 function InfoCard({ icon: Icon, label, value }) {
   return (
-    <div className="flex items-center gap-3 p-3 bg-brand-surface rounded-xl">
-      <Icon className="w-5 h-5 text-brand-text/40" />
+    <div className="flex items-center gap-3 p-3 bg-[var(--md-sys-color-surface-container)] rounded-[var(--md-sys-shape-corner-medium)]">
+      <Icon className="w-5 h-5 text-[var(--md-sys-color-on-surface-variant)]" />
       <div className="min-w-0">
-        <div className="text-xs font-bold text-brand-text/40 uppercase">{label}</div>
-        <div className="font-bold truncate">{value}</div>
+        <div className="text-xs font-bold text-[var(--md-sys-color-on-surface-variant)] uppercase">{label}</div>
+        <div className="font-bold truncate text-[var(--md-sys-color-on-surface)]">{value}</div>
       </div>
     </div>
   );
 }
 
-function ProfileInput({ icon: Icon, label, disabled, type = 'text', ...props }) {
+function ProfileInput({ icon: Icon, label, disabled, type = 'text', name, value, onChange, ...props }) {
   return (
-    <label className="block">
-      <span className="text-sm font-bold text-brand-text/70 mb-2 flex items-center gap-2">
-        <Icon className="w-4 h-4" /> {label}
-      </span>
-      <input
-        type={type}
-        disabled={disabled}
-        className="w-full bg-brand-surface border border-transparent disabled:bg-brand-surface/40 disabled:text-brand-text/80 rounded-2xl p-4 text-sm font-bold focus:outline-none focus:border-brand-primary focus:bg-white transition-all"
-        {...props}
-      />
-    </label>
+    <MaterialTextField
+      label={label}
+      type={type}
+      name={name}
+      value={value}
+      onChange={onChange}
+      disabled={disabled}
+      className="w-full"
+      {...props}
+    >
+      <Icon slot="leading-icon" className="w-5 h-5 text-[var(--md-sys-color-on-surface-variant)]" />
+    </MaterialTextField>
   );
 }
 
-function ProfileSelect({ icon: Icon, label, disabled, options, ...props }) {
+function ProfileSelect({ icon: Icon, label, disabled, options, name, value, onChange, ...props }) {
   return (
-    <label className="block">
-      <span className="text-sm font-bold text-brand-text/70 mb-2 flex items-center gap-2">
-        <Icon className="w-4 h-4" /> {label}
-      </span>
-      <select
-        disabled={disabled}
-        className="w-full bg-brand-surface border border-transparent disabled:bg-brand-surface/40 disabled:text-brand-text/80 rounded-2xl p-4 text-sm font-bold focus:outline-none focus:border-brand-primary focus:bg-white transition-all"
-        {...props}
-      >
-        <option value="">Chọn trường</option>
-        {options.map((option) => (
-          <option key={option} value={option}>{option}</option>
-        ))}
-      </select>
+    <label className="relative flex flex-col w-full h-[56px]">
+      <span className="absolute -top-[9px] left-3 bg-[var(--md-sys-color-surface-container-lowest)] px-1 text-xs text-[var(--md-sys-color-on-surface-variant)] z-10">{label}</span>
+      <div className="relative flex items-center h-full">
+        <Icon className="absolute left-3 w-5 h-5 text-[var(--md-sys-color-on-surface-variant)] pointer-events-none" />
+        <select
+          name={name}
+          value={value}
+          onChange={onChange}
+          disabled={disabled}
+          className="w-full h-full bg-transparent border border-[var(--md-sys-color-outline)] disabled:border-[var(--md-sys-color-outline-variant)] disabled:text-[var(--md-sys-color-on-surface-variant)] rounded-[4px] px-4 pl-10 text-[var(--md-sys-color-on-surface)] text-base focus:outline-none focus:border-2 focus:border-[var(--md-sys-color-primary)] transition-all appearance-none cursor-pointer"
+          {...props}
+        >
+          <option value="">Chọn {label.toLowerCase()}</option>
+          {options.map((option) => (
+            <option key={option} value={option}>{option}</option>
+          ))}
+        </select>
+      </div>
     </label>
   );
 }
@@ -337,33 +365,33 @@ function ProfileSkeleton() {
       </div>
       <div className="flex-1 grid grid-cols-1 xl:grid-cols-3 gap-6 overflow-y-auto custom-scrollbar pr-2 pb-6">
         <div className="flex flex-col gap-6">
-          <div className="bg-white rounded-3xl p-8 shadow-sm border border-black/5 flex flex-col items-center relative overflow-hidden">
-            <div className="absolute top-0 w-full h-32 bg-brand-surface/50"></div>
-            <div className="w-32 h-32 rounded-full bg-brand-surface border-4 border-white shadow-sm mb-6 mt-8 relative z-10"></div>
-            <div className="h-7 w-40 bg-brand-surface rounded-xl mb-3"></div>
-            <div className="h-5 w-24 bg-brand-surface rounded-lg mb-8"></div>
+          <div className="p-8 border border-[var(--md-sys-color-outline-variant)] bg-[var(--md-sys-color-surface-container-lowest)] rounded-[var(--md-sys-shape-corner-large)] flex flex-col items-center relative overflow-hidden">
+            <div className="absolute top-0 w-full h-32 bg-[var(--md-sys-color-surface-container)]"></div>
+            <div className="w-32 h-32 rounded-full bg-[var(--md-sys-color-surface-container-high)] border-4 border-[var(--md-sys-color-surface)] mb-6 mt-8 relative z-10"></div>
+            <div className="h-7 w-40 bg-[var(--md-sys-color-surface-container-high)] rounded-xl mb-3"></div>
+            <div className="h-5 w-24 bg-[var(--md-sys-color-surface-container-high)] rounded-lg mb-8"></div>
             <div className="w-full flex flex-col gap-3">
-              <div className="h-16 w-full bg-brand-surface rounded-xl"></div>
-              <div className="h-16 w-full bg-brand-surface rounded-xl"></div>
+              <div className="h-16 w-full bg-[var(--md-sys-color-surface-container-high)] rounded-[var(--md-sys-shape-corner-medium)]"></div>
+              <div className="h-16 w-full bg-[var(--md-sys-color-surface-container-high)] rounded-[var(--md-sys-shape-corner-medium)]"></div>
             </div>
           </div>
         </div>
         <div className="xl:col-span-2 flex flex-col gap-6">
-          <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-black/5">
+          <div className="p-6 md:p-8 border border-[var(--md-sys-color-outline-variant)] bg-[var(--md-sys-color-surface-container-lowest)] rounded-[var(--md-sys-shape-corner-large)]">
             <div className="flex justify-between items-center mb-8">
-              <div className="h-7 w-48 bg-brand-surface rounded-xl"></div>
-              <div className="h-9 w-28 bg-brand-surface rounded-xl"></div>
+              <div className="h-7 w-48 bg-[var(--md-sys-color-surface-container-high)] rounded-xl"></div>
+              <div className="h-9 w-28 bg-[var(--md-sys-color-surface-container-high)] rounded-xl"></div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {[...Array(8)].map((_, i) => (
                 <div key={i}>
-                  <div className="h-5 w-32 bg-brand-surface rounded-lg mb-2"></div>
-                  <div className="h-14 w-full bg-brand-surface rounded-2xl"></div>
+                  <div className="h-5 w-32 bg-[var(--md-sys-color-surface-container-high)] rounded-lg mb-2"></div>
+                  <div className="h-[56px] w-full bg-[var(--md-sys-color-surface-container-high)] rounded-[4px]"></div>
                 </div>
               ))}
               <div className="md:col-span-2">
-                <div className="h-5 w-32 bg-brand-surface rounded-lg mb-2"></div>
-                <div className="h-14 w-full bg-brand-surface rounded-2xl"></div>
+                <div className="h-5 w-32 bg-[var(--md-sys-color-surface-container-high)] rounded-lg mb-2"></div>
+                <div className="h-[56px] w-full bg-[var(--md-sys-color-surface-container-high)] rounded-[4px]"></div>
               </div>
             </div>
           </div>
