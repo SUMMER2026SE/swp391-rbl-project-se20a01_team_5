@@ -79,6 +79,12 @@ public final class OperationsDtos {
             List<TripStopView> stops) {
     }
 
+    public record DriverTripOverview(
+            DriverTripView nearestTrip,
+            List<DriverTripView> upcomingTrips,
+            List<DriverTripView> historyTrips) {
+    }
+
     public record ConductorTripView(
             Integer scheduleId,
             Integer tripId,
