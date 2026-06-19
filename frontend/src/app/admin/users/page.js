@@ -153,13 +153,20 @@ export default function AdminUsersPage() {
           </div>
 
           <div className="flex-1 overflow-auto custom-scrollbar">
-            <table className="w-full text-left border-collapse">
+            <table className="w-full min-w-[1080px] table-fixed text-left border-collapse">
+              <colgroup>
+                <col className="w-[26%]" />
+                <col className="w-[28%]" />
+                <col className="w-[16%]" />
+                <col className="w-[14%]" />
+                <col className="w-[16%]" />
+              </colgroup>
               <thead className="bg-white sticky top-0 z-10 shadow-sm">
                 <tr>
                   <th className="p-4 text-xs font-black text-brand-text/50 uppercase">Người dùng</th>
                   <th className="p-4 text-xs font-black text-brand-text/50 uppercase">Liên hệ</th>
-                  <th className="p-4 text-xs font-black text-brand-text/50 uppercase">Vai trò</th>
-                  <th className="p-4 text-xs font-black text-brand-text/50 uppercase">Trạng thái</th>
+                  <th className="p-4 text-center text-xs font-black text-brand-text/50 uppercase">Vai trò</th>
+                  <th className="p-4 text-center text-xs font-black text-brand-text/50 uppercase">Trạng thái</th>
                   <th className="p-4 text-xs font-black text-brand-text/50 uppercase text-right">Thao tác</th>
                 </tr>
               </thead>
@@ -176,17 +183,21 @@ export default function AdminUsersPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="p-4 text-sm font-medium text-brand-text/80">{user.email}<div className="text-xs text-brand-text/50">{user.phoneNumber || 'Chưa có SĐT'}</div></td>
-                    <td className="p-4"><span className="px-3 py-1 rounded-lg text-xs font-black bg-brand-surface text-brand-text">{roleLabels[user.role] || user.role}</span></td>
-                    <td className="p-4">
+                    <td className="p-4 text-sm font-medium text-brand-text/80 truncate">{user.email}<div className="text-xs text-brand-text/50 truncate">{user.phoneNumber || 'Chưa có SĐT'}</div></td>
+                    <td className="p-4 text-center">
+                      <span className="inline-flex h-8 min-w-[118px] items-center justify-center rounded-lg bg-brand-surface px-4 text-[13px] font-extrabold leading-none text-brand-text whitespace-nowrap align-middle">
+                        {roleLabels[user.role] || user.role}
+                      </span>
+                    </td>
+                    <td className="p-4 text-center">
                       {user.status === 'ACTIVE'
                         ? <span className="inline-flex items-center gap-1.5 text-brand-success text-sm font-bold"><CheckCircle2 className="w-4 h-4" /> Hoạt động</span>
                         : <span className="inline-flex items-center gap-1.5 text-brand-danger text-sm font-bold"><ShieldAlert className="w-4 h-4" /> Bị khóa</span>}
                     </td>
                     <td className="p-4">
-                      <div className="flex justify-end gap-2">
-                        <button onClick={() => setSelectedUser(user)} className="px-3 py-2 bg-brand-surface rounded-xl font-bold text-xs flex items-center gap-1 hover:bg-brand-text hover:text-white"><Eye className="w-4 h-4" /> Xem</button>
-                        <button onClick={() => handleToggleLock(user)} disabled={saving} className="px-3 py-2 bg-brand-danger/10 text-brand-danger rounded-xl font-bold text-xs flex items-center gap-1 hover:bg-brand-danger hover:text-white disabled:opacity-60">
+                      <div className="flex justify-end gap-2 whitespace-nowrap">
+                        <button onClick={() => setSelectedUser(user)} className="inline-flex items-center gap-1 rounded-xl bg-brand-surface px-3 py-2 text-xs font-bold hover:bg-brand-text hover:text-white"><Eye className="w-4 h-4 shrink-0" /> Xem</button>
+                        <button onClick={() => handleToggleLock(user)} disabled={saving} className="inline-flex items-center gap-1 rounded-xl bg-brand-danger/10 px-3 py-2 text-xs font-bold text-brand-danger hover:bg-brand-danger hover:text-white disabled:opacity-60">
                           {user.status === 'ACTIVE' ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
                           {user.status === 'ACTIVE' ? 'Khóa' : 'Mở'}
                         </button>
