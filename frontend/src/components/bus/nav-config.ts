@@ -1,0 +1,172 @@
+import type { Role } from "@/lib/types";
+import {
+  LayoutDashboard,
+  MapPin,
+  Route as RouteIcon,
+  Navigation,
+  TicketCheck,
+  History,
+  Star,
+  PackageSearch,
+  CreditCard,
+  Receipt,
+  BadgeCheck,
+  Sparkles,
+  Bot,
+  User as UserIcon,
+  Bell,
+  LifeBuoy,
+  CalendarClock,
+  PlayCircle,
+  QrCode,
+  AlertTriangle,
+  Users,
+  ShieldAlert,
+  BarChart3,
+  Megaphone,
+  Tag,
+  UserCog,
+  Bus as BusIcon,
+  MessageSquare,
+  MapPinned,
+  Settings,
+  School,
+  Globe,
+  FileSpreadsheet,
+  Percent,
+  FileBarChart,
+  ScrollText,
+  GraduationCap,
+  Building2,
+  Filter,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+
+export interface NavItem {
+  id: string;
+  label: string;
+  icon: LucideIcon;
+  group: string;
+  badge?: string;
+}
+
+export const ROLE_LABELS: Record<Role, string> = {
+  student: "Sinh viên",
+  driver: "Tài xế",
+  assistant: "Phụ xe",
+  coordinator: "Điều phối viên",
+  admin: "Quản trị viên",
+  university_admin: "Admin trường ĐH",
+};
+
+export const ROLE_DESCRIPTIONS: Record<Role, string> = {
+  student: "Đặt vé, theo dõi xe, thanh toán và phản hồi",
+  driver: "Xem lịch chạy, bắt đầu/kết thúc chuyến",
+  assistant: "Quét vé, kiểm tra vé tháng, báo cáo sự cố",
+  coordinator: "Phân công, điều phối xe và tuyến đường",
+  admin: "Quản lý hệ thống, thống kê và xử lý khiếu nại",
+  university_admin: "Quản lý trường, domain, sinh viên, trợ giá",
+};
+
+export const ROLE_COLORS: Record<Role, string> = {
+  student: "bg-primary",
+  driver: "bg-tertiary",
+  assistant: "bg-secondary",
+  coordinator: "bg-violet-500",
+  admin: "bg-error",
+  university_admin: "bg-blue-500",
+};
+
+export const ROLE_AVATARS: Record<Role, string> = {
+  student: "MA",
+  driver: "LÔ",
+  assistant: "PT",
+  coordinator: "BQ",
+  admin: "HT",
+  university_admin: "BN",
+};
+
+export const NAV_CONFIG: Record<Role, NavItem[]> = {
+  student: [
+    { id: "stu-dashboard", label: "Trang chủ", icon: LayoutDashboard, group: "Tổng quan" },
+    { id: "stu-university", label: "Trường của tôi", icon: School, group: "Tổng quan" },
+    { id: "stu-stops", label: "Trạm dừng", icon: MapPin, group: "Tuyến xe" },
+    { id: "stu-find", label: "Tìm tuyến xe", icon: RouteIcon, group: "Tuyến xe" },
+    { id: "stu-tracking", label: "Theo dõi xe", icon: Navigation, group: "Tuyến xe" },
+    { id: "stu-my-routes", label: "Tuyến của tôi", icon: TicketCheck, group: "Tuyến xe" },
+    { id: "stu-my-ticket", label: "Vé của tôi", icon: QrCode, group: "Tuyến xe" },
+    { id: "stu-history", label: "Lịch sử chuyến", icon: History, group: "Tuyến xe" },
+    { id: "stu-ai", label: "AI gợi ý tuyến", icon: Sparkles, group: "Thông minh" },
+    { id: "stu-chatbot", label: "Chatbot tra cứu", icon: Bot, group: "Thông minh" },
+    { id: "stu-payment", label: "Thanh toán & vé", icon: CreditCard, group: "Tài chính" },
+    { id: "stu-invoices", label: "Hóa đơn", icon: Receipt, group: "Tài chính" },
+    { id: "stu-feedback", label: "Phản hồi & đánh giá", icon: Star, group: "Hỗ trợ" },
+    { id: "stu-lost", label: "Báo mất đồ", icon: PackageSearch, group: "Hỗ trợ" },
+    { id: "stu-support", label: "Yêu cầu hỗ trợ", icon: LifeBuoy, group: "Hỗ trợ" },
+    { id: "stu-notifications", label: "Thông báo", icon: Bell, group: "Tài khoản" },
+    { id: "stu-profile", label: "Hồ sơ cá nhân", icon: UserIcon, group: "Tài khoản" },
+    { id: "stu-settings", label: "Cài đặt", icon: Settings, group: "Tài khoản" },
+  ],
+  driver: [
+    { id: "drv-dashboard", label: "Lịch hôm nay", icon: LayoutDashboard, group: "Tổng quan" },
+    { id: "drv-schedule", label: "Lịch chạy xe", icon: CalendarClock, group: "Chuyến xe" },
+    { id: "drv-active", label: "Chuyến đang chạy", icon: PlayCircle, group: "Chuyến xe", badge: "1" },
+    { id: "drv-route", label: "Tuyến được phân", icon: RouteIcon, group: "Chuyến xe" },
+    { id: "drv-history", label: "Lịch sử chuyến", icon: History, group: "Chuyến xe" },
+    { id: "drv-contact", label: "Liên hệ điều phối", icon: MessageSquare, group: "Hỗ trợ" },
+    { id: "drv-notifications", label: "Thông báo", icon: Bell, group: "Tài khoản" },
+    { id: "drv-profile", label: "Hồ sơ cá nhân", icon: UserIcon, group: "Tài khoản" },
+  ],
+  assistant: [
+    { id: "ast-dashboard", label: "Chuyến được phân", icon: LayoutDashboard, group: "Tổng quan" },
+    { id: "ast-scan", label: "Quét QR vé", icon: QrCode, group: "Kiểm soát" },
+    { id: "ast-monthly", label: "Kiểm tra vé tháng", icon: BadgeCheck, group: "Kiểm soát" },
+    { id: "ast-lost", label: "Hỗ trợ mất đồ", icon: PackageSearch, group: "Hỗ trợ" },
+    { id: "ast-incident", label: "Báo cáo sự cố", icon: AlertTriangle, group: "Hỗ trợ" },
+    { id: "ast-contact", label: "Liên hệ tài xế", icon: MessageSquare, group: "Hỗ trợ" },
+    { id: "ast-history", label: "Lịch sử chuyến", icon: History, group: "Tổng quan" },
+    { id: "ast-notifications", label: "Thông báo", icon: Bell, group: "Tài khoản" },
+    { id: "ast-profile", label: "Hồ sơ cá nhân", icon: UserIcon, group: "Tài khoản" },
+  ],
+  coordinator: [
+    { id: "crd-dashboard", label: "Tổng quan điều phối", icon: LayoutDashboard, group: "Tổng quan" },
+    { id: "crd-live", label: "Theo dõi tất cả xe", icon: Navigation, group: "Vận hành" },
+    { id: "crd-schedule", label: "Lịch trình xe", icon: CalendarClock, group: "Vận hành" },
+    { id: "crd-assign-driver", label: "Phân công tài xế", icon: UserCog, group: "Phân công" },
+    { id: "crd-assign-bus", label: "Phân công xe bus", icon: BusIcon, group: "Phân công" },
+    { id: "crd-routes", label: "Tuyến đường", icon: RouteIcon, group: "Quản lý" },
+    { id: "crd-stops", label: "Trạm dừng", icon: MapPinned, group: "Quản lý" },
+    { id: "crd-by-university", label: "Điều phối theo trường", icon: School, group: "Quản lý" },
+    { id: "crd-feedback", label: "Phản hồi sinh viên", icon: MessageSquare, group: "Hỗ trợ" },
+    { id: "crd-notify", label: "Gửi thông báo", icon: Megaphone, group: "Hỗ trợ" },
+    { id: "crd-notifications", label: "Thông báo", icon: Bell, group: "Tài khoản" },
+    { id: "crd-profile", label: "Hồ sơ cá nhân", icon: UserIcon, group: "Tài khoản" },
+  ],
+  admin: [
+    { id: "adm-dashboard", label: "Thống kê hệ thống", icon: BarChart3, group: "Tổng quan" },
+    { id: "adm-universities", label: "Trường đại học đối tác", icon: School, group: "Quản lý" },
+    { id: "adm-uni-admins", label: "Tài khoản Admin trường", icon: GraduationCap, group: "Quản lý" },
+    { id: "adm-route-uni", label: "Gán tuyến cho trường", icon: RouteIcon, group: "Quản lý" },
+    { id: "adm-users", label: "Tài khoản người dùng", icon: Users, group: "Quản lý" },
+    { id: "adm-complaints", label: "Xử lý khiếu nại", icon: ShieldAlert, group: "Quản lý", badge: "2" },
+    { id: "adm-violations", label: "Báo cáo vi phạm", icon: AlertTriangle, group: "Quản lý" },
+    { id: "adm-audit", label: "Audit log", icon: ScrollText, group: "Quản lý" },
+    { id: "adm-fare", label: "Điều chỉnh giá vé", icon: Tag, group: "Quản lý" },
+    { id: "adm-notify", label: "Gửi thông báo", icon: Megaphone, group: "Hỗ trợ" },
+    { id: "adm-notifications", label: "Thông báo", icon: Bell, group: "Tài khoản" },
+    { id: "adm-profile", label: "Hồ sơ cá nhân", icon: UserIcon, group: "Tài khoản" },
+  ],
+  university_admin: [
+    { id: "uniadm-dashboard", label: "Tổng quan trường", icon: LayoutDashboard, group: "Tổng quan" },
+    { id: "uniadm-info", label: "Thông tin trường & campus", icon: Building2, group: "Quản lý trường" },
+    { id: "uniadm-domains", label: "Domain email", icon: Globe, group: "Quản lý trường" },
+    { id: "uniadm-import", label: "Import danh sách SV", icon: FileSpreadsheet, group: "Quản lý trường" },
+    { id: "uniadm-roster", label: "Trạng thái sinh viên", icon: Users, group: "Quản lý trường" },
+    { id: "uniadm-subsidy", label: "Chính sách trợ giá", icon: Percent, group: "Quản lý trường" },
+    { id: "uniadm-stats", label: "Thống kê sử dụng", icon: BarChart3, group: "Theo dõi" },
+    { id: "uniadm-notify", label: "Gửi thông báo trường", icon: Megaphone, group: "Theo dõi" },
+    { id: "uniadm-recon", label: "Báo cáo đối soát", icon: FileBarChart, group: "Theo dõi" },
+    { id: "uniadm-notifications", label: "Thông báo", icon: Bell, group: "Tài khoản" },
+    { id: "uniadm-profile", label: "Hồ sơ cá nhân", icon: UserIcon, group: "Tài khoản" },
+  ],
+};
