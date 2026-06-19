@@ -63,6 +63,8 @@ function toApiError(error) {
       'Email or password is incorrect': 'Email hoặc mật khẩu không chính xác',
       'Account is locked': 'Tài khoản đã bị khóa',
       'Session is no longer active': 'Phiên đăng nhập đã hết hạn',
+      'Active monthly pass locks the current route until the pass expires': 'Bạn đang có vé tháng đang hoạt động. Có thể đổi tuyến sau khi hết kỳ vé hiện tại.',
+      'Active monthly pass locks the current route registration until the pass expires': 'Bạn không thể hủy tuyến mặc định khi vé tháng còn hiệu lực.',
     };
     if (msgMap[message]) message = msgMap[message];
   }
@@ -303,6 +305,167 @@ export const travelApi = {
     const response = await apiClient.get('/students/me/travel-history', {
       params: { page, size },
     });
+    return unwrap(response);
+  },
+};
+
+export const notificationApi = {
+  async listMine({ page = 0, size = 20 } = {}) {
+    const response = await apiClient.get('/notifications/me', {
+      params: { page, size },
+    });
+    return unwrap(response);
+  },
+
+  async getUnreadCount() {
+    const response = await apiClient.get('/notifications/me/unread-count');
+    return unwrap(response);
+  },
+
+  async markRead(notificationId) {
+    const response = await apiClient.post(`/notifications/${notificationId}/read`);
+    return unwrap(response);
+  },
+
+  async create(payload) {
+    const response = await apiClient.post('/notifications', payload);
+    return unwrap(response);
+  },
+};
+
+export const feedbackApi = {
+  async listMine({ page = 0, size = 20 } = {}) {
+    const response = await apiClient.get('/students/me/feedback', {
+      params: { page, size },
+    });
+    return unwrap(response);
+  },
+
+  async submit(payload) {
+    const response = await apiClient.post('/students/me/feedback', payload);
+    return unwrap(response);
+  },
+
+  async listAll({ status = 'ALL', page = 0, size = 50 } = {}) {
+    const response = await apiClient.get('/feedback', {
+      params: { status, page, size },
+    });
+    return unwrap(response);
+  },
+
+  async resolve(feedbackId, responseText = '') {
+    const response = await apiClient.patch(`/feedback/${feedbackId}/resolve`, { response: responseText });
+    return unwrap(response);
+  },
+};
+
+export const coordinatorScheduleApi = {
+  async getDashboard(serviceDate) {
+    const response = await apiClient.get('/operations/schedules', {
+      params: serviceDate ? { date: serviceDate } : undefined,
+    });
+    return unwrap(response);
+  },
+
+  async save(payload) {
+    const response = await apiClient.post('/operations/schedules', payload);
+    return unwrap(response);
+  },
+};
+
+export const driverTripApi = {
+  async list(serviceDate) {
+    const response = await apiClient.get('/driver/trips', {
+      params: serviceDate ? { date: serviceDate } : undefined,
+    });
+    return unwrap(response);
+  },
+
+  async start(tripId) {
+    const response = await apiClient.post(`/driver/trips/${tripId}/start`);
+    return unwrap(response);
+  },
+
+  async end(tripId) {
+    const response = await apiClient.post(`/driver/trips/${tripId}/end`);
+    return unwrap(response);
+  },
+
+  async updateLocation(tripId, payload) {
+    const response = await apiClient.post(`/driver/trips/${tripId}/location`, payload);
+    return unwrap(response);
+  },
+};
+
+export const conductorApi = {
+  async listTrips(serviceDate) {
+    const response = await apiClient.get('/conductor/trips', {
+      params: serviceDate ? { date: serviceDate } : undefined,
+    });
+    return unwrap(response);
+  },
+
+  async listTickets(tripId) {
+    const response = await apiClient.get('/conductor/tickets', {
+      params: { tripId },
+    });
+    return unwrap(response);
+  },
+
+  async scanTicket({ tripId, qrCode }) {
+    const response = await apiClient.post('/conductor/tickets/scan', { tripId, qrCode });
+    return unwrap(response);
+  },
+};
+
+export const fleetApi = {
+  async live(serviceDate) {
+    const response = await apiClient.get('/coordinator/fleet/live', {
+      params: serviceDate ? { date: serviceDate } : undefined,
+    });
+    return unwrap(response);
+  },
+};
+
+export const ticketingApi = {
+  async dashboard() {
+    const response = await apiClient.get('/students/me/tickets');
+    return unwrap(response);
+  },
+
+  async purchaseMonthlyPass(paymentMethod = 'BANK_TRANSFER') {
+    const response = await apiClient.post('/students/me/tickets/monthly-pass', { method: paymentMethod });
+    return unwrap(response);
+  },
+
+  async payments() {
+    const response = await apiClient.get('/students/me/payments');
+    return unwrap(response);
+  },
+};
+
+export const adminUsersApi = {
+  async list({ keyword = '', role = 'ALL', status = 'ALL' } = {}) {
+    const params = {};
+    if (keyword) params.keyword = keyword;
+    if (role && role !== 'ALL') params.role = role;
+    if (status && status !== 'ALL') params.status = status;
+    const response = await apiClient.get('/admin/users', { params });
+    return unwrap(response);
+  },
+
+  async get(userId) {
+    const response = await apiClient.get(`/admin/users/${userId}`);
+    return unwrap(response);
+  },
+
+  async updateStatus(userId, payload) {
+    const response = await apiClient.put(`/admin/users/${userId}/status`, payload);
+    return unwrap(response);
+  },
+
+  async create(payload) {
+    const response = await apiClient.post('/admin/users', payload);
     return unwrap(response);
   },
 };

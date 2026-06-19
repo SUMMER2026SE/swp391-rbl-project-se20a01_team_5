@@ -23,17 +23,14 @@ public class TransportService {
     private final StopRepository stopRepository;
     private final RouteStopRepository routeStopRepository;
     private final BusRouteRepository busRouteRepository;
-    private final EtaRepository etaRepository;
 
     public TransportService(
             StopRepository stopRepository,
             RouteStopRepository routeStopRepository,
-            BusRouteRepository busRouteRepository,
-            EtaRepository etaRepository) {
+            BusRouteRepository busRouteRepository) {
         this.stopRepository = stopRepository;
         this.routeStopRepository = routeStopRepository;
         this.busRouteRepository = busRouteRepository;
-        this.etaRepository = etaRepository;
     }
 
     @Transactional(readOnly = true)
@@ -84,11 +81,7 @@ public class TransportService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Route is not active");
         }
         validateStopOnRoute(routeId, stopId);
-        return etaRepository.findRunningTripEtas(routeId, stopId).stream()
-                .map(eta -> new Eta(
-                        eta.tripId(), eta.busId(), eta.stopId(), eta.estimatedArrivalAt(),
-                        eta.actualArrivalAt(), eta.updatedAt()))
-                .toList();
+        return List.of();
     }
 
     @Transactional(readOnly = true)

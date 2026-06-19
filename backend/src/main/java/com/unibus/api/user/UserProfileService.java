@@ -1,13 +1,9 @@
 package com.unibus.api.user;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Locale;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -18,6 +14,8 @@ import com.unibus.api.auth.LoginSessionRepository;
 import com.unibus.api.auth.model.LoginSession;
 import com.unibus.api.common.ApiException;
 import com.unibus.api.security.CurrentUser;
+import com.unibus.api.storage.FileStorageService;
+import com.unibus.api.storage.StoredFile;
 import com.unibus.api.user.dto.UserProfileDtos.ChangePasswordRequest;
 import com.unibus.api.user.dto.UserProfileDtos.UpdateUserProfileRequest;
 import com.unibus.api.user.dto.UserProfileDtos.UserProfile;
@@ -29,17 +27,17 @@ public class UserProfileService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final LoginSessionRepository loginSessionRepository;
-    private final Path avatarDir;
+    private final FileStorageService fileStorageService;
 
     public UserProfileService(
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
             LoginSessionRepository loginSessionRepository,
-            @Value("${app.upload.profile-avatar-dir:uploads/profile-avatars}") String avatarDir) {
+            FileStorageService fileStorageService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.loginSessionRepository = loginSessionRepository;
-        this.avatarDir = Path.of(avatarDir);
+        this.fileStorageService = fileStorageService;
     }
 
     @Transactional(readOnly = true)
@@ -108,42 +106,39 @@ public class UserProfileService {
         String extension = extension(avatar.getContentType(), avatar.getOriginalFilename());
         User user = requireUser(currentUser.userId());
         try {
-            Files.createDirectories(avatarDir);
-            Path base = avatarDir.toAbsolutePath().normalize();
-            deleteExistingAvatars(base, user.getId());
-            Path destination = base.resolve("user-" + user.getId() + extension).normalize();
-            if (!destination.startsWith(base)) {
-                throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid avatar destination");
-            }
-            avatar.transferTo(destination);
+            deleteExistingAvatars(user.getId());
+            fileStorageService.store(avatarKey(user.getId(), extension), avatar.getBytes(), avatar.getContentType());
             user.setAvatarUrl("/api/v1/users/" + user.getId() + "/avatar?version=" + now().toInstant().toEpochMilli());
             user.setUpdatedAt(now());
             return toProfile(userRepository.save(user));
-        } catch (IOException exception) {
+        } catch (java.io.IOException exception) {
             throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Unable to store avatar image");
         }
     }
 
     @Transactional(readOnly = true)
-    public Path loadAvatar(Integer userId) {
+    public StoredFile loadAvatar(Integer userId) {
         requireUser(userId);
-        Path base = avatarDir.toAbsolutePath().normalize();
         for (String extension : new String[] { ".jpg", ".jpeg", ".png", ".webp" }) {
-            Path file = base.resolve("user-" + userId + extension).normalize();
-            if (file.startsWith(base) && Files.exists(file) && !Files.isDirectory(file)) {
-                return file;
+            try {
+                return fileStorageService.load(avatarKey(userId, extension));
+            } catch (ApiException exception) {
+                if (exception.getStatus() != HttpStatus.NOT_FOUND) {
+                    throw exception;
+                }
             }
         }
         throw new ApiException(HttpStatus.NOT_FOUND, "Avatar image not found");
     }
 
-    private void deleteExistingAvatars(Path base, Integer userId) throws IOException {
+    private void deleteExistingAvatars(Integer userId) {
         for (String extension : new String[] { ".jpg", ".jpeg", ".png", ".webp" }) {
-            Path file = base.resolve("user-" + userId + extension).normalize();
-            if (file.startsWith(base)) {
-                Files.deleteIfExists(file);
-            }
+            fileStorageService.delete(avatarKey(userId, extension));
         }
+    }
+
+    private String avatarKey(Integer userId, String extension) {
+        return "profile-avatars/user-" + userId + extension;
     }
 
     private void revokeOtherSessions(Integer userId, Long currentSessionId) {

@@ -1,8 +1,12 @@
 [![Review Assignment Due Date](https://classroom.github.com/assets/deadline-readme-button-22041afd0340ce965d47ae6ef1cefeee28c7c493a6346c4f15d667ab976d596c.svg)](https://classroom.github.com/a/q_6x2v5f)
 
-# UniBus API - Iteration 1 Backend
+# UniBus - Student Route, Ticket, QR and Payment Flow
 
-Backend implementation for the Iteration 1 use cases assigned to Nguyen Duc Hai.
+UniBus is a student bus management project with a Spring Boot backend and a
+Next.js frontend. The current student experience centers on the **Vé & Tuyến**
+hub: students verify their identity, register a route with default boarding and
+alighting stops, purchase a monthly pass, then use the issued QR code and invoice
+from the database.
 
 ## Repository Layout
 
@@ -12,19 +16,44 @@ project-root/
 |   |-- pom.xml
 |   |-- requests/
 |   `-- src/
+|-- database/
+|-- docs/
+|-- frontend/
+|   |-- package.json
+|   `-- src/
 |-- README.md
-`-- .gitignore
+`-- .understand-anything/
 ```
-
-The frontend can be added later under `frontend/` when its source is available.
 
 ## Implemented Use Cases
 
 - Authentication: register with OTP email, login, Google OAuth, refresh token, logout, forgot password, role-based access.
 - Student profile: retrieve and update the authenticated student's profile.
 - Transport lookup: list active stops, search valid routes between two ordered stops, retrieve ETA for running trips.
-- Route registration: register, view current registration, change route, and cancel registration.
+- Route registration: register, view current registration, change route, update default stops on the same route, and cancel when no active monthly pass locks the route.
+- Student ticketing: purchase monthly passes, render real QR codes, view payments and invoices.
+- Conductor validation: scan ticket QR codes against trip date, route, status, and QR value.
 - Travel history: retrieve paginated recent trips for the authenticated student.
+
+## Student Vé & Tuyến Flow
+
+The student flow intentionally separates **route registration** from **monthly pass purchase**:
+
+1. Verify the student account.
+2. Choose a route and default boarding/alighting stops.
+3. Pay for the monthly pass through the current internal confirmation method.
+4. Receive the monthly-pass QR code and invoice.
+
+Important business rules:
+
+- A monthly pass is valid by **route**, not by a hard-locked stop pair.
+- `boardingStopId` and `alightingStopId` are default stops used for ETA, statistics, demand planning, and dispatch context.
+- While a student has an active monthly pass, the backend blocks changing to a different route and blocks route cancellation.
+- During an active pass period, the student may update default stops only when the route stays the same.
+- Conductor scan validation remains route/trip/date/status/QR based; it does not reject a valid route pass because the passenger boards at a different stop pair.
+- University, campus, and subsidy linking are future scope. The UI reserves a truthful `Trường & trợ giá` area and shows `Chưa cấu hình` instead of inventing subsidy amounts.
+
+Current payment behavior is an internal database confirmation, not a card, wallet, cash, or external gateway flow. `POST /students/me/tickets/monthly-pass` creates or reuses the monthly pass for the current route/month, records a paid payment, creates an invoice, and returns data used to render the real QR code.
 
 ## Database
 
@@ -32,6 +61,7 @@ The shared AWS PostgreSQL database was already provisioned before this implement
 Flyway baselines that existing schema at version `1` and applies:
 
 - `V2__add_verification_codes.sql`: stores hashed OTP challenges for registration and password reset.
+- Later migrations add student verification/OAuth support and demo-flow ticket scan/live-fleet columns. The monthly-pass, payment, and invoice tables remain part of the existing schema; no university-linking schema is added in this iteration.
 
 On May 24, 2026, the shared AWS PostgreSQL database was migrated to version `2`; Flyway created
 `flyway_schema_history` and the application table `verification_codes`.
@@ -57,11 +87,19 @@ SMTP_FROM_NAME=UniBus
 SMTP_TLS=true
 SMTP_AUTH=true
 GOOGLE_CLIENT_ID=<google-oauth-web-client-id>
+STORAGE_PROVIDER=local
+UPLOAD_BASE_DIR=uploads
+S3_UPLOAD_BUCKET=
+S3_UPLOAD_PREFIX=
 ```
 
 Set `SMTP_ENABLED=true` and `OTP_LOG_CODE=false` outside a development environment. For Gmail,
 use an App Password instead of the normal mailbox password. No database or SMTP credentials
 should be committed; `dbauth.txt` is ignored locally.
+
+For production container deployments, set `STORAGE_PROVIDER=s3` and `S3_UPLOAD_BUCKET` to a private
+bucket. The backend stores uploaded avatars under `profile-avatars/` and student verification card
+images under `student-verifications/`, then serves them back through authenticated API endpoints.
 
 ### IntelliJ Run Configuration
 
@@ -100,8 +138,13 @@ All endpoints use the `/api/v1` prefix. Protected endpoints require
 | GET | `/routes/{routeId}/stops/{stopId}/eta` | View ETA from active trip estimates |
 | POST | `/students/me/route-registrations` | Register a route |
 | GET | `/students/me/route-registrations/current` | View the active registration |
-| PUT | `/students/me/route-registrations/{id}` | Change route while retaining history |
-| DELETE | `/students/me/route-registrations/{id}` | Cancel route registration |
+| PUT | `/students/me/route-registrations/{id}` | Change route when allowed, or update default stops on the same route |
+| DELETE | `/students/me/route-registrations/{id}` | Cancel route registration when no active monthly pass locks it |
+| GET | `/students/me/tickets` | View monthly tickets, quote, payments, and invoice-backed ticket dashboard data |
+| POST | `/students/me/tickets/monthly-pass` | Confirm internal payment and create/reuse monthly pass, payment, invoice, and QR |
+| GET | `/students/me/payments` | View payment and invoice history |
+| GET | `/conductor/tickets?tripId=` | List tickets for a conductor trip |
+| POST | `/conductor/tickets/scan` | Validate a QR against trip route/date/status |
 | GET | `/students/me/travel-history?page=0&size=20` | View recent travel history |
 
 Route registration is currently auto-approved to match the Iteration 1 requirement that the
@@ -126,5 +169,20 @@ cd backend
 mvn test
 ```
 
-It exercises authentication/session state, OTP attempt limits, route lookup, route registration
-rules, ETA, and travel history against an isolated H2 database.
+If Maven is not installed locally, use a Docker Maven image or a temporary local Maven distribution.
+The current suite exercises authentication/session state, OTP attempt limits, route lookup, route registration rules, ETA, travel history, monthly-pass purchase idempotency, payment/invoice creation, route locking during active passes, same-route default-stop updates, and conductor QR scan behavior against an isolated H2 database.
+
+Frontend verification:
+
+```powershell
+cd frontend
+npm run lint
+npm run build
+```
+
+Manual browser QA for the student flow should cover `/student`, `/student/passes`, and `/student/routes` in desktop and mobile viewports. Verify these states:
+
+- No route registration: dashboard and hub show the next action, with no blank QR placeholder.
+- Route registered but no monthly pass: hub shows payment-ready state, only `Chuyển khoản / xác nhận hệ thống`, and no fake QR.
+- Active monthly pass: hub and dashboard render a real QR from `monthly_passes.qr_code`, invoices come from DB-backed payment data, and route switching is blocked while same-route default-stop updates remain possible.
+- Active pass missing QR data: UI shows an explicit missing-QR state and reload CTA instead of an empty QR frame.

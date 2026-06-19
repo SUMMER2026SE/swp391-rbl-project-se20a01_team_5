@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowLeft, Clock, MapPin, BusFront, Navigation, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
@@ -26,29 +26,9 @@ export default function RouteTrackingPage() {
           setRouteData(JSON.parse(stored));
         }
         
-        let fetchedRoute = null;
         if (!stored) {
-          try {
-            fetchedRoute = await transportApi.getRoute(routeId);
-            if (!cancelled) setRouteData(fetchedRoute);
-          } catch (apiErr) {
-            console.warn('Failed to fetch route, using mock data', apiErr);
-          }
-        }
-
-        // If no route data was found or fetched, inject mock data
-        if (!stored && !fetchedRoute && !cancelled) {
-          setRouteData({
-            routeId,
-            routeName: `Tuyến ${routeId}`,
-            stops: [
-              { stopId: 1, stopName: 'Ký túc xá DMC', stopOrder: 1, minutesFromPreviousStop: 0 },
-              { stopId: 2, stopName: 'Đại học FPT', stopOrder: 2, minutesFromPreviousStop: 5 },
-              { stopId: 3, stopName: 'Cầu Rồng', stopOrder: 3, minutesFromPreviousStop: 12 },
-              { stopId: 4, stopName: 'Đại học Bách Khoa', stopOrder: 4, minutesFromPreviousStop: 8 },
-              { stopId: 5, stopName: 'Bến xe Trung tâm', stopOrder: 5, minutesFromPreviousStop: 15 },
-            ]
-          });
+          const fetchedRoute = await transportApi.getRoute(routeId);
+          if (!cancelled) setRouteData(fetchedRoute);
         }
 
         if (boardingStopId) {
@@ -74,7 +54,7 @@ export default function RouteTrackingPage() {
   }, [routeId, boardingStopId]);
 
   const selectedStopIds = new Set([boardingStopId, alightingStopId].filter(Boolean));
-  const activeBus = useMockBusTracking(routeData?.stops, boardingStopId);
+  const nextEta = etas[0];
 
   return (
     <div className="h-full flex flex-col gap-6 font-sans">
@@ -98,7 +78,7 @@ export default function RouteTrackingPage() {
       <div className="flex-1 grid grid-cols-1 xl:grid-cols-3 gap-6 overflow-y-auto custom-scrollbar pr-2 pb-6">
         <div className="xl:col-span-2 bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-black/5 flex flex-col">
           <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
-            <Navigation className="w-6 h-6 text-brand-secondary" /> Bản đồ theo dõi xe (Mock GPS)
+            <Navigation className="w-6 h-6 text-brand-secondary" /> Bản đồ tuyến xe
           </h2>
 
           {!isLoading && routeData?.stops?.length > 0 && (
@@ -106,23 +86,6 @@ export default function RouteTrackingPage() {
               <div className="relative min-w-[600px] flex items-center justify-between pt-12 pb-4 px-8">
                 <div className="absolute left-14 right-14 top-[3.75rem] h-2 bg-brand-surface rounded-full z-0"></div>
                 
-                {activeBus && (
-                  <div 
-                    className="absolute z-20 flex flex-col items-center transition-all duration-75 ease-linear"
-                    style={{
-                      top: '1.25rem',
-                      left: `calc(3.5rem + (100% - 7rem) * (${activeBus.fromIndex + activeBus.progress / 100} / ${Math.max(1, routeData.stops.length - 1)}))`
-                    }}
-                  >
-                    <div className="bg-brand-text text-white text-[10px] font-bold px-2 py-0.5 rounded-full absolute top-[-16px] whitespace-nowrap shadow-sm">
-                      {activeBus.id}
-                    </div>
-                    <div className="bg-brand-secondary text-white p-2.5 rounded-full shadow-lg border-2 border-white mt-1">
-                      <BusFront className="w-5 h-5" />
-                    </div>
-                  </div>
-                )}
-
                 {routeData.stops.map((stop) => (
                   <div key={`map-${stop.stopId}`} className="relative z-10 flex flex-col items-center gap-3 w-28">
                     <div className={`w-6 h-6 rounded-full border-4 shadow-sm ${selectedStopIds.has(stop.stopId) ? 'bg-brand-primary border-white' : 'bg-white border-brand-surface'}`}></div>
@@ -186,30 +149,30 @@ export default function RouteTrackingPage() {
 
         <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-black/5 flex flex-col">
           <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
-            <RefreshCw className="w-6 h-6 text-brand-primary" /> ETA (Mô phỏng)
+            <RefreshCw className="w-6 h-6 text-brand-primary" /> ETA
           </h2>
 
           {!boardingStopId ? (
             <div className="text-sm font-bold text-brand-text/50 bg-brand-surface p-4 rounded-2xl">
-              Chưa có điểm lên. Hãy chọn điểm lên/xuống từ màn tìm tuyến để xem ETA.
+              Chưa có điểm lên mặc định. Hãy chọn điểm lên/xuống mặc định từ màn tìm tuyến để xem ETA.
             </div>
-          ) : activeBus?.eta ? (
+          ) : nextEta ? (
             <div className="p-6 bg-brand-primary/10 rounded-3xl border border-brand-primary/20 text-center relative overflow-hidden flex flex-col items-center justify-center min-h-[200px]">
               <div className="absolute inset-0 bg-white/40 blur-xl"></div>
               <div className="relative z-10 w-full">
-                <div className="text-xs font-bold text-brand-secondary/80 mb-2 uppercase tracking-widest">Xe {activeBus.id} đang tới</div>
-                <div className="text-5xl font-extrabold text-brand-text font-mono mb-4">
-                  {activeBus.remainingSeconds}s
+                <div className="text-xs font-bold text-brand-secondary/80 mb-2 uppercase tracking-widest">Xe đang tới</div>
+                <div className="text-3xl font-extrabold text-brand-text font-mono mb-4">
+                  {formatDateTime(nextEta.estimatedArrivalAt)}
                 </div>
                 <div className="inline-flex items-center gap-2 bg-white text-brand-text px-4 py-2 rounded-xl text-sm font-bold shadow-sm border border-black/5">
-                  <div className="w-2 h-2 rounded-full bg-brand-success animate-ping"></div>
-                  Chuẩn bị hành lý nhé!
+                  <div className="w-2 h-2 rounded-full bg-brand-success"></div>
+                  Dữ liệu từ hệ thống điều phối
                 </div>
               </div>
             </div>
           ) : (
             <div className="text-sm font-bold text-brand-text/50 bg-brand-surface p-4 rounded-2xl">
-              Xe đã đi qua trạm của bạn hoặc chưa khởi hành.
+              Chưa có xe đang chạy tới trạm này.
             </div>
           )}
         </div>
@@ -226,50 +189,4 @@ function formatDateTime(value) {
     day: '2-digit',
     month: '2-digit',
   }).format(new Date(value));
-}
-
-function useMockBusTracking(stops, boardingStopId) {
-  const [activeBus, setActiveBus] = useState(null);
-
-  useEffect(() => {
-    if (!stops || stops.length === 0) return;
-
-    let currentIndex = 0;
-    let progress = 0;
-
-    const interval = setInterval(() => {
-      progress += 1;
-      if (progress >= 100) {
-        progress = 0;
-        currentIndex++;
-        if (currentIndex >= stops.length - 1) {
-          currentIndex = 0;
-        }
-      }
-
-      let mockEta = null;
-      if (boardingStopId) {
-        const boardIndex = stops.findIndex((s) => s.stopId === boardingStopId);
-        if (boardIndex > currentIndex) {
-          const remainingMs = (boardIndex - currentIndex - 1) * 5000 + ((100 - progress) / 100) * 5000;
-          mockEta = new Date(Date.now() + remainingMs);
-        } else if (boardIndex === currentIndex && progress < 50) {
-          mockEta = new Date();
-        }
-      }
-
-      setActiveBus({
-        id: '29B-MOCK',
-        fromIndex: currentIndex,
-        toIndex: currentIndex + 1,
-        progress,
-        eta: mockEta,
-        remainingSeconds: mockEta ? Math.max(0, Math.ceil((mockEta.getTime() - Date.now()) / 1000)) : 0,
-      });
-    }, 50);
-
-    return () => clearInterval(interval);
-  }, [stops, boardingStopId]);
-
-  return activeBus;
 }

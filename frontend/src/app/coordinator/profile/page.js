@@ -1,30 +1,131 @@
 "use client";
 
+import { useEffect, useState } from 'react';
 import { UserCircle, Mail, Phone, MapPin, Building2, ShieldCheck, KeyRound, Save, BadgeCheck, Camera } from 'lucide-react';
 import ImageCropModal from '@/components/modals/ImageCropModal';
 import ChangePasswordModal from '@/components/modals/ChangePasswordModal';
-import useProfileEditor from '@/components/profile/useProfileEditor';
+import { toApiAssetUrl, userApi } from '@/services/api';
+
+const emptyProfile = {
+  name: '',
+  employeeId: '',
+  phone: '',
+  email: '',
+  address: '',
+};
 
 export default function CoordinatorProfilePage() {
-  const {
-    formData,
-    isEditing,
-    setIsEditing,
-    avatar,
-    cropModalOpen,
-    setCropModalOpen,
-    tempImageUrl,
-    isLoading,
-    isSaving,
-    passwordModalOpen,
-    setPasswordModalOpen,
-    error,
-    message,
-    handleAvatarChange,
-    handleConfirmCrop,
-    handleChange,
-    handleSubmit,
-  } = useProfileEditor();
+  const [formData, setFormData] = useState(emptyProfile);
+  const [originalData, setOriginalData] = useState(emptyProfile);
+  const [avatar, setAvatar] = useState(null);
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [tempImageUrl, setTempImageUrl] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    userApi.getProfile()
+      .then((profile) => {
+        if (cancelled) return;
+        const next = {
+          name: profile.fullName || '',
+          employeeId: profile.userId ? `#${profile.userId}` : '',
+          phone: profile.phoneNumber || '',
+          email: profile.email || '',
+          address: profile.address || '',
+        };
+        setFormData(next);
+        setOriginalData(next);
+        const nextAvatar = toApiAssetUrl(profile.avatarUrl) || null;
+        setAvatar(nextAvatar);
+        if (nextAvatar) {
+          window.dispatchEvent(new CustomEvent('avatarUpdated', { detail: nextAvatar }));
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err.message);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleAvatarChange = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      setTempImageUrl(URL.createObjectURL(file));
+      setCropModalOpen(true);
+    }
+    event.target.value = null;
+  };
+
+  const handleConfirmCrop = async (croppedImageUrl) => {
+    setError('');
+    setMessage('');
+    setAvatar(croppedImageUrl);
+    window.dispatchEvent(new CustomEvent('avatarUpdated', { detail: croppedImageUrl }));
+    setCropModalOpen(false);
+    setIsSaving(true);
+    try {
+      const nextProfile = await userApi.uploadAvatar(dataUrlToFile(croppedImageUrl, 'avatar.jpg'));
+      const nextAvatar = toApiAssetUrl(nextProfile.avatarUrl) || null;
+      setAvatar(nextAvatar);
+      if (nextAvatar) {
+        window.dispatchEvent(new CustomEvent('avatarUpdated', { detail: nextAvatar }));
+      }
+      setMessage('Cập nhật ảnh đại diện thành công.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleChange = (event) => {
+    const { name, value } = event.target;
+    setFormData((current) => ({ ...current, [name]: value }));
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setError('');
+    setMessage('');
+    setIsSaving(true);
+    try {
+      const profile = await userApi.updateProfile({
+        fullName: formData.name.trim(),
+        email: formData.email.trim(),
+        phoneNumber: formData.phone.trim() || null,
+        address: formData.address.trim() || null,
+      });
+      const nextAvatar = toApiAssetUrl(profile.avatarUrl) || null;
+      const updated = {
+        name: profile.fullName || '',
+        employeeId: profile.userId ? `#${profile.userId}` : '',
+        phone: profile.phoneNumber || '',
+        email: profile.email || '',
+        address: profile.address || '',
+      };
+      setFormData(updated);
+      setOriginalData(updated);
+      setAvatar(nextAvatar);
+      if (nextAvatar) {
+        window.dispatchEvent(new CustomEvent('avatarUpdated', { detail: nextAvatar }));
+      }
+      setMessage('Cập nhật hồ sơ thành công.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const isDirty = JSON.stringify(formData) !== JSON.stringify(originalData);
 
   if (isLoading) {
     return (
@@ -98,32 +199,22 @@ export default function CoordinatorProfilePage() {
             )}
             <div className="flex items-center justify-between mb-8">
               <h3 className="text-xl font-bold">Thông tin liên lạc & Cá nhân</h3>
-              {!isEditing ? (
-                <button
-                  type="button"
-                  onClick={() => setIsEditing(true)}
-                  className="text-sm font-bold text-brand-primary hover:text-brand-text transition-colors px-4 py-2 bg-brand-primary/10 rounded-xl"
-                >
-                  Chỉnh sửa
-                </button>
-              ) : (
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="text-sm font-bold text-white bg-brand-text hover:bg-black transition-colors px-4 py-2 rounded-xl flex items-center gap-2 disabled:opacity-60"
-                >
-                  <Save className="w-4 h-4" /> {isSaving ? 'Đang lưu...' : 'Lưu thay đổi'}
-                </button>
-              )}
+              <button
+                type="submit"
+                disabled={isSaving || !isDirty}
+                className={`text-sm font-bold transition-colors px-4 py-2 rounded-xl flex items-center gap-2 shadow-sm ${!isDirty && !isSaving ? 'bg-brand-surface text-brand-text/50 cursor-not-allowed border border-black/5' : 'bg-brand-text text-white hover:bg-black disabled:opacity-60'}`}
+              >
+                <Save className="w-4 h-4" /> {isSaving ? 'Đang lưu...' : 'Lưu thay đổi'}
+              </button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <ProfileInput icon={UserCircle} label="Họ và tên" name="name" value={formData.name} onChange={handleChange} disabled={!isEditing} />
+              <ProfileInput icon={UserCircle} label="Họ và tên" name="name" value={formData.name} onChange={handleChange} />
               <ProfileInput icon={ShieldCheck} label="Mã nhân viên" name="employeeId" value={formData.employeeId} disabled />
-              <ProfileInput icon={Phone} label="Số điện thoại nội bộ" type="tel" name="phone" value={formData.phone} onChange={handleChange} disabled={!isEditing} />
-              <ProfileInput icon={Mail} label="Email công việc" type="email" name="email" value={formData.email} onChange={handleChange} disabled={!isEditing} />
+              <ProfileInput icon={Phone} label="Số điện thoại nội bộ" type="tel" name="phone" value={formData.phone} onChange={handleChange} />
+              <ProfileInput icon={Mail} label="Email công việc" type="email" name="email" value={formData.email} onChange={handleChange} />
               <div className="md:col-span-2">
-                <ProfileInput icon={MapPin} label="Địa chỉ văn phòng" name="address" value={formData.address} onChange={handleChange} disabled={!isEditing} />
+                <ProfileInput icon={MapPin} label="Địa chỉ văn phòng" name="address" value={formData.address} onChange={handleChange} />
               </div>
             </div>
           </form>
@@ -175,4 +266,15 @@ function ProfileInput({ icon: Icon, label, disabled, type = 'text', ...props }) 
       />
     </div>
   );
+}
+
+function dataUrlToFile(dataUrl, fileName) {
+  const [metadata, content] = dataUrl.split(',');
+  const mime = metadata.match(/data:(.*?);base64/)?.[1] || 'image/jpeg';
+  const binary = atob(content);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new File([bytes], fileName, { type: mime });
 }
