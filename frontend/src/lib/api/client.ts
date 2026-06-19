@@ -161,6 +161,9 @@ export interface TokenPair {
   refreshToken: string;
   role?: BackendRole;
   studentVerificationStatus?: string;
+  universityId?: number;
+  universityName?: string;
+  universityLinkStatus?: string;
 }
 
 export const authApi = {
@@ -343,8 +346,20 @@ export interface VerificationView {
   reviewedAt?: string;
 }
 
+export interface StudentUniversityView {
+  universityId?: number;
+  universityName?: string;
+  shortName?: string;
+  studentCode?: string;
+  rosterStatus?: string;
+  linkStatus?: string;
+  domainHint?: string;
+  studentVerificationStatus?: string;
+}
+
 export const studentApi = {
   profile: () => apiFetch.get<StudentProfile>("/students/me/profile"),
+  university: () => apiFetch.get<StudentUniversityView>("/students/me/university"),
   updateProfile: (data: Partial<StudentProfile>) => apiFetch.patch<StudentProfile>("/students/me/profile", data),
   verification: () => apiFetch.get<VerificationView>("/students/me/verification"),
   submitVerification: (data: { university: string; studentCode: string; cardImage: File }) => {
@@ -527,8 +542,158 @@ export interface AdminUserView {
   createdAt?: string;
 }
 
+export interface UniversityView {
+  universityId: number;
+  code: string;
+  name: string;
+  shortName?: string;
+  contactEmail?: string;
+  status: string;
+  campusCount: number;
+  domainCount: number;
+  rosterCount: number;
+  createdAt?: string;
+}
+
+export interface CampusView {
+  campusId: number;
+  universityId: number;
+  code: string;
+  name: string;
+  address?: string;
+  latitude?: number;
+  longitude?: number;
+  status: string;
+}
+
+export interface DomainView {
+  domainId: number;
+  universityId: number;
+  domain: string;
+  status: string;
+  verifiedAt?: string;
+  createdAt?: string;
+}
+
+export interface UniversityAdminView {
+  universityAdminId: number;
+  universityId: number;
+  universityName: string;
+  userId: number;
+  email: string;
+  fullName: string;
+  phoneNumber?: string;
+  title?: string;
+  status: string;
+  assignedAt?: string;
+}
+
+export interface RosterStudentView {
+  rosterId: number;
+  universityId: number;
+  email: string;
+  studentCode: string;
+  fullName: string;
+  faculty?: string;
+  academicYear?: number;
+  status: string;
+  matchedUserId?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ImportErrorView {
+  importErrorId: number;
+  importBatchId: number;
+  rowNumber: number;
+  fieldName?: string;
+  rawValue?: string;
+  errorMessage: string;
+}
+
+export interface ImportBatchView {
+  importBatchId: number;
+  universityId: number;
+  fileName: string;
+  totalRows: number;
+  successRows: number;
+  errorRows: number;
+  status: string;
+  createdAt?: string;
+  completedAt?: string;
+  errors?: ImportErrorView[];
+}
+
+export interface RouteUniversityView {
+  routeUniversityId: number;
+  routeId: number;
+  routeName: string;
+  universityId: number;
+  universityName: string;
+  campusId?: number;
+  campusName?: string;
+  activeFrom?: string;
+  activeUntil?: string;
+  status: string;
+}
+
+export interface SubsidyPolicyView {
+  subsidyPolicyId: number;
+  universityId: number;
+  universityName?: string;
+  campusId?: number;
+  campusName?: string;
+  policyName: string;
+  subsidyType: string;
+  value: number;
+  maxAmount?: number;
+  activeFrom?: string;
+  activeUntil?: string;
+  status: string;
+}
+
+export interface UniversityStatsView {
+  universityId: number;
+  universityName: string;
+  activeRosterStudents: number;
+  matchedStudents: number;
+  activeDomains: number;
+  activeCampuses: number;
+  activeRoutes: number;
+  activeSubsidyPolicies: number;
+  totalSubsidyAmount: number;
+  monthlyPasses: number;
+}
+
+export interface ReconciliationView {
+  universityId: number;
+  universityName: string;
+  totalOriginalAmount: number;
+  totalSubsidyAmount: number;
+  totalFinalAmount: number;
+  monthlyPasses: number;
+  from?: string;
+  to?: string;
+}
+
+export interface AuditLogView {
+  auditLogId: number;
+  performedByUserId: number;
+  performerName?: string;
+  universityId?: number;
+  universityName?: string;
+  action: string;
+  affectedTable?: string;
+  affectedRecordId?: string;
+  result?: string;
+  requestId?: string;
+  notes?: string;
+  performedAt?: string;
+}
+
 export const adminApi = {
-  users: (params?: { role?: string; status?: string; search?: string }) => apiFetch.get<AdminUserView[]>("/admin/users", params),
+  users: (params?: { role?: string; status?: string; search?: string }) =>
+    apiFetch.get<AdminUserView[]>("/admin/users", { role: params?.role, status: params?.status, keyword: params?.search }),
   user: (userId: number) => apiFetch.get<AdminUserView>(`/admin/users/${userId}`),
   updateUserStatus: (userId: number, data: { status: "ACTIVE" | "LOCKED"; lockReason?: string }) =>
     apiFetch.put<AdminUserView>(`/admin/users/${userId}/status`, data),
@@ -548,10 +713,49 @@ export const adminApi = {
     apiFetch.post<VerificationView>(`/admin/student-verifications/${verificationId}/reject`, { reason }),
   requestResubmission: (verificationId: number, reason?: string) =>
     apiFetch.post<VerificationView>(`/admin/student-verifications/${verificationId}/request-resubmission`, { reason }),
+  universities: (params?: { keyword?: string; status?: string }) =>
+    apiFetch.get<UniversityView[]>("/admin/universities", params),
+  createUniversity: (data: { code: string; name: string; shortName?: string; contactEmail?: string; status?: string }) =>
+    apiFetch.post<UniversityView>("/admin/universities", data),
+  campuses: (universityId: number) => apiFetch.get<CampusView[]>(`/admin/universities/${universityId}/campuses`),
+  createCampus: (universityId: number, data: { code: string; name: string; address?: string; latitude?: number; longitude?: number; status?: string }) =>
+    apiFetch.post<CampusView>(`/admin/universities/${universityId}/campuses`, data),
+  domains: (universityId: number) => apiFetch.get<DomainView[]>(`/admin/universities/${universityId}/domains`),
+  createDomain: (universityId: number, data: { domain: string; status?: string }) =>
+    apiFetch.post<DomainView>(`/admin/universities/${universityId}/domains`, data),
+  universityAdmins: (universityId?: number) => apiFetch.get<UniversityAdminView[]>("/admin/university-admins", { universityId }),
+  createUniversityAdmin: (data: { universityId: number; fullName: string; email: string; password: string; phoneNumber?: string; title?: string }) =>
+    apiFetch.post<UniversityAdminView>("/admin/university-admins", data),
+  routeUniversities: (universityId?: number) => apiFetch.get<RouteUniversityView[]>("/admin/route-universities", { universityId }),
+  createRouteUniversity: (data: { routeId: number; universityId: number; campusId?: number; activeFrom?: string; activeUntil?: string; status?: string }) =>
+    apiFetch.post<RouteUniversityView>("/admin/route-universities", data),
+  subsidyPolicies: (universityId?: number) => apiFetch.get<SubsidyPolicyView[]>("/admin/subsidy-policies", { universityId }),
+  createSubsidyPolicy: (data: { universityId: number; campusId?: number; policyName: string; subsidyType: string; value: number; maxAmount?: number; activeFrom?: string; activeUntil?: string; status?: string }) =>
+    apiFetch.post<SubsidyPolicyView>("/admin/subsidy-policies", data),
+  auditLogs: (params?: { universityId?: number; action?: string }) => apiFetch.get<AuditLogView[]>("/admin/audit-logs", params),
 };
 
 export const universityApi = {
   daNang: () => apiFetch.get<string[]>("/universities/da-nang"),
+  profile: () => apiFetch.get<UniversityAdminView>("/university-admin/profile"),
+  campuses: () => apiFetch.get<CampusView[]>("/university-admin/campuses"),
+  createCampus: (data: { code: string; name: string; address?: string; latitude?: number; longitude?: number; status?: string }) =>
+    apiFetch.post<CampusView>("/university-admin/campuses", data),
+  domains: () => apiFetch.get<DomainView[]>("/university-admin/domains"),
+  createDomain: (data: { domain: string; status?: string }) => apiFetch.post<DomainView>("/university-admin/domains", data),
+  roster: (params?: { keyword?: string; status?: string }) => apiFetch.get<RosterStudentView[]>("/university-admin/roster", params),
+  importRoster: (file: File) => {
+    const form = new FormData();
+    form.set("file", file);
+    return apiFetch.form<ImportBatchView>("/university-admin/roster/import", form);
+  },
+  importBatches: () => apiFetch.get<ImportBatchView[]>("/university-admin/roster/import"),
+  subsidyPolicies: () => apiFetch.get<SubsidyPolicyView[]>("/university-admin/subsidy-policies"),
+  createSubsidyPolicy: (data: { campusId?: number; policyName: string; subsidyType: string; value: number; maxAmount?: number; activeFrom?: string; activeUntil?: string; status?: string }) =>
+    apiFetch.post<SubsidyPolicyView>("/university-admin/subsidy-policies", data),
+  stats: () => apiFetch.get<UniversityStatsView>("/university-admin/stats"),
+  reconciliation: (params?: { from?: string; to?: string }) => apiFetch.get<ReconciliationView>("/university-admin/reconciliation", params),
+  notify: (data: { title: string; content: string }) => apiFetch.post<number>("/university-admin/notifications", data),
 };
 
 export const api = {

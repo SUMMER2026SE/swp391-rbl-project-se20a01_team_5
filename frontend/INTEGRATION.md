@@ -19,13 +19,14 @@ This frontend keeps the UI v1.1 visual system, but runtime data now comes from t
 | Coordinator | Schedule dashboard, live fleet | `/coordinator/schedules`, `/coordinator/fleet/live` |
 | Admin | Users and student verifications | `/admin/users`, `/admin/student-verifications` |
 | University catalog | Public school list | `/universities/da-nang` |
+| Student university linkage | My university status, roster/domain hint | `/students/me/university` |
+| Admin university MVP | Universities, campuses, domains, university admins, route assignment, subsidy policies, audit logs | `/admin/universities`, `/admin/universities/{id}/campuses`, `/admin/universities/{id}/domains`, `/admin/university-admins`, `/admin/route-universities`, `/admin/subsidy-policies`, `/admin/audit-logs` |
+| University Admin MVP | Scoped profile, campus/domain management, roster import, subsidy, stats, reconciliation, notification | `/university-admin/profile`, `/university-admin/campuses`, `/university-admin/domains`, `/university-admin/roster`, `/university-admin/roster/import`, `/university-admin/subsidy-policies`, `/university-admin/stats`, `/university-admin/reconciliation`, `/university-admin/notifications` |
 
 ## Deferred Screens
 
 The following UI v1.1 screens remain visible as intentional unavailable states until matching backend APIs exist:
 
-- University Admin profile/campus/domain/roster/import/subsidy/stats/notification/reconciliation.
-- Admin university management, university admins, route-university assignment, audit logs, fare adjustment.
 - Coordinator route/stop CRUD, bus/driver assignment screens beyond the schedule dashboard.
 - Assistant lost item, incident report, chat/call.
 - Student AI route suggestion, chatbot, lost item support.

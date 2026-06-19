@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import { AuthScreens } from "@/components/bus/auth-screens";
 import { AppShell } from "@/components/bus/app-shell";
 import {
-  MyUniversityScreen,
   NotificationsScreen,
   ProfileScreen,
   SettingsScreen,
@@ -114,7 +113,6 @@ export default function Page() {
   };
 
   const renderContent = () => {
-    if (activeId === "stu-university") return <MyUniversityScreen />;
     if (activeId.endsWith("-profile")) return <ProfileScreen />;
     if (activeId.endsWith("-notifications")) return <NotificationsScreen />;
     if (activeId === "stu-support") return <SupportScreen />;

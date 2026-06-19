@@ -34,6 +34,7 @@ import {
   type RouteSuggestionDTO,
   type StopDTO,
   type StudentProfile,
+  type StudentUniversityView,
   type TravelHistoryView,
 } from "@/lib/api/client";
 
@@ -53,6 +54,7 @@ async function optional<T>(loader: () => Promise<T>): Promise<T | null> {
 
 export function StudentModule({ activeId, onNavigate }: StudentModuleProps) {
   if (activeId === "stu-dashboard") return <StudentDashboard onNavigate={onNavigate} />;
+  if (activeId === "stu-university") return <StudentUniversityScreen />;
   if (activeId === "stu-stops") return <StopsScreen />;
   if (activeId === "stu-find") return <FindRouteScreen />;
   if (activeId === "stu-tracking") return <TrackingScreen />;
@@ -66,6 +68,41 @@ export function StudentModule({ activeId, onNavigate }: StudentModuleProps) {
   if (activeId === "stu-chatbot") return <Unavailable title="Chatbot tra cứu" />;
   if (activeId === "stu-lost") return <Unavailable title="Báo mất đồ" />;
   return <Unavailable title="Màn sinh viên" />;
+}
+
+function StudentUniversityScreen() {
+  const resource = useApiResource<StudentUniversityView>(useCallback(() => studentApi.university(), []));
+  return (
+    <div>
+      <PageHeader title="Trường của tôi" description="Trạng thái liên kết trường từ roster/domain backend." icon={<School className="size-7" />} />
+      <AsyncBlock resource={resource}>
+        {(university) => (
+          <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+            <ExpressiveCard variant="elevated" className="p-5">
+              <h2 className="text-xl font-bold text-on-surface">{university.universityName || university.domainHint || "Chưa liên kết trường"}</h2>
+              <p className="mt-1 text-sm text-on-surface-variant">
+                {university.universityName
+                  ? "Tài khoản của bạn đã được gắn với trường trong hệ thống UniBus."
+                  : university.domainHint
+                    ? "Email Google khớp domain trường, nhưng chưa có roster ACTIVE để tự xác minh."
+                    : "Chưa tìm thấy domain hoặc roster khớp email hiện tại."}
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <StatusPill status={university.linkStatus} />
+                <StatusPill status={university.studentVerificationStatus} />
+              </div>
+            </ExpressiveCard>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Info label="MSSV" value={university.studentCode || "Chưa có"} />
+              <Info label="Roster" value={<StatusPill status={university.rosterStatus || "UNKNOWN"} />} />
+              <Info label="Gợi ý domain" value={university.domainHint || "Chưa có"} />
+              <Info label="Tên ngắn" value={university.shortName || "Chưa có"} />
+            </div>
+          </div>
+        )}
+      </AsyncBlock>
+    </div>
+  );
 }
 
 function StudentDashboard({ onNavigate }: { onNavigate: (id: string) => void }) {

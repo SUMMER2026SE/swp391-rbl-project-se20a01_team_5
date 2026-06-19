@@ -12,7 +12,7 @@ UniBus uses the UIPrototype v1.1 visual direction as the product UI: Material 3 
 
 ## Motion
 
-- Page and nav transitions use spring motion from `framer-motion` in the imported v1.1 components.
+- Page and nav transitions use the UI v1.1 spring-motion patterns already present in the frontend components.
 - Motion must communicate continuity: active nav pill, page fade/slide, tap feedback, lightweight reveal.
 - Avoid animating width/height for frequent interactions; use transform/opacity.
 - Respect reduced-motion in future motion refinements.
@@ -38,12 +38,12 @@ Do not add generated records, sample counts, local sample users, local role swit
 
 ## Connected Flow Priorities
 
-- Student: profile, university catalog, route search, route registration, ETA, ticket/pass QR, payments, history, notifications, feedback.
+- Student: profile, university catalog, university linkage state, route search, route registration, ETA, ticket/pass QR, payments, history, notifications, feedback.
 - Driver: assigned trips, start/end trip, location update.
 - Assistant: conductor trips, ticket list, QR scan.
 - Coordinator: schedules, live fleet, feedback, notifications.
-- Admin: users, student verification review, feedback, notifications.
-- University Admin: UI retained as unavailable until backend scoped APIs are implemented.
+- Admin: users, student verification review, university management, university admins, route-university assignment, subsidy policies, audit logs, feedback, notifications.
+- University Admin: scoped profile, campus/domain management, roster import, subsidy policies, stats, reconciliation, notifications.
 
 ## Accessibility And UX Rules
 
