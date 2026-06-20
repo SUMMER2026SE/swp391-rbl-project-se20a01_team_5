@@ -712,6 +712,18 @@ function TicketsScreen({ title }: { title: string }) {
   const resource = useApiResource<PassesDashboard>(loader);
   const [buying, setBuying] = useState(false);
 
+  const openPayosCheckout = async (type: "single" | "monthly") => {
+    setBuying(true);
+    try {
+      const res = await studentApi.payosLink(type);
+      if (res.checkoutUrl) window.location.assign(res.checkoutUrl);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Kh?ng th? t?o link thanh to?n PayOS"));
+    } finally {
+      setBuying(false);
+    }
+  };
+
   const purchase = async () => {
     setBuying(true);
     try {

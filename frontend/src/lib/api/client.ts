@@ -399,6 +399,7 @@ export const studentApi = {
   purchaseMonthlyPass: (method = "E_WALLET") =>
     apiFetch.post<TicketView>("/students/me/tickets/monthly-pass", { method }),
   payments: () => apiFetch.get<PaymentView[]>("/students/me/payments"),
+  payosLink: (type: string) => apiFetch.post<{ checkoutUrl: string }>("/students/me/payments/payos-link", { type }),
   travelHistory: (page = 0, size = 20) => apiFetch.get<TravelHistoryView[]>("/students/me/travel-history", { page, size }),
 };
 
@@ -701,7 +702,7 @@ export interface TripStopView {
 
 export interface DriverTripView {
   scheduleId?: number;
-  tripId: number;
+  tripId?: number;
   routeId: number;
   routeName: string;
   busId?: number;
@@ -716,6 +717,33 @@ export interface DriverTripView {
   endedAt?: string;
   status: string;
   stops?: TripStopView[];
+}
+
+export interface DriverTripOverview {
+  nearestTrip?: DriverTripView | null;
+  upcomingTrips: DriverTripView[];
+  historyTrips: DriverTripView[];
+}
+
+export interface DispatchMessageView {
+  messageId: number;
+  senderUserId: number;
+  senderName?: string;
+  recipientUserId: number;
+  recipientName?: string;
+  tripId?: number;
+  content: string;
+  read: boolean;
+  sentAt?: string;
+}
+
+export interface DispatcherContact {
+  dispatcherUserId?: number;
+  dispatcherName?: string;
+  phoneNumber?: string;
+  department?: string;
+  activeTripId?: number;
+  messages: DispatchMessageView[];
 }
 
 export interface ConductorTicketView {
@@ -783,6 +811,7 @@ export interface LiveFleetVehicle {
 
 export const operationsApi = {
   driverTrips: (date?: string) => apiFetch.get<DriverTripView[]>("/driver/trips", { date }),
+  driverTripOverview: () => apiFetch.get<DriverTripOverview>("/driver/trips/overview"),
   startTrip: (tripId: number) => apiFetch.post<DriverTripView>(`/driver/trips/${tripId}/start`),
   endTrip: (tripId: number) => apiFetch.post<DriverTripView>(`/driver/trips/${tripId}/end`),
   updateLocation: (tripId: number, data: { longitude: number; latitude: number; speedKmh?: number; occupancy?: number }) =>
@@ -792,6 +821,12 @@ export const operationsApi = {
   scanTicket: (tripId: number, qrCode: string) => apiFetch.post<TicketScanResult>("/conductor/tickets/scan", { tripId, qrCode }),
   scheduleDashboard: (date?: string) => apiFetch.get<ScheduleDashboard>("/coordinator/schedules", { date }),
   liveFleet: (date?: string) => apiFetch.get<LiveFleetVehicle[]>("/coordinator/fleet/live", { date }),
+};
+
+export const driverDispatchApi = {
+  contact: () => apiFetch.get<DispatcherContact>("/driver/dispatch/contact"),
+  sendMessage: (data: { tripId?: number; content: string }) => apiFetch.post<DispatchMessageView>("/driver/dispatch/messages", data),
+  reportIncident: (data: { tripId?: number; incidentType: string; description: string }) => apiFetch.post<DispatchMessageView>("/driver/dispatch/incidents", data),
 };
 
 export interface AdminUserView {
