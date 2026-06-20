@@ -214,19 +214,38 @@ export const profileApi = {
 
 export interface StopDTO {
   stopId: number;
+  stopCode?: string;
   stopName: string;
   address?: string;
   longitude?: number | string;
   latitude?: number | string;
-  routes?: { routeId: number; routeName: string }[];
+  hasShelter?: boolean;
+  routes?: { routeId: number; routeName: string; routeCode?: string; colorHex?: string }[];
 }
 
 export interface RouteSuggestionDTO {
   routeId: number;
+  routeCode?: string;
   routeName: string;
+  colorHex?: string;
   distanceKm?: number | string;
   estimatedMinutes?: number;
-  stops?: { stopId: number; stopName: string; stopOrder: number; minutesFromPreviousStop?: number }[];
+  frequencyMin?: number;
+  singleFare?: number;
+  monthlyFare?: number;
+  firstTrip?: string;
+  lastTrip?: string;
+  universityLinked?: boolean;
+  stops?: {
+    stopId: number;
+    stopCode?: string;
+    stopName: string;
+    stopOrder: number;
+    minutesFromPreviousStop?: number;
+    longitude?: number | string;
+    latitude?: number | string;
+    hasShelter?: boolean;
+  }[];
 }
 
 export interface EtaDTO {
@@ -244,7 +263,7 @@ export const transportApi = {
     apiFetch.get<RouteSuggestionDTO[]>("/routes/search", { boardingStopId, alightingStopId }),
   route: (routeId: number | string) => apiFetch.get<RouteSuggestionDTO>(`/routes/${routeId}`),
   eta: (routeId: number | string, stopId: number | string) =>
-    apiFetch.get<EtaDTO>(`/routes/${routeId}/stops/${stopId}/eta`),
+    apiFetch.get<EtaDTO[]>(`/routes/${routeId}/stops/${stopId}/eta`),
 };
 
 export interface StudentProfile extends UserProfile {
@@ -436,6 +455,242 @@ export const feedbackApi = {
     apiFetch.patch<FeedbackView>(`/feedback/${feedbackId}/resolve`, { response }),
 };
 
+export interface ExperienceStopCard {
+  stopId: number;
+  stopCode?: string;
+  stopName: string;
+  address?: string;
+  longitude?: number | string;
+  latitude?: number | string;
+  hasShelter?: boolean;
+  routes?: { routeId: number; routeCode?: string; routeName: string; colorHex?: string }[];
+}
+
+export interface ExperienceRouteCard {
+  routeId: number;
+  routeCode?: string;
+  routeName: string;
+  fromStopName?: string;
+  toStopName?: string;
+  distanceKm?: number | string;
+  estimatedMinutes?: number;
+  frequencyMin?: number;
+  singleFare?: number;
+  monthlyFare?: number;
+  colorHex?: string;
+  firstTrip?: string;
+  lastTrip?: string;
+  universityLinked?: boolean;
+  stops?: ExperienceStopCard[];
+}
+
+export interface ExperienceRegistrationCard {
+  registrationId: number;
+  routeId: number;
+  routeCode?: string;
+  routeName: string;
+  colorHex?: string;
+  boardingStopName?: string;
+  alightingStopName?: string;
+  effectiveDate?: string;
+  status?: string;
+}
+
+export interface ExperienceTicketCard {
+  ticketId: number;
+  ticketType: string;
+  routeId: number;
+  routeCode?: string;
+  routeName: string;
+  colorHex?: string;
+  boardingStopName?: string;
+  alightingStopName?: string;
+  originalFareAmount?: number;
+  subsidyAmount?: number;
+  finalFareAmount?: number;
+  qrCode?: string;
+  validFrom?: string;
+  expiresOn?: string;
+  expiresAt?: string;
+  status: string;
+}
+
+export interface ExperienceTripCard {
+  tripId: number;
+  routeId: number;
+  routeCode?: string;
+  routeName: string;
+  colorHex?: string;
+  busId?: number;
+  licensePlate?: string;
+  seatCount?: number;
+  occupancy?: number;
+  driverName?: string;
+  conductorName?: string;
+  serviceDate?: string;
+  departureTime?: string;
+  departedAt?: string;
+  endedAt?: string;
+  status: string;
+  longitude?: number | string;
+  latitude?: number | string;
+  speedKmh?: number | string;
+}
+
+export interface ExperienceNotificationCard {
+  notificationId: number;
+  title: string;
+  content: string;
+  type?: string;
+  read?: boolean;
+  createdAt?: string;
+}
+
+export interface ExperienceHistoryCard {
+  travelHistoryId: number;
+  tripId: number;
+  routeCode?: string;
+  routeName: string;
+  boardingStopName?: string;
+  alightingStopName?: string;
+  boardedAt?: string;
+  alightedAt?: string;
+}
+
+export interface ExperienceFeedbackCard {
+  feedbackId: number;
+  studentName?: string;
+  routeCode?: string;
+  routeName?: string;
+  tripId?: number;
+  rating?: number;
+  category?: string;
+  content: string;
+  status: string;
+  response?: string;
+  createdAt?: string;
+}
+
+export interface ExperienceLostItemCard {
+  lostItemReportId: number;
+  reporterName?: string;
+  tripId?: number;
+  routeCode?: string;
+  routeName?: string;
+  itemDescription: string;
+  status: string;
+  notes?: string;
+  reportedAt?: string;
+}
+
+export interface ExperienceSupportTicketCard {
+  supportTicketId: number;
+  title: string;
+  content: string;
+  supportType: string;
+  status: string;
+  response?: string;
+  createdAt?: string;
+  handledAt?: string;
+}
+
+export interface ExperienceIncidentCard {
+  incidentId: number;
+  tripId: number;
+  routeCode?: string;
+  routeName?: string;
+  incidentType: string;
+  description: string;
+  status: string;
+  resolution?: string;
+  reportedAt?: string;
+}
+
+export interface ExperienceDashboardStat {
+  label: string;
+  value: number | string;
+  unit?: string;
+  tone?: string;
+}
+
+export interface StudentDashboardView {
+  fullName: string;
+  studentCode?: string;
+  universityName?: string;
+  verificationStatus?: string;
+  registration?: ExperienceRegistrationCard | null;
+  activeTicket?: ExperienceTicketCard | null;
+  nextTrip?: ExperienceTripCard | null;
+  routes: ExperienceRouteCard[];
+  stops: ExperienceStopCard[];
+  notifications: ExperienceNotificationCard[];
+  history: ExperienceHistoryCard[];
+  stats: ExperienceDashboardStat[];
+}
+
+export interface DriverDashboardView {
+  fullName: string;
+  trips: ExperienceTripCard[];
+  activeTrip?: ExperienceTripCard | null;
+  feedback: ExperienceFeedbackCard[];
+  stats: ExperienceDashboardStat[];
+}
+
+export interface AssistantDashboardView {
+  fullName: string;
+  trips: ExperienceTripCard[];
+  activeTrip?: ExperienceTripCard | null;
+  tickets: ExperienceTicketCard[];
+  incidents: ExperienceIncidentCard[];
+  lostItems: ExperienceLostItemCard[];
+  stats: ExperienceDashboardStat[];
+}
+
+export interface CoordinatorDashboardView {
+  liveFleet: ExperienceTripCard[];
+  routes: ExperienceRouteCard[];
+  stops: ExperienceStopCard[];
+  feedback: ExperienceFeedbackCard[];
+  stats: ExperienceDashboardStat[];
+}
+
+export interface AdminStatsView {
+  stats: ExperienceDashboardStat[];
+  routeMetrics: { routeCode?: string; routeName: string; colorHex?: string; trips: number; revenue: number }[];
+  complaints: { complaintId: number; title: string; content: string; status: string; createdAt?: string }[];
+  violations: { violationReportId: number; reporterName?: string; reportedName?: string; content: string; status: string; submittedAt?: string }[];
+  fares: { fareId: number; routeId: number; routeCode?: string; routeName: string; fareType: string; amount: number; effectiveFrom?: string; effectiveUntil?: string; notes?: string }[];
+}
+
+export const experienceApi = {
+  studentDashboard: () => apiFetch.get<StudentDashboardView>("/students/me/dashboard"),
+  studentRouteSuggestions: () => apiFetch.get<ExperienceRouteCard[]>("/students/me/route-suggestions"),
+  studentLostItems: () => apiFetch.get<ExperienceLostItemCard[]>("/students/me/lost-items"),
+  createStudentLostItem: (data: { itemDescription: string; tripId?: number }) =>
+    apiFetch.post<ExperienceLostItemCard>("/students/me/lost-items", data),
+  studentSupportTickets: () => apiFetch.get<ExperienceSupportTicketCard[]>("/students/me/support-tickets"),
+  createStudentSupportTicket: (data: { title: string; content: string; supportType?: string }) =>
+    apiFetch.post<ExperienceSupportTicketCard>("/students/me/support-tickets", data),
+  studentAssistantChat: () => apiFetch.get<{ chatHistoryId: number; role: string; content: string; sentAt?: string }[]>("/students/me/assistant-chat"),
+  driverDashboard: () => apiFetch.get<DriverDashboardView>("/driver/dashboard"),
+  driverFeedback: () => apiFetch.get<ExperienceFeedbackCard[]>("/driver/feedback"),
+  assistantDashboard: () => apiFetch.get<AssistantDashboardView>("/conductor/dashboard"),
+  incidents: () => apiFetch.get<ExperienceIncidentCard[]>("/conductor/incidents"),
+  createIncident: (data: { tripId: number; incidentType: string; description: string }) =>
+    apiFetch.post<ExperienceIncidentCard>("/conductor/incidents", data),
+  assistantLostItems: () => apiFetch.get<ExperienceLostItemCard[]>("/conductor/lost-items"),
+  updateAssistantLostItem: (lostItemId: number, data: { status: string; notes?: string }) =>
+    apiFetch.put<ExperienceLostItemCard>(`/conductor/lost-items/${lostItemId}`, data),
+  coordinatorDashboard: () => apiFetch.get<CoordinatorDashboardView>("/coordinator/dashboard"),
+  coordinatorFeedback: (status?: string) => apiFetch.get<ExperienceFeedbackCard[]>("/coordinator/feedback", { status }),
+  adminStats: () => apiFetch.get<AdminStatsView>("/admin/stats"),
+  fares: () => apiFetch.get<AdminStatsView["fares"]>("/admin/fares"),
+  updateFare: (fareId: number, data: { amount: number; notes?: string }) =>
+    apiFetch.put<AdminStatsView["fares"][number]>(`/admin/fares/${fareId}`, data),
+  complaints: (status?: string) => apiFetch.get<AdminStatsView["complaints"]>("/admin/complaints", { status }),
+  violations: (status?: string) => apiFetch.get<AdminStatsView["violations"]>("/admin/violations", { status }),
+};
+
 export interface TripStopView {
   routeStopId?: number;
   stopId: number;
@@ -522,6 +777,7 @@ export interface LiveFleetVehicle {
   longitude?: number;
   latitude?: number;
   speedKmh?: number;
+  occupancy?: number;
   locationUpdatedAt?: string;
 }
 
@@ -529,7 +785,7 @@ export const operationsApi = {
   driverTrips: (date?: string) => apiFetch.get<DriverTripView[]>("/driver/trips", { date }),
   startTrip: (tripId: number) => apiFetch.post<DriverTripView>(`/driver/trips/${tripId}/start`),
   endTrip: (tripId: number) => apiFetch.post<DriverTripView>(`/driver/trips/${tripId}/end`),
-  updateLocation: (tripId: number, data: { longitude: number; latitude: number; speedKmh?: number }) =>
+  updateLocation: (tripId: number, data: { longitude: number; latitude: number; speedKmh?: number; occupancy?: number }) =>
     apiFetch.post<void>(`/driver/trips/${tripId}/location`, data),
   conductorTrips: (date?: string) => apiFetch.get<DriverTripView[]>("/conductor/trips", { date }),
   conductorTickets: (tripId: number) => apiFetch.get<ConductorTicketView[]>("/conductor/tickets", { tripId }),
@@ -772,6 +1028,7 @@ export const api = {
   profile: profileApi,
   transport: transportApi,
   student: studentApi,
+  experience: experienceApi,
   notifications: notificationApi,
   feedback: feedbackApi,
   operations: operationsApi,

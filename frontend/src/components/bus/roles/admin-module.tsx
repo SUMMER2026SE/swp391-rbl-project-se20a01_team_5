@@ -3,16 +3,19 @@
 import { useCallback, useState } from "react";
 import { BarChart3, GraduationCap, Megaphone, School, ShieldAlert, Tag, UserPlus, Users } from "lucide-react";
 import { toast } from "sonner";
+import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { PageHeader, Section, StatCard } from "@/components/bus/primitives";
-import { AsyncBlock, DataList, StatusPill, formatDateTime, getErrorMessage, useApiResource } from "@/components/bus/real-data";
+import { AsyncBlock, DataList, StatusPill, formatDateTime, formatMoney, getErrorMessage, useApiResource } from "@/components/bus/real-data";
 import { ExpressiveButton, ExpressiveCard } from "@/components/m3/primitives";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   adminApi,
+  experienceApi,
   feedbackApi,
   notificationApi,
+  type AdminStatsView,
   type AdminUserView,
   type AuditLogView,
   type FeedbackView,
@@ -38,18 +41,18 @@ export function AdminModule({ activeId }: Props) {
   if (activeId === "adm-uni-admins") return <UniversityAdminsScreen />;
   if (activeId === "adm-route-uni") return <RouteUniversitiesScreen />;
   if (activeId === "adm-audit") return <AuditScreen />;
-  if (activeId === "adm-fare") return <SubsidyPoliciesScreen />;
+  if (activeId === "adm-fare") return <FaresScreen />;
   return <AdminDashboard />;
 }
 
 function AdminDashboard() {
   const loader = useCallback(async () => {
-    const [users, verifications, feedback] = await Promise.all([
+    const [stats, users, verifications] = await Promise.all([
+      experienceApi.adminStats(),
       adminApi.users(),
       adminApi.verifications().catch(() => []),
-      feedbackApi.all().catch(() => []),
     ]);
-    return { users, verifications, feedback };
+    return { stats, users, verifications };
   }, []);
   const resource = useApiResource(loader);
 
@@ -57,22 +60,57 @@ function AdminDashboard() {
     <div>
       <PageHeader title="Thống kê hệ thống" description="Tổng quan thật từ admin APIs hiện có." icon={<BarChart3 className="size-7" />} />
       <AsyncBlock resource={resource}>
-        {({ users, verifications, feedback }) => (
+        {({ stats, users, verifications }) => (
           <div className="space-y-6">
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <StatCard label="Người dùng" value={users.length} icon={<Users className="size-6" />} accent="primary" />
-              <StatCard label="Đang hoạt động" value={users.filter((u) => u.status === "ACTIVE").length} icon={<Users className="size-6" />} accent="success" />
-              <StatCard label="Xác minh SV" value={verifications.length} icon={<GraduationCap className="size-6" />} accent="secondary" />
-              <StatCard label="Phản hồi" value={feedback.length} icon={<ShieldAlert className="size-6" />} accent="tertiary" />
+              {stats.stats.map((stat) => (
+                <StatCard key={stat.label} label={stat.label} value={`${stat.value}${stat.unit ? ` ${stat.unit}` : ""}`} icon={<BarChart3 className="size-6" />} accent={adminTone(stat.tone)} />
+              ))}
             </div>
-            <Section title="Người dùng gần đây">
-              <UserList users={users.slice(0, 8)} onRefresh={resource.reload} />
-            </Section>
+            <div className="grid gap-4 xl:grid-cols-[1fr_0.9fr]">
+              <Section title="Route metrics" description="Doanh thu và số chuyến theo tuyến">
+                <ExpressiveCard variant="elevated" className="mb-3 h-64 p-4">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={stats.routeMetrics}>
+                      <XAxis dataKey="routeCode" tickLine={false} axisLine={false} />
+                      <YAxis tickLine={false} axisLine={false} width={70} tickFormatter={(value) => `${Math.round(Number(value) / 1000)}k`} />
+                      <Tooltip formatter={(value) => formatMoney(Number(value))} />
+                      <Bar dataKey="revenue" fill="#144fcc" radius={[10, 10, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </ExpressiveCard>
+                <DataList emptyTitle="Chưa có metrics" emptyDescription="Khi có route/trip/payment, metrics sẽ xuất hiện.">
+                  {stats.routeMetrics.map((metric) => (
+                    <ExpressiveCard key={metric.routeCode || metric.routeName} variant="elevated" className="p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <h3 className="font-bold text-on-surface">{metric.routeCode || metric.routeName}</h3>
+                          <p className="text-sm text-on-surface-variant">{metric.trips} chuyến · {formatMoney(metric.revenue)}</p>
+                        </div>
+                        <span className="size-4 rounded-full" style={{ backgroundColor: metric.colorHex || "#144fcc" }} />
+                      </div>
+                    </ExpressiveCard>
+                  ))}
+                </DataList>
+              </Section>
+              <Section title="Người dùng gần đây" description={`${verifications.length} hồ sơ xác minh trong hệ thống`}>
+                <UserList users={users.slice(0, 6)} onRefresh={resource.reload} />
+              </Section>
+            </div>
           </div>
         )}
       </AsyncBlock>
     </div>
   );
+}
+
+function adminTone(tone?: string): "primary" | "tertiary" | "secondary" | "error" | "success" | "warning" {
+  if (tone === "success") return "success";
+  if (tone === "error") return "error";
+  if (tone === "warning") return "warning";
+  if (tone === "secondary") return "secondary";
+  if (tone === "tertiary") return "tertiary";
+  return "primary";
 }
 
 function UsersScreen() {
@@ -472,6 +510,68 @@ function RouteUniversitiesScreen() {
                     <p className="text-sm text-on-surface-variant">{item.universityName} · Route #{item.routeId}</p>
                   </div>
                   <StatusPill status={item.status} />
+                </div>
+              </ExpressiveCard>
+            ))}
+          </DataList>
+        )}
+      </AsyncBlock>
+    </div>
+  );
+}
+
+function FaresScreen() {
+  const resource = useApiResource<AdminStatsView["fares"]>(useCallback(() => experienceApi.fares(), []));
+  const [editing, setEditing] = useState<number | null>(null);
+  const [amount, setAmount] = useState("");
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const startEdit = (fare: AdminStatsView["fares"][number]) => {
+    setEditing(fare.fareId);
+    setAmount(String(fare.amount ?? ""));
+    setNotes(fare.notes || "");
+  };
+
+  const save = async () => {
+    if (!editing || !amount) return;
+    setSaving(true);
+    try {
+      await experienceApi.updateFare(editing, { amount: Number(amount), notes });
+      setEditing(null);
+      setAmount("");
+      setNotes("");
+      toast.success("Đã cập nhật giá vé");
+      resource.reload();
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Không thể cập nhật giá vé"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div>
+      <PageHeader title="Điều chỉnh giá vé" description="Cập nhật bảng fares thật, không dùng dữ liệu demo frontend." icon={<Tag className="size-7" />} />
+      {editing && (
+        <ExpressiveCard variant="elevated" className="mb-5 grid gap-4 p-5 md:grid-cols-[1fr_1fr_auto] md:items-end">
+          <Field label="Số tiền"><Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
+          <Field label="Ghi chú"><Input value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
+          <ExpressiveButton onClick={save} disabled={saving}>{saving ? "Đang lưu..." : "Lưu giá vé"}</ExpressiveButton>
+        </ExpressiveCard>
+      )}
+      <AsyncBlock resource={resource}>
+        {(fares) => (
+          <DataList emptyTitle="Chưa có fares" emptyDescription="Seed hoặc tạo fares để admin điều chỉnh giá.">
+            {fares.map((fare) => (
+              <ExpressiveCard key={fare.fareId} variant="elevated" className="p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h3 className="font-bold text-on-surface">{fare.routeCode || fare.routeName} · {fare.fareType}</h3>
+                    <p className="text-sm text-on-surface-variant">{formatMoney(fare.amount)} · từ {fare.effectiveFrom || "chưa rõ"}</p>
+                    {fare.notes && <p className="mt-1 text-xs text-on-surface-variant">{fare.notes}</p>}
+                  </div>
+                  <ExpressiveButton size="sm" variant="tonal" onClick={() => startEdit(fare)}>Sửa giá</ExpressiveButton>
                 </div>
               </ExpressiveCard>
             ))}

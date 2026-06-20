@@ -186,7 +186,7 @@ jobs:
       - name: Smoke test CloudFront
         shell: bash
         run: |
-          curl --fail --location --head "https://${CLOUDFRONT_DOMAIN}/login"
+          curl --fail --location --head "https://${CLOUDFRONT_DOMAIN}/"
           status="$(curl -s -o /tmp/unibus-login.json -w '%{http_code}' \
             -X POST "https://${CLOUDFRONT_DOMAIN}/api/v1/auth/login" \
             -H "Content-Type: application/json" \
