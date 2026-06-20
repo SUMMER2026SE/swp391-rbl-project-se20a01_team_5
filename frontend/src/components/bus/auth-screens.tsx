@@ -328,7 +328,7 @@ function Hero({ onGetStarted }: { onGetStarted: () => void }) {
       <motion.div style={{ y, opacity }} className="relative z-10 mx-auto max-w-7xl w-full px-4 sm:px-6 pt-16 sm:pt-20">
         <SplitText
           as="h1"
-          text="Đi xe bus đến trường."
+          text="Xe bus dành cho sinh viên."
           className="text-5xl sm:text-7xl lg:text-8xl font-bold tracking-tight text-on-surface leading-[1.0]"
           stagger={0.05}
         />
@@ -339,7 +339,7 @@ function Hero({ onGetStarted }: { onGetStarted: () => void }) {
           transition={{ delay: 0.8, type: "spring", stiffness: 180, damping: 24 }}
           className="mt-6 sm:mt-8 max-w-xl text-lg sm:text-xl lg:text-2xl text-on-surface font-medium text-pretty"
         >
-          Đăng nhập Google — hệ thống tự biết bạn thuộc trường nào.
+          Nền tảng di chuyển thông minh dành cho bạn.
         </motion.p>
 
         <motion.div
