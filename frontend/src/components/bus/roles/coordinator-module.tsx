@@ -9,7 +9,7 @@ import { ExpressiveButton, ExpressiveCard } from "@/components/m3/primitives";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { feedbackApi, notificationApi, operationsApi, type FeedbackView, type LiveFleetVehicle, type ScheduleDashboard } from "@/lib/api/client";
+import { experienceApi, feedbackApi, notificationApi, operationsApi, type CoordinatorDashboardView, type FeedbackView, type LiveFleetVehicle, type ScheduleDashboard } from "@/lib/api/client";
 
 type Props = {
   activeId: string;
@@ -35,29 +35,47 @@ export function CoordinatorModule({ activeId }: Props) {
 }
 
 function CoordinatorDashboard() {
-  const loader = useCallback(async () => {
-    const [schedule, fleet, feedback] = await Promise.all([
-      operationsApi.scheduleDashboard(),
-      operationsApi.liveFleet(),
-      feedbackApi.all().catch(() => []),
-    ]);
-    return { schedule, fleet, feedback };
-  }, []);
-  const resource = useApiResource(loader);
+  const resource = useApiResource<CoordinatorDashboardView>(useCallback(() => experienceApi.coordinatorDashboard(), []));
 
   return (
     <div>
       <PageHeader title="Tổng quan điều phối" description="Tổng hợp lịch, đội xe live và phản hồi thật." icon={<Navigation className="size-7" />} />
       <AsyncBlock resource={resource}>
-        {({ schedule, fleet, feedback }) => (
+        {(dashboard) => (
           <div className="space-y-6">
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <StatCard label="Ca chạy" value={schedule.shifts.length} icon={<CalendarClock className="size-6" />} accent="primary" />
-              <StatCard label="Xe live" value={fleet.length} icon={<Navigation className="size-6" />} accent="success" />
-              <StatCard label="Tuyến" value={schedule.routes.length} icon={<Route className="size-6" />} accent="secondary" />
-              <StatCard label="Phản hồi" value={feedback.length} icon={<MessageSquare className="size-6" />} accent="tertiary" />
+              <StatCard label="Xe live" value={dashboard.liveFleet.length} icon={<Navigation className="size-6" />} accent="success" />
+              <StatCard label="Tuyến" value={dashboard.routes.length} icon={<Route className="size-6" />} accent="primary" />
+              <StatCard label="Trạm" value={dashboard.stops.length} icon={<School className="size-6" />} accent="secondary" />
+              <StatCard label="Phản hồi" value={dashboard.feedback.length} icon={<MessageSquare className="size-6" />} accent="tertiary" />
             </div>
-            <ScheduleList dashboard={schedule} />
+            <div className="grid gap-4 xl:grid-cols-[1fr_0.9fr]">
+              <Section title="Live fleet" description="Xe đang chạy hoặc vừa cập nhật">
+                <DataList emptyTitle="Chưa có xe live" emptyDescription="Driver cập nhật vị trí thì dữ liệu hiện tại đây.">
+                  {dashboard.liveFleet.slice(0, 6).map((trip) => (
+                    <ExpressiveCard key={trip.tripId} variant="elevated" className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h3 className="font-bold text-on-surface">{trip.routeCode || trip.routeName}</h3>
+                          <p className="text-sm text-on-surface-variant">Xe {trip.licensePlate || "chưa gán"} · {trip.occupancy ?? 0}/{trip.seatCount || "?"} khách</p>
+                        </div>
+                        <StatusPill status={trip.status} />
+                      </div>
+                    </ExpressiveCard>
+                  ))}
+                </DataList>
+              </Section>
+              <Section title="Phản hồi cần theo dõi" description="Không fake record khi backend rỗng">
+                <DataList emptyTitle="Chưa có phản hồi" emptyDescription="Phản hồi sinh viên sẽ xuất hiện tại đây.">
+                  {dashboard.feedback.slice(0, 5).map((item) => (
+                    <ExpressiveCard key={item.feedbackId} variant="elevated" className="p-4">
+                      <h3 className="font-bold text-on-surface">{item.studentName || "Sinh viên"}</h3>
+                      <p className="mt-1 text-sm text-on-surface-variant">{item.content}</p>
+                    </ExpressiveCard>
+                  ))}
+                </DataList>
+              </Section>
+            </div>
           </div>
         )}
       </AsyncBlock>
@@ -86,7 +104,9 @@ function LiveFleetScreen() {
                   <div>
                     <h3 className="font-bold text-on-surface">{vehicle.routeName}</h3>
                     <p className="text-sm text-on-surface-variant">Xe {vehicle.licensePlate || "chưa có biển"} · Tài xế {vehicle.driverName || "chưa gán"}</p>
-                    <p className="mt-1 text-xs text-on-surface-variant">Vị trí: {vehicle.latitude ?? "?"}, {vehicle.longitude ?? "?"} · {formatDateTime(vehicle.locationUpdatedAt)}</p>
+                    <p className="mt-1 text-xs text-on-surface-variant">
+                      Vị trí: {vehicle.latitude ?? "?"}, {vehicle.longitude ?? "?"} · {vehicle.occupancy ?? 0} khách · {formatDateTime(vehicle.locationUpdatedAt)}
+                    </p>
                   </div>
                   <StatusPill status={vehicle.status} />
                 </div>

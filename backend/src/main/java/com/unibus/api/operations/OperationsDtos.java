@@ -138,6 +138,7 @@ public final class OperationsDtos {
             Double longitude,
             Double latitude,
             Double speedKmh,
+            Integer occupancy,
             OffsetDateTime locationUpdatedAt) {
     }
 
@@ -152,6 +153,7 @@ public final class OperationsDtos {
     public record VehicleLocationRequest(
             @NotNull Double longitude,
             @NotNull Double latitude,
-            Double speedKmh) {
+            Double speedKmh,
+            Integer occupancy) {
     }
 }

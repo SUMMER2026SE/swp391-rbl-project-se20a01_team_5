@@ -491,13 +491,14 @@ public class OperationsRepository {
                         (Integer) rs.getObject("minutes_from_previous_stop")), scheduleId);
     }
 
-    public void updateTripLocation(Integer tripId, double longitude, double latitude, Double speedKmh) {
+    public void updateTripLocation(Integer tripId, double longitude, double latitude, Double speedKmh,
+            Integer occupancy) {
         Integer busId = jdbcTemplate.queryForObject("SELECT bus_id FROM trips WHERE trip_id = ?", Integer.class, tripId);
         jdbcTemplate.update("DELETE FROM vehicle_locations WHERE trip_id = ?", tripId);
         jdbcTemplate.update("""
-                INSERT INTO vehicle_locations(bus_id, trip_id, longitude, latitude, speed_kmh)
-                VALUES (?, ?, ?, ?, ?)
-                """, busId, tripId, longitude, latitude, speedKmh);
+                INSERT INTO vehicle_locations(bus_id, trip_id, longitude, latitude, speed_kmh, occupancy)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """, busId, tripId, longitude, latitude, speedKmh, occupancy);
     }
 
     public List<LiveFleetVehicle> findLiveFleet(LocalDate serviceDate) {
@@ -505,7 +506,7 @@ public class OperationsRepository {
                 SELECT t.trip_id, t.route_id, r.route_name, t.bus_id, b.license_plate,
                        du.full_name AS driver_name, cu.full_name AS conductor_name,
                        t.service_date, bs.departure_time, t.status,
-                       vl.longitude, vl.latitude, vl.speed_kmh, vl.updated_at AS location_updated_at
+                       vl.longitude, vl.latitude, vl.speed_kmh, vl.occupancy, vl.updated_at AS location_updated_at
                 FROM trips t
                 JOIN routes r ON r.route_id = t.route_id
                 JOIN buses b ON b.bus_id = t.bus_id
@@ -515,7 +516,7 @@ public class OperationsRepository {
                 LEFT JOIN conductors c ON c.conductor_id = t.conductor_id
                 LEFT JOIN users cu ON cu.user_id = c.user_id
                 LEFT JOIN LATERAL (
-                    SELECT longitude, latitude, speed_kmh, updated_at
+                    SELECT longitude, latitude, speed_kmh, occupancy, updated_at
                     FROM vehicle_locations
                     WHERE trip_id = t.trip_id
                     ORDER BY updated_at DESC
@@ -628,6 +629,7 @@ public class OperationsRepository {
                 toDouble(rs.getObject("longitude")),
                 toDouble(rs.getObject("latitude")),
                 toDouble(rs.getObject("speed_kmh")),
+                (Integer) rs.getObject("occupancy"),
                 toOffsetDateTime(rs.getTimestamp("location_updated_at")));
     }
 

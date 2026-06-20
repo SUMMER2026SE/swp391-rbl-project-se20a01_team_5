@@ -30,11 +30,17 @@ public class Stop {
     @Column(name = "stop_name", nullable = false, length = 150)
     private String stopName;
 
+    @Column(name = "stop_code", length = 30)
+    private String stopCode;
+
     private String address;
 
     private BigDecimal longitude;
 
     private BigDecimal latitude;
+
+    @Column(name = "has_shelter", nullable = false)
+    private boolean hasShelter;
 
     @Column(length = 500)
     private String description;

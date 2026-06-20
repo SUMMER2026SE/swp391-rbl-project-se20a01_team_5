@@ -8,7 +8,15 @@ import { AsyncBlock, DataList, StatusPill, UnavailablePanel, formatDateTime, get
 import { ExpressiveButton, ExpressiveCard } from "@/components/m3/primitives";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { operationsApi, type ConductorTicketView, type DriverTripView, type TicketScanResult } from "@/lib/api/client";
+import {
+  experienceApi,
+  operationsApi,
+  type ConductorTicketView,
+  type DriverTripView,
+  type ExperienceIncidentCard,
+  type ExperienceLostItemCard,
+  type TicketScanResult,
+} from "@/lib/api/client";
 
 type Props = {
   activeId: string;
@@ -16,17 +24,9 @@ type Props = {
 };
 
 export function AssistantModule({ activeId }: Props) {
-  if (["ast-lost", "ast-incident", "ast-contact"].includes(activeId)) {
-    const title =
-      activeId === "ast-lost" ? "Hỗ trợ mất đồ"
-      : activeId === "ast-incident" ? "Báo cáo sự cố"
-      : "Liên hệ tài xế";
-    const icon =
-      activeId === "ast-lost" ? <PackageSearch className="size-7" />
-      : activeId === "ast-incident" ? <AlertTriangle className="size-7" />
-      : <MessageSquare className="size-7" />;
-    return <Unavailable title={title} icon={icon} />;
-  }
+  if (activeId === "ast-lost") return <AssistantLostItemsScreen />;
+  if (activeId === "ast-incident") return <IncidentScreen />;
+  if (activeId === "ast-contact") return <Unavailable title="Liên hệ tài xế" icon={<MessageSquare className="size-7" />} />;
   return <ConductorWorkspace mode={activeId} />;
 }
 
@@ -167,6 +167,129 @@ function ConductorWorkspace({ mode }: { mode: string }) {
           </div>
         )}
       </AsyncBlock>
+    </div>
+  );
+}
+
+function AssistantLostItemsScreen() {
+  const resource = useApiResource<ExperienceLostItemCard[]>(useCallback(() => experienceApi.assistantLostItems(), []));
+
+  const update = async (item: ExperienceLostItemCard, status: string) => {
+    try {
+      await experienceApi.updateAssistantLostItem(item.lostItemReportId, {
+        status,
+        notes: status === "FOUND" ? "Phụ xe đã tìm thấy và liên hệ sinh viên." : item.notes,
+      });
+      toast.success("Đã cập nhật đồ thất lạc");
+      resource.reload();
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Không thể cập nhật đồ thất lạc"));
+    }
+  };
+
+  return (
+    <div>
+      <PageHeader title="Hỗ trợ mất đồ" description="Queue đồ thất lạc thật từ lost_item_reports." icon={<PackageSearch className="size-7" />} />
+      <AsyncBlock resource={resource}>
+        {(items) => (
+          <DataList emptyTitle="Chưa có báo mất đồ" emptyDescription="Sinh viên báo mất đồ thì queue sẽ xuất hiện tại đây.">
+            {items.map((item) => (
+              <ExpressiveCard key={item.lostItemReportId} variant="elevated" className="p-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <h3 className="font-bold text-on-surface">{item.itemDescription}</h3>
+                    <p className="text-sm text-on-surface-variant">{item.reporterName || "Sinh viên"} · {item.routeCode || item.routeName || "Chưa gắn tuyến"}</p>
+                    <p className="mt-1 text-xs text-on-surface-variant">Báo lúc {formatDateTime(item.reportedAt)}</p>
+                    {item.notes && <p className="mt-2 rounded-xl bg-surface-container-high p-3 text-sm text-on-surface">{item.notes}</p>}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <StatusPill status={item.status} />
+                    <ExpressiveButton size="sm" variant="tonal" onClick={() => update(item, "SEARCHING")}>Đang tìm</ExpressiveButton>
+                    <ExpressiveButton size="sm" onClick={() => update(item, "FOUND")}>Đã tìm thấy</ExpressiveButton>
+                    <ExpressiveButton size="sm" variant="error" onClick={() => update(item, "NOT_FOUND")}>Không thấy</ExpressiveButton>
+                  </div>
+                </div>
+              </ExpressiveCard>
+            ))}
+          </DataList>
+        )}
+      </AsyncBlock>
+    </div>
+  );
+}
+
+function IncidentScreen() {
+  const resource = useApiResource<ExperienceIncidentCard[]>(useCallback(() => experienceApi.incidents(), []));
+  const [tripId, setTripId] = useState("");
+  const [incidentType, setIncidentType] = useState("OTHER");
+  const [description, setDescription] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    if (!tripId || !description.trim()) {
+      toast.error("Nhập Trip ID và mô tả sự cố");
+      return;
+    }
+    setSaving(true);
+    try {
+      await experienceApi.createIncident({
+        tripId: Number(tripId),
+        incidentType,
+        description,
+      });
+      setDescription("");
+      toast.success("Đã báo cáo sự cố");
+      resource.reload();
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Không thể báo cáo sự cố"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div>
+      <PageHeader title="Báo cáo sự cố" description="Sự cố được lưu thật vào bảng incidents." icon={<AlertTriangle className="size-7" />} />
+      <div className="grid gap-4 lg:grid-cols-[420px_1fr]">
+        <ExpressiveCard variant="elevated" className="space-y-4 p-5">
+          <div className="space-y-2">
+            <Label>Trip ID</Label>
+            <Input type="number" value={tripId} onChange={(e) => setTripId(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>Loại sự cố</Label>
+            <select value={incidentType} onChange={(e) => setIncidentType(e.target.value)} className="h-12 w-full rounded-xl border border-outline-variant bg-surface-container-lowest px-3 text-sm">
+              <option value="OVERCROWDED">Quá tải</option>
+              <option value="TECHNICAL">Kỹ thuật</option>
+              <option value="EMERGENCY">Khẩn cấp</option>
+              <option value="OTHER">Khác</option>
+            </select>
+          </div>
+          <div className="space-y-2">
+            <Label>Mô tả</Label>
+            <Input value={description} onChange={(e) => setDescription(e.target.value)} />
+          </div>
+          <ExpressiveButton onClick={submit} disabled={saving}>{saving ? "Đang gửi..." : "Gửi sự cố"}</ExpressiveButton>
+        </ExpressiveCard>
+        <AsyncBlock resource={resource}>
+          {(items) => (
+            <DataList emptyTitle="Chưa có sự cố" emptyDescription="Các sự cố đã báo cáo sẽ xuất hiện tại đây.">
+              {items.map((item) => (
+                <ExpressiveCard key={item.incidentId} variant="elevated" className="p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <h3 className="font-bold text-on-surface">{item.incidentType}</h3>
+                      <p className="text-sm text-on-surface-variant">{item.description}</p>
+                      <p className="mt-1 text-xs text-on-surface-variant">{item.routeCode || item.routeName || `Trip #${item.tripId}`} · {formatDateTime(item.reportedAt)}</p>
+                    </div>
+                    <StatusPill status={item.status} />
+                  </div>
+                </ExpressiveCard>
+              ))}
+            </DataList>
+          )}
+        </AsyncBlock>
+      </div>
     </div>
   );
 }

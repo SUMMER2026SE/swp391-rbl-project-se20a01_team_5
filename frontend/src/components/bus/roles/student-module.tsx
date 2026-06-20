@@ -1,15 +1,14 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { Bell, CreditCard, History, MapPin, QrCode, Route, School, Star, TicketCheck } from "lucide-react";
+import { motion } from "framer-motion";
+import { ArrowRight, Bell, Bus, CreditCard, History, MapPin, Navigation, PackageSearch, QrCode, Route, School, Send, ShieldCheck, Star, TicketCheck } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
 import { toast } from "sonner";
-import { EmptyState, PageHeader, Section, StatCard } from "@/components/bus/primitives";
+import { EmptyState, PageHeader, Section } from "@/components/bus/primitives";
 import {
   AsyncBlock,
   DataList,
-  ErrorPanel,
-  LoadingPanel,
   StatusPill,
   UnavailablePanel,
   formatDate,
@@ -24,16 +23,17 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ApiError,
+  experienceApi,
   feedbackApi,
-  notificationApi,
   studentApi,
   transportApi,
   type EtaDTO,
+  type ExperienceLostItemCard,
+  type StudentDashboardView,
   type PassesDashboard,
   type RegistrationDTO,
   type RouteSuggestionDTO,
   type StopDTO,
-  type StudentProfile,
   type StudentUniversityView,
   type TravelHistoryView,
 } from "@/lib/api/client";
@@ -66,7 +66,7 @@ export function StudentModule({ activeId, onNavigate }: StudentModuleProps) {
   if (activeId === "stu-feedback") return <FeedbackScreen />;
   if (activeId === "stu-ai") return <Unavailable title="AI gợi ý tuyến" />;
   if (activeId === "stu-chatbot") return <Unavailable title="Chatbot tra cứu" />;
-  if (activeId === "stu-lost") return <Unavailable title="Báo mất đồ" />;
+  if (activeId === "stu-lost") return <LostItemsScreen />;
   return <Unavailable title="Màn sinh viên" />;
 }
 
@@ -106,64 +106,356 @@ function StudentUniversityScreen() {
 }
 
 function StudentDashboard({ onNavigate }: { onNavigate: (id: string) => void }) {
-  const loader = useCallback(async () => {
-    const [profile, registration, tickets, unread] = await Promise.all([
-      studentApi.profile(),
-      optional(() => studentApi.currentRegistration()),
-      studentApi.tickets(),
-      notificationApi.unreadCount().catch(() => 0),
-    ]);
-    return { profile, registration, tickets, unread };
-  }, []);
-  const resource = useApiResource(loader);
+  const resource = useApiResource<StudentDashboardView>(useCallback(() => experienceApi.studentDashboard(), []));
 
   return (
-    <div>
-      <PageHeader
-        title="Trang chủ sinh viên"
-        description="Tổng quan lấy từ hồ sơ, tuyến đăng ký, vé và thông báo thật."
-        icon={<School className="size-7" />}
-      />
+    <div className="space-y-6 sm:space-y-8">
       <AsyncBlock resource={resource}>
-        {({ profile, registration, tickets, unread }) => (
-          <div className="space-y-6">
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <StatCard label="Trường" value={profile.university || "Chưa có"} icon={<School className="size-6" />} accent="secondary" />
-              <StatCard label="Xác minh" value={<StatusPill status={profile.studentVerificationStatus} />} icon={<TicketCheck className="size-6" />} accent="success" />
-              <StatCard label="Tuyến hiện tại" value={registration?.routeName || "Chưa đăng ký"} icon={<Route className="size-6" />} accent="primary" />
-              <StatCard label="Thông báo chưa đọc" value={unread} icon={<Bell className="size-6" />} accent="tertiary" />
-            </div>
+        {(dashboard) => {
+          const firstName = (dashboard.fullName || "bạn").trim().split(/\s+/).slice(-1)[0];
+          const hour = new Date().getHours();
+          const greeting = hour < 11 ? "Chào buổi sáng" : hour < 14 ? "Chào buổi trưa" : hour < 18 ? "Chào buổi chiều" : "Chào buổi tối";
+          const activeRoute = dashboard.registration
+            ? dashboard.routes.find((route) => route.routeId === dashboard.registration?.routeId)
+            : dashboard.routes[0];
+          const nextTrip = dashboard.nextTrip;
+          const activeTicket = dashboard.activeTicket;
+          const unread = dashboard.notifications.filter((item) => !item.read).length;
 
-            <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-              <ExpressiveCard variant="elevated" className="p-5">
-                <h2 className="text-xl font-bold text-on-surface">Tuyến đang sử dụng</h2>
-                {registration ? (
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                    <Info label="Tuyến" value={registration.routeName} />
-                    <Info label="Trạng thái" value={<StatusPill status={registration.status} />} />
-                    <Info label="Điểm lên" value={registration.boardingStopName} />
-                    <Info label="Điểm xuống" value={registration.alightingStopName} />
+          return (
+            <>
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ type: "spring", stiffness: 240, damping: 24 }}
+                className="space-y-3"
+              >
+                <h1 className="text-4xl font-black tracking-tight text-on-surface sm:text-5xl">
+                  {greeting}, {firstName}!
+                </h1>
+                <div className="flex flex-wrap items-center gap-2">
+                  {dashboard.universityName && (
+                    <span className="inline-flex h-8 items-center gap-1.5 rounded-full bg-[#beff50] px-3 text-xs font-black text-[#14140f]">
+                      <School className="size-3.5" />
+                      {dashboard.universityName}
+                    </span>
+                  )}
+                  <span className="inline-flex h-8 items-center gap-1.5 rounded-full bg-[#14140f] px-3 text-xs font-black text-white">
+                    <ShieldCheck className="size-3.5" />
+                    {dashboard.verificationStatus || "UNKNOWN"}
+                  </span>
+                  {dashboard.studentCode && (
+                    <span className="inline-flex h-8 items-center rounded-full bg-[#144fcc] px-3 text-xs font-black text-white">
+                      {dashboard.studentCode}
+                    </span>
+                  )}
+                </div>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 16, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ type: "spring", stiffness: 260, damping: 24 }}
+                className="relative overflow-hidden rounded-[28px] bg-[#beff50] p-5 text-[#14140f] shadow-[0_18px_50px_rgba(20,20,15,0.12)] sm:p-7"
+              >
+                <div className="pointer-events-none absolute -right-12 -top-12 size-48 rounded-full bg-[#14140f]/10 blur-3xl" />
+                <div className="pointer-events-none absolute -bottom-16 -left-8 size-40 rounded-full bg-[#144fcc]/10 blur-3xl" />
+                <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center">
+                  <div className="min-w-0 flex-1 space-y-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="inline-flex h-7 items-center rounded-full bg-[#14140f] px-3 text-xs font-black text-white">
+                        {nextTrip?.routeCode || activeRoute?.routeCode || "UNIBUS"}
+                      </span>
+                      <span className="inline-flex h-7 items-center gap-1 rounded-full bg-[#14140f]/10 px-3 text-xs font-black">
+                        <motion.span
+                          className="size-1.5 rounded-full bg-[#14140f]"
+                          animate={{ opacity: [1, 0.28, 1] }}
+                          transition={{ duration: 1.4, repeat: Infinity }}
+                        />
+                        {nextTrip?.status === "RUNNING" ? "Đang chạy" : "Sắp khởi hành"}
+                      </span>
+                    </div>
+                    <h2 className="text-2xl font-black leading-tight sm:text-3xl">Chuyến sắp tới</h2>
+                    <p className="truncate text-sm font-semibold opacity-80 sm:text-base">
+                      {activeRoute?.fromStopName || dashboard.registration?.boardingStopName || "Điểm lên"} {"->"} {activeRoute?.toStopName || dashboard.registration?.alightingStopName || "Điểm xuống"}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-4 pt-1">
+                      <HeroMetric label="Khởi hành" value={timeText(nextTrip?.departureTime) || activeRoute?.firstTrip || "Hôm nay"} />
+                      <HeroMetric label="Biển số" value={nextTrip?.licensePlate || "Đang gán"} />
+                      <HeroMetric label="Mật độ" value={nextTrip?.occupancy != null ? `${nextTrip.occupancy}/${nextTrip.seatCount || "?"}` : "Đang cập nhật"} />
+                    </div>
                   </div>
-                ) : (
-                  <EmptyState
-                    icon={<Route className="size-7" />}
-                    title="Chưa đăng ký tuyến"
-                    description="Tìm tuyến phù hợp rồi đăng ký để mua vé tháng."
-                    action={<ExpressiveButton onClick={() => onNavigate("stu-find")}>Tìm tuyến xe</ExpressiveButton>}
-                  />
-                )}
-              </ExpressiveCard>
+                  <div className="flex shrink-0 flex-col items-center gap-3">
+                    <motion.button
+                      type="button"
+                      onClick={() => onNavigate("stu-my-ticket")}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      className="relative flex size-24 items-center justify-center rounded-full bg-[#14140f] shadow-[0_12px_30px_rgba(20,20,15,0.25)]"
+                    >
+                      <motion.span
+                        className="absolute inset-0 rounded-full bg-[#beff50]/40"
+                        animate={{ scale: [1, 1.8], opacity: [0.6, 0] }}
+                        transition={{ duration: 1.8, repeat: Infinity, ease: "easeOut" }}
+                      />
+                      <QrCode className="relative size-10 text-[#beff50]" />
+                    </motion.button>
+                    <div className="flex flex-wrap justify-center gap-2">
+                      <ExpressiveButton onClick={() => onNavigate("stu-tracking")} className="bg-[#14140f] text-white hover:bg-[#14140f]/90">
+                        <Navigation className="size-4" />
+                        Theo dõi
+                      </ExpressiveButton>
+                      <ExpressiveButton variant="tonal" onClick={() => onNavigate("stu-payment")} className="border-2 border-[#14140f] bg-white text-[#14140f]">
+                        Mua vé
+                        <ArrowRight className="size-4" />
+                      </ExpressiveButton>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
 
-              <ExpressiveCard variant="elevated" className="p-5">
-                <h2 className="text-xl font-bold text-on-surface">Vé tháng</h2>
-                <TicketSummary dashboard={tickets} onNavigate={onNavigate} />
-              </ExpressiveCard>
-            </div>
-          </div>
-        )}
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <PrototypeStat tone="dark" label="Tuyến khả dụng" value={dashboard.routes.length} helper="Theo trường của bạn" icon={<Route className="size-5" />} />
+                <PrototypeStat tone="coral" label="Trạm phục vụ" value={dashboard.stops.length} helper="Đà Nẵng" icon={<MapPin className="size-5" />} />
+                <PrototypeStat tone="blue" label="Thông báo" value={unread} helper="Chưa đọc" icon={<Bell className="size-5" />} />
+                <PrototypeStat tone="purple" label="Lượt đi" value={dashboard.history.length} helper="Gần đây" icon={<History className="size-5" />} />
+              </div>
+
+              <div className="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
+                <Section title="Tuyến của tôi" description="Đang sử dụng tháng này">
+                  <ExpressiveCard variant="filled" className="p-2">
+                    {dashboard.registration ? (
+                      <RouteRow
+                        routeCode={dashboard.registration.routeCode}
+                        routeName={dashboard.registration.routeName}
+                        colorHex={dashboard.registration.colorHex}
+                        from={dashboard.registration.boardingStopName}
+                        to={dashboard.registration.alightingStopName}
+                        onClick={() => onNavigate("stu-my-routes")}
+                      />
+                    ) : (
+                      <EmptyState
+                        icon={<Route className="size-7" />}
+                        title="Chưa đăng ký tuyến"
+                        description="Tìm tuyến phù hợp rồi đăng ký để mua vé tháng."
+                        action={<ExpressiveButton onClick={() => onNavigate("stu-find")}>Tìm tuyến xe</ExpressiveButton>}
+                      />
+                    )}
+                    {dashboard.routes.slice(0, 3).map((route) => (
+                      <RouteRow
+                        key={route.routeId}
+                        routeCode={route.routeCode}
+                        routeName={route.routeName}
+                        colorHex={route.colorHex}
+                        from={route.fromStopName}
+                        to={route.toStopName}
+                        meta={`${route.frequencyMin || "?"} phút/chuyến · ${formatMoney(route.monthlyFare)}`}
+                        onClick={() => onNavigate("stu-find")}
+                      />
+                    ))}
+                  </ExpressiveCard>
+                </Section>
+
+                <Section title="Truy cập nhanh" description="Lối tắt các tác vụ phổ biến">
+                  <div className="grid grid-cols-2 gap-3">
+                    <QuickAction id="stu-find" label="Tìm tuyến xe" icon={<Route className="size-5" />} bg="#144fcc" fg="#fff" onNavigate={onNavigate} />
+                    <QuickAction id="stu-tracking" label="Theo dõi xe" icon={<Navigation className="size-5" />} bg="#ff8c5f" fg="#14140f" onNavigate={onNavigate} />
+                    <QuickAction id="stu-payment" label="Mua vé tháng" icon={<CreditCard className="size-5" />} bg="#14140f" fg="#fff" onNavigate={onNavigate} />
+                    <QuickAction id="stu-lost" label="Báo mất đồ" icon={<PackageSearch className="size-5" />} bg="#c8a0ff" fg="#14140f" onNavigate={onNavigate} />
+                  </div>
+                </Section>
+              </div>
+
+              <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+                <ExpressiveCard variant="elevated" className="p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-xl font-black text-on-surface">Vé tháng</h2>
+                      <p className="text-sm text-on-surface-variant">QR, trợ giá và giá cuối</p>
+                    </div>
+                    <StatusPill status={activeTicket?.status || "EMPTY"} />
+                  </div>
+                  <TicketSummary dashboard={dashboardToPasses(dashboard)} onNavigate={onNavigate} />
+                </ExpressiveCard>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <ExpressiveCard variant="elevated" className="p-5">
+                    <h2 className="text-lg font-black text-on-surface">Thông báo gần đây</h2>
+                    <div className="mt-4 space-y-3">
+                      {dashboard.notifications.slice(0, 4).map((item) => (
+                        <div key={item.notificationId} className="rounded-2xl bg-surface-container-high p-3">
+                          <p className="text-sm font-bold text-on-surface">{item.title}</p>
+                          <p className="mt-1 line-clamp-2 text-xs text-on-surface-variant">{item.content}</p>
+                        </div>
+                      ))}
+                      {dashboard.notifications.length === 0 && <p className="text-sm text-on-surface-variant">Chưa có thông báo.</p>}
+                    </div>
+                  </ExpressiveCard>
+
+                  <ExpressiveCard variant="elevated" className="p-5">
+                    <h2 className="text-lg font-black text-on-surface">Lịch sử chuyến</h2>
+                    <div className="mt-4 space-y-3">
+                      {dashboard.history.slice(0, 4).map((item) => (
+                        <div key={item.travelHistoryId} className="rounded-2xl bg-surface-container-high p-3">
+                          <p className="text-sm font-bold text-on-surface">{item.routeCode || item.routeName}</p>
+                          <p className="mt-1 text-xs text-on-surface-variant">{item.boardingStopName || "?"} {"->"} {item.alightingStopName || "?"}</p>
+                          <p className="mt-1 text-xs text-on-surface-variant">{formatDateTime(item.boardedAt)}</p>
+                        </div>
+                      ))}
+                      {dashboard.history.length === 0 && <p className="text-sm text-on-surface-variant">Chưa có lịch sử chuyến.</p>}
+                    </div>
+                  </ExpressiveCard>
+                </div>
+              </div>
+            </>
+          );
+        }}
       </AsyncBlock>
     </div>
   );
+}
+
+function HeroMetric({ label, value }: { label: string; value?: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] font-black uppercase tracking-wide opacity-60">{label}</p>
+      <p className="mt-0.5 text-lg font-black tabular-nums sm:text-xl">{value || "Chưa có"}</p>
+    </div>
+  );
+}
+
+function PrototypeStat({
+  tone,
+  label,
+  value,
+  helper,
+  icon,
+}: {
+  tone: "dark" | "coral" | "blue" | "purple";
+  label: string;
+  value: React.ReactNode;
+  helper: string;
+  icon: React.ReactNode;
+}) {
+  const styles = {
+    dark: "bg-[#14140f] text-white",
+    coral: "bg-[#ff8c5f] text-[#14140f]",
+    blue: "bg-[#144fcc] text-white",
+    purple: "bg-[#c8a0ff] text-[#14140f]",
+  }[tone];
+  const iconStyles = tone === "dark" || tone === "blue" ? "bg-[#beff50] text-[#14140f]" : "bg-[#14140f] text-white";
+  return (
+    <motion.div
+      whileHover={{ y: -2 }}
+      transition={{ type: "spring", stiffness: 300, damping: 20 }}
+      className={`rounded-2xl p-4 shadow-[0_14px_34px_rgba(20,20,15,0.10)] sm:p-5 ${styles}`}
+    >
+      <div className={`mb-3 flex size-10 items-center justify-center rounded-xl ${iconStyles}`}>{icon}</div>
+      <p className="text-[11px] font-bold uppercase tracking-wide opacity-65">{label}</p>
+      <p className="mt-1 text-3xl font-black tabular-nums">{value}</p>
+      <p className="mt-1 text-[11px] font-bold opacity-75">{helper}</p>
+    </motion.div>
+  );
+}
+
+function RouteRow({
+  routeCode,
+  routeName,
+  colorHex,
+  from,
+  to,
+  meta,
+  onClick,
+}: {
+  routeCode?: string;
+  routeName?: string;
+  colorHex?: string;
+  from?: string;
+  to?: string;
+  meta?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-3 rounded-2xl p-3 text-left transition hover:bg-surface-container-high"
+    >
+      <div
+        className="flex size-11 shrink-0 items-center justify-center rounded-xl text-white"
+        style={{ backgroundColor: colorHex || "#144fcc" }}
+      >
+        <Bus className="size-5" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-black text-on-surface">{routeCode ? `${routeCode} · ` : ""}{routeName || "Tuyến xe"}</p>
+        <p className="truncate text-xs text-on-surface-variant">{from || "Điểm lên"} {"->"} {to || "Điểm xuống"}</p>
+        {meta && <p className="mt-1 truncate text-xs font-semibold text-on-surface-variant">{meta}</p>}
+      </div>
+      <ArrowRight className="size-4 text-on-surface-variant" />
+    </button>
+  );
+}
+
+function QuickAction({
+  id,
+  label,
+  icon,
+  bg,
+  fg,
+  onNavigate,
+}: {
+  id: string;
+  label: string;
+  icon: React.ReactNode;
+  bg: string;
+  fg: string;
+  onNavigate: (id: string) => void;
+}) {
+  return (
+    <motion.button
+      type="button"
+      onClick={() => onNavigate(id)}
+      whileHover={{ y: -3 }}
+      whileTap={{ scale: 0.97 }}
+      transition={{ type: "spring", stiffness: 300, damping: 20 }}
+      className="flex min-h-[112px] w-full flex-col rounded-2xl p-4 text-left shadow-[0_12px_30px_rgba(20,20,15,0.10)]"
+      style={{ backgroundColor: bg, color: fg }}
+    >
+      <div className="mb-3 flex size-10 items-center justify-center rounded-xl bg-white/90 text-[#14140f]">{icon}</div>
+      <span className="text-sm font-black">{label}</span>
+    </motion.button>
+  );
+}
+
+function dashboardToPasses(dashboard: StudentDashboardView): PassesDashboard {
+  return {
+    tickets: dashboard.activeTicket
+      ? [{
+          ticketId: dashboard.activeTicket.ticketId,
+          ticketType: dashboard.activeTicket.ticketType,
+          routeId: dashboard.activeTicket.routeId,
+          routeName: dashboard.activeTicket.routeName,
+          boardingStopName: dashboard.activeTicket.boardingStopName,
+          alightingStopName: dashboard.activeTicket.alightingStopName,
+          validFrom: dashboard.activeTicket.validFrom,
+          expiresAt: dashboard.activeTicket.expiresAt || dashboard.activeTicket.expiresOn,
+          originalFareAmount: dashboard.activeTicket.originalFareAmount,
+          subsidyAmount: dashboard.activeTicket.subsidyAmount,
+          finalFareAmount: dashboard.activeTicket.finalFareAmount,
+          fareAmount: dashboard.activeTicket.finalFareAmount,
+          qrCode: dashboard.activeTicket.qrCode,
+          status: dashboard.activeTicket.status,
+        }]
+      : [],
+    payments: [],
+    monthlyPassQuote: null,
+  };
+}
+
+function timeText(value?: string) {
+  if (!value) return "";
+  return value.length >= 5 ? value.slice(0, 5) : value;
 }
 
 function StopsScreen() {
@@ -276,9 +568,9 @@ function FindRouteScreen() {
 function TrackingScreen() {
   const loader = useCallback(async () => {
     const registration = await optional(() => studentApi.currentRegistration());
-    let eta: EtaDTO | null = null;
+    let eta: EtaDTO[] = [];
     if (registration) {
-      eta = await transportApi.eta(registration.routeId, registration.boardingStopId).catch(() => null);
+      eta = await transportApi.eta(registration.routeId, registration.boardingStopId).catch(() => []);
     }
     return { registration, eta };
   }, []);
@@ -288,19 +580,22 @@ function TrackingScreen() {
     <div>
       <PageHeader title="Theo dõi xe" description="ETA thật theo tuyến và trạm đang đăng ký." icon={<MapPin className="size-7" />} />
       <AsyncBlock resource={resource}>
-        {({ registration, eta }) => registration ? (
-          <ExpressiveCard variant="elevated" className="p-5">
-            <h2 className="text-xl font-bold text-on-surface">{registration.routeName}</h2>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Info label="Điểm lên" value={registration.boardingStopName} />
-              <Info label="Điểm xuống" value={registration.alightingStopName} />
-              <Info label="Dự kiến đến" value={eta?.estimatedArrivalAt ? formatDateTime(eta.estimatedArrivalAt) : "Chưa có ETA"} />
-              <Info label="Cập nhật" value={eta?.updatedAt ? formatDateTime(eta.updatedAt) : "Chưa có"} />
-            </div>
-          </ExpressiveCard>
-        ) : (
-          <EmptyState icon={<Route className="size-7" />} title="Chưa có tuyến để theo dõi" description="Đăng ký tuyến trước để xem ETA." />
-        )}
+        {({ registration, eta }) => {
+          const nextEta = eta[0];
+          return registration ? (
+            <ExpressiveCard variant="elevated" className="p-5">
+              <h2 className="text-xl font-bold text-on-surface">{registration.routeName}</h2>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <Info label="Điểm lên" value={registration.boardingStopName} />
+                <Info label="Điểm xuống" value={registration.alightingStopName} />
+                <Info label="Dự kiến đến" value={nextEta?.estimatedArrivalAt ? formatDateTime(nextEta.estimatedArrivalAt) : "Chưa có ETA"} />
+                <Info label="Cập nhật" value={nextEta?.updatedAt ? formatDateTime(nextEta.updatedAt) : "Chưa có"} />
+              </div>
+            </ExpressiveCard>
+          ) : (
+            <EmptyState icon={<Route className="size-7" />} title="Chưa có tuyến để theo dõi" description="Đăng ký tuyến trước để xem ETA." />
+          );
+        }}
       </AsyncBlock>
     </div>
   );
@@ -512,6 +807,73 @@ function FeedbackScreen() {
                       <h3 className="font-bold text-on-surface">{item.category || "Phản hồi"}</h3>
                       <p className="mt-1 text-sm text-on-surface-variant">{item.content}</p>
                       {item.response && <p className="mt-2 rounded-xl bg-surface-container-high p-3 text-sm text-on-surface">Phản hồi: {item.response}</p>}
+                    </div>
+                    <StatusPill status={item.status} />
+                  </div>
+                </ExpressiveCard>
+              ))}
+            </DataList>
+          )}
+        </AsyncBlock>
+      </div>
+    </div>
+  );
+}
+
+function LostItemsScreen() {
+  const resource = useApiResource<ExperienceLostItemCard[]>(useCallback(() => experienceApi.studentLostItems(), []));
+  const [itemDescription, setItemDescription] = useState("");
+  const [tripId, setTripId] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const submit = async () => {
+    if (!itemDescription.trim()) {
+      toast.error("Nhập mô tả đồ thất lạc");
+      return;
+    }
+    setSending(true);
+    try {
+      await experienceApi.createStudentLostItem({
+        itemDescription,
+        tripId: tripId ? Number(tripId) : undefined,
+      });
+      setItemDescription("");
+      setTripId("");
+      toast.success("Đã gửi báo mất đồ");
+      resource.reload();
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Không thể gửi báo mất đồ"));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div>
+      <PageHeader title="Báo mất đồ" description="Tạo và theo dõi báo cáo đồ thất lạc bằng dữ liệu thật." icon={<PackageSearch className="size-7" />} />
+      <div className="grid gap-4 lg:grid-cols-[420px_1fr]">
+        <ExpressiveCard variant="elevated" className="space-y-4 p-5">
+          <Field label="Trip ID nếu nhớ">
+            <Input type="number" value={tripId} onChange={(e) => setTripId(e.target.value)} placeholder="Ví dụ: 12" />
+          </Field>
+          <Field label="Mô tả đồ thất lạc">
+            <Textarea value={itemDescription} onChange={(e) => setItemDescription(e.target.value)} placeholder="Màu sắc, vị trí ghế, thời gian..." />
+          </Field>
+          <ExpressiveButton onClick={submit} disabled={sending}>
+            <Send className="size-4" />
+            {sending ? "Đang gửi..." : "Gửi báo cáo"}
+          </ExpressiveButton>
+        </ExpressiveCard>
+        <AsyncBlock resource={resource}>
+          {(items) => (
+            <DataList emptyTitle="Chưa có báo mất đồ" emptyDescription="Các báo cáo thất lạc của bạn sẽ xuất hiện tại đây.">
+              {items.map((item) => (
+                <ExpressiveCard key={item.lostItemReportId} variant="elevated" className="p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <h3 className="font-bold text-on-surface">{item.itemDescription}</h3>
+                      <p className="mt-1 text-sm text-on-surface-variant">{item.routeCode || item.routeName || "Chưa gắn tuyến"} · {formatDateTime(item.reportedAt)}</p>
+                      {item.notes && <p className="mt-2 rounded-xl bg-surface-container-high p-3 text-sm text-on-surface">{item.notes}</p>}
                     </div>
                     <StatusPill status={item.status} />
                   </div>
