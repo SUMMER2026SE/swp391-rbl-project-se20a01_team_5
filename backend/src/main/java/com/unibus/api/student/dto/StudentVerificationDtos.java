@@ -28,6 +28,7 @@ public final class StudentVerificationDtos {
             String fullName,
             StudentVerificationStatus status,
             String university,
+            Integer universityId,
             String studentCode,
             String cardImageUrl,
             String ocrFullName,

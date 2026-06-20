@@ -25,6 +25,23 @@ GitHub Actions workflow: `.github/workflows/ci-cd.yml`.
 The workflow does not store DB, SMTP, Google secret, or AWS access keys in GitHub.
 It downloads the current ECS task definition and changes only the backend/frontend image URIs.
 Runtime secrets remain managed in AWS ECS task definition settings.
+During task-definition cleanup, the workflow also removes the retired frontend mock flag from container environment variables so old ECS revisions do not keep carrying it forward.
+
+## ECS Deploy Diagnostics
+
+The deploy job waits up to 15 minutes for ECS service stability. If ECS cannot stabilize, the workflow prints:
+
+- recent ECS service events;
+- recent stopped task ARNs;
+- stopped reasons and per-container exit codes/reasons.
+
+Most ECS "stuck deploy" cases should be checked in this order:
+
+1. Backend container exits on startup because Flyway validation fails against the shared DB.
+2. Required task definition environment variables/secrets are missing, especially DB, JWT, SMTP, Google OAuth, OCR, or S3 settings.
+3. The ECS service cannot pull the pushed ECR image or lacks task execution role permissions.
+4. Target group health checks fail even though the task is running.
+5. Container names in the task definition no longer match workflow env `BACKEND_CONTAINER=backend` and `FRONTEND_CONTAINER=frontend`.
 
 ## Google OAuth
 

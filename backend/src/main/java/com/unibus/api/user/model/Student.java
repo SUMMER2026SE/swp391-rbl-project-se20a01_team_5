@@ -31,6 +31,9 @@ public class Student {
     @Column(nullable = false, length = 150)
     private String university;
 
+    @Column(name = "university_id")
+    private Integer universityId;
+
     @Column(length = 100)
     private String faculty;
 

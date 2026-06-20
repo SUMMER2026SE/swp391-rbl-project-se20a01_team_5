@@ -30,6 +30,9 @@ public class BusRoute {
     @Column(name = "route_name", nullable = false, length = 150)
     private String routeName;
 
+    @Column(name = "route_code", length = 30)
+    private String routeCode;
+
     @Column(length = 500)
     private String description;
 
@@ -38,6 +41,12 @@ public class BusRoute {
 
     @Column(name = "estimated_minutes")
     private Integer estimatedMinutes;
+
+    @Column(name = "frequency_min")
+    private Integer frequencyMin;
+
+    @Column(name = "color_hex", length = 20)
+    private String colorHex;
 
     @Column(name = "is_circular", nullable = false)
     private boolean circular;

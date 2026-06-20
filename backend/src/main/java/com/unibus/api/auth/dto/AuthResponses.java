@@ -25,6 +25,9 @@ public final class AuthResponses {
             String refreshToken,
             OffsetDateTime refreshTokenExpiresAt,
             UserRole role,
-            StudentVerificationStatus studentVerificationStatus) {
+            StudentVerificationStatus studentVerificationStatus,
+            Integer universityId,
+            String universityName,
+            String universityLinkStatus) {
     }
 }

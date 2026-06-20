@@ -285,7 +285,8 @@ public class OperationsService {
     public void updateLocation(CurrentUser currentUser, Integer tripId, VehicleLocationRequest request) {
         Integer driverStaffId = requireDriverStaffId(currentUser);
         requireOwnedTrip(tripId, driverStaffId);
-        operationsRepository.updateTripLocation(tripId, request.longitude(), request.latitude(), request.speedKmh());
+        operationsRepository.updateTripLocation(tripId, request.longitude(), request.latitude(), request.speedKmh(),
+                request.occupancy());
     }
 
     @Transactional(readOnly = true)

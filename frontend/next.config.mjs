@@ -1,7 +1,16 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  /* config options here */
   devIndicators: false,
+  allowedDevOrigins: ["192.168.1.229"],
+  async rewrites() {
+    const backendBase = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080/api/v1";
+    return [
+      {
+        source: "/api/v1/:path*",
+        destination: `${backendBase.replace(/\/$/, "")}/:path*`,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

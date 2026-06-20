@@ -18,14 +18,17 @@ import com.unibus.api.ticketing.TicketingDtos.PaymentView;
 import com.unibus.api.ticketing.TicketingDtos.PurchaseMonthlyPassRequest;
 import com.unibus.api.ticketing.TicketingDtos.TicketView;
 import com.unibus.api.ticketing.TicketingRepository.ApprovedRegistration;
+import com.unibus.api.university.SubsidyService;
 
 @Service
 public class TicketingService {
 
     private final TicketingRepository ticketingRepository;
+    private final SubsidyService subsidyService;
 
-    public TicketingService(TicketingRepository ticketingRepository) {
+    public TicketingService(TicketingRepository ticketingRepository, SubsidyService subsidyService) {
         this.ticketingRepository = ticketingRepository;
+        this.subsidyService = subsidyService;
     }
 
     @Transactional(readOnly = true)
@@ -34,13 +37,7 @@ public class TicketingService {
         MonthlyPassQuote quote = ticketingRepository.approvedRegistration(studentCode)
                 .map(registration -> {
                     BigDecimal amount = ticketingRepository.monthlyFare(registration.routeId());
-                    return new MonthlyPassQuote(
-                            registration.routeId(),
-                            registration.routeName(),
-                            amount,
-                            BigDecimal.ZERO,
-                            amount,
-                            "NOT_CONFIGURED");
+                    return subsidyService.quoteFor(currentUser, registration.routeId(), registration.routeName(), amount);
                 })
                 .orElse(null);
         return new PassesDashboard(
@@ -62,8 +59,10 @@ public class TicketingService {
                     OffsetDateTime validFrom = now.withDayOfMonth(1).atStartOfDay().atOffset(ZoneOffset.UTC);
                     OffsetDateTime expiresAt = now.plusMonths(1).withDayOfMonth(1).atStartOfDay().atOffset(ZoneOffset.UTC);
                     BigDecimal amount = ticketingRepository.monthlyFare(registration.routeId());
-                    TicketView ticket = ticketingRepository.createMonthlyTicket(studentCode, registration, year, month, validFrom, expiresAt, amount);
-                    ticketingRepository.createPaidPayment(ticket.ticketId(), amount, method(request));
+                    MonthlyPassQuote quote = subsidyService.quoteFor(currentUser, registration.routeId(), registration.routeName(), amount, now);
+                    ensurePurchasableQuote(quote);
+                    TicketView ticket = ticketingRepository.createMonthlyTicket(studentCode, registration, year, month, validFrom, expiresAt, quote);
+                    ticketingRepository.createPaidPayment(ticket.ticketId(), quote.finalFareAmount(), method(request));
                     return ticket;
                 });
     }
@@ -82,5 +81,17 @@ public class TicketingService {
         return request == null || request.method() == null || request.method().isBlank()
                 ? "BANK_TRANSFER"
                 : request.method();
+    }
+
+    private void ensurePurchasableQuote(MonthlyPassQuote quote) {
+        if (SubsidyService.STATUS_NOT_VERIFIED.equals(quote.subsidyStatus())) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Student verification is required before buying a monthly pass");
+        }
+        if (SubsidyService.STATUS_NO_UNIVERSITY.equals(quote.subsidyStatus())) {
+            throw new ApiException(HttpStatus.CONFLICT, "Student university is not linked to a partner university yet");
+        }
+        if (SubsidyService.STATUS_ROUTE_NOT_LINKED.equals(quote.subsidyStatus())) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Route is not configured for the student's university");
+        }
     }
 }

@@ -117,6 +117,7 @@ public class NotificationRepository {
             case "all_drivers" -> Optional.of(UserRole.DRIVER);
             case "all_conductors" -> Optional.of(UserRole.CONDUCTOR);
             case "all_dispatchers" -> Optional.of(UserRole.DISPATCHER);
+            case "all_university_admins" -> Optional.of(UserRole.UNIVERSITY_ADMIN);
             case "all_admins" -> Optional.of(UserRole.ADMIN);
             default -> Optional.empty();
         };

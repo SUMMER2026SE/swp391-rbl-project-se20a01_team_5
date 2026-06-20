@@ -1,52 +1,358 @@
 @import "tailwindcss";
-@plugin "tailwindcss-animate";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ========================================================================
+   BusGO — Material 3 Expressive Design System
+   Tonal color · Large expressive shapes · Spring motion · Tonal elevation
+   ======================================================================== */
+
 @theme inline {
-  --color-brand-primary: #FAD4C0;
-  --color-brand-secondary: #80A1C1;
-  --color-brand-success: #16A34A;
-  --color-brand-warning: #D97706;
-  --color-brand-danger: #DC2626;
-  --color-brand-surface: #FFF5E6;
-  --color-brand-text: #111827;
+  --color-background: var(--m3-background);
+  --color-foreground: var(--m3-on-surface);
+  --font-sans: var(--font-roboto-flex);
+  --font-mono: var(--font-roboto-mono);
 
-  --font-sans: var(--font-inter);
-  --font-mono: var(--font-jetbrains-mono);
+  /* M3 surface roles */
+  --color-surface: var(--m3-surface);
+  --color-surface-dim: var(--m3-surface-dim);
+  --color-surface-bright: var(--m3-surface-bright);
+  --color-surface-container-lowest: var(--m3-surface-container-lowest);
+  --color-surface-container-low: var(--m3-surface-container-low);
+  --color-surface-container: var(--m3-surface-container);
+  --color-surface-container-high: var(--m3-surface-container-high);
+  --color-surface-container-highest: var(--m3-surface-container-highest);
+  --color-on-surface: var(--m3-on-surface);
+  --color-on-surface-variant: var(--m3-on-surface-variant);
+  --color-surface-variant: var(--m3-surface-variant);
+
+  /* M3 color roles */
+  --color-primary: var(--m3-primary);
+  --color-on-primary: var(--m3-on-primary);
+  --color-primary-container: var(--m3-primary-container);
+  --color-on-primary-container: var(--m3-on-primary-container);
+  --color-secondary: var(--m3-secondary);
+  --color-on-secondary: var(--m3-on-secondary);
+  --color-secondary-container: var(--m3-secondary-container);
+  --color-on-secondary-container: var(--m3-on-secondary-container);
+  --color-tertiary: var(--m3-tertiary);
+  --color-on-tertiary: var(--m3-on-tertiary);
+  --color-tertiary-container: var(--m3-tertiary-container);
+  --color-on-tertiary-container: var(--m3-on-tertiary-container);
+  --color-error: var(--m3-error);
+  --color-on-error: var(--m3-on-error);
+  --color-error-container: var(--m3-error-container);
+  --color-on-error-container: var(--m3-on-error-container);
+  --color-success: var(--m3-success);
+  --color-success-container: var(--m3-success-container);
+  --color-warning: var(--m3-warning);
+  --color-warning-container: var(--m3-warning-container);
+
+  /* Legacy compat (shadcn) */
+  --color-card: var(--m3-surface-container-low);
+  --color-card-foreground: var(--m3-on-surface);
+  --color-popover: var(--m3-surface-container);
+  --color-popover-foreground: var(--m3-on-surface);
+  --color-muted: var(--m3-surface-container);
+  --color-muted-foreground: var(--m3-on-surface-variant);
+  --color-accent: var(--m3-secondary-container);
+  --color-accent-foreground: var(--m3-on-secondary-container);
+  --color-destructive: var(--m3-error);
+  --color-secondary-foreground: var(--m3-on-secondary);
+
+  --color-outline: var(--m3-outline);
+  --color-outline-variant: var(--m3-outline-variant);
+  --color-border: var(--m3-outline-variant);
+  --color-input: var(--m3-outline-variant);
+  --color-ring: var(--m3-primary);
+
+  /* M3 shape scale (expressive — large radii) */
+  --radius-xs: 0.5rem;   /* 8px */
+  --radius-sm: 0.75rem;  /* 12px */
+  --radius-md: 1rem;     /* 16px */
+  --radius-lg: 1.5rem;   /* 24px */
+  --radius-xl: 1.75rem;  /* 28px */
+  --radius-2xl: 2rem;    /* 32px */
+  --radius-full: 9999px;
+
+  /* Chart palette — M3 tonal */
+  --color-chart-1: var(--m3-primary);
+  --color-chart-2: var(--m3-tertiary);
+  --color-chart-3: var(--m3-secondary);
+  --color-chart-4: oklch(0.72 0.16 350);
+  --color-chart-5: oklch(0.75 0.15 200);
+
+  /* Sidebar (M3 navigation drawer) */
+  --color-sidebar: var(--m3-surface-container-low);
+  --color-sidebar-foreground: var(--m3-on-surface);
+  --color-sidebar-primary: var(--m3-primary);
+  --color-sidebar-primary-foreground: var(--m3-on-primary);
+  --color-sidebar-accent: var(--m3-secondary-container);
+  --color-sidebar-accent-foreground: var(--m3-on-secondary-container);
+  --color-sidebar-border: var(--m3-outline-variant);
+  --color-sidebar-ring: var(--m3-primary);
+
+  --radius: 1rem;
 }
 
-body {
-  background-color: var(--color-brand-surface);
-  color: var(--color-brand-text);
-  font-family: var(--font-sans), sans-serif;
+:root {
+  /* ============ LIGHT SCHEME — Green seed (transit/eco) ============ */
+  --m3-background: oklch(0.992 0.003 155);
+  --m3-on-background: oklch(0.20 0.02 155);
+  --m3-surface: oklch(0.992 0.003 155);
+  --m3-surface-dim: oklch(0.92 0.006 155);
+  --m3-surface-bright: oklch(0.995 0.003 155);
+  --m3-surface-container-lowest: oklch(1 0 0);
+  --m3-surface-container-low: oklch(0.978 0.004 155);
+  --m3-surface-container: oklch(0.962 0.005 155);
+  --m3-surface-container-high: oklch(0.94 0.006 155);
+  --m3-surface-container-highest: oklch(0.915 0.007 155);
+  --m3-on-surface: oklch(0.20 0.02 155);
+  --m3-on-surface-variant: oklch(0.38 0.02 155);
+  --m3-surface-variant: oklch(0.92 0.01 155);
+
+  /* Primary — vibrant green (M3 Expressive pushes saturation) */
+  --m3-primary: oklch(0.56 0.14 156);
+  --m3-on-primary: oklch(1 0 0);
+  --m3-primary-container: oklch(0.90 0.07 156);
+  --m3-on-primary-container: oklch(0.22 0.05 156);
+
+  /* Secondary — teal */
+  --m3-secondary: oklch(0.55 0.05 178);
+  --m3-on-secondary: oklch(1 0 0);
+  --m3-secondary-container: oklch(0.90 0.03 178);
+  --m3-on-secondary-container: oklch(0.22 0.03 178);
+
+  /* Tertiary — warm amber (expressive accent) */
+  --m3-tertiary: oklch(0.74 0.14 68);
+  --m3-on-tertiary: oklch(1 0 0);
+  --m3-tertiary-container: oklch(0.93 0.06 75);
+  --m3-on-tertiary-container: oklch(0.30 0.06 70);
+
+  /* Error */
+  --m3-error: oklch(0.60 0.22 25);
+  --m3-on-error: oklch(1 0 0);
+  --m3-error-container: oklch(0.93 0.06 25);
+  --m3-on-error-container: oklch(0.27 0.08 25);
+
+  /* Success / Warning (M3-style extras) */
+  --m3-success: oklch(0.62 0.15 150);
+  --m3-success-container: oklch(0.91 0.07 150);
+  --m3-warning: oklch(0.75 0.15 70);
+  --m3-warning-container: oklch(0.93 0.07 75);
+
+  /* Outline */
+  --m3-outline: oklch(0.58 0.015 155);
+  --m3-outline-variant: oklch(0.82 0.012 155);
+
+  /* M3 motion easings */
+  --ease-emphasis-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasis-decelerated: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --ease-emphasis-accelerated: cubic-bezier(0.3, 0, 0.8, 0.15);
 }
 
-/* Custom Scrollbar cho Bento */
-.custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
-}
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: #cbd5e1;
-  border-radius: 6px;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background-color: #94a3b8;
+.dark {
+  /* ============ DARK SCHEME ============ */
+  --m3-background: oklch(0.16 0.012 155);
+  --m3-on-background: oklch(0.95 0.005 155);
+  --m3-surface: oklch(0.16 0.012 155);
+  --m3-surface-dim: oklch(0.14 0.012 155);
+  --m3-surface-bright: oklch(0.22 0.014 155);
+  --m3-surface-container-lowest: oklch(0.12 0.01 155);
+  --m3-surface-container-low: oklch(0.19 0.013 155);
+  --m3-surface-container: oklch(0.22 0.014 155);
+  --m3-surface-container-high: oklch(0.26 0.015 155);
+  --m3-surface-container-highest: oklch(0.30 0.016 155);
+  --m3-on-surface: oklch(0.95 0.005 155);
+  --m3-on-surface-variant: oklch(0.82 0.012 155);
+  --m3-surface-variant: oklch(0.30 0.016 155);
+
+  --m3-primary: oklch(0.80 0.11 156);
+  --m3-on-primary: oklch(0.22 0.05 156);
+  --m3-primary-container: oklch(0.40 0.10 156);
+  --m3-on-primary-container: oklch(0.92 0.06 156);
+
+  --m3-secondary: oklch(0.82 0.04 178);
+  --m3-on-secondary: oklch(0.20 0.03 178);
+  --m3-secondary-container: oklch(0.36 0.04 178);
+  --m3-on-secondary-container: oklch(0.92 0.03 178);
+
+  --m3-tertiary: oklch(0.85 0.10 72);
+  --m3-on-tertiary: oklch(0.28 0.06 70);
+  --m3-tertiary-container: oklch(0.45 0.09 72);
+  --m3-on-tertiary-container: oklch(0.94 0.05 75);
+
+  --m3-error: oklch(0.85 0.13 25);
+  --m3-on-error: oklch(0.27 0.08 25);
+  --m3-error-container: oklch(0.48 0.12 25);
+  --m3-on-error-container: oklch(0.93 0.05 25);
+
+  --m3-success: oklch(0.80 0.12 150);
+  --m3-success-container: oklch(0.35 0.09 150);
+  --m3-warning: oklch(0.85 0.11 72);
+  --m3-warning-container: oklch(0.40 0.09 72);
+
+  --m3-outline: oklch(0.72 0.012 155);
+  --m3-outline-variant: oklch(0.40 0.014 155);
 }
 
-/* Messenger style scrollbar */
-.messenger-scrollbar::-webkit-scrollbar {
-  width: 14px;
+@layer base {
+  * {
+    @apply border-border;
+    outline-color: var(--m3-primary);
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply text-foreground;
+    background-color: var(--m3-background);
+    font-family: var(--font-roboto-flex), system-ui, sans-serif;
+    font-feature-settings: "cv01", "cv02", "ss01";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  /* M3 Expressive type ramp */
+  h1, h2, h3 { letter-spacing: -0.015em; }
 }
-.messenger-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
+
+/* ========================================================================
+   PERK-INSPIRED THEME — scoped to data-role-theme="student" only
+   Reference: perk.com palette
+   - Off-black #14140f, off-white #f5f5eb, perk green #beff50, blue #144fcc
+   - Cream #fff7e5, light-blue tint #f0f4ff, playful multicolor accents
+   - Keeps M3 Expressive structure but swaps the tonal palette to perk's
+   ======================================================================== */
+[data-role-theme="student"] {
+  /* Background & surfaces — warm off-white base instead of cool cream */
+  --m3-background: oklch(0.985 0.008 95);
+  --m3-surface: oklch(0.985 0.008 95);
+  --m3-surface-dim: oklch(0.94 0.01 95);
+  --m3-surface-bright: oklch(0.99 0.006 95);
+  --m3-surface-container-lowest: oklch(1 0 0);
+  --m3-surface-container-low: oklch(0.975 0.008 95);
+  --m3-surface-container: oklch(0.96 0.01 95);
+  --m3-surface-container-high: oklch(0.94 0.012 95);
+  --m3-surface-container-highest: oklch(0.915 0.014 95);
+  --m3-on-surface: oklch(0.22 0.005 95);
+  --m3-on-surface-variant: oklch(0.42 0.008 95);
+  --m3-surface-variant: oklch(0.92 0.01 95);
+
+  /* Primary — perk green #beff50 (vibrant lime, NOT desaturated) */
+  --m3-primary: #beff50;
+  --m3-on-primary: #14140f;
+  /* primary-container = bold off-black (was pale #e8ffa3) — used for icon chips */
+  --m3-primary-container: #14140f;
+  --m3-on-primary-container: #beff50;
+
+  /* Secondary — perk blue #144fcc */
+  --m3-secondary: #144fcc;
+  --m3-on-secondary: #ffffff;
+  --m3-secondary-container: #144fcc;
+  --m3-on-secondary-container: #ffffff;
+
+  /* Tertiary — coral #ff8c5f */
+  --m3-tertiary: #ff8c5f;
+  --m3-on-tertiary: #14140f;
+  --m3-tertiary-container: #ff8c5f;
+  --m3-on-tertiary-container: #14140f;
+
+  /* Error / success / warning — bold, not pale */
+  --m3-error: #dc2626;
+  --m3-on-error: #ffffff;
+  --m3-error-container: #dc2626;
+  --m3-on-error-container: #ffffff;
+  --m3-success: #16a34a;
+  --m3-success-container: #16a34a;
+  --m3-warning: #f59e0b;
+  --m3-warning-container: #f59e0b;
+
+  /* Outline — warm gray */
+  --m3-outline: oklch(0.55 0.008 95);
+  --m3-outline-variant: oklch(0.84 0.01 95);
+
+  /* Sidebar tinted to match */
+  --m3-sidebar: oklch(0.975 0.008 95);
+  --m3-sidebar-foreground: oklch(0.22 0.005 95);
 }
-.messenger-scrollbar::-webkit-scrollbar-thumb {
-  background-color: rgba(0, 0, 0, 0.15);
-  border-radius: 10px;
-  border: 4px solid #ffffff;
-  background-clip: padding-box;
-}
-.messenger-scrollbar::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(0, 0, 0, 0.25);
+
+/* Aurora bg uses the new primary-container (auto via var) — no override needed */
+/* Playful accent utilities — perk multicolor (coral/sky/pink/purple) for chips/badges */
+[data-role-theme="student"] .perk-coral { background-color: oklch(0.78 0.14 45); color: oklch(0.25 0.04 45); }
+[data-role-theme="student"] .perk-sky { background-color: oklch(0.85 0.10 220); color: oklch(0.25 0.05 220); }
+[data-role-theme="student"] .perk-pink { background-color: oklch(0.85 0.10 350); color: oklch(0.28 0.06 350); }
+[data-role-theme="student"] .perk-purple { background-color: oklch(0.78 0.12 300); color: oklch(0.25 0.05 300); }
+[data-role-theme="student"] .perk-cream { background-color: oklch(0.96 0.03 85); color: oklch(0.30 0.05 85); }
+
+@layer utilities {
+  /* M3 state layer — applies on top of any element */
+  .state-layer {
+    position: relative;
+    isolation: isolate;
+  }
+  .state-layer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: currentColor;
+    opacity: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    transition: opacity 0.18s var(--ease-emphasis-standard);
+    z-index: 0;
+  }
+  .state-layer:hover::after { opacity: 0.08; }
+  .state-layer:focus-visible::after { opacity: 0.10; }
+  .state-layer:active::after { opacity: 0.12; }
+
+  /* M3 elevation — NO shadows, use tonal surface containers only */
+  .elev-1 { box-shadow: none; }
+  .elev-2 { box-shadow: none; }
+  .elev-3 { box-shadow: none; }
+  .dark .elev-1 { box-shadow: none; }
+  .dark .elev-2 { box-shadow: none; }
+  .dark .elev-3 { box-shadow: none; }
+
+  /* GSAP-style soft scrollbar */
+  .scrollbar-soft::-webkit-scrollbar { width: 8px; height: 8px; }
+  .scrollbar-soft::-webkit-scrollbar-track { background: transparent; }
+  .scrollbar-soft::-webkit-scrollbar-thumb {
+    background: var(--m3-outline-variant);
+    border-radius: var(--radius-full);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  .scrollbar-soft::-webkit-scrollbar-thumb:hover { background: var(--m3-outline); background-clip: padding-box; border: 2px solid transparent; }
+
+  .text-balance { text-wrap: balance; }
+  .text-pretty { text-wrap: pretty; }
+
+  /* M3 Expressive aurora/gradient backdrops */
+  .bg-aurora-m3 {
+    background-image:
+      radial-gradient(at 18% 22%, color-mix(in oklch, var(--m3-primary-container) 70%, transparent) 0px, transparent 55%),
+      radial-gradient(at 82% 8%, color-mix(in oklch, var(--m3-tertiary-container) 60%, transparent) 0px, transparent 50%),
+      radial-gradient(at 12% 88%, color-mix(in oklch, var(--m3-secondary-container) 55%, transparent) 0px, transparent 55%),
+      radial-gradient(at 78% 92%, color-mix(in oklch, var(--m3-primary-container) 45%, transparent) 0px, transparent 50%);
+  }
+
+  /* Glassy M3 surface */
+  .glass-m3 {
+    backdrop-filter: blur(20px) saturate(160%);
+    background: color-mix(in oklch, var(--m3-surface) 75%, transparent);
+  }
+
+  /* GSAP-style clip reveal helpers */
+  .clip-reveal { clip-path: inset(0 0 100% 0); }
+  .clip-reveal-x { clip-path: inset(0 100% 0 0); }
+
+  /* Subtle grid texture for map canvases */
+  .grid-texture {
+    background-image:
+      linear-gradient(color-mix(in oklch, var(--m3-outline-variant) 30%, transparent) 1px, transparent 1px),
+      linear-gradient(90deg, color-mix(in oklch, var(--m3-outline-variant) 30%, transparent) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
 }

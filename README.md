@@ -32,6 +32,8 @@ project-root/
 - Transport lookup: list active stops, search valid routes between two ordered stops, retrieve ETA for running trips.
 - Route registration: register, view current registration, change route, update default stops on the same route, and cancel when no active monthly pass locks the route.
 - Student ticketing: purchase monthly passes, render real QR codes, view payments and invoices.
+- University subsidy Core MVP: map verified students to universities, restrict student route discovery to linked routes, calculate monthly-pass subsidy breakdowns, and persist invoice/pass original-subsidy-final amounts.
+- University linkage MVP: admin/university-admin management, university domains, roster CSV/XLSX import, route-university assignment, subsidy policies, scoped stats/reconciliation, audit logging, and student "Trường của tôi" linkage state.
 - Conductor validation: scan ticket QR codes against trip date, route, status, and QR value.
 - Travel history: retrieve paginated recent trips for the authenticated student.
 
@@ -51,9 +53,11 @@ Important business rules:
 - While a student has an active monthly pass, the backend blocks changing to a different route and blocks route cancellation.
 - During an active pass period, the student may update default stops only when the route stays the same.
 - Conductor scan validation remains route/trip/date/status/QR based; it does not reject a valid route pass because the passenger boards at a different stop pair.
-- University, campus, and subsidy linking are future scope. The UI reserves a truthful `Trường & trợ giá` area and shows `Chưa cấu hình` instead of inventing subsidy amounts.
+- Verified students mapped to a university only see and register routes linked through `route_universities`.
+- Subsidies are calculated from `subsidy_policies` and stored on monthly passes and invoices as original amount, subsidy amount, and final amount.
+- University admin, roster import, campus/domain management, route assignment, subsidy policy, and audit screens are part of the V9 MVP. Runtime UI must use backend data or explicit empty/error/unavailable states, never frontend mock records.
 
-Current payment behavior is an internal database confirmation, not a card, wallet, cash, or external gateway flow. `POST /students/me/tickets/monthly-pass` creates or reuses the monthly pass for the current route/month, records a paid payment, creates an invoice, and returns data used to render the real QR code.
+Current payment behavior is an internal database confirmation, not a card, wallet, cash, or external gateway flow. `POST /students/me/tickets/monthly-pass` creates or reuses the monthly pass for the current route/month, applies the eligible subsidy breakdown, records a paid payment, creates an invoice, and returns data used to render the real QR code.
 
 ## Database
 
@@ -61,7 +65,19 @@ The shared AWS PostgreSQL database was already provisioned before this implement
 Flyway baselines that existing schema at version `1` and applies:
 
 - `V2__add_verification_codes.sql`: stores hashed OTP challenges for registration and password reset.
-- Later migrations add student verification/OAuth support and demo-flow ticket scan/live-fleet columns. The monthly-pass, payment, and invoice tables remain part of the existing schema; no university-linking schema is added in this iteration.
+- Later migrations add student verification/OAuth support and demo-flow ticket scan/live-fleet columns.
+- `V8__university_subsidy_foundation.sql`: adds `universities`, `campuses`, `route_universities`, `subsidy_policies`, university links on students/verifications, and subsidy breakdown columns on `monthly_passes` and `invoices`.
+- `V9__university_linkage_mvp.sql`: adds role `UNIVERSITY_ADMIN`, university domains/admins, student rosters, import batches/errors, audit trace fields, and the University Linkage MVP API schema.
+- `V10__align_university_linkage_schema.sql`: idempotently aligns databases that applied the early V9 university-admin/roster/domains draft with the final V9 schema contract.
+
+Demo/QA seeds are intentionally separate from production migrations:
+
+- `database/SeedStudentVerificationTestData.sql`: idempotent auth, role, route, trip, ticket, fleet, and student verification data.
+- `database/SeedUniversitySubsidyDemo.sql`: idempotently links the Iteration 1 demo student, route, university, campus, and 50% subsidy policy.
+- `database/SeedUiV11MvpDemo.sql`: idempotently adds UI v1.1 QA data for university admin, domains, roster import/errors, notifications, feedback, and audit logs.
+- `database/SeedKhanhStudentUiTestData.sql`: optional account-specific QA data for `khanhnv20a02@gmail.com`, including linked route, active monthly pass QR, invoice, history, notifications, roster, and feedback.
+- `database/rollback/V8__rollback_university_subsidy_foundation.sql`: manual rollback script for the additive V8 schema if the environment needs to back out the MVP foundation.
+- `database/rollback/V9__rollback_university_linkage_mvp.sql`: manual rollback script for the additive V9 schema.
 
 On May 24, 2026, the shared AWS PostgreSQL database was migrated to version `2`; Flyway created
 `flyway_schema_history` and the application table `verification_codes`.
@@ -147,6 +163,8 @@ All endpoints use the `/api/v1` prefix. Protected endpoints require
 | POST | `/conductor/tickets/scan` | Validate a QR against trip route/date/status |
 | GET | `/students/me/travel-history?page=0&size=20` | View recent travel history |
 
+For the `STUDENT` role, route and stop lookup is scoped to the student's verified linked university. If a student is not verified, has no university mapping, or the university has no active route links, the API returns no selectable student routes instead of falling back to global route data.
+
 Route registration is currently auto-approved to match the Iteration 1 requirement that the
 system confirms a student's selection. It can be changed to dispatcher approval later by
 switching new registrations to `PENDING`.
@@ -184,5 +202,5 @@ Manual browser QA for the student flow should cover `/student`, `/student/passes
 
 - No route registration: dashboard and hub show the next action, with no blank QR placeholder.
 - Route registered but no monthly pass: hub shows payment-ready state, only `Chuyển khoản / xác nhận hệ thống`, and no fake QR.
-- Active monthly pass: hub and dashboard render a real QR from `monthly_passes.qr_code`, invoices come from DB-backed payment data, and route switching is blocked while same-route default-stop updates remain possible.
+- Active monthly pass: hub and dashboard render a real QR from `monthly_passes.qr_code`, invoices show DB-backed original-subsidy-final breakdowns, and route switching is blocked while same-route default-stop updates remain possible.
 - Active pass missing QR data: UI shows an explicit missing-QR state and reload CTA instead of an empty QR frame.
