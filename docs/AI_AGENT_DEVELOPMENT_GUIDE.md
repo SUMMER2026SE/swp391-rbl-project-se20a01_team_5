@@ -10,7 +10,7 @@ This guide is for teammates using Codex, Cursor, Claude, or another AI agent to 
 - Backend source of truth: Spring Boot APIs under `backend/src/main/java/com/unibus`.
 - Database source of truth: Flyway migrations under `backend/src/main/resources/db/migration` plus the snapshot `database/DBSchema.sql`.
 
-Do not copy the prototype app wholesale into the project. Port its visual composition screen by screen, then bind it to the real API client.
+Do not copy the prototype app wholesale into the project. Port its visual composition screen by screen, then bind it to the real API client. Do not redesign from taste: if a screen exists in the prototype, compare against it first.
 
 ## Current Stack
 
@@ -27,17 +27,15 @@ Frontend:
 - Tailwind CSS 4
 - shadcn/Radix primitives already present in UI v1.1
 - `framer-motion` for screen and component motion
-- `lucide-react`, `sonner`, `qrcode.react`, `leaflet`
+- `lucide-react`, `sonner`, `qrcode.react`, `leaflet`, `recharts`
 
 Retired or intentionally avoided:
 
-- `@material/web`
-- `@material/material-color-utilities`
-- `material-symbols`
+- Google Material Web runtime packages
+- Material Symbols runtime package
 - `motion` / `motion/react`
 - `axios`
 - `qr-scanner`
-- `recharts`
 - Prisma, NextAuth, Zustand, TanStack Query
 - Frontend mock data, demo login shortcuts, local role switchers
 
@@ -62,11 +60,14 @@ Run these manually in a development database after migrations:
 1. `database/SeedStudentVerificationTestData.sql`
 2. `database/SeedUniversitySubsidyDemo.sql`
 3. `database/SeedUiV11MvpDemo.sql`
+4. `database/SeedKhanhStudentUiTestData.sql`
+5. `database/SeedPrototypeFidelityDemo.sql`
 
 Password for seeded password accounts: `Password123!`.
 
 Useful accounts:
 
+- `khanhnv20a02@gmail.com`
 - `student.verified@unibus.local`
 - `driver.iter1@unibus.local`
 - `conductor.iter1@unibus.local`
@@ -94,18 +95,16 @@ git diff --no-index .codex-tmp\ui-v1.1\src\components\bus\roles\student-module.t
 5. Keep deep links and existing Next app routing. Do not convert the app back to prototype-only `activeId` navigation.
 6. If backend data is missing, render an empty or unavailable state.
 
-## Known Visual Fidelity Gap
+## Current Prototype Fidelity Layer
 
-The student home dashboard is currently thinner than `UIPrototype_v1.1.tar`. During productionization, it was rewritten around real API blocks and lost prototype sections such as:
+The current branch has restored the main v1.1 dashboard composition for Student, Driver, Assistant, Coordinator, and Admin while keeping real auth/session and real API data. Continue in this direction:
 
-- expressive greeting hero
-- quick action strip
-- rich current-trip card
-- ETA/map composition
-- QR expansion overlay
-- tabbed student panels
+- keep role home screens rich, with hero panels, quick actions, route/status cards, charts, and live sections where the prototype has them;
+- add thin backend endpoints or database seed data when a visual block needs richer information;
+- render unavailable states only when the backend is intentionally deferred;
+- never solve visual emptiness by adding frontend fixtures.
 
-To fix this, port the prototype dashboard shell and bind it to real profile, notification, route registration, ticket, route/search, ETA, and history APIs. Do not reintroduce `mock-data.ts`.
+University Admin is connected to the University MVP APIs. If a subsection still feels lighter than the prototype, enrich the response DTO or seed data first, then adjust the component.
 
 ## Verification Commands
 
@@ -127,13 +126,13 @@ mvn -q test
 Retired dependency/import scan:
 
 ```powershell
-rg "@material|material-symbols|motion/react|from `"motion|axios|qr-scanner|recharts|materialTheme" frontend/src frontend/package.json frontend/package-lock.json
+rg "materialTheme|motion/react|from `"motion|axios|qr-scanner" frontend/src frontend/package.json frontend/package-lock.json
 ```
 
 Mock/runtime shortcut scan:
 
 ```powershell
-rg "mock-data|services/mocks|NEXT_PUBLIC_USE_MOCK|Demo nhanh|demo1234" frontend/src
+rg "mock-data|services/mocks|NEXT_PUBLIC_USE_MOCK|Demo nhanh|demo1234" frontend/src frontend/package.json frontend/package-lock.json frontend/Dockerfile frontend/.env.example
 ```
 
 ## Agent Safety Checklist
