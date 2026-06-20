@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, BadgeCheck, History, MessageSquare, PackageSearch, QrCode, Route } from "lucide-react";
+import { AlertTriangle, BadgeCheck, Camera, History, MessageSquare, PackageSearch, QrCode, Route } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader, Section, StatCard } from "@/components/bus/primitives";
 import { AsyncBlock, DataList, StatusPill, UnavailablePanel, formatDateTime, getErrorMessage, useApiResource } from "@/components/bus/real-data";
 import { ExpressiveButton, ExpressiveCard } from "@/components/m3/primitives";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { QrScannerModal } from "@/components/bus/qr-scanner-modal";
 import {
   experienceApi,
   operationsApi,
@@ -39,6 +40,8 @@ function ConductorWorkspace({ mode }: { mode: string }) {
   const [ticketsLoading, setTicketsLoading] = useState(false);
   const [qrCode, setQrCode] = useState("");
   const [scanResult, setScanResult] = useState<TicketScanResult | null>(null);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [isCheckingTicket, setIsCheckingTicket] = useState(false);
 
   const trips = useMemo(() => tripsResource.data || [], [tripsResource.data]);
   const normalizedSelectedTripId = useMemo(() => {
@@ -88,6 +91,28 @@ function ConductorWorkspace({ mode }: { mode: string }) {
     }
   };
 
+  const handleCameraScan = async (scannedCode: string) => {
+    if (!selectedTrip?.tripId) {
+      toast.error("Vui lòng chọn chuyến trước khi quét");
+      setScannerOpen(false);
+      return;
+    }
+    if (isCheckingTicket) return;
+    
+    setIsCheckingTicket(true);
+    try {
+      const result = await operationsApi.scanTicket(selectedTrip.tripId, scannedCode.trim());
+      setScanResult(result);
+      toast[result.valid ? "success" : "error"](result.message || (result.valid ? "Vé hợp lệ" : "Vé không hợp lệ"));
+      loadTickets(selectedTrip.tripId);
+      // Keep camera open for continuous scanning, user will close manually
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Không thể quét vé"));
+    } finally {
+      setIsCheckingTicket(false);
+    }
+  };
+
   const title =
     mode === "ast-scan" ? "Quét QR vé"
     : mode === "ast-monthly" ? "Kiểm tra vé tháng"
@@ -126,11 +151,30 @@ function ConductorWorkspace({ mode }: { mode: string }) {
                 </select>
               </div>
               <div className="space-y-2">
-                <Label>QR code</Label>
-                <Input value={qrCode} onChange={(e) => setQrCode(e.target.value)} placeholder="Dán mã QR từ vé sinh viên" />
+                <Label>Quét vé bằng Camera</Label>
+                <ExpressiveButton 
+                  onClick={() => setScannerOpen(true)} 
+                  className="w-full justify-center bg-[#beff50] text-[#14140f] hover:bg-[#a6e639] h-12 text-base font-bold"
+                >
+                  <Camera className="size-5 mr-1" />
+                  Mở Camera Quét QR
+                </ExpressiveButton>
               </div>
-              <ExpressiveButton onClick={scan}><QrCode className="size-4" /> Quét vé</ExpressiveButton>
+              <div className="space-y-2">
+                <Label className="sr-only">Nhập tay</Label>
+                <div className="flex gap-2">
+                  <Input value={qrCode} onChange={(e) => setQrCode(e.target.value)} placeholder="Hoặc nhập mã tay..." className="h-12" />
+                  <ExpressiveButton onClick={scan} className="h-12 w-12 shrink-0 p-0"><QrCode className="size-5" /></ExpressiveButton>
+                </div>
+              </div>
             </ExpressiveCard>
+
+            <QrScannerModal
+              open={scannerOpen}
+              onOpenChange={setScannerOpen}
+              onScan={handleCameraScan}
+              isLoading={isCheckingTicket}
+            />
 
             {scanResult && (
               <ExpressiveCard variant="elevated" className="p-4">
