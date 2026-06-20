@@ -33,6 +33,7 @@ project-root/
 - Route registration: register, view current registration, change route, update default stops on the same route, and cancel when no active monthly pass locks the route.
 - Student ticketing: purchase monthly passes, render real QR codes, view payments and invoices.
 - University subsidy Core MVP: map verified students to universities, restrict student route discovery to linked routes, calculate monthly-pass subsidy breakdowns, and persist invoice/pass original-subsidy-final amounts.
+- University linkage MVP: admin/university-admin management, university domains, roster CSV/XLSX import, route-university assignment, subsidy policies, scoped stats/reconciliation, audit logging, and student "Trường của tôi" linkage state.
 - Conductor validation: scan ticket QR codes against trip date, route, status, and QR value.
 - Travel history: retrieve paginated recent trips for the authenticated student.
 
@@ -54,7 +55,7 @@ Important business rules:
 - Conductor scan validation remains route/trip/date/status/QR based; it does not reject a valid route pass because the passenger boards at a different stop pair.
 - Verified students mapped to a university only see and register routes linked through `route_universities`.
 - Subsidies are calculated from `subsidy_policies` and stored on monthly passes and invoices as original amount, subsidy amount, and final amount.
-- University admin, roster import, and campus management UI are future scope; the current MVP keeps those as database-backed foundations without fake UI.
+- University admin, roster import, campus/domain management, route assignment, subsidy policy, and audit screens are part of the V9 MVP. Runtime UI must use backend data or explicit empty/error/unavailable states, never frontend mock records.
 
 Current payment behavior is an internal database confirmation, not a card, wallet, cash, or external gateway flow. `POST /students/me/tickets/monthly-pass` creates or reuses the monthly pass for the current route/month, applies the eligible subsidy breakdown, records a paid payment, creates an invoice, and returns data used to render the real QR code.
 
@@ -66,11 +67,17 @@ Flyway baselines that existing schema at version `1` and applies:
 - `V2__add_verification_codes.sql`: stores hashed OTP challenges for registration and password reset.
 - Later migrations add student verification/OAuth support and demo-flow ticket scan/live-fleet columns.
 - `V8__university_subsidy_foundation.sql`: adds `universities`, `campuses`, `route_universities`, `subsidy_policies`, university links on students/verifications, and subsidy breakdown columns on `monthly_passes` and `invoices`.
+- `V9__university_linkage_mvp.sql`: adds role `UNIVERSITY_ADMIN`, university domains/admins, student rosters, import batches/errors, audit trace fields, and the University Linkage MVP API schema.
+- `V10__align_university_linkage_schema.sql`: idempotently aligns databases that applied the early V9 university-admin/roster/domains draft with the final V9 schema contract.
 
-The university subsidy demo seed is intentionally separate from production migrations:
+Demo/QA seeds are intentionally separate from production migrations:
 
+- `database/SeedStudentVerificationTestData.sql`: idempotent auth, role, route, trip, ticket, fleet, and student verification data.
 - `database/SeedUniversitySubsidyDemo.sql`: idempotently links the Iteration 1 demo student, route, university, campus, and 50% subsidy policy.
+- `database/SeedUiV11MvpDemo.sql`: idempotently adds UI v1.1 QA data for university admin, domains, roster import/errors, notifications, feedback, and audit logs.
+- `database/SeedKhanhStudentUiTestData.sql`: optional account-specific QA data for `khanhnv20a02@gmail.com`, including linked route, active monthly pass QR, invoice, history, notifications, roster, and feedback.
 - `database/rollback/V8__rollback_university_subsidy_foundation.sql`: manual rollback script for the additive V8 schema if the environment needs to back out the MVP foundation.
+- `database/rollback/V9__rollback_university_linkage_mvp.sql`: manual rollback script for the additive V9 schema.
 
 On May 24, 2026, the shared AWS PostgreSQL database was migrated to version `2`; Flyway created
 `flyway_schema_history` and the application table `verification_codes`.

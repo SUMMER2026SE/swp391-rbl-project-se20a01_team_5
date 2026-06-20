@@ -12,6 +12,7 @@ backend/backend-run*.log
 backend/uploads/
 frontend/frontend-run*.log
 .codex-tmp/
+frontend/UIPrototype_v1.1.tar
 .understand-anything/intermediate/
 .understand-anything/tmp/
 .understand-anything/diff-overlay.json
