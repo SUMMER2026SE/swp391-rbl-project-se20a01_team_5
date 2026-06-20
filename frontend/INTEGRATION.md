@@ -48,6 +48,7 @@ Run these manually in a development database when the team needs full UI coverag
 1. `database/SeedStudentVerificationTestData.sql`
 2. `database/SeedUniversitySubsidyDemo.sql`
 3. `database/SeedUiV11MvpDemo.sql`
+4. Optional account-specific QA: `database/SeedKhanhStudentUiTestData.sql` for `khanhnv20a02@gmail.com`
 
 Seed password for password-based accounts is `Password123!`. Useful accounts include `student.verified@unibus.local`, `driver.iter1@unibus.local`, `conductor.iter1@unibus.local`, `dispatcher.iter1@unibus.local`, `admin.verify@unibus.local`, and `uni.admin@unibus.local`.
 

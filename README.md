@@ -75,6 +75,7 @@ Demo/QA seeds are intentionally separate from production migrations:
 - `database/SeedStudentVerificationTestData.sql`: idempotent auth, role, route, trip, ticket, fleet, and student verification data.
 - `database/SeedUniversitySubsidyDemo.sql`: idempotently links the Iteration 1 demo student, route, university, campus, and 50% subsidy policy.
 - `database/SeedUiV11MvpDemo.sql`: idempotently adds UI v1.1 QA data for university admin, domains, roster import/errors, notifications, feedback, and audit logs.
+- `database/SeedKhanhStudentUiTestData.sql`: optional account-specific QA data for `khanhnv20a02@gmail.com`, including linked route, active monthly pass QR, invoice, history, notifications, roster, and feedback.
 - `database/rollback/V8__rollback_university_subsidy_foundation.sql`: manual rollback script for the additive V8 schema if the environment needs to back out the MVP foundation.
 - `database/rollback/V9__rollback_university_linkage_mvp.sql`: manual rollback script for the additive V9 schema.
 
