@@ -20,3 +20,4 @@ frontend/UIPrototype_v1.1.tar
 # IDE settings
 .idea/
 *.iml
+.vscode/
