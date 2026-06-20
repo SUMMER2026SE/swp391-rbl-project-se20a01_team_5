@@ -394,9 +394,18 @@ export interface NotificationView {
   createdAt?: string;
 }
 
+type CountResponse = number | { count?: number | string };
+
+function normalizeCount(value: CountResponse | null | undefined) {
+  if (typeof value === "number") return value;
+  if (typeof value?.count === "number") return value.count;
+  if (typeof value?.count === "string") return Number(value.count) || 0;
+  return 0;
+}
+
 export const notificationApi = {
   mine: () => apiFetch.get<NotificationView[]>("/notifications/me"),
-  unreadCount: () => apiFetch.get<number>("/notifications/me/unread-count"),
+  unreadCount: async () => normalizeCount(await apiFetch.get<CountResponse>("/notifications/me/unread-count")),
   markRead: (notificationId: number) => apiFetch.post<void>(`/notifications/${notificationId}/read`),
   create: (data: { title: string; content: string; target?: string }) => apiFetch.post<NotificationView>("/notifications", data),
 };

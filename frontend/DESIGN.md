@@ -2,13 +2,15 @@
 
 UniBus uses the UIPrototype v1.1 visual direction as the product UI: Material 3 Expressive-inspired surfaces, bold lime/ink contrast, rounded panels, spring motion, dense-but-touchable operational dashboards, and mobile-first navigation.
 
+The runtime implementation is a custom Next.js/Tailwind layer using shadcn/Radix primitives and `framer-motion`. It does not depend on `@material/web`, `@material/material-color-utilities`, `material-symbols`, or `motion/react`.
+
 ## Visual Language
 
 - Primary contrast: ink `#14140f` with lime `#beff50`.
 - Supporting accents: blue `#144fcc`, coral `#ff8c5f`, soft violet `#c8a0ff`.
 - Surfaces use Material-style tokens from `globals.css`: background, surface containers, outline, primary, secondary, tertiary, error.
 - Cards use rounded `1rem-1.5rem` corners, clear elevation, and no nested decorative card stacks.
-- Icons come from lucide/shadcn UI currently; Material Symbols can be layered in later where the prototype calls for Android-like icon rhythm.
+- Icons come from lucide/shadcn UI currently. Do not add Material Symbols unless a specific screen is being ported and the icon set is actually imported by runtime code.
 
 ## Motion
 
@@ -44,6 +46,12 @@ Do not add generated records, sample counts, local sample users, local role swit
 - Coordinator: schedules, live fleet, feedback, notifications.
 - Admin: users, student verification review, university management, university admins, route-university assignment, subsidy policies, audit logs, feedback, notifications.
 - University Admin: scoped profile, campus/domain management, roster import, subsidy policies, stats, reconciliation, notifications.
+
+## Prototype Fidelity Notes
+
+`frontend/UIPrototype_v1.1.tar` remains the visual source of truth. Current production screens were connected to real APIs first, so a few screens are thinner than the prototype. The biggest known gap is the student home dashboard: the prototype has the expressive greeting hero, quick actions, route/ETA composition, QR overlay, and tabbed panels; the current runtime dashboard renders a compact API dashboard instead.
+
+When restoring fidelity, port the prototype's visual composition into the current components and replace its `mock-data` selectors with calls from `frontend/src/lib/api/client.ts`. Do not copy prototype mock data, local role state, Prisma, NextAuth, or alternate routing architecture into this app.
 
 ## Accessibility And UX Rules
 
