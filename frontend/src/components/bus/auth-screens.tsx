@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Script from "next/script";
+import Link from "next/link";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import {
   Bus,
@@ -141,10 +142,10 @@ export function AuthScreens({
       {/* Top nav */}
       <header className="sticky top-0 z-30 glass-m3 border-b border-outline-variant/40">
         <div className="mx-auto max-w-7xl flex items-center justify-between px-4 sm:px-6 h-16">
-          <a href="/" className="flex items-center gap-2.5">
+          <Link href="/" className="flex items-center gap-2.5">
             <img src="/logo.png" alt="UniBus Logo" className="h-10 w-auto object-contain shrink-0" />
             <span className="text-lg font-bold tracking-tight">UniBus</span>
-          </a>
+          </Link>
           <nav className="hidden md:flex items-center gap-1">
             {["Tính năng", "Trường đối tác", "Bảng giá"].map((l) => (
               <button key={l} type="button" disabled className="h-9 px-4 rounded-full text-sm font-medium text-on-surface-variant/50 cursor-not-allowed">
