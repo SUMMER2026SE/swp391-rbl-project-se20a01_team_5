@@ -68,6 +68,7 @@ Flyway baselines that existing schema at version `1` and applies:
 - Later migrations add student verification/OAuth support and demo-flow ticket scan/live-fleet columns.
 - `V8__university_subsidy_foundation.sql`: adds `universities`, `campuses`, `route_universities`, `subsidy_policies`, university links on students/verifications, and subsidy breakdown columns on `monthly_passes` and `invoices`.
 - `V9__university_linkage_mvp.sql`: adds role `UNIVERSITY_ADMIN`, university domains/admins, student rosters, import batches/errors, audit trace fields, and the University Linkage MVP API schema.
+- `V10__align_university_linkage_schema.sql`: idempotently aligns databases that applied the early V9 university-admin/roster/domains draft with the final V9 schema contract.
 
 Demo/QA seeds are intentionally separate from production migrations:
 
