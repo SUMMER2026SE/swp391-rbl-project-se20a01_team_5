@@ -49,6 +49,10 @@ function formatTime(value) {
   }).format(new Date(value));
 }
 
+function isSosMessage(message) {
+  return message?.content?.trim().startsWith('[SOS]');
+}
+
 export default function DriverContactPage() {
   const [contact, setContact] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -65,7 +69,7 @@ export default function DriverContactPage() {
     try {
       const data = await driverDispatchApi.contact();
       setContact(data);
-      setMessages([...(data?.messages || [])].reverse());
+      setMessages([...(data?.messages || [])].reverse().filter((message) => !isSosMessage(message)));
     } catch (err) {
       setError(err.message || 'Không tải được thông tin điều phối viên.');
     } finally {
@@ -113,12 +117,11 @@ export default function DriverContactPage() {
     setNotice('');
     setError('');
     try {
-      const created = await driverDispatchApi.reportIncident({
+      await driverDispatchApi.reportIncident({
         tripId: activeTripId,
         incidentType: option.type,
         description: option.description,
       });
-      setMessages((items) => [...items, created]);
       setNotice(`Đã gửi SOS "${option.label}" cho điều phối viên.`);
     } catch (err) {
       setError(err.message);

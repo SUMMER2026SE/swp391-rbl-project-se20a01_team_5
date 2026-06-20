@@ -80,10 +80,23 @@ public class OperationsService {
         LocalDate today = LocalDate.now();
         LocalDate horizon = today.plusDays(60);
         List<DriverTripView> trips = new ArrayList<>(operationsRepository.findDriverUpcomingActualTrips(driverStaffId, today, horizon));
-        trips.addAll(buildUpcomingScheduleTrips(driverStaffId, today, horizon, trips));
+        List<DriverTripView> historyTrips = operationsRepository.findDriverTripHistory(
+                        driverStaffId,
+                        today.minusDays(90),
+                        horizon)
+                .stream()
+                .filter(this::isHistoryTrip)
+                .sorted(Comparator.comparing((DriverTripView trip) -> tripDateTime(trip, true)).reversed())
+                .limit(10)
+                .toList();
+
+        List<DriverTripView> existingTrips = new ArrayList<>(trips);
+        existingTrips.addAll(historyTrips);
+        trips.addAll(buildUpcomingScheduleTrips(driverStaffId, today, horizon, existingTrips));
 
         Comparator<DriverTripView> scheduleOrder = Comparator
                 .comparing((DriverTripView trip) -> tripDateTime(trip, false))
+                .thenComparingInt(this::tripStatusPriority)
                 .thenComparing(trip -> trip.routeName() == null ? "" : trip.routeName())
                 .thenComparing(trip -> trip.tripId() == null ? Integer.MAX_VALUE : trip.tripId());
 
@@ -100,16 +113,6 @@ public class OperationsService {
                 .filter(trip -> !sameTrip(trip, nearestTrip))
                 .sorted(scheduleOrder)
                 .limit(5)
-                .toList();
-
-        List<DriverTripView> historyTrips = operationsRepository.findDriverTripHistory(
-                        driverStaffId,
-                        today.minusDays(90),
-                        today.plusDays(60))
-                .stream()
-                .filter(this::isHistoryTrip)
-                .sorted(Comparator.comparing((DriverTripView trip) -> tripDateTime(trip, true)).reversed())
-                .limit(10)
                 .toList();
 
         return new DriverTripOverview(nearestTrip, upcomingTrips, historyTrips);
@@ -298,6 +301,19 @@ public class OperationsService {
             return false;
         }
         return !trip.serviceDate().isBefore(today);
+    }
+
+    private int tripStatusPriority(DriverTripView trip) {
+        if (trip == null) {
+            return 3;
+        }
+        if ("RUNNING".equals(trip.status())) {
+            return 0;
+        }
+        if (trip.tripId() != null) {
+            return 1;
+        }
+        return 2;
     }
 
     private boolean isHistoryTrip(DriverTripView trip) {
