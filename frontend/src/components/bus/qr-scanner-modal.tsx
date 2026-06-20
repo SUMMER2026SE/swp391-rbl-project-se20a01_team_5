@@ -35,7 +35,6 @@ export function QrScannerModal({
               onError={(error) => console.error("Scanner Error:", error)}
               formats={["qr_code"]}
               components={{
-                audio: true,
                 onOff: false,
                 torch: true,
                 zoom: true,
