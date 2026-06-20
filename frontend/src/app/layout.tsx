@@ -1,7 +1,19 @@
 import type { Metadata } from "next";
-import type { CSSProperties } from "react";
+import { Roboto_Flex, Roboto_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
+
+const robotoFlex = Roboto_Flex({
+  variable: "--font-roboto-flex",
+  subsets: ["latin", "vietnamese"],
+  weight: ["100", "300", "400", "500", "600", "700", "800", "900"],
+});
+
+const robotoMono = Roboto_Mono({
+  variable: "--font-roboto-mono",
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+});
 
 export const metadata: Metadata = {
   title: "UniBus — Hệ thống Xe bus Sinh viên liên kết trường ĐH",
@@ -17,13 +29,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="vi" suppressHydrationWarning>
-      <body
-        className="antialiased"
-        style={{
-          "--font-roboto-flex": '"Roboto Flex", "Roboto", "Segoe UI", system-ui, sans-serif',
-          "--font-roboto-mono": '"Roboto Mono", "JetBrains Mono", "Cascadia Code", monospace',
-        } as CSSProperties}
-      >
+      <body className={`${robotoFlex.variable} ${robotoMono.variable} antialiased`}>
         {children}
         <SonnerToaster richColors position="top-right" />
       </body>

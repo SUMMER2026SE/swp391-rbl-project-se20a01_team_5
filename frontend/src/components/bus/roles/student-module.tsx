@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { motion } from "framer-motion";
-import { ArrowRight, Bell, Bus, CreditCard, History, MapPin, Navigation, PackageSearch, QrCode, Route, School, Send, ShieldCheck, Star, TicketCheck } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { ArrowRight, Bell, Bus, CreditCard, History, MapPin, Navigation, PackageSearch, QrCode, Route, School, Send, ShieldCheck, Star, TicketCheck, XCircle } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
 import { toast } from "sonner";
 import { EmptyState, PageHeader, Section } from "@/components/bus/primitives";
@@ -107,6 +107,7 @@ function StudentUniversityScreen() {
 
 function StudentDashboard({ onNavigate }: { onNavigate: (id: string) => void }) {
   const resource = useApiResource<StudentDashboardView>(useCallback(() => experienceApi.studentDashboard(), []));
+  const [qrExpanded, setQrExpanded] = useState(false);
 
   return (
     <div className="space-y-6 sm:space-y-8">
@@ -188,7 +189,7 @@ function StudentDashboard({ onNavigate }: { onNavigate: (id: string) => void }) 
                   <div className="flex shrink-0 flex-col items-center gap-3">
                     <motion.button
                       type="button"
-                      onClick={() => onNavigate("stu-my-ticket")}
+                      onClick={() => setQrExpanded(true)}
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
                       className="relative flex size-24 items-center justify-center rounded-full bg-[#14140f] shadow-[0_12px_30px_rgba(20,20,15,0.25)]"
@@ -307,6 +308,71 @@ function StudentDashboard({ onNavigate }: { onNavigate: (id: string) => void }) 
                   </ExpressiveCard>
                 </div>
               </div>
+
+              {/* QR expand overlay — framer-motion animation */}
+              <AnimatePresence>
+                {qrExpanded && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="fixed inset-0 z-50 flex items-center justify-center p-4"
+                    style={{ backgroundColor: "rgba(20, 20, 15, 0.75)" }}
+                    onClick={() => setQrExpanded(false)}
+                  >
+                    <motion.div
+                      initial={{ scale: 0.5, opacity: 0, borderRadius: "50%" }}
+                      animate={{ scale: 1, opacity: 1, borderRadius: "24px" }}
+                      exit={{ scale: 0.5, opacity: 0, borderRadius: "50%" }}
+                      transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                      className="relative bg-[#14140f] text-white rounded-3xl p-5 sm:p-8 max-w-sm w-full"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                          <div className="flex size-9 items-center justify-center rounded-xl bg-[#beff50] text-[#14140f]">
+                            <QrCode className="size-5" />
+                          </div>
+                          <p className="text-sm font-bold">Vé của tôi</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setQrExpanded(false)}
+                          className="state-layer size-8 rounded-full flex items-center justify-center text-white/60 hover:text-white"
+                        >
+                          <XCircle className="size-5" />
+                        </button>
+                      </div>
+
+                      <div className="flex justify-center mb-4">
+                        <motion.div
+                          initial={{ scale: 0, rotate: -90 }}
+                          animate={{ scale: 1, rotate: 0 }}
+                          transition={{ delay: 0.15, type: "spring", stiffness: 200, damping: 18 }}
+                          className="bg-white rounded-2xl p-4"
+                        >
+                          {activeTicket?.qrCode ? (
+                            <QRCodeCanvas value={activeTicket.qrCode} size={170} />
+                          ) : (
+                            <div className="flex size-[170px] flex-col items-center justify-center text-center text-sm font-medium text-black/50">
+                              Chưa có vé<br />để hiển thị
+                            </div>
+                          )}
+                        </motion.div>
+                      </div>
+
+                      <div className="text-center">
+                        <p className="text-xl font-black">{dashboard.universityName || "Sinh viên"}</p>
+                        <p className="text-sm opacity-60">
+                          {activeRoute?.fromStopName || dashboard.registration?.boardingStopName || "Điểm lên"} {"->"} {activeRoute?.toStopName || dashboard.registration?.alightingStopName || "Điểm xuống"}
+                        </p>
+                        <p className="mt-3 text-xs font-bold text-[#beff50]">QUÉT ĐỂ LÊN XE</p>
+                      </div>
+                    </motion.div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </>
           );
         }}

@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, BadgeCheck, History, MessageSquare, PackageSearch, QrCode, Route } from "lucide-react";
+import { AlertTriangle, BadgeCheck, Camera, History, MessageSquare, PackageSearch, QrCode, Route } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader, Section, StatCard } from "@/components/bus/primitives";
 import { AsyncBlock, DataList, StatusPill, UnavailablePanel, formatDateTime, getErrorMessage, useApiResource } from "@/components/bus/real-data";
 import { ExpressiveButton, ExpressiveCard } from "@/components/m3/primitives";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { QrScannerModal } from "@/components/bus/qr-scanner-modal";
 import {
   experienceApi,
   operationsApi,
@@ -39,6 +40,8 @@ function ConductorWorkspace({ mode }: { mode: string }) {
   const [ticketsLoading, setTicketsLoading] = useState(false);
   const [qrCode, setQrCode] = useState("");
   const [scanResult, setScanResult] = useState<TicketScanResult | null>(null);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [isCheckingTicket, setIsCheckingTicket] = useState(false);
 
   const trips = useMemo(() => tripsResource.data || [], [tripsResource.data]);
   const normalizedSelectedTripId = useMemo(() => {
@@ -88,6 +91,28 @@ function ConductorWorkspace({ mode }: { mode: string }) {
     }
   };
 
+  const handleCameraScan = async (scannedCode: string) => {
+    if (!selectedTrip?.tripId) {
+      toast.error("Vui lòng chọn chuyến trước khi quét");
+      setScannerOpen(false);
+      return;
+    }
+    if (isCheckingTicket) return;
+    
+    setIsCheckingTicket(true);
+    try {
+      const result = await operationsApi.scanTicket(selectedTrip.tripId, scannedCode.trim());
+      setScanResult(result);
+      toast[result.valid ? "success" : "error"](result.message || (result.valid ? "Vé hợp lệ" : "Vé không hợp lệ"));
+      loadTickets(selectedTrip.tripId);
+      // Keep camera open for continuous scanning, user will close manually
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Không thể quét vé"));
+    } finally {
+      setIsCheckingTicket(false);
+    }
+  };
+
   const title =
     mode === "ast-scan" ? "Quét QR vé"
     : mode === "ast-monthly" ? "Kiểm tra vé tháng"
@@ -105,45 +130,74 @@ function ConductorWorkspace({ mode }: { mode: string }) {
       <AsyncBlock resource={tripsResource}>
         {() => (
           <div className="space-y-6">
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 lg:gap-4 lg:grid-cols-4">
               <StatCard label="Chuyến trong ngày" value={trips.length} icon={<Route className="size-6" />} accent="primary" />
               <StatCard label="Chuyến chọn" value={selectedTrip?.routeName || "Chưa có"} icon={<BadgeCheck className="size-6" />} accent="secondary" />
               <StatCard label="Vé trong chuyến" value={tickets.length} icon={<QrCode className="size-6" />} accent="success" />
               <StatCard label="Scan gần nhất" value={scanResult ? (scanResult.valid ? "Hợp lệ" : "Từ chối") : "Chưa quét"} icon={<History className="size-6" />} accent={scanResult?.valid ? "success" : "tertiary"} />
             </div>
 
-            <ExpressiveCard variant="elevated" className="grid gap-4 p-5 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
+            <ExpressiveCard variant="elevated" className="flex flex-col gap-5 p-4 sm:p-5">
               <div className="space-y-2">
-                <Label>Chuyến</Label>
+                <Label className="text-base font-bold text-on-surface">Chuyến đang làm việc</Label>
                 <select
                   value={normalizedSelectedTripId || ""}
                   onChange={(event) => setSelectedTripId(Number(event.target.value))}
-                  className="h-12 w-full rounded-xl border border-outline-variant bg-surface-container-lowest px-3 text-sm text-on-surface outline-none focus-visible:ring-2 focus-visible:ring-[#144fcc]"
+                  className="h-14 w-full rounded-2xl border-2 border-outline-variant bg-surface-container-lowest px-4 text-base font-bold text-[#144fcc] outline-none focus-visible:border-[#144fcc]"
                 >
                   {trips.map((trip) => (
                     <option key={trip.tripId} value={trip.tripId}>{trip.routeName} · {trip.departureTime || "chưa có giờ"}</option>
                   ))}
                 </select>
               </div>
-              <div className="space-y-2">
-                <Label>QR code</Label>
-                <Input value={qrCode} onChange={(e) => setQrCode(e.target.value)} placeholder="Dán mã QR từ vé sinh viên" />
+
+              <div className="rounded-2xl bg-surface-container-low p-4 sm:p-5 space-y-4 border border-outline-variant/30">
+                <ExpressiveButton 
+                  onClick={() => setScannerOpen(true)} 
+                  className="w-full justify-center bg-[#beff50] text-[#14140f] hover:bg-[#a6e639] h-16 text-lg font-black shadow-lg"
+                >
+                  <Camera className="size-6 mr-2" />
+                  BẬT CAMERA QUÉT VÉ
+                </ExpressiveButton>
+                
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-px bg-outline-variant/50" />
+                  <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Hoặc nhập mã tay</span>
+                  <div className="flex-1 h-px bg-outline-variant/50" />
+                </div>
+
+                <div className="flex gap-2">
+                  <Input value={qrCode} onChange={(e) => setQrCode(e.target.value)} placeholder="Nhập mã vé..." className="h-12 bg-surface-container-lowest text-center text-base tracking-widest font-bold uppercase" />
+                  <ExpressiveButton onClick={scan} className="h-12 px-6 bg-[#14140f] text-white hover:bg-[#14140f]/90">
+                    Gửi
+                  </ExpressiveButton>
+                </div>
               </div>
-              <ExpressiveButton onClick={scan}><QrCode className="size-4" /> Quét vé</ExpressiveButton>
             </ExpressiveCard>
 
+            <QrScannerModal
+              open={scannerOpen}
+              onOpenChange={setScannerOpen}
+              onScan={handleCameraScan}
+              isLoading={isCheckingTicket}
+            />
+
             {scanResult && (
-              <ExpressiveCard variant="elevated" className="p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <ExpressiveCard variant="elevated" className={`p-5 border-2 ${scanResult.valid ? 'border-[#34a853] bg-[#34a853]/10' : 'border-[#ea4335] bg-[#ea4335]/10'}`}>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <h3 className="font-bold text-on-surface">{scanResult.message}</h3>
+                    <h3 className={`text-xl font-black ${scanResult.valid ? 'text-[#34a853]' : 'text-[#ea4335]'}`}>
+                      {scanResult.message}
+                    </h3>
                     {scanResult.ticket && (
-                      <p className="mt-1 text-sm text-on-surface-variant">
+                      <p className="mt-1 text-base font-bold text-on-surface">
                         {scanResult.ticket.studentName || scanResult.ticket.studentCode} · {scanResult.ticket.routeName}
                       </p>
                     )}
                   </div>
-                  <StatusPill status={scanResult.valid ? "VALID" : "INVALID"} />
+                  <div className="shrink-0">
+                    <StatusPill status={scanResult.valid ? "VALID" : "INVALID"} />
+                  </div>
                 </div>
               </ExpressiveCard>
             )}

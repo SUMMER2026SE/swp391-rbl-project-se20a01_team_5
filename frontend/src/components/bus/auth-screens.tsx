@@ -141,12 +141,10 @@ export function AuthScreens({
       {/* Top nav */}
       <header className="sticky top-0 z-30 glass-m3 border-b border-outline-variant/40">
         <div className="mx-auto max-w-7xl flex items-center justify-between px-4 sm:px-6 h-16">
-          <div className="flex items-center gap-2.5">
-            <div className="flex size-9 items-center justify-center rounded-xl bg-[#beff50] text-[#14140f] elev-1">
-              <Bus className="size-5" />
-            </div>
+          <a href="/" className="flex items-center gap-2.5">
+            <img src="/logo.png" alt="UniBus Logo" className="h-10 w-auto object-contain shrink-0" />
             <span className="text-lg font-bold tracking-tight">UniBus</span>
-          </div>
+          </a>
           <nav className="hidden md:flex items-center gap-1">
             {["Tính năng", "Trường đối tác", "Bảng giá"].map((l) => (
               <button key={l} type="button" disabled className="h-9 px-4 rounded-full text-sm font-medium text-on-surface-variant/50 cursor-not-allowed">
@@ -328,7 +326,7 @@ function Hero({ onGetStarted }: { onGetStarted: () => void }) {
       <motion.div style={{ y, opacity }} className="relative z-10 mx-auto max-w-7xl w-full px-4 sm:px-6 pt-16 sm:pt-20">
         <SplitText
           as="h1"
-          text="Đi xe bus đến trường."
+          text="Xe bus dành cho sinh viên."
           className="text-5xl sm:text-7xl lg:text-8xl font-bold tracking-tight text-on-surface leading-[1.0]"
           stagger={0.05}
         />
@@ -339,7 +337,7 @@ function Hero({ onGetStarted }: { onGetStarted: () => void }) {
           transition={{ delay: 0.8, type: "spring", stiffness: 180, damping: 24 }}
           className="mt-6 sm:mt-8 max-w-xl text-lg sm:text-xl lg:text-2xl text-on-surface font-medium text-pretty"
         >
-          Đăng nhập Google — hệ thống tự biết bạn thuộc trường nào.
+          Nền tảng di chuyển thông minh dành cho bạn.
         </motion.p>
 
         <motion.div
