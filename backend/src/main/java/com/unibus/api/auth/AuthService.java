@@ -4,6 +4,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.dao.DataAccessException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +24,8 @@ import com.unibus.api.auth.model.VerificationPurpose;
 import com.unibus.api.common.ApiException;
 import com.unibus.api.security.CurrentUser;
 import com.unibus.api.student.model.StudentVerificationStatus;
+import com.unibus.api.university.UniversityDtos.StudentUniversityView;
+import com.unibus.api.university.UniversityManagementService;
 import com.unibus.api.user.StudentRepository;
 import com.unibus.api.user.UserRepository;
 import com.unibus.api.user.model.User;
@@ -41,6 +44,7 @@ public class AuthService {
     private final HashingService hashingService;
     private final PasswordEncoder passwordEncoder;
     private final GoogleOAuthVerifier googleOAuthVerifier;
+    private final UniversityManagementService universityManagementService;
 
     public AuthService(
             UserRepository userRepository,
@@ -51,7 +55,8 @@ public class AuthService {
             JwtTokenService jwtTokenService,
             HashingService hashingService,
             PasswordEncoder passwordEncoder,
-            GoogleOAuthVerifier googleOAuthVerifier) {
+            GoogleOAuthVerifier googleOAuthVerifier,
+            UniversityManagementService universityManagementService) {
         this.userRepository = userRepository;
         this.studentRepository = studentRepository;
         this.userAuthProviderRepository = userAuthProviderRepository;
@@ -61,6 +66,7 @@ public class AuthService {
         this.hashingService = hashingService;
         this.passwordEncoder = passwordEncoder;
         this.googleOAuthVerifier = googleOAuthVerifier;
+        this.universityManagementService = universityManagementService;
     }
 
     public void requestRegistrationOtp(String email) {
@@ -135,6 +141,12 @@ public class AuthService {
         user.setUpdatedAt(now);
         userRepository.save(user);
         upsertGoogleProvider(user, googleAccount, now);
+        try {
+            universityManagementService.applyGoogleUniversityLink(user);
+        } catch (DataAccessException exception) {
+            // Google auth should still succeed on older/minimal schemas without the V9 university tables.
+        }
+        user = userRepository.findById(user.getId()).orElse(user);
         return createSessionTokens(user, device, ipAddress);
     }
 
@@ -150,10 +162,14 @@ public class AuthService {
         session.setTokenHash(hashingService.hash(refresh.value()));
         session.setExpiresAt(refresh.expiresAt());
         loginSessionRepository.save(session);
+        StudentUniversityView university = universityLink(session.getUser());
         return new TokenPair("Bearer", access.value(), access.expiresAt(),
                 refresh.value(), refresh.expiresAt(),
                 session.getUser().getRole(),
-                session.getUser().getStudentVerificationStatus());
+                session.getUser().getStudentVerificationStatus(),
+                university.universityId(),
+                university.universityName(),
+                university.linkStatus());
     }
 
     @Transactional
@@ -202,8 +218,22 @@ public class AuthService {
         session.setTokenHash(hashingService.hash(refresh.value()));
         session.setExpiresAt(refresh.expiresAt());
         loginSessionRepository.save(session);
+        StudentUniversityView university = universityLink(user);
         return new TokenPair("Bearer", access.value(), access.expiresAt(),
-                refresh.value(), refresh.expiresAt(), user.getRole(), user.getStudentVerificationStatus());
+                refresh.value(), refresh.expiresAt(), user.getRole(), user.getStudentVerificationStatus(),
+                university.universityId(), university.universityName(), university.linkStatus());
+    }
+
+    private StudentUniversityView universityLink(User user) {
+        if (user.getRole() != UserRole.STUDENT) {
+            return new StudentUniversityView(null, null, null, null, null, null, null, null);
+        }
+        try {
+            return universityManagementService.studentUniversity(new CurrentUser(user.getId(), user.getEmail(), user.getRole(), null));
+        } catch (DataAccessException exception) {
+            return new StudentUniversityView(null, null, null, null, null, "NOT_LINKED", null,
+                    user.getStudentVerificationStatus() == null ? null : user.getStudentVerificationStatus().name());
+        }
     }
 
     private User createGoogleUser(GoogleAccount googleAccount, OffsetDateTime now) {

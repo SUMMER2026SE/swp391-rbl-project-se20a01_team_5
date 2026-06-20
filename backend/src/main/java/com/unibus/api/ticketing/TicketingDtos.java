@@ -4,7 +4,6 @@ import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
 
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 
 public final class TicketingDtos {
@@ -28,6 +27,11 @@ public final class TicketingDtos {
             OffsetDateTime validFrom,
             OffsetDateTime expiresAt,
             BigDecimal fareAmount,
+            BigDecimal originalFareAmount,
+            BigDecimal subsidyAmount,
+            BigDecimal finalFareAmount,
+            Integer subsidyPolicyId,
+            String subsidyStatus,
             String qrCode,
             String status,
             OffsetDateTime purchasedAt) {
@@ -37,6 +41,9 @@ public final class TicketingDtos {
             Integer paymentId,
             Integer ticketId,
             BigDecimal amount,
+            BigDecimal originalAmount,
+            BigDecimal subsidyAmount,
+            BigDecimal finalAmount,
             String method,
             String status,
             String transactionCode,
@@ -49,9 +56,12 @@ public final class TicketingDtos {
             Integer routeId,
             String routeName,
             BigDecimal baseAmount,
+            BigDecimal originalFareAmount,
             BigDecimal subsidyAmount,
             BigDecimal payableAmount,
-            String subsidyStatus) {
+            BigDecimal finalFareAmount,
+            String subsidyStatus,
+            Integer subsidyPolicyId) {
     }
 
     public record PassesDashboard(List<TicketView> tickets, List<PaymentView> payments, MonthlyPassQuote monthlyPassQuote) {

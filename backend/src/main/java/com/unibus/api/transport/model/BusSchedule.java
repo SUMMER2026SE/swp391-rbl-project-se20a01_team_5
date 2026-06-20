@@ -1,6 +1,7 @@
 package com.unibus.api.transport.model;
 
 import java.time.LocalTime;
+import java.time.OffsetDateTime;
 
 import com.unibus.api.user.model.Driver;
 
@@ -40,6 +41,9 @@ public class BusSchedule {
     @JoinColumn(name = "driver_id")
     private Driver driver;
 
+    @Column(name = "conductor_id")
+    private Integer conductorId;
+
     @Column(name = "weekday_number")
     private Integer weekdayNumber;
 
@@ -51,5 +55,11 @@ public class BusSchedule {
 
     @Column(name = "status")
     private String status;
+
+    @Column(name = "assigned_by_user_id")
+    private Integer assignedByUserId;
+
+    @Column(name = "assigned_at")
+    private OffsetDateTime assignedAt;
 
 }

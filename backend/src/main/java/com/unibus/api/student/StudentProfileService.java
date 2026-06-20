@@ -11,6 +11,7 @@ import com.unibus.api.common.ApiException;
 import com.unibus.api.security.CurrentUser;
 import com.unibus.api.student.dto.StudentDtos.Profile;
 import com.unibus.api.student.dto.StudentDtos.UpdateProfileRequest;
+import com.unibus.api.university.SubsidyService;
 import com.unibus.api.user.StudentRepository;
 import com.unibus.api.user.UserRepository;
 import com.unibus.api.user.model.Student;
@@ -22,14 +23,17 @@ public class StudentProfileService {
     private final StudentRepository studentRepository;
     private final UserRepository userRepository;
     private final UniversityCatalog universityCatalog;
+    private final SubsidyService subsidyService;
 
     public StudentProfileService(
             StudentRepository studentRepository,
             UserRepository userRepository,
-            UniversityCatalog universityCatalog) {
+            UniversityCatalog universityCatalog,
+            SubsidyService subsidyService) {
         this.studentRepository = studentRepository;
         this.userRepository = userRepository;
         this.universityCatalog = universityCatalog;
+        this.subsidyService = subsidyService;
     }
 
     @Transactional(readOnly = true)
@@ -63,7 +67,9 @@ public class StudentProfileService {
         }
         user.setUpdatedAt(OffsetDateTime.now(ZoneOffset.UTC));
         if (student != null && nullableTrim(request.university()) != null) {
-            student.setUniversity(universityCatalog.requireAllowed(request.university()));
+            String allowedUniversity = universityCatalog.requireAllowed(request.university());
+            student.setUniversity(allowedUniversity);
+            student.setUniversityId(subsidyService.universityIdForName(allowedUniversity));
         }
         if (student != null && request.faculty() != null) {
             student.setFaculty(nullableTrim(request.faculty()));
@@ -101,6 +107,7 @@ public class StudentProfileService {
                 user.getAddress(),
                 user.getAvatarUrl(),
                 student == null ? null : student.getUniversity(),
+                student == null ? null : student.getUniversityId(),
                 student == null ? null : student.getFaculty(),
                 student == null ? null : student.getAcademicYear(),
                 student == null ? null : student.getDateOfBirth(),

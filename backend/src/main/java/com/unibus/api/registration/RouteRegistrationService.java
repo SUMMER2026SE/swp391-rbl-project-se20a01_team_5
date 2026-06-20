@@ -64,7 +64,7 @@ public class RouteRegistrationService {
             throw new ApiException(HttpStatus.CONFLICT, "Student already has an active route registration");
         }
         RouteSelection selection = transportService.requireValidSelection(
-                request.routeId(), request.boardingStopId(), request.alightingStopId());
+                currentUser, request.routeId(), request.boardingStopId(), request.alightingStopId());
         return toResponse(saveRegistration(student, selection, request.effectiveDate(), null));
     }
 
@@ -75,7 +75,7 @@ public class RouteRegistrationService {
         RouteRegistration existing = ownedRegistration(student, registrationId);
         requireActive(existing);
         RouteSelection selection = transportService.requireValidSelection(
-                request.routeId(), request.boardingStopId(), request.alightingStopId());
+                currentUser, request.routeId(), request.boardingStopId(), request.alightingStopId());
 
         if (existing.getRoute().getId().equals(selection.route().getId())) {
             existing.setBoardingStop(selection.boardingStop());
