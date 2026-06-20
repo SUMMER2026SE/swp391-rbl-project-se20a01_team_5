@@ -18,6 +18,7 @@ import { UniversityAdminModule } from "@/components/bus/roles/university-admin-m
 import { NAV_CONFIG } from "@/components/bus/nav-config";
 import { authApi, clearTokens, getAccessToken, getStoredRole, profileApi, type UserProfile } from "@/lib/api/client";
 import type { Role } from "@/lib/types";
+import { motion } from "framer-motion";
 
 function mapBackendRole(role?: string | null): Role {
   switch ((role || "").toUpperCase()) {
@@ -137,7 +138,24 @@ export default function Page() {
   };
 
   if (!ready) {
-    return <div className="min-h-screen bg-background" />;
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-background">
+        <motion.div
+          animate={{ scale: [0.98, 1.02, 0.98], opacity: [0.6, 1, 0.6] }}
+          transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+          className="flex flex-col items-center gap-6"
+        >
+          <img src="/logo.png" alt="UniBus Logo" className="h-20 w-auto object-contain shrink-0" />
+          <div className="h-1.5 w-32 overflow-hidden rounded-full bg-surface-container-high">
+            <motion.div
+              className="h-full bg-[#beff50]"
+              animate={{ x: ["-100%", "100%"] }}
+              transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+            />
+          </div>
+        </motion.div>
+      </div>
+    );
   }
 
   if (!authed) {

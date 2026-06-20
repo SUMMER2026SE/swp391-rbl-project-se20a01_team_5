@@ -91,23 +91,28 @@ export function AppShell({
   }, [activeId]);
 
   const goTo = (id: string) => {
-    onNavigate(id);
     setMobileOpen(false);
-    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+    // Defer heavy rendering to unblock the sidebar's closing animation (300ms)
+    setTimeout(() => {
+      onNavigate(id);
+      window.scrollTo({ top: 0, behavior: "instant" });
+    }, 150);
   };
 
   const SidebarContent = (
     <div className="flex h-full flex-col bg-surface-container-low">
       <div className="px-5 pt-6 pb-4">
-        <div className="flex items-center gap-3">
-          <div className="flex size-11 items-center justify-center rounded-2xl bg-[#beff50] text-[#14140f]">
-            <QrCode className="size-6" />
-          </div>
+        <button
+          type="button"
+          onClick={() => goTo(nav[0].id)}
+          className="flex items-center gap-3 text-left"
+        >
+          <img src="/logo.png" alt="UniBus Logo" className="h-12 w-auto object-contain shrink-0" />
           <div className="min-w-0">
             <p className="text-xl font-bold tracking-tight text-on-surface">UniBus</p>
             <p className="truncate text-[11px] text-on-surface-variant">{ROLE_LABELS[role]}</p>
           </div>
-        </div>
+        </button>
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 pb-4 scrollbar-soft">

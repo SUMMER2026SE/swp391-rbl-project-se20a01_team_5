@@ -141,12 +141,10 @@ export function AuthScreens({
       {/* Top nav */}
       <header className="sticky top-0 z-30 glass-m3 border-b border-outline-variant/40">
         <div className="mx-auto max-w-7xl flex items-center justify-between px-4 sm:px-6 h-16">
-          <div className="flex items-center gap-2.5">
-            <div className="flex size-9 items-center justify-center rounded-xl bg-[#beff50] text-[#14140f] elev-1">
-              <Bus className="size-5" />
-            </div>
+          <a href="/" className="flex items-center gap-2.5">
+            <img src="/logo.png" alt="UniBus Logo" className="h-10 w-auto object-contain shrink-0" />
             <span className="text-lg font-bold tracking-tight">UniBus</span>
-          </div>
+          </a>
           <nav className="hidden md:flex items-center gap-1">
             {["Tính năng", "Trường đối tác", "Bảng giá"].map((l) => (
               <button key={l} type="button" disabled className="h-9 px-4 rounded-full text-sm font-medium text-on-surface-variant/50 cursor-not-allowed">
