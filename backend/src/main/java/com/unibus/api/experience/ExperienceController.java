@@ -129,7 +129,7 @@ public class ExperienceController {
         return ApiResponse.ok("Coordinator dashboard retrieved", service.coordinatorDashboard());
     }
 
-    @GetMapping("/coordinator/experience-feedback")
+    @GetMapping("/coordinator/feedback")
     @PreAuthorize("hasAnyRole('DISPATCHER', 'ADMIN')")
     ApiResponse<List<FeedbackCard>> coordinatorFeedback(@RequestParam(required = false) String status) {
         return ApiResponse.ok("Coordinator feedback retrieved", service.coordinatorFeedback(status));
@@ -168,4 +168,3 @@ public class ExperienceController {
         return ApiResponse.ok("Violations retrieved", service.violations(status));
     }
 }
-

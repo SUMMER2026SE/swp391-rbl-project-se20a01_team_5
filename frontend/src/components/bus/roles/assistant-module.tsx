@@ -32,8 +32,8 @@ export function AssistantModule({ activeId }: Props) {
 }
 
 function ConductorWorkspace({ mode }: { mode: string }) {
-  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
-  const loader = useCallback(() => operationsApi.conductorTrips(today), [today]);
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const loader = useCallback(() => operationsApi.conductorTrips(date), [date]);
   const tripsResource = useApiResource<DriverTripView[]>(loader);
   const [selectedTripId, setSelectedTripId] = useState<number | null>(null);
   const [tickets, setTickets] = useState<ConductorTicketView[]>([]);
@@ -44,11 +44,10 @@ function ConductorWorkspace({ mode }: { mode: string }) {
   const [isCheckingTicket, setIsCheckingTicket] = useState(false);
 
   const trips = useMemo(() => tripsResource.data || [], [tripsResource.data]);
-  const tripsWithId = useMemo(() => trips.filter((trip) => !!trip.tripId), [trips]);
   const normalizedSelectedTripId = useMemo(() => {
-    if (selectedTripId && tripsWithId.some((trip) => trip.tripId === selectedTripId)) return selectedTripId;
-    return tripsWithId[0]?.tripId ?? null;
-  }, [selectedTripId, tripsWithId]);
+    if (selectedTripId && trips.some((trip) => trip.tripId === selectedTripId)) return selectedTripId;
+    return trips[0]?.tripId ?? null;
+  }, [selectedTripId, trips]);
   const selectedTrip = useMemo(
     () => trips.find((trip) => trip.tripId === normalizedSelectedTripId) || null,
     [normalizedSelectedTripId, trips]
@@ -126,6 +125,7 @@ function ConductorWorkspace({ mode }: { mode: string }) {
         title={title}
         description="Dữ liệu phụ xe lấy từ conductor operations API."
         icon={<QrCode className="size-7" />}
+        actions={<Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-11 rounded-full bg-white" />}
       />
       <AsyncBlock resource={tripsResource}>
         {() => (
@@ -153,9 +153,8 @@ function ConductorWorkspace({ mode }: { mode: string }) {
 
               <div className="rounded-2xl bg-surface-container-low p-4 sm:p-5 space-y-4 border border-outline-variant/30">
                 <ExpressiveButton 
-                  onClick={() => setScannerOpen(true)}
-                  disabled={!selectedTrip?.tripId}
-                  className="w-full justify-center bg-[#beff50] text-[#14140f] hover:bg-[#a6e639] h-16 text-lg font-black shadow-lg disabled:opacity-50"
+                  onClick={() => setScannerOpen(true)} 
+                  className="w-full justify-center bg-[#beff50] text-[#14140f] hover:bg-[#a6e639] h-16 text-lg font-black shadow-lg"
                 >
                   <Camera className="size-6 mr-2" />
                   BẬT CAMERA QUÉT VÉ
@@ -274,34 +273,29 @@ function AssistantLostItemsScreen() {
 }
 
 function IncidentScreen() {
-  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const resource = useApiResource<ExperienceIncidentCard[]>(useCallback(() => experienceApi.incidents(), []));
-  const tripsResource = useApiResource<DriverTripView[]>(useCallback(() => operationsApi.conductorTrips(today), [today]));
-  const trips = useMemo(() => (tripsResource.data || []).filter((trip) => !!trip.tripId), [tripsResource.data]);
-  const [selectedTripId, setSelectedTripId] = useState<number | null>(null);
+  const [tripId, setTripId] = useState("");
   const [incidentType, setIncidentType] = useState("OTHER");
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const activeTripId = selectedTripId || trips[0]?.tripId || null;
-
   const submit = async () => {
-    if (!activeTripId || !description.trim()) {
-      toast.error("Ch?n chuy?n v? nh?p m? t? s? c?");
+    if (!tripId || !description.trim()) {
+      toast.error("Nhập Trip ID và mô tả sự cố");
       return;
     }
     setSaving(true);
     try {
       await experienceApi.createIncident({
-        tripId: activeTripId,
+        tripId: Number(tripId),
         incidentType,
         description,
       });
       setDescription("");
-      toast.success("?? b?o c?o s? c?");
+      toast.success("Đã báo cáo sự cố");
       resource.reload();
     } catch (error) {
-      toast.error(getErrorMessage(error, "Kh?ng th? b?o c?o s? c?"));
+      toast.error(getErrorMessage(error, "Không thể báo cáo sự cố"));
     } finally {
       setSaving(false);
     }
@@ -309,41 +303,38 @@ function IncidentScreen() {
 
   return (
     <div>
-      <PageHeader title="B?o c?o s? c?" description="Ph? xe ch?n chuy?n h?m nay r?i g?i incident v?o backend." icon={<AlertTriangle className="size-7" />} />
+      <PageHeader title="Báo cáo sự cố" description="Sự cố được lưu thật vào bảng incidents." icon={<AlertTriangle className="size-7" />} />
       <div className="grid gap-4 lg:grid-cols-[420px_1fr]">
         <ExpressiveCard variant="elevated" className="space-y-4 p-5">
           <div className="space-y-2">
-            <Label>Chuy?n h?m nay</Label>
-            <select value={activeTripId || ""} onChange={(e) => setSelectedTripId(Number(e.target.value))} className="h-12 w-full rounded-xl border border-outline-variant bg-surface-container-lowest px-3 text-sm font-bold">
-              {trips.map((trip) => <option key={trip.tripId} value={trip.tripId}>{trip.routeName} ? {trip.departureTime || "ch?a c? gi?"}</option>)}
-            </select>
-            {tripsResource.loading && <p className="text-xs text-on-surface-variant">?ang t?i chuy?n...</p>}
+            <Label>Trip ID</Label>
+            <Input type="number" value={tripId} onChange={(e) => setTripId(e.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label>Lo?i s? c?</Label>
+            <Label>Loại sự cố</Label>
             <select value={incidentType} onChange={(e) => setIncidentType(e.target.value)} className="h-12 w-full rounded-xl border border-outline-variant bg-surface-container-lowest px-3 text-sm">
-              <option value="OVERCROWDED">Qu? t?i</option>
-              <option value="TECHNICAL">K? thu?t</option>
-              <option value="EMERGENCY">Kh?n c?p</option>
-              <option value="OTHER">Kh?c</option>
+              <option value="OVERCROWDED">Quá tải</option>
+              <option value="TECHNICAL">Kỹ thuật</option>
+              <option value="EMERGENCY">Khẩn cấp</option>
+              <option value="OTHER">Khác</option>
             </select>
           </div>
           <div className="space-y-2">
-            <Label>M? t?</Label>
+            <Label>Mô tả</Label>
             <Input value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
-          <ExpressiveButton onClick={submit} disabled={saving || !activeTripId}>{saving ? "?ang g?i..." : "G?i s? c?"}</ExpressiveButton>
+          <ExpressiveButton onClick={submit} disabled={saving}>{saving ? "Đang gửi..." : "Gửi sự cố"}</ExpressiveButton>
         </ExpressiveCard>
         <AsyncBlock resource={resource}>
           {(items) => (
-            <DataList emptyTitle="Ch?a c? s? c?" emptyDescription="C?c s? c? ?? b?o c?o s? xu?t hi?n t?i ??y.">
+            <DataList emptyTitle="Chưa có sự cố" emptyDescription="Các sự cố đã báo cáo sẽ xuất hiện tại đây.">
               {items.map((item) => (
                 <ExpressiveCard key={item.incidentId} variant="elevated" className="p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <h3 className="font-bold text-on-surface">{item.incidentType}</h3>
                       <p className="text-sm text-on-surface-variant">{item.description}</p>
-                      <p className="mt-1 text-xs text-on-surface-variant">{item.routeCode || item.routeName || `Trip #${item.tripId}`} ? {formatDateTime(item.reportedAt)}</p>
+                      <p className="mt-1 text-xs text-on-surface-variant">{item.routeCode || item.routeName || `Trip #${item.tripId}`} · {formatDateTime(item.reportedAt)}</p>
                     </div>
                     <StatusPill status={item.status} />
                   </div>
