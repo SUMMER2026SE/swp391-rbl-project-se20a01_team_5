@@ -105,7 +105,7 @@ public class SePayService {
             subsidyAmount = quote.subsidyAmount();
             finalAmount = quote.finalFareAmount();
             subsidyPolicyId = quote.subsidyPolicyId();
-        } else if ("single".equalsIgnoreCase(ticketType)) {
+        } else if ("single".equalsIgnoreCase(ticketType) || "test".equalsIgnoreCase(ticketType)) {
             // Get single fare for the route, fallback to 7000 if not configured
             List<BigDecimal> fares = jdbcTemplate.queryForList(
                     "SELECT amount FROM fares WHERE route_id = ? AND fare_type = 'SINGLE' AND effective_from <= CURRENT_DATE AND (effective_until IS NULL OR effective_until >= CURRENT_DATE) ORDER BY effective_from DESC LIMIT 1",
@@ -115,6 +115,10 @@ public class SePayService {
             amount = singleFare;
             originalFare = singleFare;
             finalAmount = singleFare;
+        } else if ("test".equalsIgnoreCase(ticketType)) {
+            amount = new BigDecimal("3000");
+            originalFare = new BigDecimal("3000");
+            finalAmount = new BigDecimal("3000");
         } else {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid ticket type: " + ticketType);
         }
@@ -367,7 +371,7 @@ public class SePayService {
                             payId.intValue(), studentCode, finalAmount, finalOrigFare, finalSubAmount, finalAmount);
                 }
             }
-        } else if ("single".equalsIgnoreCase(ticketType)) {
+        } else if ("single".equalsIgnoreCase(ticketType) || "test".equalsIgnoreCase(ticketType)) {
             String qrCode = "UB-SINGLE-" + UUID.randomUUID();
             LocalDate now = LocalDate.now();
             OffsetDateTime expiresAt = now.atTime(23, 59, 59).atOffset(ZoneOffset.UTC); // valid until end of day
