@@ -1119,6 +1119,50 @@ export const driverDispatchApi = {
     apiFetch.post<DispatchMessageView>("/driver/dispatch/incidents", data),
 };
 
+export interface ContactPersonView {
+  userId: number;
+  name: string;
+  role: string;
+  phoneNumber?: string;
+  primary: boolean;
+}
+
+export interface InternalMessageView {
+  messageId: number;
+  senderUserId: number;
+  senderName: string;
+  recipientUserId: number;
+  recipientName: string;
+  tripId?: number;
+  content: string;
+  read: boolean;
+  sentAt?: string;
+}
+
+export interface ConductorContactView {
+  activeTripId?: number;
+  routeName?: string;
+  driverName?: string;
+  driverPhone?: string;
+  contacts: ContactPersonView[];
+  messages: InternalMessageView[];
+}
+
+export interface ConductorSupportResult {
+  type: string;
+  reportId: number;
+  message: string;
+  notificationMessage?: InternalMessageView;
+}
+
+export const conductorApi = {
+  contact: () => apiFetch.get<ConductorContactView>("/conductor/contact"),
+  sendMessage: (data: { tripId?: number; recipientType: string; content: string }) =>
+    apiFetch.post<InternalMessageView>("/conductor/messages", data),
+  submitSupport: (data: { tripId: number; reportType: string; passengerName?: string; location?: string; description: string }) =>
+    apiFetch.post<ConductorSupportResult>("/conductor/support", data),
+};
+
 export const api = {
   auth: authApi,
   profile: profileApi,
@@ -1131,4 +1175,5 @@ export const api = {
   admin: adminApi,
   universities: universityApi,
   driverDispatch: driverDispatchApi,
+  conductor: conductorApi,
 };
