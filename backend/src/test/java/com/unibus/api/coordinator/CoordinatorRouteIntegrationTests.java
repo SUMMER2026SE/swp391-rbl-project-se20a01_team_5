@@ -22,9 +22,11 @@ import org.springframework.test.annotation.DirtiesContext.ClassMode;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.unibus.api.transport.BusRouteRepository;
+import com.unibus.api.transport.BusScheduleRepository;
 import com.unibus.api.transport.RouteStopRepository;
 import com.unibus.api.transport.StopRepository;
 import com.unibus.api.transport.model.BusRoute;
+import com.unibus.api.transport.model.BusSchedule;
 import com.unibus.api.transport.model.RouteStatus;
 import com.unibus.api.transport.model.RouteStop;
 import com.unibus.api.transport.model.Stop;
@@ -46,10 +48,14 @@ class CoordinatorRouteIntegrationTests {
     @Autowired
     private RouteStopRepository routeStopRepository;
 
+    @Autowired
+    private BusScheduleRepository busScheduleRepository;
+
     private BusRoute testRoute;
 
     @BeforeEach
     void setup() {
+        busScheduleRepository.deleteAll();
         routeStopRepository.deleteAll();
         stopRepository.deleteAll();
         busRouteRepository.deleteAll();
@@ -165,5 +171,58 @@ class CoordinatorRouteIntegrationTests {
         mockMvc.perform(get("/api/v1/coordinator/routes/" + testRoute.getId() + "/stops"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(0));
+    }
+
+    @Test
+    @WithMockUser(roles = "DISPATCHER")
+    void dispatcherCanCreateRoute() throws Exception {
+        String reqBody = "{\"routeName\": \"New Route\", \"description\": \"New Description\", \"estimatedMinutes\": 45}";
+        mockMvc.perform(post("/api/v1/coordinator/routes")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(reqBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.routeName").value("New Route"))
+                .andExpect(jsonPath("$.data.description").value("New Description"))
+                .andExpect(jsonPath("$.data.estimatedMinutes").value(45));
+    }
+
+    @Test
+    @WithMockUser(roles = "DISPATCHER")
+    void dispatcherCanUpdateRoute() throws Exception {
+        String reqBody = "{\"routeName\": \"Updated Route\", \"description\": \"Updated Description\", \"estimatedMinutes\": 50}";
+        mockMvc.perform(put("/api/v1/coordinator/routes/" + testRoute.getId())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(reqBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.routeName").value("Updated Route"))
+                .andExpect(jsonPath("$.data.description").value("Updated Description"))
+                .andExpect(jsonPath("$.data.estimatedMinutes").value(50));
+    }
+
+    @Test
+    @WithMockUser(roles = "DISPATCHER")
+    void dispatcherCanDeleteRouteWithoutAssociations() throws Exception {
+        mockMvc.perform(delete("/api/v1/coordinator/routes/" + testRoute.getId()))
+                .andExpect(status().isOk());
+
+        // Check list is empty
+        mockMvc.perform(get("/api/v1/coordinator/routes"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
+    }
+
+    @Test
+    @WithMockUser(roles = "DISPATCHER")
+    void dispatcherCannotDeleteRouteWithAssociations() throws Exception {
+        BusSchedule schedule = new BusSchedule();
+        schedule.setRoute(testRoute);
+        schedule.setWeekdayNumber(1);
+        schedule.setDepartureTime(java.time.LocalTime.of(8, 0));
+        schedule.setStatus("ACTIVE");
+        busScheduleRepository.save(schedule);
+
+        mockMvc.perform(delete("/api/v1/coordinator/routes/" + testRoute.getId()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Không thể xóa tuyến đường này vì đã có lịch trình, chuyến xe hoặc dữ liệu vé liên quan."));
     }
 }

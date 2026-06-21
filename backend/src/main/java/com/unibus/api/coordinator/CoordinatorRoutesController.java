@@ -72,4 +72,12 @@ public class CoordinatorRoutesController {
         routesService.deleteStop(routeId, stopId);
         return ApiResponse.ok("Stop deleted successfully", null);
     }
+
+    @DeleteMapping("/{routeId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DISPATCHER')")
+    ApiResponse<Void> deleteRoute(@PathVariable Integer routeId) {
+        routesService.deleteRoute(routeId);
+        return ApiResponse.ok("Route deleted successfully", null);
+    }
 }
+

@@ -47,7 +47,7 @@ public class NotificationService {
     @Transactional
     public NotificationView create(CurrentUser currentUser, CreateNotificationRequest request) {
         Audience audience = parseAudience(request.target());
-        List<Integer> recipients = notificationRepository.findRecipientUserIds(audience.targetRole(), audience.routeId());
+        List<Integer> recipients = notificationRepository.findRecipientUserIds(request.target(), audience.targetRole(), audience.routeId());
         if (recipients.isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "No notification recipients found");
         }

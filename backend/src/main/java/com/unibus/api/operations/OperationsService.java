@@ -59,6 +59,12 @@ public class OperationsService {
         LocalDate serviceDate = request.serviceDate();
         if (request.shifts() != null) {
             for (ShiftAssignment shift : request.shifts()) {
+                if (shift.scheduleId() != null) {
+                    String currentTripStatus = operationsRepository.getTripStatusForSchedule(shift.scheduleId(), serviceDate);
+                    if ("RUNNING".equals(currentTripStatus) || "COMPLETED".equals(currentTripStatus)) {
+                        throw new ApiException(HttpStatus.BAD_REQUEST, "Không thể thay đổi ca chạy đang hoạt động hoặc đã hoàn thành");
+                    }
+                }
                 ShiftAssignment normalizedShift = normalizeShift(shift, serviceDate);
                 validateShift(normalizedShift, serviceDate);
                 Integer scheduleId = operationsRepository.saveSchedule(normalizedShift, currentUser.userId());
@@ -66,6 +72,17 @@ public class OperationsService {
             }
         }
         return getScheduleDashboard(serviceDate);
+    }
+
+    @Transactional
+    public void deleteSchedule(Integer scheduleId, LocalDate date) {
+        if (date != null) {
+            String currentTripStatus = operationsRepository.getTripStatusForSchedule(scheduleId, date);
+            if ("RUNNING".equals(currentTripStatus) || "COMPLETED".equals(currentTripStatus)) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Không thể xóa ca chạy đang hoạt động hoặc đã hoàn thành");
+            }
+        }
+        operationsRepository.deleteSchedule(scheduleId);
     }
 
     @Transactional(readOnly = true)
