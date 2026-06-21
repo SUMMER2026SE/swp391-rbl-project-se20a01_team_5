@@ -73,9 +73,12 @@ function AdminDashboard() {
               <Section title="Route metrics" description="Doanh thu và số chuyến theo tuyến">
                 <ExpressiveCard variant="elevated" className="mb-3 h-64 p-4">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={stats.routeMetrics}>
+                    <BarChart data={(stats.routeMetrics || []).map((m: any) => ({
+                      ...m,
+                      displayName: m.routeCode && m.routeCode.trim() !== "" ? m.routeCode : (m.routeName && m.routeName.length > 12 ? m.routeName.substring(0, 12) + "..." : (m.routeName || "Tuy\u1ebfn"))
+                    }))}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f1f1" />
-                      <XAxis dataKey="routeCode" tickLine={false} axisLine={false} style={{ fontSize: 12 }} />
+                      <XAxis dataKey="displayName" tickLine={false} axisLine={false} style={{ fontSize: 11 }} />
                       <YAxis tickLine={false} axisLine={false} width={50} tickFormatter={(value) => `${Math.round(Number(value) / 1000)}k`} style={{ fontSize: 12 }} />
                       <Tooltip 
                         cursor={false}
@@ -83,7 +86,7 @@ function AdminDashboard() {
                         contentStyle={{ borderRadius: "16px", border: "none", boxShadow: "0 12px 30px rgba(0,0,0,0.12)" }}
                       />
                       <Bar dataKey="revenue" radius={[8, 8, 0, 0]} barSize={32} minPointSize={4}>
-                        {stats.routeMetrics.map((entry: any, index: number) => (
+                        {(stats.routeMetrics || []).map((entry: any, index: number) => (
                           <Cell key={`cell-${index}`} fill={entry.colorHex || "#144fcc"} />
                         ))}
                       </Bar>
