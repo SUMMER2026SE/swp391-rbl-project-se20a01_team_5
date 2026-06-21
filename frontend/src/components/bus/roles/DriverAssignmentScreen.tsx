@@ -265,7 +265,7 @@ export function DriverAssignmentScreen() {
           <AlertDialogHeader>
             <AlertDialogTitle className="text-xl font-bold text-on-surface">Xác nhận xóa ca chạy</AlertDialogTitle>
             <AlertDialogDescription className="text-on-surface-variant text-sm mt-2">
-              Bạn có chắc chắn muốn xóa ca chạy lúc <span className="font-semibold text-on-surface">{deleteTarget?.departureTime}</span> của tuyến <span className="font-semibold text-on-surface">"{deleteTarget?.routeName}"</span> không?
+              Bạn có chắc chắn muốn xóa ca chạy lúc <span className="font-semibold text-on-surface">{deleteTarget?.departureTime}</span> của tuyến <span className="font-semibold text-on-surface">&quot;{deleteTarget?.routeName}&quot;</span> không?
               <br />
               <span className="text-xs text-error mt-2 block">Lưu ý: Hành động này sẽ xóa toàn bộ các chuyến đi liên quan trong ngày của ca chạy này và không thể hoàn tác.</span>
             </AlertDialogDescription>

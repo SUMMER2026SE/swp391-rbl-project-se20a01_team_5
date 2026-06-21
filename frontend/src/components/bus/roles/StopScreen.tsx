@@ -51,6 +51,7 @@ function RouteStopsManager({ routeId }: { routeId: number }) {
   // Sync default stopOrder when data loads
   useEffect(() => {
     if (resource.data) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setNewStop(prev => ({...prev, stopOrder: resource.data!.length + 1}));
     }
   }, [resource.data]);

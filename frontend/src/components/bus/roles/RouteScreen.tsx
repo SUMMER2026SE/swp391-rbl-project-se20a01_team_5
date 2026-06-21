@@ -167,7 +167,7 @@ export function RouteScreen() {
           <AlertDialogHeader>
             <AlertDialogTitle className="text-xl font-bold text-on-surface">Xác nhận xóa tuyến đường</AlertDialogTitle>
             <AlertDialogDescription className="text-on-surface-variant text-sm mt-2">
-              Bạn có chắc chắn muốn xóa tuyến đường <span className="font-semibold text-on-surface">"{deleteTarget?.routeName}"</span> không?
+              Bạn có chắc chắn muốn xóa tuyến đường <span className="font-semibold text-on-surface">&quot;{deleteTarget?.routeName}&quot;</span> không?
               <br />
               <span className="text-xs text-error mt-2 block">Lưu ý: Hành động này sẽ xóa toàn bộ các trạm dừng liên kết của tuyến đường này và không thể hoàn tác. Chỉ có thể xóa nếu tuyến chưa có lịch trình hoặc chuyến xe chạy.</span>
             </AlertDialogDescription>
