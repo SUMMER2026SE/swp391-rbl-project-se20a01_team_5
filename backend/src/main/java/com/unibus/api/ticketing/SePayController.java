@@ -18,7 +18,6 @@ import com.unibus.api.common.ApiResponse;
 import com.unibus.api.security.CurrentUser;
 
 @RestController
-@RequestMapping("/api/v1")
 public class SePayController {
 
     private final SePayService sePayService;
@@ -27,7 +26,7 @@ public class SePayController {
         this.sePayService = sePayService;
     }
 
-    @PostMapping("/students/me/payments/sepay/order")
+    @PostMapping("/api/v1/students/me/payments/sepay/order")
     @PreAuthorize("hasRole('STUDENT')")
     public ApiResponse<Map<String, Object>> createOrder(
             @AuthenticationPrincipal CurrentUser currentUser,
@@ -40,7 +39,7 @@ public class SePayController {
         return ApiResponse.ok("Payment order created", orderDetails);
     }
 
-    @GetMapping("/students/me/payments/sepay/order/{orderId}/status")
+    @GetMapping("/api/v1/students/me/payments/sepay/order/{orderId}/status")
     @PreAuthorize("hasRole('STUDENT')")
     public ApiResponse<Map<String, Object>> getOrderStatus(
             @AuthenticationPrincipal CurrentUser currentUser,
@@ -49,7 +48,7 @@ public class SePayController {
         return ApiResponse.ok("Order status retrieved", statusDetails);
     }
 
-    @PostMapping("/payments/sepay/webhook")
+    @PostMapping({"/api/v1/payments/sepay/webhook", "/sepay_webhook.php"})
     public ResponseEntity<Map<String, Object>> handleWebhook(
             @RequestBody Map<String, Object> payload) {
         try {
