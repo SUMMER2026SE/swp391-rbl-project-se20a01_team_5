@@ -682,7 +682,7 @@ export const experienceApi = {
   updateAssistantLostItem: (lostItemId: number, data: { status: string; notes?: string }) =>
     apiFetch.put<ExperienceLostItemCard>(`/conductor/lost-items/${lostItemId}`, data),
   coordinatorDashboard: () => apiFetch.get<CoordinatorDashboardView>("/coordinator/dashboard"),
-  coordinatorFeedback: (status?: string) => apiFetch.get<ExperienceFeedbackCard[]>("/coordinator/feedback", { status }),
+  coordinatorFeedback: (status?: string) => apiFetch.get<ExperienceFeedbackCard[]>("/coordinator/experience-feedback", { status }),
   adminStats: () => apiFetch.get<AdminStatsView>("/admin/stats"),
   fares: () => apiFetch.get<AdminStatsView["fares"]>("/admin/fares"),
   updateFare: (fareId: number, data: { amount: number; notes?: string }) =>
