@@ -3,7 +3,7 @@
 import { useCallback, useState } from "react";
 import { BarChart3, CreditCard, Receipt, GraduationCap, Megaphone, School, ShieldAlert, Tag, UserPlus, Users } from "lucide-react";
 import { toast } from "sonner";
-import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { PageHeader, Section, StatCard } from "@/components/bus/primitives";
 import { AsyncBlock, DataList, StatusPill, formatDateTime, formatMoney, getErrorMessage, useApiResource } from "@/components/bus/real-data";
 import { ExpressiveButton, ExpressiveCard } from "@/components/m3/primitives";
@@ -74,10 +74,18 @@ function AdminDashboard() {
                 <ExpressiveCard variant="elevated" className="mb-3 h-64 p-4">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={stats.routeMetrics}>
-                      <XAxis dataKey="routeCode" tickLine={false} axisLine={false} />
-                      <YAxis tickLine={false} axisLine={false} width={70} tickFormatter={(value) => `${Math.round(Number(value) / 1000)}k`} />
-                      <Tooltip formatter={(value) => formatMoney(Number(value))} />
-                      <Bar dataKey="revenue" fill="#144fcc" radius={[10, 10, 0, 0]} />
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f1f1" />
+                      <XAxis dataKey="routeCode" tickLine={false} axisLine={false} style={{ fontSize: 12 }} />
+                      <YAxis tickLine={false} axisLine={false} width={50} tickFormatter={(value) => `${Math.round(Number(value) / 1000)}k`} style={{ fontSize: 12 }} />
+                      <Tooltip 
+                        formatter={(value) => [formatMoney(Number(value)), "Doanh thu"]} 
+                        contentStyle={{ borderRadius: "16px", border: "none", boxShadow: "0 12px 30px rgba(0,0,0,0.12)" }}
+                      />
+                      <Bar dataKey="revenue" radius={[8, 8, 0, 0]}>
+                        {stats.routeMetrics.map((entry: any, index: number) => (
+                          <Cell key={`cell-${index}`} fill={entry.colorHex || "#144fcc"} />
+                        ))}
+                      </Bar>
                     </BarChart>
                   </ResponsiveContainer>
                 </ExpressiveCard>
