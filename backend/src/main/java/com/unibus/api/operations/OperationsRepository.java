@@ -654,6 +654,31 @@ public class OperationsRepository {
         return Double.valueOf(value.toString());
     }
 
+    public String getTripStatusForSchedule(Integer scheduleId, LocalDate serviceDate) {
+        List<String> statuses = jdbcTemplate.queryForList("""
+                SELECT status
+                FROM trips
+                WHERE schedule_id = ? AND service_date = ?
+                """, String.class, scheduleId, serviceDate);
+        return statuses.isEmpty() ? null : statuses.get(0);
+    }
+
+    public boolean hasActiveOrCompletedTrips(Integer scheduleId) {
+        Boolean exists = jdbcTemplate.queryForObject("""
+                SELECT EXISTS (
+                    SELECT 1 FROM trips
+                    WHERE schedule_id = ? AND status IN ('RUNNING', 'COMPLETED')
+                )
+                """, Boolean.class, scheduleId);
+        return Boolean.TRUE.equals(exists);
+    }
+
+    public void deleteSchedule(Integer scheduleId) {
+        jdbcTemplate.update("DELETE FROM vehicle_locations WHERE trip_id IN (SELECT trip_id FROM trips WHERE schedule_id = ?)", scheduleId);
+        jdbcTemplate.update("DELETE FROM trips WHERE schedule_id = ?", scheduleId);
+        jdbcTemplate.update("DELETE FROM bus_schedules WHERE schedule_id = ?", scheduleId);
+    }
+
     public record TripRouteInfo(Integer tripId, Integer routeId, LocalDate serviceDate) {
     }
 

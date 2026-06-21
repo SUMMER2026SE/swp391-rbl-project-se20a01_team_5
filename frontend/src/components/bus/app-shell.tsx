@@ -45,7 +45,14 @@ export function AppShell({
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [unread, setUnread] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const nav = NAV_CONFIG[role] ?? NAV_CONFIG.student;
+  const filteredSuggestions = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    const query = searchQuery.toLowerCase().trim();
+    return nav.filter((item) => item.label.toLowerCase().includes(query));
+  }, [searchQuery, nav]);
   const groups = useMemo(() => {
     const map = new Map<string, NavItem[]>();
     nav.forEach((item) => {
@@ -89,6 +96,18 @@ export function AppShell({
       mounted = false;
     };
   }, [activeId]);
+
+  useEffect(() => {
+    if (!showSuggestions) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest(".search-container")) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener("click", handleOutsideClick);
+    return () => document.removeEventListener("click", handleOutsideClick);
+  }, [showSuggestions]);
 
   const goTo = (id: string) => {
     setMobileOpen(false);
@@ -177,7 +196,7 @@ export function AppShell({
             borderRadius: scrolled ? 20 : 0,
           }}
           transition={{ type: "spring", stiffness: 400, damping: 30 }}
-          className="glass-m3 sticky top-0 z-30 flex items-center gap-2 overflow-hidden border border-outline-variant/40 px-3 sm:gap-3 sm:px-6"
+          className="glass-m3 sticky top-0 z-30 flex items-center gap-2 border border-outline-variant/40 px-3 sm:gap-3 sm:px-6"
         >
           {!isFirstNav ? (
             <button
@@ -209,9 +228,47 @@ export function AppShell({
 
           <div className="hidden flex-1 sm:block" />
 
-          <div className="relative hidden w-56 md:flex">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-on-surface-variant" />
-            <Input placeholder="Tìm trong màn hiện tại..." className="h-9 rounded-full border-transparent bg-surface-container-high pl-9 focus-visible:bg-surface-container-lowest" />
+          <div className="relative hidden w-64 md:flex flex-col search-container">
+            <div className="relative flex w-full items-center">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-on-surface-variant" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setShowSuggestions(true);
+                }}
+                onFocus={() => setShowSuggestions(true)}
+                placeholder="Tìm chức năng..."
+                className="h-9 w-full rounded-full border-transparent bg-surface-container-high pl-9 focus-visible:bg-surface-container-lowest text-sm transition-all focus-visible:ring-1 focus-visible:ring-primary/20"
+              />
+            </div>
+            
+            {showSuggestions && searchQuery.trim() !== "" && (
+              <div className="absolute top-[40px] left-0 z-50 w-full rounded-2xl border border-outline-variant/50 bg-surface-container-lowest p-1.5 shadow-xl max-h-60 overflow-y-auto scrollbar-soft animate-in fade-in slide-in-from-top-1 duration-150">
+                {filteredSuggestions.length > 0 ? (
+                  <div className="space-y-0.5">
+                    {filteredSuggestions.map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => {
+                          goTo(item.id);
+                          setSearchQuery("");
+                          setShowSuggestions(false);
+                        }}
+                        className="group flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-on-surface hover:bg-primary/10 hover:text-primary transition-all duration-100"
+                      >
+                        <item.icon className="size-4 shrink-0 text-on-surface-variant group-hover:text-primary transition-colors" />
+                        <span className="truncate font-medium">{item.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="px-3 py-3 text-xs text-on-surface-variant/80 text-center font-medium">
+                    Không tìm thấy kết quả
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <button

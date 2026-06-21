@@ -3,9 +3,11 @@ package com.unibus.api.coordinator;
 import java.time.OffsetDateTime;
 import java.util.List;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.unibus.api.common.ApiException;
 import com.unibus.api.coordinator.dto.CoordinatorRoutesDtos.AddStopRequest;
 import com.unibus.api.coordinator.dto.CoordinatorRoutesDtos.CreateRouteRequest;
 import com.unibus.api.coordinator.dto.CoordinatorRoutesDtos.RouteListItem;
@@ -158,4 +160,16 @@ public class CoordinatorRoutesService {
     public void deleteStop(Integer routeId, Integer routeStopId) {
         routeStopRepository.deleteById(routeStopId);
     }
+
+    @Transactional
+    public void deleteRoute(Integer routeId) {
+        BusRoute route = routeRepository.findById(routeId).orElseThrow();
+        if (routeRepository.hasAssociations(routeId)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Không thể xóa tuyến đường này vì đã có lịch trình, chuyến xe hoặc dữ liệu vé liên quan.");
+        }
+        List<RouteStop> routeStops = routeStopRepository.findAllByRouteIdOrderByStopOrder(routeId);
+        routeStopRepository.deleteAll(routeStops);
+        routeRepository.delete(route);
+    }
 }
+
