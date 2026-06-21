@@ -24,17 +24,5 @@ public interface BusRouteRepository extends JpaRepository<BusRoute, Integer> {
     List<BusRoute> searchRoutes(
             @Param("boardingStopId") Integer boardingStopId,
             @Param("alightingStopId") Integer alightingStopId);
-
-    @Query(value = """
-            SELECT EXISTS(SELECT 1 FROM bus_schedules WHERE route_id = :routeId) OR
-                   EXISTS(SELECT 1 FROM trips WHERE route_id = :routeId) OR
-                   EXISTS(SELECT 1 FROM route_registrations WHERE route_id = :routeId) OR
-                   EXISTS(SELECT 1 FROM monthly_passes WHERE route_id = :routeId) OR
-                   EXISTS(SELECT 1 FROM single_trip_tickets WHERE route_id = :routeId) OR
-                   EXISTS(SELECT 1 FROM fares WHERE route_id = :routeId) OR
-                   EXISTS(SELECT 1 FROM route_universities WHERE route_id = :routeId) OR
-                   EXISTS(SELECT 1 FROM daily_statistics WHERE route_id = :routeId)
-            """, nativeQuery = true)
-    boolean hasAssociations(@Param("routeId") Integer routeId);
 }
 
