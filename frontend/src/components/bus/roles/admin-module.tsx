@@ -71,8 +71,8 @@ function AdminDashboard() {
             </div>
             <div className="grid gap-4 xl:grid-cols-[1fr_0.9fr]">
               <Section title="Route metrics" description="Doanh thu và số chuyến theo tuyến">
-                <ExpressiveCard variant="elevated" className="mb-3 h-64 p-4">
-                  <ResponsiveContainer width="100%" height="100%">
+                <ExpressiveCard variant="elevated" className="mb-3 h-64 p-4 min-w-0">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                     <BarChart data={(stats.routeMetrics || []).map((m: any) => ({
                       ...m,
                       displayName: m.routeCode && m.routeCode.trim() !== "" ? m.routeCode : (m.routeName && m.routeName.length > 12 ? m.routeName.substring(0, 12) + "..." : (m.routeName || "Tuy\u1ebfn"))
