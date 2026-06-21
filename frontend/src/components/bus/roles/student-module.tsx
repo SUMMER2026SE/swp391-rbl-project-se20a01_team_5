@@ -755,9 +755,11 @@ function TicketsScreen({ title }: { title: string }) {
   useEffect(() => {
     if (!paymentSuccess) return;
     if (countdown <= 0) {
-      setActiveOrder(null);
-      setPaymentSuccess(false);
-      return;
+      const deferId = setTimeout(() => {
+        setActiveOrder(null);
+        setPaymentSuccess(false);
+      }, 0);
+      return () => clearTimeout(deferId);
     }
     const timerId = setTimeout(() => {
       setCountdown(countdown - 1);
@@ -837,6 +839,7 @@ function TicketsScreen({ title }: { title: string }) {
                 
                 {activeOrder.qrUrl && (
                   <div className="rounded-2xl bg-gray-100 p-4">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={activeOrder.qrUrl} alt="SePay QR" className="max-w-[240px] rounded-lg" />
                   </div>
                 )}
