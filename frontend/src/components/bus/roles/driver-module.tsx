@@ -16,7 +16,7 @@ type Props = {
 
 export function DriverModule({ activeId }: Props) {
   if (activeId === "drv-dashboard") return <DriverDashboardOverview />;
-  if (activeId === "drv-contact") return <Unavailable title="Liên hệ điều phối" icon={<MessageSquare className="size-7" />} />;
+  if (activeId === "drv-contact") return <ContactScreen />;
   return <TripsScreen mode={activeId} />;
 }
 
