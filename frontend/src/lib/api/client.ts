@@ -399,6 +399,8 @@ export const studentApi = {
   purchaseMonthlyPass: (method = "E_WALLET") =>
     apiFetch.post<TicketView>("/students/me/tickets/monthly-pass", { method }),
   payments: () => apiFetch.get<PaymentView[]>("/students/me/payments"),
+  createSePayOrder: (ticketType: string) => apiFetch.post<{ orderId: number; qrUrl: string; amount: number; description: string; bankCode: string; accountNo: string; accountName: string }>("/students/me/payments/sepay/order", { ticketType }),
+  getSePayOrderStatus: (orderId: number) => apiFetch.get<{ orderId: number; ticketType: string; total: number; status: string; paid: boolean; paidAt: string }>(`/students/me/payments/sepay/order/${orderId}/status`),
   travelHistory: (page = 0, size = 20) => apiFetch.get<TravelHistoryView[]>("/students/me/travel-history", { page, size }),
 };
 
