@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.unibus.api.common.ApiResponse;
 import com.unibus.api.security.CurrentUser;
 import com.unibus.api.university.UniversityDtos.AuditLogView;
+import com.unibus.api.university.UniversityDtos.PaymentTransactionView;
 import com.unibus.api.university.UniversityDtos.CampusView;
 import com.unibus.api.university.UniversityDtos.CreateCampusRequest;
 import com.unibus.api.university.UniversityDtos.CreateDomainRequest;
@@ -137,6 +138,13 @@ public class AdminUniversityController {
             @AuthenticationPrincipal CurrentUser currentUser,
             @Valid @RequestBody CreateSubsidyPolicyRequest request) {
         return ApiResponse.ok("Subsidy policy created", service.createSubsidyPolicy(currentUser, request));
+    }
+
+
+    @GetMapping("/payment-transactions")
+    ApiResponse<List<PaymentTransactionView>> paymentTransactions(
+            @RequestParam(required = false) Integer universityId) {
+        return ApiResponse.ok("Payment transactions retrieved", service.paymentTransactions(universityId));
     }
 
     @GetMapping("/audit-logs")

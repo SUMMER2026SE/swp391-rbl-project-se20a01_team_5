@@ -932,6 +932,29 @@ export interface UniversityStatsView {
   monthlyPasses: number;
 }
 
+export interface PaymentTransactionView {
+  orderId: number;
+  transactionId?: number;
+  sepayTransactionId?: number;
+  studentCode?: string;
+  studentName?: string;
+  universityId?: number;
+  universityName?: string;
+  ticketType?: string;
+  routeId?: number;
+  routeName?: string;
+  orderTotal?: number;
+  paymentStatus?: string;
+  gateway?: string;
+  amountIn?: number;
+  amountOut?: number;
+  transactionContent?: string;
+  referenceNumber?: string;
+  transactionDate?: string;
+  paidAt?: string;
+  createdAt?: string;
+}
+
 export interface ReconciliationView {
   universityId: number;
   universityName: string;
@@ -1000,6 +1023,7 @@ export const adminApi = {
   createSubsidyPolicy: (data: { universityId: number; campusId?: number; policyName: string; subsidyType: string; value: number; maxAmount?: number; activeFrom?: string; activeUntil?: string; status?: string }) =>
     apiFetch.post<SubsidyPolicyView>("/admin/subsidy-policies", data),
   auditLogs: (params?: { universityId?: number; action?: string }) => apiFetch.get<AuditLogView[]>("/admin/audit-logs", params),
+  paymentTransactions: (params?: { universityId?: number }) => apiFetch.get<PaymentTransactionView[]>("/admin/payment-transactions", params),
 };
 
 export const universityApi = {
@@ -1022,6 +1046,7 @@ export const universityApi = {
     apiFetch.post<SubsidyPolicyView>("/university-admin/subsidy-policies", data),
   stats: () => apiFetch.get<UniversityStatsView>("/university-admin/stats"),
   reconciliation: (params?: { from?: string; to?: string }) => apiFetch.get<ReconciliationView>("/university-admin/reconciliation", params),
+  paymentTransactions: () => apiFetch.get<PaymentTransactionView[]>("/university-admin/payment-transactions"),
   notify: (data: { title: string; content: string }) => apiFetch.post<number>("/university-admin/notifications", data),
 };
 

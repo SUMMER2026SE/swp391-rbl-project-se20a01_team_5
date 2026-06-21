@@ -171,10 +171,45 @@ public class TicketingRepository {
     }
 
     public List<PaymentView> findPayments(String studentCode) {
-        return jdbcTemplate.query(paymentQuery("""
-                WHERE p.student_code = ?
-                ORDER BY p.created_at DESC
-                """), (rs, rowNum) -> mapPayment(rs), studentCode);
+        return jdbcTemplate.query("""
+                SELECT *
+                FROM (
+                    SELECT p.payment_id,
+                           p.monthly_pass_id AS ticket_id,
+                           p.amount,
+                           p.method,
+                           p.status,
+                           COALESCE(i.original_amount, p.amount) AS original_amount,
+                           COALESCE(i.subsidy_amount, 0) AS subsidy_amount,
+                           COALESCE(i.final_amount, p.amount) AS final_amount,
+                           p.transaction_code,
+                           i.invoice_id,
+                           i.issued_at AS invoice_issued_at,
+                           p.created_at,
+                           1 AS sort_group
+                    FROM payments p
+                    LEFT JOIN invoices i ON i.payment_id = p.payment_id
+                    WHERE p.student_code = ?
+                    UNION ALL
+                    SELECT -o.id::integer AS payment_id,
+                           NULL::integer AS ticket_id,
+                           o.total AS amount,
+                           'BANK_TRANSFER' AS method,
+                           'PENDING' AS status,
+                           o.total AS original_amount,
+                           0 AS subsidy_amount,
+                           o.total AS final_amount,
+                           'DH' || o.id AS transaction_code,
+                           NULL::integer AS invoice_id,
+                           NULL::timestamptz AS invoice_issued_at,
+                           o.created_at,
+                           0 AS sort_group
+                    FROM tb_orders o
+                    WHERE o.student_code = ?
+                      AND o.payment_status = 'Unpaid'
+                ) rows
+                ORDER BY sort_group ASC, created_at DESC
+                """, (rs, rowNum) -> mapPayment(rs), studentCode, studentCode);
     }
 
     private Optional<TicketView> findTicket(Integer monthlyPassId) {

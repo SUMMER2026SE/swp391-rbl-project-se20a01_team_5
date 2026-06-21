@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { BarChart3, GraduationCap, Megaphone, School, ShieldAlert, Tag, UserPlus, Users } from "lucide-react";
+import { BarChart3, CreditCard, Receipt, GraduationCap, Megaphone, School, ShieldAlert, Tag, UserPlus, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { PageHeader, Section, StatCard } from "@/components/bus/primitives";
@@ -23,6 +23,7 @@ import {
   type SubsidyPolicyView,
   type UniversityAdminView,
   type UniversityView,
+  type PaymentTransactionView,
   type VerificationView,
 } from "@/lib/api/client";
 
@@ -41,6 +42,7 @@ export function AdminModule({ activeId }: Props) {
   if (activeId === "adm-uni-admins") return <UniversityAdminsScreen />;
   if (activeId === "adm-route-uni") return <RouteUniversitiesScreen />;
   if (activeId === "adm-audit") return <AuditScreen />;
+  if (activeId === "adm-transactions") return <PaymentTransactionsScreen scope="admin" />;
   if (activeId === "adm-fare") return <FaresScreen />;
   return <AdminDashboard />;
 }
@@ -598,6 +600,40 @@ function SubsidyPoliciesScreen() {
                     <p className="text-sm text-on-surface-variant">{item.universityName} · {item.subsidyType} · {item.value}</p>
                   </div>
                   <StatusPill status={item.status} />
+                </div>
+              </ExpressiveCard>
+            ))}
+          </DataList>
+        )}
+      </AsyncBlock>
+    </div>
+  );
+}
+
+
+function PaymentTransactionsScreen({ scope }: { scope: "admin" | "university" }) {
+  const resource = useApiResource<PaymentTransactionView[]>(useCallback(() => adminApi.paymentTransactions(), []));
+  return (
+    <div>
+      <PageHeader title="L?ch s? giao d?ch" description="Theo d?i ??n thanh to?n SePay v? giao d?ch ng?n h?ng." icon={<CreditCard className="size-7" />} />
+      <AsyncBlock resource={resource}>
+        {(transactions) => (
+          <DataList emptyTitle="Ch?a c? giao d?ch" emptyDescription="C?c ??n thanh to?n s? xu?t hi?n t?i ??y.">
+            {transactions.map((tx) => (
+              <ExpressiveCard key={`${scope}-${tx.orderId}-${tx.transactionId || 0}`} variant="elevated" className="p-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-bold text-on-surface">DH{tx.orderId} ? {tx.studentName || tx.studentCode}</h3>
+                      <StatusPill status={tx.paymentStatus || "UNKNOWN"} />
+                    </div>
+                    <p className="mt-1 text-sm text-on-surface-variant">{tx.universityName || "Ch?a li?n k?t tr??ng"} ? {tx.routeName || "Ch?a c? tuy?n"}</p>
+                    <p className="mt-1 text-xs text-on-surface-variant">N?i dung: {tx.transactionContent || `DH${tx.orderId}`} ? Ref: {tx.referenceNumber || "Ch?a c?"}</p>
+                  </div>
+                  <div className="text-left lg:text-right">
+                    <p className="text-lg font-black text-on-surface">{formatMoney(tx.orderTotal || tx.amountIn || 0)}</p>
+                    <p className="text-xs text-on-surface-variant">{tx.paidAt ? `Thanh to?n: ${formatDateTime(tx.paidAt)}` : `T?o ??n: ${formatDateTime(tx.createdAt)}`}</p>
+                  </div>
                 </div>
               </ExpressiveCard>
             ))}
