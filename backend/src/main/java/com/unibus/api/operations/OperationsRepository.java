@@ -707,11 +707,17 @@ public class OperationsRepository {
     public void updateTripLocation(Integer tripId, double longitude, double latitude, Double speedKmh,
             Integer occupancy) {
         Integer busId = jdbcTemplate.queryForObject("SELECT bus_id FROM trips WHERE trip_id = ?", Integer.class, tripId);
-        jdbcTemplate.update("DELETE FROM vehicle_locations WHERE trip_id = ?", tripId);
+        // Insert new location point (preserve history for replay/analytics).
+        // The latest row is surfaced by findLiveFleet via ROW_NUMBER() OVER (PARTITION BY trip_id ORDER BY updated_at DESC).
         jdbcTemplate.update("""
                 INSERT INTO vehicle_locations(bus_id, trip_id, longitude, latitude, speed_kmh, occupancy)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """, busId, tripId, longitude, latitude, speedKmh, occupancy);
+        // Best-effort cleanup of stale points older than 24h to bound table growth.
+        jdbcTemplate.update("""
+                DELETE FROM vehicle_locations
+                WHERE trip_id = ? AND updated_at < NOW() - INTERVAL '24 hours'
+                """, tripId);
     }
 
     public List<LiveFleetVehicle> findLiveFleet(LocalDate serviceDate) {

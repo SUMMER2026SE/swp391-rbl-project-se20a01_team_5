@@ -31,15 +31,19 @@ import com.unibus.api.operations.OperationsDtos.TicketScanResult;
 import com.unibus.api.operations.OperationsDtos.VehicleLocationRequest;
 import com.unibus.api.operations.OperationsRepository.DriverScheduleTemplate;
 import com.unibus.api.operations.OperationsRepository.TripRouteInfo;
+import com.unibus.api.realtime.RealtimePublisher;
 import com.unibus.api.security.CurrentUser;
 
 @Service
 public class OperationsService {
 
     private final OperationsRepository operationsRepository;
+    private final RealtimePublisher realtimePublisher;
 
-    public OperationsService(OperationsRepository operationsRepository) {
+    public OperationsService(OperationsRepository operationsRepository,
+            RealtimePublisher realtimePublisher) {
         this.operationsRepository = operationsRepository;
+        this.realtimePublisher = realtimePublisher;
     }
 
     @Transactional(readOnly = true)
@@ -304,6 +308,15 @@ public class OperationsService {
         requireOwnedTrip(tripId, driverStaffId);
         operationsRepository.updateTripLocation(tripId, request.longitude(), request.latitude(), request.speedKmh(),
                 request.occupancy());
+        // Broadcast to all subscribers (students tracking this trip + coordinator live fleet).
+        TripRouteInfo tripInfo = operationsRepository.tripRouteInfo(tripId).orElse(null);
+        if (tripInfo != null) {
+            realtimePublisher.publishTripLocation(tripId, tripInfo.routeId(),
+                    request.longitude(), request.latitude(), request.speedKmh(), request.occupancy());
+        } else {
+            realtimePublisher.publishTripLocation(tripId, null,
+                    request.longitude(), request.latitude(), request.speedKmh(), request.occupancy());
+        }
     }
 
     @Transactional(readOnly = true)

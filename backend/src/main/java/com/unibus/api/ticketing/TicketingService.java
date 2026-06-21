@@ -16,6 +16,8 @@ import com.unibus.api.ticketing.TicketingDtos.PassesDashboard;
 import com.unibus.api.ticketing.TicketingDtos.MonthlyPassQuote;
 import com.unibus.api.ticketing.TicketingDtos.PaymentView;
 import com.unibus.api.ticketing.TicketingDtos.PurchaseMonthlyPassRequest;
+import com.unibus.api.ticketing.TicketingDtos.PurchaseSingleTripTicketRequest;
+import com.unibus.api.ticketing.TicketingDtos.SingleTripTicketView;
 import com.unibus.api.ticketing.TicketingDtos.TicketView;
 import com.unibus.api.ticketing.TicketingRepository.ApprovedRegistration;
 import com.unibus.api.university.SubsidyService;
@@ -65,6 +67,50 @@ public class TicketingService {
                     ticketingRepository.createPaidPayment(ticket.ticketId(), quote.finalFareAmount(), method(request));
                     return ticket;
                 });
+    }
+
+    @Transactional
+    public SingleTripTicketView purchaseSingleTripTicket(CurrentUser currentUser,
+            PurchaseSingleTripTicketRequest request) {
+        String studentCode = requireStudentCode(currentUser);
+        if (request.boardingStopId().equals(request.alightingStopId())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "Boarding and alighting stops must be different");
+        }
+        BigDecimal singleAmount = ticketingRepository.singleFare(request.routeId());
+        if (singleAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "Route does not have a single-trip fare configured");
+        }
+        // Apply subsidy if available
+        MonthlyPassQuote quote = subsidyService.quoteFor(currentUser, request.routeId(),
+                "Route " + request.routeId(), singleAmount);
+        ensurePurchasableQuote(quote);
+        Integer ticketId = ticketingRepository.createSingleTripTicket(studentCode, request.routeId(),
+                request.boardingStopId(), request.alightingStopId(),
+                quote.finalFareAmount(), quote.originalFareAmount(),
+                quote.subsidyAmount(), quote.finalFareAmount(),
+                quote.subsidyPolicyId());
+        String method = request.method() == null || request.method().isBlank() ? "BANK_TRANSFER" : request.method();
+        ticketingRepository.createPaidPaymentForSingleTicket(ticketId, quote.finalFareAmount(), method);
+        return ticketingRepository.findSingleTripTicket(ticketId)
+                .map(t -> new SingleTripTicketView(t.ticketId(), t.routeId(), t.routeName(),
+                        t.boardingStopId(), t.boardingStopName(), t.alightingStopId(), t.alightingStopName(),
+                        t.originalFareAmount(), t.subsidyAmount(), t.finalFareAmount(), t.qrCode(),
+                        t.status(), t.purchasedAt(), t.expiresAt()))
+                .orElseThrow(() -> new ApiException(HttpStatus.INTERNAL_SERVER_ERROR,
+                        "Failed to retrieve created single-trip ticket"));
+    }
+
+    @Transactional(readOnly = true)
+    public List<SingleTripTicketView> listSingleTripTickets(CurrentUser currentUser) {
+        String studentCode = requireStudentCode(currentUser);
+        return ticketingRepository.findSingleTripTickets(studentCode).stream()
+                .map(t -> new SingleTripTicketView(t.ticketId(), t.routeId(), t.routeName(),
+                        t.boardingStopId(), t.boardingStopName(), t.alightingStopId(), t.alightingStopName(),
+                        t.originalFareAmount(), t.subsidyAmount(), t.finalFareAmount(), t.qrCode(),
+                        t.status(), t.purchasedAt(), t.expiresAt()))
+                .toList();
     }
 
     @Transactional(readOnly = true)

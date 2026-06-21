@@ -87,6 +87,151 @@ public class TicketingRepository {
         return fares.isEmpty() ? BigDecimal.ZERO : fares.get(0);
     }
 
+    public BigDecimal singleFare(Integer routeId) {
+        List<BigDecimal> fares = jdbcTemplate.queryForList("""
+                SELECT amount
+                FROM fares
+                WHERE route_id = ?
+                  AND fare_type = 'SINGLE'
+                  AND effective_from <= CURRENT_DATE
+                  AND (effective_until IS NULL OR effective_until >= CURRENT_DATE)
+                ORDER BY effective_from DESC
+                LIMIT 1
+                """, BigDecimal.class, routeId);
+        return fares.isEmpty() ? BigDecimal.ZERO : fares.get(0);
+    }
+
+    public Integer createSingleTripTicket(String studentCode, Integer routeId, Integer boardingStopId,
+            Integer alightingStopId, BigDecimal amount, BigDecimal originalAmount, BigDecimal subsidyAmount,
+            BigDecimal finalAmount, Integer subsidyPolicyId) {
+        String qrCode = "UB-SINGLE-" + UUID.randomUUID();
+        KeyHolder keyHolder = new GeneratedKeyHolder();
+        jdbcTemplate.update(connection -> {
+            PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO single_trip_tickets(student_code, route_id, boarding_stop_id, alighting_stop_id,
+                                                 fare_amount, original_fare_amount, subsidy_amount, final_fare_amount,
+                                                 subsidy_policy_id, qr_code, status, purchased_at, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'UNUSED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '24 hours')
+                """, new String[] { "single_trip_ticket_id" });
+            statement.setString(1, studentCode);
+            statement.setInt(2, routeId);
+            statement.setObject(3, boardingStopId);
+            statement.setObject(4, alightingStopId);
+            statement.setBigDecimal(5, finalAmount);
+            statement.setBigDecimal(6, originalAmount);
+            statement.setBigDecimal(7, subsidyAmount);
+            statement.setBigDecimal(8, finalAmount);
+            if (subsidyPolicyId == null) {
+                statement.setNull(9, java.sql.Types.INTEGER);
+            } else {
+                statement.setInt(9, subsidyPolicyId);
+            }
+            statement.setString(10, qrCode);
+            return statement;
+        }, keyHolder);
+        return generatedId(keyHolder, "single trip ticket");
+    }
+
+    public void createPaidPaymentForSingleTicket(Integer singleTripTicketId, BigDecimal amount, String method) {
+        KeyHolder keyHolder = new GeneratedKeyHolder();
+        jdbcTemplate.update(connection -> {
+            PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO payments(student_code, single_trip_ticket_id, amount, method, status, transaction_code, notes)
+                SELECT student_code, single_trip_ticket_id, ?, ?, 'PAID', ?, 'Single-trip ticket purchase'
+                FROM single_trip_tickets
+                WHERE single_trip_ticket_id = ?
+                """, new String[] { "payment_id" });
+            statement.setBigDecimal(1, amount);
+            statement.setString(2, method);
+            statement.setString(3, "MVP-" + UUID.randomUUID());
+            statement.setInt(4, singleTripTicketId);
+            return statement;
+        }, keyHolder);
+        Integer paymentId = generatedId(keyHolder, "payment");
+        jdbcTemplate.update("""
+                INSERT INTO invoices(payment_id, student_code, description, amount, original_amount, subsidy_amount, final_amount)
+                SELECT p.payment_id, p.student_code, 'Single trip ticket payment', p.amount,
+                       COALESCE(stt.original_fare_amount, stt.fare_amount),
+                       COALESCE(stt.subsidy_amount, 0),
+                       COALESCE(stt.final_fare_amount, stt.fare_amount)
+                FROM payments p
+                JOIN single_trip_tickets stt ON stt.single_trip_ticket_id = p.single_trip_ticket_id
+                WHERE p.payment_id = ?
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM invoices i
+                      WHERE i.payment_id = p.payment_id
+                  )
+                """, paymentId);
+    }
+
+    public Optional<SingleTripTicketView> findSingleTripTicket(Integer ticketId) {
+        List<SingleTripTicketView> rows = jdbcTemplate.query("""
+                SELECT stt.single_trip_ticket_id, stt.student_code, stt.route_id, r.route_name,
+                       stt.boarding_stop_id, bs.stop_name AS boarding_stop_name,
+                       stt.alighting_stop_id, als.stop_name AS alighting_stop_name,
+                       stt.fare_amount, stt.original_fare_amount, stt.subsidy_amount, stt.final_fare_amount,
+                       stt.qr_code, stt.status, stt.purchased_at, stt.expires_at
+                FROM single_trip_tickets stt
+                JOIN routes r ON r.route_id = stt.route_id
+                LEFT JOIN stops bs ON bs.stop_id = stt.boarding_stop_id
+                LEFT JOIN stops als ON als.stop_id = stt.alighting_stop_id
+                WHERE stt.single_trip_ticket_id = ?
+                """, (rs, rowNum) -> new SingleTripTicketView(
+                        rs.getInt("single_trip_ticket_id"),
+                        rs.getString("student_code"),
+                        rs.getInt("route_id"),
+                        rs.getString("route_name"),
+                        (Integer) rs.getObject("boarding_stop_id"),
+                        rs.getString("boarding_stop_name"),
+                        (Integer) rs.getObject("alighting_stop_id"),
+                        rs.getString("alighting_stop_name"),
+                        rs.getBigDecimal("fare_amount"),
+                        rs.getBigDecimal("original_fare_amount"),
+                        rs.getBigDecimal("subsidy_amount"),
+                        rs.getBigDecimal("final_fare_amount"),
+                        rs.getString("qr_code"),
+                        rs.getString("status"),
+                        toOffsetDateTime(rs.getTimestamp("purchased_at")),
+                        toOffsetDateTime(rs.getTimestamp("expires_at"))),
+                ticketId);
+        return rows.stream().findFirst();
+    }
+
+    public List<SingleTripTicketView> findSingleTripTickets(String studentCode) {
+        return jdbcTemplate.query("""
+                SELECT stt.single_trip_ticket_id, stt.student_code, stt.route_id, r.route_name,
+                       stt.boarding_stop_id, bs.stop_name AS boarding_stop_name,
+                       stt.alighting_stop_id, als.stop_name AS alighting_stop_name,
+                       stt.fare_amount, stt.original_fare_amount, stt.subsidy_amount, stt.final_fare_amount,
+                       stt.qr_code, stt.status, stt.purchased_at, stt.expires_at
+                FROM single_trip_tickets stt
+                JOIN routes r ON r.route_id = stt.route_id
+                LEFT JOIN stops bs ON bs.stop_id = stt.boarding_stop_id
+                LEFT JOIN stops als ON als.stop_id = stt.alighting_stop_id
+                WHERE stt.student_code = ?
+                ORDER BY stt.purchased_at DESC
+                LIMIT 50
+                """, (rs, rowNum) -> new SingleTripTicketView(
+                        rs.getInt("single_trip_ticket_id"),
+                        rs.getString("student_code"),
+                        rs.getInt("route_id"),
+                        rs.getString("route_name"),
+                        (Integer) rs.getObject("boarding_stop_id"),
+                        rs.getString("boarding_stop_name"),
+                        (Integer) rs.getObject("alighting_stop_id"),
+                        rs.getString("alighting_stop_name"),
+                        rs.getBigDecimal("fare_amount"),
+                        rs.getBigDecimal("original_fare_amount"),
+                        rs.getBigDecimal("subsidy_amount"),
+                        rs.getBigDecimal("final_fare_amount"),
+                        rs.getString("qr_code"),
+                        rs.getString("status"),
+                        toOffsetDateTime(rs.getTimestamp("purchased_at")),
+                        toOffsetDateTime(rs.getTimestamp("expires_at"))),
+                studentCode);
+    }
+
     public TicketView createMonthlyTicket(String studentCode, ApprovedRegistration registration, int year, int month,
             OffsetDateTime validFrom, OffsetDateTime expiresAt, MonthlyPassQuote quote) {
         String qrCode = "UB-MONTHLY-" + UUID.randomUUID();
@@ -290,5 +435,24 @@ public class TicketingRepository {
             String boardingStopName,
             Integer alightingRouteStopId,
             String alightingStopName) {
+    }
+
+    public record SingleTripTicketView(
+            Integer ticketId,
+            String studentCode,
+            Integer routeId,
+            String routeName,
+            Integer boardingStopId,
+            String boardingStopName,
+            Integer alightingStopId,
+            String alightingStopName,
+            BigDecimal fareAmount,
+            BigDecimal originalFareAmount,
+            BigDecimal subsidyAmount,
+            BigDecimal finalFareAmount,
+            String qrCode,
+            String status,
+            OffsetDateTime purchasedAt,
+            OffsetDateTime expiresAt) {
     }
 }
