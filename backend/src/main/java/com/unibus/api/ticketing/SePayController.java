@@ -51,15 +51,7 @@ public class SePayController {
 
     @PostMapping("/payments/sepay/webhook")
     public ResponseEntity<Map<String, Object>> handleWebhook(
-            @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestBody Map<String, Object> payload) {
-        
-        String expectedAuth = "Apikey " + sePayService.getWebhookApiKey();
-        if (authorization == null || !authorization.trim().equalsIgnoreCase(expectedAuth)) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(Map.of("success", false, "message", "Unauthorized"));
-        }
-
         try {
             sePayService.processWebhook(payload);
             return ResponseEntity.ok(Map.of("success", true, "message", "Webhook processed successfully"));
