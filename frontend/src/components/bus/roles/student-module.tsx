@@ -713,7 +713,7 @@ function TicketsScreen({ title }: { title: string }) {
   const [activeOrder, setActiveOrder] = useState<any>(null);
   const [buying, setBuying] = useState(false);
 
-  const handleBuy = async (type: "monthly" | "single" | "test") => {
+  const handleBuy = async (type: "monthly" | "single") => {
     try {
       setBuying(true);
       const order = await studentApi.createSePayOrder(type);
@@ -759,10 +759,6 @@ function TicketsScreen({ title }: { title: string }) {
                 <ExpressiveButton variant="tonal" onClick={() => handleBuy("single")} disabled={buying} className="w-full">
                   <TicketCheck className="size-4" />
                   Mua vé thường qua SePay
-                </ExpressiveButton>
-                <ExpressiveButton variant="tonal" onClick={() => handleBuy("test")} disabled={buying} className="w-full">
-                  <QrCode className="size-4" />
-                  Mua vé thử 3k qua SePay
                 </ExpressiveButton>
                 <p className="text-xs font-semibold text-on-surface-variant">Thanh toán an toàn qua cổng SePay tự động.</p>
               </div>

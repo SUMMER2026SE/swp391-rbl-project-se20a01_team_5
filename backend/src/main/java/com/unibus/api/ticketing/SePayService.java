@@ -65,17 +65,9 @@ public class SePayService {
         String studentCode = ticketingRepository.studentCodeForUser(currentUser.userId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Student profile not found"));
 
-        Optional<ApprovedRegistration> registrationOpt = ticketingRepository.approvedRegistration(studentCode);
-        if (!"test".equalsIgnoreCase(ticketType) && registrationOpt.isEmpty()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Student must have an approved route registration");
-        }
-        Integer routeId = registrationOpt.map(ApprovedRegistration::routeId).orElseGet(() -> {
-            try {
-                return jdbcTemplate.queryForObject("SELECT route_id FROM routes ORDER BY route_id LIMIT 1", Integer.class);
-            } catch (Exception e) {
-                return 1; // absolute fallback
-            }
-        });
+        ApprovedRegistration registration = ticketingRepository.approvedRegistration(studentCode)
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Student must have an approved route registration"));
+        Integer routeId = registration.routeId();
 
         BigDecimal amount;
         BigDecimal originalFare;
@@ -97,7 +89,7 @@ public class SePayService {
             }
 
             BigDecimal baseFare = ticketingRepository.monthlyFare(routeId);
-            MonthlyPassQuote quote = subsidyService.quoteFor(currentUser, routeId, registrationOpt.map(ApprovedRegistration::routeName).orElse(""), baseFare, now);
+            MonthlyPassQuote quote = subsidyService.quoteFor(currentUser, routeId, registration.routeName(), baseFare, now);
 
             if (SubsidyService.STATUS_NOT_VERIFIED.equals(quote.subsidyStatus())) {
                 throw new ApiException(HttpStatus.FORBIDDEN, "Student verification is required before buying a monthly pass");
@@ -124,12 +116,35 @@ public class SePayService {
             amount = singleFare;
             originalFare = singleFare;
             finalAmount = singleFare;
-        } else if ("test".equalsIgnoreCase(ticketType)) {
-            amount = new BigDecimal("3000");
-            originalFare = new BigDecimal("3000");
-            finalAmount = new BigDecimal("3000");
         } else {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid ticket type: " + ticketType);
+        }
+
+        // Check for an existing unpaid order with same student_code, ticket_type, route_id and total amount to avoid spamming
+        List<Map<String, Object>> existingOrders = jdbcTemplate.queryForList(
+                "SELECT id, total FROM tb_orders WHERE student_code = ? AND ticket_type = ? AND route_id = ? AND payment_status = 'Unpaid' ORDER BY created_at DESC LIMIT 1",
+                studentCode, ticketType.toLowerCase(), routeId);
+
+        if (!existingOrders.isEmpty()) {
+            Map<String, Object> existing = existingOrders.get(0);
+            BigDecimal existingTotal = (BigDecimal) existing.get("total");
+            if (existingTotal.compareTo(amount) == 0) {
+                long orderId = ((Number) existing.get("id")).longValue();
+                String description = "DH" + orderId;
+                String qrUrl = String.format("https://qr.sepay.vn/img?bank=%s&acc=%s&template=%s&amount=%s&des=%s",
+                        bankCode, accountNo, qrTemplate, amount.toPlainString(), description);
+                return Map.of(
+                    "orderId", orderId,
+                    "studentCode", studentCode,
+                    "ticketType", ticketType.toLowerCase(),
+                    "amount", amount,
+                    "description", description,
+                    "qrUrl", qrUrl,
+                    "bankCode", bankCode,
+                    "accountNo", accountNo,
+                    "accountName", accountName
+                );
+            }
         }
 
         KeyHolder keyHolder = new GeneratedKeyHolder();
@@ -138,7 +153,7 @@ public class SePayService {
                     "INSERT INTO tb_orders (student_code, ticket_type, route_id, total, payment_status, name) VALUES (?, ?, ?, ?, 'Unpaid', ?)",
                     new String[] { "id" });
             statement.setString(1, studentCode);
-            statement.setString(2, "test".equalsIgnoreCase(ticketType) ? "single" : ticketType.toLowerCase());
+            statement.setString(2, ticketType.toLowerCase());
             statement.setInt(3, routeId);
             statement.setBigDecimal(4, amount);
             statement.setString(5, "monthly".equalsIgnoreCase(ticketType) ? "V? th?ng UniBus" : "V? th??ng UniBus");
@@ -151,7 +166,6 @@ public class SePayService {
         }
         long orderId = idVal.longValue();
         String description = "DH" + orderId;
-
         // Generate SePay QR URL
         String qrUrl = String.format("https://qr.sepay.vn/img?bank=%s&acc=%s&template=%s&amount=%s&des=%s",
                 bankCode, accountNo, qrTemplate, amount.toPlainString(), description);
