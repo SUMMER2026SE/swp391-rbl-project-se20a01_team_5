@@ -65,8 +65,17 @@ public class SePayService {
         String studentCode = ticketingRepository.studentCodeForUser(currentUser.userId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Student profile not found"));
 
-        ApprovedRegistration registration = ticketingRepository.approvedRegistration(studentCode)
-                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Student must have an approved route registration"));
+        Optional<ApprovedRegistration> registrationOpt = ticketingRepository.approvedRegistration(studentCode);
+        if (!"test".equalsIgnoreCase(ticketType) && registrationOpt.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Student must have an approved route registration");
+        }
+        Integer routeId = registrationOpt.map(ApprovedRegistration::routeId).orElseGet(() -> {
+            try {
+                return jdbcTemplate.queryForObject("SELECT route_id FROM routes ORDER BY route_id LIMIT 1", Integer.class);
+            } catch (Exception e) {
+                return 1; // absolute fallback
+            }
+        });
 
         BigDecimal amount;
         BigDecimal originalFare;
@@ -82,13 +91,13 @@ public class SePayService {
             // Check if already has active monthly pass to avoid double purchase
             boolean exists = jdbcTemplate.queryForObject(
                     "SELECT EXISTS(SELECT 1 FROM monthly_passes WHERE student_code = ? AND route_id = ? AND effective_year = ? AND effective_month = ? AND status = 'ACTIVE')",
-                    Boolean.class, studentCode, registration.routeId(), year, month);
+                    Boolean.class, studentCode, routeId, year, month);
             if (exists) {
                 throw new ApiException(HttpStatus.BAD_REQUEST, "Active monthly pass already exists for this month");
             }
 
-            BigDecimal baseFare = ticketingRepository.monthlyFare(registration.routeId());
-            MonthlyPassQuote quote = subsidyService.quoteFor(currentUser, registration.routeId(), registration.routeName(), baseFare, now);
+            BigDecimal baseFare = ticketingRepository.monthlyFare(routeId);
+            MonthlyPassQuote quote = subsidyService.quoteFor(currentUser, routeId, registrationOpt.map(ApprovedRegistration::routeName).orElse(""), baseFare, now);
 
             if (SubsidyService.STATUS_NOT_VERIFIED.equals(quote.subsidyStatus())) {
                 throw new ApiException(HttpStatus.FORBIDDEN, "Student verification is required before buying a monthly pass");
@@ -109,7 +118,7 @@ public class SePayService {
             // Get single fare for the route, fallback to 7000 if not configured
             List<BigDecimal> fares = jdbcTemplate.queryForList(
                     "SELECT amount FROM fares WHERE route_id = ? AND fare_type = 'SINGLE' AND effective_from <= CURRENT_DATE AND (effective_until IS NULL OR effective_until >= CURRENT_DATE) ORDER BY effective_from DESC LIMIT 1",
-                    BigDecimal.class, registration.routeId());
+                    BigDecimal.class, routeId);
             BigDecimal singleFare = fares.isEmpty() ? new BigDecimal("7000") : fares.get(0);
 
             amount = singleFare;
@@ -130,7 +139,7 @@ public class SePayService {
                     new String[] { "id" });
             statement.setString(1, studentCode);
             statement.setString(2, "test".equalsIgnoreCase(ticketType) ? "single" : ticketType.toLowerCase());
-            statement.setInt(3, registration.routeId());
+            statement.setInt(3, routeId);
             statement.setBigDecimal(4, amount);
             statement.setString(5, "monthly".equalsIgnoreCase(ticketType) ? "V? th?ng UniBus" : "V? th??ng UniBus");
             return statement;
