@@ -618,7 +618,7 @@ public class UniversityManagementRepository {
                        tx.id AS transaction_id,
                        tx.sepay_transaction_id,
                        o.student_code,
-                       COALESCE(u.full_name, s.full_name, o.student_code) AS student_name,
+                       COALESCE(u.full_name, o.student_code) AS student_name,
                        s.university_id,
                        uni.name AS university_name,
                        o.ticket_type,
