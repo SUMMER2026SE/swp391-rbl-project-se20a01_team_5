@@ -49,12 +49,13 @@ export function AdminModule({ activeId }: Props) {
 
 function AdminDashboard() {
   const loader = useCallback(async () => {
-    const [stats, users, verifications] = await Promise.all([
+    const [stats, users, verifications, transactions] = await Promise.all([
       experienceApi.adminStats(),
       adminApi.users(),
       adminApi.verifications().catch(() => []),
+      adminApi.paymentTransactions().catch(() => []),
     ]);
-    return { stats, users, verifications };
+    return { stats, users, verifications, transactions };
   }, []);
   const resource = useApiResource(loader);
 
@@ -62,7 +63,7 @@ function AdminDashboard() {
     <div>
       <PageHeader title="Thống kê hệ thống" description="Tổng quan thật từ admin APIs hiện có." icon={<BarChart3 className="size-7" />} />
       <AsyncBlock resource={resource}>
-        {({ stats, users, verifications }) => (
+        {({ stats, users, verifications, transactions }) => (
           <div className="space-y-6">
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {stats.stats.map((stat) => (
@@ -111,6 +112,49 @@ function AdminDashboard() {
                 <UserList users={users.slice(0, 6)} onRefresh={resource.reload} />
               </Section>
             </div>
+
+            <Section title="Lịch sử giao dịch hệ thống" description="Theo dõi chi tiết các giao dịch mua vé của sinh viên.">
+              <ExpressiveCard variant="elevated" className="p-4 overflow-x-auto">
+                <table className="w-full text-left text-sm text-on-surface">
+                  <thead>
+                    <tr className="border-b border-outline-variant font-bold text-on-surface-variant">
+                      <th className="pb-3 pr-4">Ngày & Giờ</th>
+                      <th className="pb-3 pr-4">User</th>
+                      <th className="pb-3 pr-4">Giá tiền</th>
+                      <th className="pb-3 pr-4">Thông tin chuyến xe</th>
+                      <th className="pb-3">Mã chuyển khoản</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(transactions || []).slice(0, 10).map((tx: any) => (
+                      <tr key={`dash-tx-${tx.orderId}-${tx.transactionId || 0}`} className="border-b border-outline-variant/40 hover:bg-surface-variant/20">
+                        <td className="py-3 pr-4 text-xs font-semibold text-on-surface-variant">
+                          {formatDateTime(tx.paidAt || tx.createdAt)}
+                        </td>
+                        <td className="py-3 pr-4 font-bold">{tx.studentName || tx.studentCode}</td>
+                        <td className="py-3 pr-4 font-black text-blue-600">{formatMoney(tx.orderTotal || tx.amountIn || 0)}</td>
+                        <td className="py-3 pr-4">
+                          <span className="font-semibold text-xs bg-surface-variant px-2 py-1 rounded-lg mr-2 uppercase">
+                            {tx.ticketType === "monthly" ? "Tháng" : "Thường"}
+                          </span>
+                          {tx.routeName || "Chưa có tuyến"}
+                        </td>
+                        <td className="py-3 font-mono text-xs font-bold text-red-600">
+                          {tx.referenceNumber || tx.transactionContent || `DH${tx.orderId}`}
+                        </td>
+                      </tr>
+                    ))}
+                    {(transactions || []).length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="py-6 text-center text-on-surface-variant font-semibold">
+                          Chưa có lịch sử giao dịch.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </ExpressiveCard>
+            </Section>
           </div>
         )}
       </AsyncBlock>
