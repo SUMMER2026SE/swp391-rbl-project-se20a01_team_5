@@ -78,10 +78,11 @@ function AdminDashboard() {
                       <XAxis dataKey="routeCode" tickLine={false} axisLine={false} style={{ fontSize: 12 }} />
                       <YAxis tickLine={false} axisLine={false} width={50} tickFormatter={(value) => `${Math.round(Number(value) / 1000)}k`} style={{ fontSize: 12 }} />
                       <Tooltip 
+                        cursor={false}
                         formatter={(value) => [formatMoney(Number(value)), "Doanh thu"]} 
                         contentStyle={{ borderRadius: "16px", border: "none", boxShadow: "0 12px 30px rgba(0,0,0,0.12)" }}
                       />
-                      <Bar dataKey="revenue" radius={[8, 8, 0, 0]}>
+                      <Bar dataKey="revenue" radius={[8, 8, 0, 0]} barSize={32} minPointSize={4}>
                         {stats.routeMetrics.map((entry: any, index: number) => (
                           <Cell key={`cell-${index}`} fill={entry.colorHex || "#144fcc"} />
                         ))}
