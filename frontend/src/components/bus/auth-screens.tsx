@@ -318,9 +318,9 @@ function Hero({ onGetStarted }: { onGetStarted: () => void }) {
   const opacity = useTransform(scrollYProgress, [0, 0.85], [1, 0]);
 
   return (
-    <section ref={ref} className="relative min-h-[80vh] sm:min-h-[88vh] flex flex-col justify-center overflow-hidden">
+    <section ref={ref} className="relative min-h-[80vh] sm:min-h-[88vh] flex flex-col justify-center">
       {/* Background — bold lime block top-right, dark block bottom-left */}
-      <div className="absolute top-0 right-0 size-[50vw] rounded-full bg-[#beff50] blur-[100px] opacity-50 pointer-events-none" />
+      <div className="absolute -top-[10%] right-0 size-[45vw] rounded-full bg-[#beff50] blur-[120px] opacity-60 pointer-events-none" />
       <div className="absolute bottom-0 left-0 size-[40vw] rounded-full bg-[#144fcc] blur-[100px] opacity-20 pointer-events-none" />
       <div className="absolute top-1/3 left-1/4 size-[30vw] rounded-full bg-[#ff8c5f] blur-[80px] opacity-25 pointer-events-none" />
 
@@ -378,8 +378,8 @@ function Hero({ onGetStarted }: { onGetStarted: () => void }) {
                   <Bus className="size-5" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs text-white/60">Dữ liệu vận hành</p>
-                  <p className="font-bold truncate">Hiển thị sau khi đăng nhập</p>
+                  <p className="text-xs text-white/60">Trải nghiệm chuyến đi</p>
+                  <p className="font-bold truncate">Đăng nhập để theo dõi xe & mua vé</p>
                 </div>
               </div>
               <span className="size-2.5 rounded-full bg-[#beff50] animate-pulse shrink-0" />
@@ -596,7 +596,6 @@ function RegisterForm({
         <ArrowLeft className="size-4" /> Quay lại đăng nhập
       </button>
       <h3 className="text-2xl font-bold tracking-tight">Tạo tài khoản</h3>
-      <p className="text-sm text-on-surface-variant mt-1">Email trường giúp tự nhận diện trường đại học.</p>
 
       {/* Google signup */}
       <motion.button
