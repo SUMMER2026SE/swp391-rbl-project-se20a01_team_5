@@ -743,6 +743,11 @@ export interface TicketScanResult {
   travelHistoryId?: number;
 }
 
+export interface RouteOption {
+  routeId: number;
+  routeName: string;
+}
+
 export interface ScheduleDashboard {
   serviceDate: string;
   shifts: {
@@ -752,7 +757,9 @@ export interface ScheduleDashboard {
     routeName?: string;
     busId?: number;
     licensePlate?: string;
+    driverStaffId?: number;
     driverName?: string;
+    conductorStaffId?: number;
     conductorName?: string;
     weekdayNumber?: number;
     departureTime?: string;
@@ -762,7 +769,7 @@ export interface ScheduleDashboard {
   drivers: { staffId: number; userId: number; fullName: string; role: string; status: string }[];
   conductors: { staffId: number; userId: number; fullName: string; role: string; status: string }[];
   buses: { busId: number; licensePlate: string; seatCount?: number; busType?: string; status: string }[];
-  routes: { routeId: number; routeName: string }[];
+  routes: RouteOption[];
 }
 
 export interface LiveFleetVehicle {
@@ -792,8 +799,41 @@ export const operationsApi = {
   conductorTrips: (date?: string) => apiFetch.get<DriverTripView[]>("/conductor/trips", { date }),
   conductorTickets: (tripId: number) => apiFetch.get<ConductorTicketView[]>("/conductor/tickets", { tripId }),
   scanTicket: (tripId: number, qrCode: string) => apiFetch.post<TicketScanResult>("/conductor/tickets/scan", { tripId, qrCode }),
-  scheduleDashboard: (date?: string) => apiFetch.get<ScheduleDashboard>("/coordinator/schedules", { date }),
+  scheduleDashboard: (date?: string) => apiFetch.get<ScheduleDashboard>("/operations/schedules", { date }),
+  saveSchedules: (data: { serviceDate: string; shifts: any[] }) => apiFetch.post<ScheduleDashboard>("/operations/schedules", data),
+  deleteSchedule: (scheduleId: number, date?: string) => apiFetch.delete<void>(`/operations/schedules/${scheduleId}`, date ? { date } : undefined),
   liveFleet: (date?: string) => apiFetch.get<LiveFleetVehicle[]>("/coordinator/fleet/live", { date }),
+};
+
+export interface RouteListItem {
+  id: number;
+  routeName: string;
+  description: string;
+  estimatedMinutes: number;
+  status: string;
+}
+
+export interface RouteStopDto {
+  id: number;
+  stopId: number;
+  stopName: string;
+  stopOrder: number;
+  minutesFromPreviousStop: number;
+}
+
+export const coordinatorRoutesApi = {
+  getRoutes: () => apiFetch.get<RouteListItem[]>("/coordinator/routes"),
+  createRoute: (data: { routeName: string; description: string; estimatedMinutes: number }) =>
+    apiFetch.post<RouteListItem>("/coordinator/routes", data),
+  updateRoute: (routeId: number, data: { routeName: string; description: string; estimatedMinutes: number }) =>
+    apiFetch.put<RouteListItem>(`/coordinator/routes/${routeId}`, data),
+  getRouteStops: (routeId: number) => apiFetch.get<RouteStopDto[]>(`/coordinator/routes/${routeId}/stops`),
+  addStop: (routeId: number, data: { stopId?: number; stopName: string; address?: string; longitude?: number; latitude?: number; stopOrder: number; minutesFromPreviousStop: number }) =>
+    apiFetch.post<RouteStopDto>(`/coordinator/routes/${routeId}/stops`, data),
+  updateStop: (routeId: number, stopId: number, data: { id: number; stopId?: number; stopName: string; stopOrder: number; minutesFromPreviousStop: number }) =>
+    apiFetch.put<RouteStopDto>(`/coordinator/routes/${routeId}/stops/${stopId}`, data),
+  deleteStop: (routeId: number, stopId: number) => apiFetch.delete<void>(`/coordinator/routes/${routeId}/stops/${stopId}`),
+  deleteRoute: (routeId: number) => apiFetch.delete<void>(`/coordinator/routes/${routeId}`),
 };
 
 export interface AdminUserView {

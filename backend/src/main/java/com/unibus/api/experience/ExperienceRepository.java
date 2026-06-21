@@ -498,7 +498,7 @@ public class ExperienceRepository {
                            SELECT 1 FROM route_universities ru
                            WHERE ru.route_id = r.route_id
                              AND ru.status = 'ACTIVE'
-                             AND (? IS NULL OR ru.university_id = ?)
+                             AND (?::integer IS NULL OR ru.university_id = ?)
                        ) AS university_linked
                 FROM routes r
                 WHERE r.status = 'ACTIVE'
@@ -532,7 +532,7 @@ public class ExperienceRepository {
                 JOIN routes r ON r.route_id = rs.route_id AND r.status = 'ACTIVE'
                 LEFT JOIN route_universities ru ON ru.route_id = r.route_id AND ru.status = 'ACTIVE'
                 WHERE s.status = 'ACTIVE'
-                  AND (? IS NULL OR ru.university_id = ?)
+                  AND (?::integer IS NULL OR ru.university_id = ?)
                 ORDER BY s.stop_name
                 """, (rs, rowNum) -> mapStop(rs, true), universityId, universityId);
     }

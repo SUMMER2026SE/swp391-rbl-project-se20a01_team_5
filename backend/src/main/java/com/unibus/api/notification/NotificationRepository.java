@@ -47,7 +47,7 @@ public class NotificationRepository {
         return count == null ? 0 : count;
     }
 
-    public List<Integer> findRecipientUserIds(UserRole targetRole, Integer routeId) {
+    public List<Integer> findRecipientUserIds(String target, UserRole targetRole, Integer routeId) {
         if (routeId != null) {
             return jdbcTemplate.queryForList("""
                     SELECT DISTINCT u.user_id
@@ -60,6 +60,15 @@ public class NotificationRepository {
                       AND rr.status IN ('PENDING', 'APPROVED')
                     """, Integer.class, routeId);
         }
+        String normalized = target == null ? "" : target.trim().toLowerCase();
+        if ("all_drivers_conductors".equals(normalized)) {
+            return jdbcTemplate.queryForList("""
+                    SELECT user_id
+                    FROM users
+                    WHERE role IN ('DRIVER', 'CONDUCTOR')
+                      AND status = 'ACTIVE'
+                    """, Integer.class);
+        }
         if (targetRole != null) {
             return jdbcTemplate.queryForList("""
                     SELECT user_id
@@ -71,7 +80,8 @@ public class NotificationRepository {
         return jdbcTemplate.queryForList("""
                 SELECT user_id
                 FROM users
-                WHERE status = 'ACTIVE'
+                WHERE role IN ('STUDENT', 'DRIVER', 'CONDUCTOR')
+                  AND status = 'ACTIVE'
                 """, Integer.class);
     }
 

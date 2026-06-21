@@ -25,3 +25,4 @@ public interface BusRouteRepository extends JpaRepository<BusRoute, Integer> {
             @Param("boardingStopId") Integer boardingStopId,
             @Param("alightingStopId") Integer alightingStopId);
 }
+

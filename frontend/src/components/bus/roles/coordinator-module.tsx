@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Bell, CalendarClock, Megaphone, MessageSquare, Navigation, Route, School, UserCog } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader, Section, StatCard } from "@/components/bus/primitives";
@@ -9,7 +9,17 @@ import { ExpressiveButton, ExpressiveCard } from "@/components/m3/primitives";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { experienceApi, feedbackApi, notificationApi, operationsApi, type CoordinatorDashboardView, type FeedbackView, type LiveFleetVehicle, type ScheduleDashboard } from "@/lib/api/client";
+import { DriverAssignmentScreen } from "./DriverAssignmentScreen";
+import { RouteScreen } from "./RouteScreen";
+import { StopScreen } from "./StopScreen";
 
 type Props = {
   activeId: string;
@@ -22,11 +32,12 @@ export function CoordinatorModule({ activeId }: Props) {
   if (activeId === "crd-schedule") return <ScheduleScreen />;
   if (activeId === "crd-feedback") return <FeedbackQueue />;
   if (activeId === "crd-notify") return <NotifyScreen />;
-  if (["crd-assign-driver", "crd-assign-bus", "crd-routes", "crd-stops", "crd-by-university"].includes(activeId)) {
+  if (activeId === "crd-assign") return <DriverAssignmentScreen />;
+  if (activeId === "crd-routes") return <RouteScreen />;
+  if (activeId === "crd-stops") return <StopScreen />;
+  if (["crd-assign-driver", "crd-assign-bus", "crd-by-university"].includes(activeId)) {
     const title =
       activeId === "crd-by-university" ? "Điều phối theo trường"
-      : activeId === "crd-routes" ? "Tuyến đường"
-      : activeId === "crd-stops" ? "Trạm dừng"
       : activeId === "crd-assign-bus" ? "Phân công xe bus"
       : "Phân công tài xế";
     return <Unavailable title={title} />;
@@ -166,37 +177,115 @@ function ScheduleList({ dashboard }: { dashboard: ScheduleDashboard }) {
 function FeedbackQueue() {
   const loader = useCallback(() => feedbackApi.all(), []);
   const resource = useApiResource<FeedbackView[]>(loader);
+  const [statusFilter, setStatusFilter] = useState<"ALL" | "PENDING" | "RESOLVED">("ALL");
+  const [resolvingId, setResolvingId] = useState<number | null>(null);
+  const [replyText, setReplyText] = useState("");
+  const [resolving, setResolving] = useState(false);
 
-  const resolve = async (item: FeedbackView) => {
+  const handleSubmitResolve = async (feedbackId: number) => {
+    setResolving(true);
     try {
-      await feedbackApi.resolve(item.feedbackId, "Đã ghi nhận và xử lý bởi điều phối.");
-      toast.success("Đã xử lý phản hồi");
+      await feedbackApi.resolve(feedbackId, replyText);
+      toast.success("Đã xử lý phản hồi thành công!");
+      setResolvingId(null);
+      setReplyText("");
       resource.reload();
     } catch (error) {
       toast.error(getErrorMessage(error, "Không thể xử lý phản hồi"));
+    } finally {
+      setResolving(false);
     }
   };
 
+  const filteredItems = useMemo(() => {
+    if (!resource.data) return [];
+    if (statusFilter === "ALL") return resource.data;
+    return resource.data.filter(
+      (item) => (item.status || "").toUpperCase() === statusFilter
+    );
+  }, [resource.data, statusFilter]);
+
   return (
     <div>
-      <PageHeader title="Phản hồi sinh viên" description="Danh sách phản hồi thật từ backend." icon={<MessageSquare className="size-7" />} />
+      <PageHeader
+        title="Phản hồi sinh viên"
+        description="Danh sách phản hồi thật từ backend."
+        icon={<MessageSquare className="size-7" />}
+        actions={
+          <div className="flex gap-2 items-center">
+            <Label className="text-sm font-medium text-on-surface-variant hidden sm:inline">Trạng thái:</Label>
+            <Select value={statusFilter} onValueChange={(val) => setStatusFilter(val as any)}>
+              <SelectTrigger className="h-10 rounded-full border border-outline-variant/60 bg-white px-4 text-sm font-medium text-on-surface focus:outline-none focus:ring-1 focus:ring-primary/30 w-48">
+                <SelectValue placeholder="Trạng thái" />
+              </SelectTrigger>
+              <SelectContent className="rounded-xl border border-outline-variant/50">
+                <SelectItem value="ALL">Tất cả phản hồi</SelectItem>
+                <SelectItem value="PENDING">Chưa xử lý (Đang chờ)</SelectItem>
+                <SelectItem value="RESOLVED">Đã xử lý</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        }
+      />
       <AsyncBlock resource={resource}>
-        {(items) => (
-          <DataList emptyTitle="Chưa có phản hồi" emptyDescription="Không có phản hồi nào trong backend.">
-            {items.map((item) => (
+        {() => (
+          <DataList emptyTitle="Chưa có phản hồi" emptyDescription="Không tìm thấy phản hồi nào phù hợp.">
+            {filteredItems.map((item) => (
               <ExpressiveCard key={item.feedbackId} variant="elevated" className="p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <h3 className="font-bold text-on-surface">{item.studentName || item.studentCode || "Sinh viên"}</h3>
-                    <p className="text-sm text-on-surface-variant">{item.content}</p>
-                    <p className="mt-1 text-xs text-on-surface-variant">{item.routeName || "Không gắn tuyến"} · {formatDateTime(item.createdAt)}</p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <StatusPill status={item.status} />
-                    {(item.status || "").toUpperCase() !== "RESOLVED" && (
-                      <ExpressiveButton variant="tonal" size="sm" onClick={() => resolve(item)}>Xử lý</ExpressiveButton>
+                  <div className="flex-1 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-on-surface">{item.studentName || item.studentCode || "Sinh viên"}</h3>
+                      <StatusPill status={item.status} />
+                    </div>
+                    <p className="text-sm text-on-surface-variant bg-surface-container-low p-2.5 rounded-xl border border-outline-variant/30 mt-1.5">{item.content}</p>
+                    <p className="text-xs text-on-surface-variant/80 pt-1">
+                      Tuyến: <span className="font-medium text-on-surface">{item.routeName || "Không gắn tuyến"}</span> · {formatDateTime(item.createdAt)}
+                    </p>
+                    {item.status?.toUpperCase() === "RESOLVED" && item.response && (
+                      <div className="mt-3 p-3 rounded-xl bg-primary/5 border border-primary/25 text-sm">
+                        <p className="font-semibold text-primary">Phản hồi của điều phối:</p>
+                        <p className="text-on-surface-variant mt-0.5">{item.response}</p>
+                      </div>
                     )}
                   </div>
+                  
+                  {(item.status || "").toUpperCase() !== "RESOLVED" && (
+                    <div className="w-full sm:w-80 shrink-0">
+                      {resolvingId === item.feedbackId ? (
+                        <div className="space-y-2 bg-surface-container-low p-3 rounded-xl border border-outline-variant/40">
+                          <Label className="text-xs font-semibold text-on-surface-variant">Phản hồi cho sinh viên:</Label>
+                          <Textarea
+                            value={replyText}
+                            onChange={(e) => setReplyText(e.target.value)}
+                            placeholder="Nhập nội dung trả lời..."
+                            className="w-full text-sm bg-white border-outline-variant/60"
+                            rows={3}
+                          />
+                          <div className="flex gap-2 justify-end">
+                            <ExpressiveButton variant="outlined" size="sm" onClick={() => {
+                              setResolvingId(null);
+                              setReplyText("");
+                            }}>
+                              Hủy
+                            </ExpressiveButton>
+                            <ExpressiveButton size="sm" disabled={!replyText.trim() || resolving} onClick={() => handleSubmitResolve(item.feedbackId)}>
+                              Gửi
+                            </ExpressiveButton>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex justify-end">
+                          <ExpressiveButton variant="tonal" size="sm" onClick={() => {
+                            setResolvingId(item.feedbackId);
+                            setReplyText("Đã ghi nhận và xử lý bởi điều phối.");
+                          }}>
+                            Xử lý
+                          </ExpressiveButton>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </ExpressiveCard>
             ))}
@@ -232,7 +321,18 @@ function NotifyScreen() {
       <PageHeader title="Gửi thông báo" description="Tạo thông báo qua backend notifications API." icon={<Megaphone className="size-7" />} />
       <ExpressiveCard variant="elevated" className="max-w-2xl space-y-4 p-5">
         <Field label="Tiêu đề"><Input value={title} onChange={(e) => setTitle(e.target.value)} /></Field>
-        <Field label="Đối tượng"><Input value={target} onChange={(e) => setTarget(e.target.value)} /></Field>
+        <Field label="Đối tượng">
+          <Select value={target} onValueChange={setTarget}>
+            <SelectTrigger className="h-11 rounded-full border border-outline-variant/60 bg-white px-4 text-sm font-medium text-on-surface focus:outline-none focus:ring-1 focus:ring-primary/30 w-full">
+              <SelectValue placeholder="Chọn đối tượng nhận thông báo" />
+            </SelectTrigger>
+            <SelectContent className="rounded-xl border border-outline-variant/50">
+              <SelectItem value="ALL">Tất cả mọi người (Sinh viên, tài xế & phụ xe)</SelectItem>
+              <SelectItem value="all_students">Tất cả sinh viên</SelectItem>
+              <SelectItem value="all_drivers_conductors">Tất cả tài xế & phụ xe</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
         <Field label="Nội dung"><Textarea value={content} onChange={(e) => setContent(e.target.value)} /></Field>
         <ExpressiveButton onClick={send} disabled={sending || !title || !content}>
           <Bell className="size-4" /> {sending ? "Đang gửi..." : "Gửi thông báo"}
