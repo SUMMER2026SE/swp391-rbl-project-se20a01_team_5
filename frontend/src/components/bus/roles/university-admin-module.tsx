@@ -319,15 +319,13 @@ function UniversityPaymentTransactionsScreen() {
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="font-bold text-on-surface">DH{tx.orderId} | {tx.studentName || tx.studentCode}</h3>
+                      <h3 className="font-bold text-on-surface">
+                        {formatDateTime(tx.paidAt || tx.createdAt)} | {tx.studentName ? `${tx.studentName} (${tx.studentCode})` : tx.studentCode} | {formatMoney(tx.orderTotal || tx.amountIn || 0)}
+                      </h3>
                       <StatusPill status={tx.paymentStatus || "UNKNOWN"} />
                     </div>
-                    <p className="mt-1 text-sm text-on-surface-variant">{tx.routeName || "Chưa có tuyến"}</p>
-                    <p className="mt-1 text-xs text-on-surface-variant">Nội dung: {tx.transactionContent || `DH${tx.orderId}`} | Ref: {tx.referenceNumber || "Chưa có"}</p>
-                  </div>
-                  <div className="text-left lg:text-right">
-                    <p className="text-lg font-black text-on-surface">{formatMoney(tx.orderTotal || tx.amountIn || 0)}</p>
-                    <p className="text-xs text-on-surface-variant">{tx.paidAt ? `Thanh toán: ${formatDateTime(tx.paidAt)}` : `Tạo đơn: ${formatDateTime(tx.createdAt)}`}</p>
+                    <p className="mt-1 text-sm text-on-surface-variant">Thông tin chuyến xe: {tx.routeName || "Chưa có tuyến"}</p>
+                    <p className="mt-1 text-xs text-on-surface-variant">Nội dung chuyển khoản: {tx.transactionContent || `DH${tx.orderId}`} | Ref: {tx.referenceNumber || "Chưa có"}</p>
                   </div>
                 </div>
               </ExpressiveCard>
