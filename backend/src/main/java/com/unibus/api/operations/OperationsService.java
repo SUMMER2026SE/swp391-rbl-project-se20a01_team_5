@@ -1,7 +1,11 @@
 package com.unibus.api.operations;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 import org.springframework.http.HttpStatus;
@@ -9,9 +13,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.unibus.api.common.ApiException;
+import com.unibus.api.operations.OperationsDtos.ConductorContactView;
+import com.unibus.api.operations.OperationsDtos.ConductorMessageRequest;
+import com.unibus.api.operations.OperationsDtos.ConductorSupportRequest;
+import com.unibus.api.operations.OperationsDtos.ConductorSupportResult;
 import com.unibus.api.operations.OperationsDtos.ConductorTicketView;
 import com.unibus.api.operations.OperationsDtos.ConductorTripView;
+import com.unibus.api.operations.OperationsDtos.DriverTripOverview;
 import com.unibus.api.operations.OperationsDtos.DriverTripView;
+import com.unibus.api.operations.OperationsDtos.InternalMessageView;
 import com.unibus.api.operations.OperationsDtos.LiveFleetVehicle;
 import com.unibus.api.operations.OperationsDtos.SaveSchedulesRequest;
 import com.unibus.api.operations.OperationsDtos.ScheduleDashboard;
@@ -19,6 +29,7 @@ import com.unibus.api.operations.OperationsDtos.ShiftAssignment;
 import com.unibus.api.operations.OperationsDtos.TicketScanRequest;
 import com.unibus.api.operations.OperationsDtos.TicketScanResult;
 import com.unibus.api.operations.OperationsDtos.VehicleLocationRequest;
+import com.unibus.api.operations.OperationsRepository.DriverScheduleTemplate;
 import com.unibus.api.operations.OperationsRepository.TripRouteInfo;
 import com.unibus.api.security.CurrentUser;
 
@@ -81,6 +92,109 @@ public class OperationsService {
     }
 
     @Transactional(readOnly = true)
+    public DriverTripOverview getDriverTripOverview(CurrentUser currentUser) {
+        Integer driverStaffId = requireDriverStaffId(currentUser);
+        LocalDate today = LocalDate.now();
+        LocalDate horizon = today.plusDays(60);
+        List<DriverTripView> trips = new ArrayList<>(operationsRepository.findDriverUpcomingActualTrips(driverStaffId, today, horizon));
+        List<DriverTripView> historyTrips = operationsRepository.findDriverTripHistory(
+                        driverStaffId,
+                        today.minusDays(90),
+                        horizon)
+                .stream()
+                .filter(this::isHistoryTrip)
+                .sorted(Comparator.comparing((DriverTripView trip) -> tripDateTime(trip, true)).reversed())
+                .limit(10)
+                .toList();
+
+        List<DriverTripView> existingTrips = new ArrayList<>(trips);
+        existingTrips.addAll(historyTrips);
+        trips.addAll(buildUpcomingScheduleTrips(driverStaffId, today, horizon, existingTrips));
+
+        Comparator<DriverTripView> scheduleOrder = Comparator
+                .comparing((DriverTripView trip) -> tripDateTime(trip, false))
+                .thenComparingInt(this::tripStatusPriority)
+                .thenComparing(trip -> trip.routeName() == null ? "" : trip.routeName())
+                .thenComparing(trip -> trip.tripId() == null ? Integer.MAX_VALUE : trip.tripId());
+
+        DriverTripView nearestTrip = trips.stream()
+                .filter(trip -> "RUNNING".equals(trip.status()))
+                .min(scheduleOrder)
+                .orElseGet(() -> trips.stream()
+                        .filter(trip -> isUpcomingTrip(trip, today))
+                        .min(scheduleOrder)
+                        .orElse(null));
+
+        List<DriverTripView> upcomingTrips = trips.stream()
+                .filter(trip -> isUpcomingTrip(trip, today))
+                .filter(trip -> !sameTrip(trip, nearestTrip))
+                .sorted(scheduleOrder)
+                .limit(5)
+                .toList();
+
+        return new DriverTripOverview(nearestTrip, upcomingTrips, historyTrips);
+    }
+
+    private List<DriverTripView> buildUpcomingScheduleTrips(
+            Integer driverStaffId,
+            LocalDate today,
+            LocalDate horizon,
+            List<DriverTripView> actualTrips) {
+        return operationsRepository.findDriverScheduleTemplates(driverStaffId).stream()
+                .map(template -> nextScheduleTrip(template, today, horizon, actualTrips))
+                .filter(trip -> trip != null)
+                .toList();
+    }
+
+    private DriverTripView nextScheduleTrip(
+            DriverScheduleTemplate template,
+            LocalDate today,
+            LocalDate horizon,
+            List<DriverTripView> actualTrips) {
+        if (template.weekdayNumber() == null) {
+            return null;
+        }
+
+        LocalDate serviceDate = nextDateForWeekday(today, template.weekdayNumber());
+        while (!serviceDate.isAfter(horizon) && hasActualTrip(actualTrips, template.scheduleId(), serviceDate)) {
+            serviceDate = serviceDate.plusWeeks(1);
+        }
+        if (serviceDate.isAfter(horizon)) {
+            return null;
+        }
+
+        return new DriverTripView(
+                template.scheduleId(),
+                null,
+                template.routeId(),
+                template.routeName(),
+                template.busId(),
+                template.licensePlate(),
+                template.conductorName(),
+                template.conductorPhone(),
+                serviceDate,
+                template.departureTime(),
+                null,
+                null,
+                "NOT_CREATED",
+                template.stops());
+    }
+
+    private LocalDate nextDateForWeekday(LocalDate startDate, int weekdayNumber) {
+        int normalizedWeekday = Math.max(1, Math.min(7, weekdayNumber));
+        int currentWeekday = startDate.getDayOfWeek().getValue();
+        int daysUntil = Math.floorMod(normalizedWeekday - currentWeekday, 7);
+        return startDate.plusDays(daysUntil);
+    }
+
+    private boolean hasActualTrip(List<DriverTripView> actualTrips, Integer scheduleId, LocalDate serviceDate) {
+        return actualTrips.stream()
+                .anyMatch(trip -> scheduleId != null
+                        && scheduleId.equals(trip.scheduleId())
+                        && serviceDate.equals(trip.serviceDate()));
+    }
+
+    @Transactional(readOnly = true)
     public List<ConductorTripView> getConductorTrips(CurrentUser currentUser, LocalDate date) {
         Integer conductorStaffId = requireConductorStaffId(currentUser);
         return operationsRepository.findConductorTrips(conductorStaffId, date == null ? LocalDate.now() : date);
@@ -114,6 +228,60 @@ public class OperationsService {
         return new TicketScanResult(false, "Không tìm thấy vé với mã QR này.", null, null);
     }
 
+    @Transactional(readOnly = true)
+    public ConductorContactView getConductorContact(CurrentUser currentUser) {
+        Integer conductorStaffId = requireConductorStaffId(currentUser);
+        Integer activeTripId = operationsRepository.activeConductorTripId(conductorStaffId);
+        return operationsRepository.findConductorContact(currentUser.userId(), conductorStaffId, activeTripId);
+    }
+
+    @Transactional
+    public InternalMessageView sendConductorMessage(CurrentUser currentUser, ConductorMessageRequest request) {
+        Integer conductorStaffId = requireConductorStaffId(currentUser);
+        Integer tripId = resolveOptionalConductorTripId(conductorStaffId, request.tripId());
+        Integer recipientUserId = resolveConductorMessageRecipient(request.recipientType(), tripId);
+        String content = request.content().trim();
+        InternalMessageView message = operationsRepository.createInternalMessage(currentUser.userId(), recipientUserId, tripId, content);
+        operationsRepository.createNotification(currentUser.userId(), recipientUserId, "Tin nhắn từ phụ xe", content);
+        return message;
+    }
+
+    @Transactional
+    public ConductorSupportResult submitConductorSupport(CurrentUser currentUser, ConductorSupportRequest request) {
+        Integer conductorStaffId = requireConductorStaffId(currentUser);
+        Integer tripId = resolveRequiredConductorTripId(conductorStaffId, request.tripId());
+        String reportType = normalizeSupportType(request.reportType());
+        String description = buildSupportDescription(request);
+
+        Long reportId;
+        String resultType;
+        if ("LOST_ITEM".equals(reportType)) {
+            reportId = operationsRepository.createLostItemReport(currentUser.userId(), tripId, description, currentUser.userId());
+            resultType = "LOST_ITEM";
+        } else {
+            reportId = operationsRepository.createIncident(conductorStaffId, tripId, reportType, description);
+            resultType = "INCIDENT";
+        }
+
+        Integer recipientUserId = operationsRepository.driverUserIdForTrip(tripId)
+                .orElseGet(() -> operationsRepository.firstDispatcherUserId().orElse(null));
+        InternalMessageView notification = null;
+        if (recipientUserId != null) {
+            String messageContent = "[" + resultType + "] " + description;
+            notification = operationsRepository.createInternalMessage(currentUser.userId(), recipientUserId, tripId, messageContent);
+            operationsRepository.createNotification(currentUser.userId(), recipientUserId, "Báo cáo từ phụ xe", messageContent);
+        }
+        operationsRepository.firstDispatcherUserId()
+                .filter(userId -> !userId.equals(recipientUserId))
+                .ifPresent(dispatcherUserId -> operationsRepository.createNotification(
+                        currentUser.userId(),
+                        dispatcherUserId,
+                        "Báo cáo từ phụ xe",
+                        "[" + resultType + "] " + description));
+
+        return new ConductorSupportResult(resultType, reportId, "Đã gửi báo cáo cho bộ phận liên quan.", notification);
+    }
+
     @Transactional
     public DriverTripView startTrip(CurrentUser currentUser, Integer tripId) {
         Integer driverStaffId = requireDriverStaffId(currentUser);
@@ -141,6 +309,63 @@ public class OperationsService {
     @Transactional(readOnly = true)
     public List<LiveFleetVehicle> getLiveFleet(LocalDate date) {
         return operationsRepository.findLiveFleet(date == null ? LocalDate.now() : date);
+    }
+
+    private boolean isUpcomingTrip(DriverTripView trip, LocalDate today) {
+        if (trip == null || trip.serviceDate() == null) {
+            return false;
+        }
+        if ("COMPLETED".equals(trip.status()) || "CANCELLED".equals(trip.status())) {
+            return false;
+        }
+        return !trip.serviceDate().isBefore(today);
+    }
+
+    private int tripStatusPriority(DriverTripView trip) {
+        if (trip == null) {
+            return 3;
+        }
+        if ("RUNNING".equals(trip.status())) {
+            return 0;
+        }
+        if (trip.tripId() != null) {
+            return 1;
+        }
+        return 2;
+    }
+
+    private boolean isHistoryTrip(DriverTripView trip) {
+        if (trip == null || trip.serviceDate() == null) {
+            return false;
+        }
+        return "COMPLETED".equals(trip.status()) || "CANCELLED".equals(trip.status());
+    }
+
+    private boolean sameTrip(DriverTripView left, DriverTripView right) {
+        if (left == null || right == null) {
+            return false;
+        }
+        if (left.tripId() != null && right.tripId() != null) {
+            return left.tripId().equals(right.tripId());
+        }
+        if (left.scheduleId() == null || right.scheduleId() == null) {
+            return false;
+        }
+        return left.scheduleId().equals(right.scheduleId())
+                && left.serviceDate() != null
+                && left.serviceDate().equals(right.serviceDate());
+    }
+
+    private LocalDateTime tripDateTime(DriverTripView trip, boolean preferActualEnd) {
+        LocalDate date = trip.serviceDate() == null ? LocalDate.MAX : trip.serviceDate();
+        LocalTime time = trip.departureTime() == null ? LocalTime.MAX : trip.departureTime();
+        if (preferActualEnd && trip.endedAt() != null) {
+            return trip.endedAt().toLocalDateTime();
+        }
+        if (preferActualEnd && trip.departedAt() != null) {
+            return trip.departedAt().toLocalDateTime();
+        }
+        return LocalDateTime.of(date, time);
     }
 
     private TicketScanResult scanMonthlyPass(
@@ -228,6 +453,54 @@ public class OperationsService {
         if (tripId == null || !operationsRepository.conductorOwnsTrip(tripId, conductorStaffId)) {
             throw new ApiException(HttpStatus.NOT_FOUND, "Trip not found");
         }
+    }
+
+    private Integer resolveOptionalConductorTripId(Integer conductorStaffId, Integer requestedTripId) {
+        Integer tripId = requestedTripId == null ? operationsRepository.activeConductorTripId(conductorStaffId) : requestedTripId;
+        if (tripId == null) {
+            return null;
+        }
+        requireOwnedConductorTrip(tripId, conductorStaffId);
+        return tripId;
+    }
+
+    private Integer resolveRequiredConductorTripId(Integer conductorStaffId, Integer requestedTripId) {
+        Integer tripId = resolveOptionalConductorTripId(conductorStaffId, requestedTripId);
+        if (tripId == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Support report requires a conductor trip");
+        }
+        return tripId;
+    }
+
+    private Integer resolveConductorMessageRecipient(String recipientType, Integer tripId) {
+        String target = recipientType == null ? "" : recipientType.trim().toUpperCase();
+        if ("DRIVER".equals(target) && tripId != null) {
+            return operationsRepository.driverUserIdForTrip(tripId)
+                    .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Driver contact not found"));
+        }
+        return operationsRepository.firstDispatcherUserId()
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Dispatcher contact not found"));
+    }
+
+    private String normalizeSupportType(String value) {
+        String normalized = value == null ? "" : value.trim().toUpperCase();
+        return switch (normalized) {
+            case "LOST_ITEM" -> "LOST_ITEM";
+            case "OVERCROWDED", "EMERGENCY", "TECHNICAL", "OTHER" -> normalized;
+            case "OVERLOAD" -> "OVERCROWDED";
+            default -> "OTHER";
+        };
+    }
+
+    private String buildSupportDescription(ConductorSupportRequest request) {
+        StringBuilder builder = new StringBuilder(request.description().trim());
+        if (request.passengerName() != null && !request.passengerName().isBlank()) {
+            builder.append(" | Hành khách: ").append(request.passengerName().trim());
+        }
+        if (request.location() != null && !request.location().isBlank()) {
+            builder.append(" | Vị trí: ").append(request.location().trim());
+        }
+        return builder.toString();
     }
 
     private void validateShift(ShiftAssignment shift, LocalDate serviceDate) {

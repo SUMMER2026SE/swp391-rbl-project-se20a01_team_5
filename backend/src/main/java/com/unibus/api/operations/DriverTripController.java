@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.unibus.api.common.ApiResponse;
+import com.unibus.api.operations.OperationsDtos.DriverTripOverview;
 import com.unibus.api.operations.OperationsDtos.DriverTripView;
 import com.unibus.api.operations.OperationsDtos.VehicleLocationRequest;
 import com.unibus.api.security.CurrentUser;
@@ -36,6 +37,11 @@ public class DriverTripController {
             @AuthenticationPrincipal CurrentUser currentUser,
             @RequestParam(required = false) LocalDate date) {
         return ApiResponse.ok("Driver trips retrieved", operationsService.getDriverTrips(currentUser, date));
+    }
+
+    @GetMapping("/overview")
+    ApiResponse<DriverTripOverview> overview(@AuthenticationPrincipal CurrentUser currentUser) {
+        return ApiResponse.ok("Driver trip overview retrieved", operationsService.getDriverTripOverview(currentUser));
     }
 
     @PostMapping("/{tripId}/start")

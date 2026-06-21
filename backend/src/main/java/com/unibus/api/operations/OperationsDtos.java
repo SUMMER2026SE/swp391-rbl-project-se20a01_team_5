@@ -79,6 +79,12 @@ public final class OperationsDtos {
             List<TripStopView> stops) {
     }
 
+    public record DriverTripOverview(
+            DriverTripView nearestTrip,
+            List<DriverTripView> upcomingTrips,
+            List<DriverTripView> historyTrips) {
+    }
+
     public record ConductorTripView(
             Integer scheduleId,
             Integer tripId,
@@ -122,6 +128,56 @@ public final class OperationsDtos {
             String message,
             ConductorTicketView ticket,
             Integer travelHistoryId) {
+    }
+
+    public record ConductorContactView(
+            Integer activeTripId,
+            String routeName,
+            String driverName,
+            String driverPhone,
+            List<ContactPersonView> contacts,
+            List<InternalMessageView> messages) {
+    }
+
+    public record ContactPersonView(
+            Integer userId,
+            String name,
+            String role,
+            String phoneNumber,
+            boolean primary) {
+    }
+
+    public record InternalMessageView(
+            Long messageId,
+            Integer senderUserId,
+            String senderName,
+            Integer recipientUserId,
+            String recipientName,
+            Integer tripId,
+            String content,
+            boolean read,
+            OffsetDateTime sentAt) {
+    }
+
+    public record ConductorMessageRequest(
+            Integer tripId,
+            @NotBlank String recipientType,
+            @NotBlank String content) {
+    }
+
+    public record ConductorSupportRequest(
+            Integer tripId,
+            @NotBlank String reportType,
+            String passengerName,
+            String location,
+            @NotBlank String description) {
+    }
+
+    public record ConductorSupportResult(
+            String type,
+            Long reportId,
+            String message,
+            InternalMessageView notificationMessage) {
     }
 
     public record LiveFleetVehicle(
