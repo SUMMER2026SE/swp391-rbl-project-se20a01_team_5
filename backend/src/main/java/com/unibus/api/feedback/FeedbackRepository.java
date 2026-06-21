@@ -68,7 +68,7 @@ public class FeedbackRepository {
                 JOIN trips t ON t.trip_id = f.trip_id
                 JOIN routes r ON r.route_id = t.route_id
                 LEFT JOIN users handler ON handler.user_id = f.handled_by_user_id
-                WHERE (? IS NULL OR f.status = ?)
+                WHERE (CAST(? AS VARCHAR) IS NULL OR f.status = CAST(? AS VARCHAR))
                 ORDER BY
                     CASE WHEN f.status IN ('OPEN', 'IN_PROGRESS') THEN 0 ELSE 1 END,
                     f.submitted_at DESC,

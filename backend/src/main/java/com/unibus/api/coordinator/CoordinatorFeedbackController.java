@@ -1,4 +1,4 @@
-package com.unibus.api.feedback;
+package com.unibus.api.coordinator;
 
 import java.util.List;
 
@@ -15,31 +15,32 @@ import org.springframework.web.bind.annotation.RestController;
 import com.unibus.api.common.ApiResponse;
 import com.unibus.api.feedback.FeedbackDtos.FeedbackView;
 import com.unibus.api.feedback.FeedbackDtos.ResolveFeedbackRequest;
+import com.unibus.api.feedback.FeedbackService;
 import com.unibus.api.security.CurrentUser;
 
 import jakarta.validation.Valid;
 
 @RestController
-@RequestMapping("/api/v1/feedback")
-@PreAuthorize("hasRole('ADMIN')")
-public class FeedbackAdminController {
+@RequestMapping("/api/v1/coordinator/feedback")
+@PreAuthorize("hasRole('DISPATCHER')")
+public class CoordinatorFeedbackController {
 
     private final FeedbackService feedbackService;
 
-    public FeedbackAdminController(FeedbackService feedbackService) {
+    public CoordinatorFeedbackController(FeedbackService feedbackService) {
         this.feedbackService = feedbackService;
     }
 
     @GetMapping
-    ApiResponse<List<FeedbackView>> list(
+    public ApiResponse<List<FeedbackView>> listFeedbacks(
             @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size) {
-        return ApiResponse.ok("Feedback retrieved", feedbackService.listAll(status, page, size));
+        return ApiResponse.ok("Feedbacks retrieved", feedbackService.listAll(status, page, size));
     }
 
     @PatchMapping("/{feedbackId}/resolve")
-    ApiResponse<FeedbackView> resolve(
+    public ApiResponse<FeedbackView> resolveFeedback(
             @AuthenticationPrincipal CurrentUser currentUser,
             @PathVariable Long feedbackId,
             @Valid @RequestBody(required = false) ResolveFeedbackRequest request) {

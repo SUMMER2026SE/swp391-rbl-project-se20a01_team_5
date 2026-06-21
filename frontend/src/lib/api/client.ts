@@ -399,6 +399,8 @@ export const studentApi = {
   purchaseMonthlyPass: (method = "E_WALLET") =>
     apiFetch.post<TicketView>("/students/me/tickets/monthly-pass", { method }),
   payments: () => apiFetch.get<PaymentView[]>("/students/me/payments"),
+  createSePayOrder: (ticketType: string) => apiFetch.post<{ orderId: number; qrUrl: string; amount: number; description: string; bankCode: string; accountNo: string; accountName: string }>("/students/me/payments/sepay/order", { ticketType }),
+  getSePayOrderStatus: (orderId: number) => apiFetch.get<{ orderId: number; ticketType: string; total: number; status: string; paid: boolean; paidAt: string }>(`/students/me/payments/sepay/order/${orderId}/status`),
   travelHistory: (page = 0, size = 20) => apiFetch.get<TravelHistoryView[]>("/students/me/travel-history", { page, size }),
 };
 
@@ -682,7 +684,7 @@ export const experienceApi = {
   updateAssistantLostItem: (lostItemId: number, data: { status: string; notes?: string }) =>
     apiFetch.put<ExperienceLostItemCard>(`/conductor/lost-items/${lostItemId}`, data),
   coordinatorDashboard: () => apiFetch.get<CoordinatorDashboardView>("/coordinator/dashboard"),
-  coordinatorFeedback: (status?: string) => apiFetch.get<ExperienceFeedbackCard[]>("/coordinator/feedback", { status }),
+  coordinatorFeedback: (status?: string) => apiFetch.get<ExperienceFeedbackCard[]>("/coordinator/experience-feedback", { status }),
   adminStats: () => apiFetch.get<AdminStatsView>("/admin/stats"),
   fares: () => apiFetch.get<AdminStatsView["fares"]>("/admin/fares"),
   updateFare: (fareId: number, data: { amount: number; notes?: string }) =>

@@ -21,3 +21,11 @@ frontend/UIPrototype_v1.1.tar
 .idea/
 *.iml
 .vscode/
+
+# Local dev scripts with secrets
+run-backend.bat
+run-frontend.bat
+run-dev.bat
+node_modules/
+backend/*.log
+.vs/ 

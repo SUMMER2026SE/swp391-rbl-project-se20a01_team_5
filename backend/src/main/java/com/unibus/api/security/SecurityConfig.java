@@ -57,6 +57,8 @@ public class SecurityConfig {
                                 "/api/v1/auth/refresh",
                                 "/api/v1/auth/forgot-password/**",
                                 "/api/v1/users/*/avatar",
+                                "/api/v1/payments/sepay/webhook",
+                                "/sepay_webhook.php",
                                 "/error").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(exceptions -> exceptions
