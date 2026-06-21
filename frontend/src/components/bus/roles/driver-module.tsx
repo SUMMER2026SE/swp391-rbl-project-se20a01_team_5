@@ -1,13 +1,13 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
-import { CalendarClock, History, MapPin, MessageSquare, PlayCircle, Route } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { CalendarClock, History, MapPin, MessageSquare, PlayCircle, Route, Send, AlertTriangle, Phone, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState, PageHeader, Section, StatCard } from "@/components/bus/primitives";
 import { AsyncBlock, DataList, StatusPill, UnavailablePanel, formatDate, formatDateTime, getErrorMessage, useApiResource } from "@/components/bus/real-data";
 import { ExpressiveButton, ExpressiveCard } from "@/components/m3/primitives";
 import { Input } from "@/components/ui/input";
-import { experienceApi, operationsApi, type DriverDashboardView, type DriverTripView } from "@/lib/api/client";
+import { experienceApi, operationsApi, driverDispatchApi, type DriverDashboardView, type DriverTripView, type DispatcherContact } from "@/lib/api/client";
 
 type Props = {
   activeId: string;
@@ -221,6 +221,240 @@ function Unavailable({ title, icon }: { title: string; icon: React.ReactNode }) 
     <div>
       <PageHeader title={title} description="UI được giữ lại, nhưng MVP hiện chưa có API chat/call riêng." icon={icon} />
       <UnavailablePanel />
+    </div>
+  );
+}
+
+
+function ContactScreen() {
+  const [contact, setContact] = useState<DispatcherContact | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [reporting, setReporting] = useState(false);
+  const [chatText, setChatText] = useState("");
+  
+  // Incident Form State
+  const [incidentType, setIncidentType] = useState("OTHER");
+  const [description, setDescription] = useState("");
+
+  const loadContact = useCallback(async () => {
+    try {
+      const data = await driverDispatchApi.contact();
+      setContact(data);
+    } catch (err: any) {
+      console.error("Lỗi lấy thông tin liên hệ điều phối:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Poll messages every 4 seconds
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      loadContact();
+    }, 0);
+    const interval = setInterval(() => {
+      loadContact();
+    }, 4000);
+    return () => {
+      clearTimeout(timer);
+      clearInterval(interval);
+    };
+  }, [loadContact]);
+
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatText.trim() || !contact) return;
+    try {
+      setSending(true);
+      await driverDispatchApi.sendMessage({
+        tripId: contact.activeTripId || undefined,
+        content: chatText.trim()
+      });
+      setChatText("");
+      await loadContact();
+    } catch (err: any) {
+      toast.error(err.message || "Không gửi được tin nhắn");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleReportIncident = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!description.trim() || !contact) return;
+    if (!contact.activeTripId) {
+      toast.error("Bạn cần có chuyến xe đang chạy để gửi báo cáo sự cố SOS!");
+      return;
+    }
+    try {
+      setReporting(true);
+      await driverDispatchApi.reportIncident({
+        tripId: contact.activeTripId,
+        incidentType,
+        description: description.trim()
+      });
+      toast.success("Đã gửi báo cáo sự cố khẩn cấp SOS!");
+      setDescription("");
+      await loadContact();
+    } catch (err: any) {
+      toast.error(err.message || "Gửi báo cáo thất bại");
+    } finally {
+      setReporting(false);
+    }
+  };
+
+  // Lọc bỏ tin nhắn SOS trong khung chat nội bộ
+  const displayMessages = useMemo(() => {
+    if (!contact || !contact.messages) return [];
+    return contact.messages.filter(m => !m.content.startsWith("[SOS]"));
+  }, [contact]);
+
+  if (loading && !contact) {
+    return (
+      <div className="flex h-[300px] items-center justify-center">
+        <div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (!contact) {
+    return (
+      <div className="rounded-[28px] bg-surface-container p-6 text-center text-on-surface-variant">
+        Không tìm thấy thông tin điều phối chính cho ca chạy này.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <PageHeader 
+        title="Liên hệ điều phối" 
+        description="Gửi tin nhắn hoặc báo cáo sự cố khẩn cấp (SOS)." 
+        icon={<MessageSquare className="size-7" />} 
+      />
+
+      <div className="grid gap-6 lg:grid-cols-[1fr_380px] items-start">
+        {/* Khung Chat Nội Bộ */}
+        <ExpressiveCard variant="elevated" className="flex flex-col h-[520px] p-0 overflow-hidden">
+          {/* Dispatcher Header */}
+          <div className="flex items-center justify-between border-b p-4 bg-surface-container-low shrink-0">
+            <div>
+              <h3 className="font-bold text-on-surface text-base">{contact.dispatcherName}</h3>
+              <p className="text-xs text-on-surface-variant">{contact.department || "Ban Điều Phối"} · {contact.phoneNumber || "Không có SĐT"}</p>
+            </div>
+            {contact.phoneNumber && (
+              <a 
+                href={`tel:${contact.phoneNumber}`} 
+                className="flex items-center gap-1.5 rounded-full bg-primary/10 px-3.5 py-1.5 text-xs font-bold text-primary hover:bg-primary/20 transition-colors"
+              >
+                <Phone className="size-3.5" /> Gọi điện
+              </a>
+            )}
+          </div>
+
+          {/* Messages List */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-surface-container-lowest scrollbar-soft">
+            {displayMessages.length === 0 ? (
+              <div className="flex h-full items-center justify-center text-sm text-on-surface-variant">
+                Chưa có tin nhắn nào. Hãy bắt đầu cuộc trò chuyện.
+              </div>
+            ) : (
+              displayMessages.map((msg) => {
+                const isMe = msg.senderName !== contact.dispatcherName;
+                return (
+                  <div key={msg.messageId} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
+                    <div className={`max-w-[75%] rounded-[1.5rem] px-4 py-2.5 text-sm ${
+                      isMe 
+                        ? "bg-[#beff50] text-[#14140f] rounded-tr-none font-medium" 
+                        : "bg-surface-container-high text-on-surface rounded-tl-none"
+                    }`}>
+                      <p className="break-words">{msg.content}</p>
+                      <p className="mt-1 text-[10px] opacity-60 text-right">
+                        {msg.sentAt ? formatDateTime(msg.sentAt).split(" ")[0] : ""}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Send Input Footer */}
+          <form onSubmit={handleSendMessage} className="border-t p-3 bg-surface-container-low flex gap-2 shrink-0">
+            <Input
+              value={chatText}
+              onChange={(e) => setChatText(e.target.value)}
+              placeholder="Nhập tin nhắn..."
+              disabled={sending}
+              className="flex-1 rounded-full bg-surface-container border-none focus-visible:ring-1 focus-visible:ring-primary"
+            />
+            <button 
+              type="submit" 
+              disabled={sending || !chatText.trim()}
+              className="flex size-10 items-center justify-center rounded-full bg-[#14140f] text-white hover:bg-black/80 disabled:opacity-40 transition-colors"
+            >
+              <Send className="size-4" />
+            </button>
+          </form>
+        </ExpressiveCard>
+
+        {/* Khung Báo Cáo Sự Cố (SOS) - h-fit để không bị giãn */}
+        <ExpressiveCard variant="elevated" className="p-5 h-fit space-y-4 border border-error/20 bg-error-container/10">
+          <div className="flex items-center gap-2 text-error">
+            <ShieldAlert className="size-6 shrink-0" />
+            <h3 className="font-bold text-lg">Báo cáo sự cố (SOS)</h3>
+          </div>
+          
+          <form onSubmit={handleReportIncident} className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-on-surface-variant">Phân loại sự cố</label>
+              <select 
+                value={incidentType}
+                onChange={(e) => setIncidentType(e.target.value)}
+                className="w-full rounded-2xl border bg-surface-container-lowest px-4 py-2.5 text-sm outline-none focus:border-primary transition-colors"
+              >
+                <option value="OTHER">Nội bộ / Khác</option>
+                <option value="TECHNICAL">Sự cố kỹ thuật</option>
+                <option value="OVERCROWDED">Xe quá tải</option>
+                <option value="EMERGENCY">Khẩn cấp / Tai nạn</option>
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-on-surface-variant">Mô tả chi tiết</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Nhập mô tả sự cố cụ thể để điều phối hỗ trợ kịp thời..."
+                required
+                rows={4}
+                className="w-full rounded-2xl border bg-surface-container-lowest px-4 py-3 text-sm outline-none focus:border-primary resize-none transition-colors"
+              />
+            </div>
+
+            {contact.activeTripId ? (
+              <p className="text-[11px] text-on-surface-variant/80">
+                Sự cố sẽ được liên kết trực tiếp với chuyến xe đang chạy của bạn.
+              </p>
+            ) : (
+              <p className="text-[11px] text-error font-medium">
+                Cảnh báo: Bạn hiện không có chuyến xe nào đang chạy. SOS chỉ được gửi khi đang trong chuyến xe.
+              </p>
+            )}
+
+            <ExpressiveButton 
+              type="submit" 
+              variant="error" 
+              disabled={reporting || !description.trim() || !contact.activeTripId} 
+              className="w-full justify-center gap-1.5 rounded-full"
+            >
+              <AlertTriangle className="size-4" />
+              {reporting ? "Đang gửi báo cáo..." : "GỬI BÁO CÁO KHẨN CẤP"}
+            </ExpressiveButton>
+          </form>
+        </ExpressiveCard>
+      </div>
     </div>
   );
 }

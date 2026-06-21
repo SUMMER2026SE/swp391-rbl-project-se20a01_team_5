@@ -1090,6 +1090,35 @@ export const universityApi = {
   notify: (data: { title: string; content: string }) => apiFetch.post<number>("/university-admin/notifications", data),
 };
 
+export interface DispatchMessageView {
+  messageId: number;
+  senderUserId: number;
+  senderName: string;
+  recipientUserId: number;
+  recipientName: string;
+  tripId?: number;
+  content: string;
+  read: boolean;
+  sentAt?: string;
+}
+
+export interface DispatcherContact {
+  dispatcherUserId: number;
+  dispatcherName: string;
+  phoneNumber?: string;
+  department?: string;
+  activeTripId?: number;
+  messages: DispatchMessageView[];
+}
+
+export const driverDispatchApi = {
+  contact: () => apiFetch.get<DispatcherContact>("/driver/dispatch/contact"),
+  sendMessage: (data: { tripId?: number; content: string }) =>
+    apiFetch.post<DispatchMessageView>("/driver/dispatch/messages", data),
+  reportIncident: (data: { tripId: number; incidentType: string; description: string }) =>
+    apiFetch.post<DispatchMessageView>("/driver/dispatch/incidents", data),
+};
+
 export const api = {
   auth: authApi,
   profile: profileApi,
@@ -1101,4 +1130,5 @@ export const api = {
   operations: operationsApi,
   admin: adminApi,
   universities: universityApi,
+  driverDispatch: driverDispatchApi,
 };
