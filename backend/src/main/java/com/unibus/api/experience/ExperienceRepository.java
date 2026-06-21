@@ -673,14 +673,30 @@ public class ExperienceRepository {
 
     private List<RouteMetric> routeMetrics() {
         return jdbcTemplate.query("""
-                SELECT r.route_code, r.route_name, r.color_hex, COUNT(t.trip_id) AS trips,
-                       COALESCE(SUM(p.amount), 0) AS revenue
+                SELECT r.route_code, r.route_name, r.color_hex,
+                       COALESCE(t.trip_count, 0) AS trips,
+                       COALESCE(m.monthly_revenue, 0) + COALESCE(s.single_revenue, 0) AS revenue
                 FROM routes r
-                LEFT JOIN trips t ON t.route_id = r.route_id
-                LEFT JOIN monthly_passes mp ON mp.route_id = r.route_id
-                LEFT JOIN payments p ON p.monthly_pass_id = mp.monthly_pass_id AND p.status = 'PAID'
+                LEFT JOIN (
+                    SELECT route_id, COUNT(trip_id) AS trip_count
+                    FROM trips
+                    GROUP BY route_id
+                ) t ON t.route_id = r.route_id
+                LEFT JOIN (
+                    SELECT mp.route_id, COALESCE(SUM(p.amount), 0) AS monthly_revenue
+                    FROM monthly_passes mp
+                    JOIN payments p ON p.monthly_pass_id = mp.monthly_pass_id
+                    WHERE p.status = 'PAID'
+                    GROUP BY mp.route_id
+                ) m ON m.route_id = r.route_id
+                LEFT JOIN (
+                    SELECT st.route_id, COALESCE(SUM(p.amount), 0) AS single_revenue
+                    FROM single_trip_tickets st
+                    JOIN payments p ON p.single_trip_ticket_id = st.single_trip_ticket_id
+                    WHERE p.status = 'PAID'
+                    GROUP BY st.route_id
+                ) s ON s.route_id = r.route_id
                 WHERE r.status = 'ACTIVE'
-                GROUP BY r.route_id, r.route_code, r.route_name, r.color_hex
                 ORDER BY COALESCE(r.route_code, r.route_name)
                 """, (rs, rowNum) -> new RouteMetric(
                         rs.getString("route_code"),
