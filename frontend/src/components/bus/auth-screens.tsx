@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Script from "next/script";
+import Image from "next/image";
 import Link from "next/link";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import {
@@ -143,7 +144,7 @@ export function AuthScreens({
       <header className="sticky top-0 z-30 glass-m3 border-b border-outline-variant/40">
         <div className="mx-auto max-w-7xl flex items-center justify-between px-4 sm:px-6 h-16">
           <Link href="/" className="flex items-center gap-2.5">
-            <img src="/logo.png" alt="UniBus Logo" className="h-10 w-auto object-contain shrink-0" />
+            <Image src="/logo.png" alt="UniBus Logo" width={48} height={48} priority className="h-10 w-auto shrink-0 object-contain" />
             <span className="text-lg font-bold tracking-tight">UniBus</span>
           </Link>
           <nav className="hidden md:flex items-center gap-1">

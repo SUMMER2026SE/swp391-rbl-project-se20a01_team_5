@@ -310,24 +310,24 @@ function UniversityPaymentTransactionsScreen() {
   const resource = useApiResource<PaymentTransactionView[]>(useCallback(() => universityApi.paymentTransactions(), []));
   return (
     <div>
-      <PageHeader title="L?ch s? giao d?ch" description="Ch? hi?n th? giao d?ch c?a sinh vi?n thu?c tr??ng b?n." icon={<CreditCard className="size-7" />} />
+      <PageHeader title="Lịch sử giao dịch" description="Chỉ hiển thị giao dịch của sinh viên thuộc trường bạn." icon={<CreditCard className="size-7" />} />
       <AsyncBlock resource={resource}>
         {(transactions) => (
-          <DataList emptyTitle="Ch?a c? giao d?ch" emptyDescription="C?c ??n thanh to?n c?a sinh vi?n s? xu?t hi?n t?i ??y.">
+          <DataList emptyTitle="Chưa có giao dịch" emptyDescription="Các đơn thanh toán của sinh viên sẽ xuất hiện tại đây.">
             {transactions.map((tx) => (
               <ExpressiveCard key={`uni-tx-${tx.orderId}-${tx.transactionId || 0}`} variant="elevated" className="p-4">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="font-bold text-on-surface">DH{tx.orderId} ? {tx.studentName || tx.studentCode}</h3>
+                      <h3 className="font-bold text-on-surface">DH{tx.orderId} | {tx.studentName || tx.studentCode}</h3>
                       <StatusPill status={tx.paymentStatus || "UNKNOWN"} />
                     </div>
-                    <p className="mt-1 text-sm text-on-surface-variant">{tx.routeName || "Ch?a c? tuy?n"}</p>
-                    <p className="mt-1 text-xs text-on-surface-variant">N?i dung: {tx.transactionContent || `DH${tx.orderId}`} ? Ref: {tx.referenceNumber || "Ch?a c?"}</p>
+                    <p className="mt-1 text-sm text-on-surface-variant">{tx.routeName || "Chưa có tuyến"}</p>
+                    <p className="mt-1 text-xs text-on-surface-variant">Nội dung: {tx.transactionContent || `DH${tx.orderId}`} | Ref: {tx.referenceNumber || "Chưa có"}</p>
                   </div>
                   <div className="text-left lg:text-right">
                     <p className="text-lg font-black text-on-surface">{formatMoney(tx.orderTotal || tx.amountIn || 0)}</p>
-                    <p className="text-xs text-on-surface-variant">{tx.paidAt ? `Thanh to?n: ${formatDateTime(tx.paidAt)}` : `T?o ??n: ${formatDateTime(tx.createdAt)}`}</p>
+                    <p className="text-xs text-on-surface-variant">{tx.paidAt ? `Thanh toán: ${formatDateTime(tx.paidAt)}` : `Tạo đơn: ${formatDateTime(tx.createdAt)}`}</p>
                   </div>
                 </div>
               </ExpressiveCard>

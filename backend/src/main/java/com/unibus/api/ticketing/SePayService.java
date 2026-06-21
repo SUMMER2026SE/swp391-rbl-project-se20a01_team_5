@@ -7,6 +7,7 @@ import java.sql.PreparedStatement;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -197,14 +198,25 @@ public class SePayService {
         }
 
         Map<String, Object> order = orders.get(0);
-        return Map.of(
-            "orderId", order.get("id"),
-            "ticketType", order.get("ticket_type"),
-            "total", order.get("total"),
-            "status", order.get("payment_status"),
-            "paid", "Paid".equalsIgnoreCase((String) order.get("payment_status")),
-            "paidAt", order.get("paid_at") != null ? order.get("paid_at").toString() : ""
-        );
+        BigDecimal total = (BigDecimal) order.get("total");
+        long id = ((Number) order.get("id")).longValue();
+        String description = "DH" + id;
+        String qrUrl = String.format("https://qr.sepay.vn/img?bank=%s&acc=%s&template=%s&amount=%s&des=%s",
+                bankCode, accountNo, qrTemplate, total.toPlainString(), description);
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("orderId", id);
+        response.put("ticketType", order.get("ticket_type"));
+        response.put("total", total);
+        response.put("amount", total);
+        response.put("description", description);
+        response.put("qrUrl", qrUrl);
+        response.put("bankCode", bankCode);
+        response.put("accountNo", accountNo);
+        response.put("accountName", accountName);
+        response.put("status", order.get("payment_status"));
+        response.put("paid", "Paid".equalsIgnoreCase((String) order.get("payment_status")));
+        response.put("paidAt", order.get("paid_at") != null ? order.get("paid_at").toString() : "");
+        return response;
     }
 
     @Transactional

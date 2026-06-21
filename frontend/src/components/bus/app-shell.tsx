@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import { AnimatePresence, motion, useMotionValueEvent, useScroll } from "framer-motion";
 import { ArrowLeft, Bell, ChevronDown, LogOut, Menu, QrCode, Search, School, UserCircle } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -126,7 +127,7 @@ export function AppShell({
           onClick={() => goTo(nav[0].id)}
           className="flex items-center gap-3 text-left"
         >
-          <img src="/logo.png" alt="UniBus Logo" className="h-12 w-auto object-contain shrink-0" />
+          <Image src="/logo.png" alt="UniBus Logo" width={64} height={64} className="h-12 w-auto shrink-0 object-contain" />
           <div className="min-w-0">
             <p className="text-xl font-bold tracking-tight text-on-surface">UniBus</p>
             <p className="truncate text-[11px] text-on-surface-variant">{ROLE_LABELS[role]}</p>
