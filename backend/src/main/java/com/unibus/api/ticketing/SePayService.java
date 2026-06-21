@@ -105,7 +105,7 @@ public class SePayService {
             subsidyAmount = quote.subsidyAmount();
             finalAmount = quote.finalFareAmount();
             subsidyPolicyId = quote.subsidyPolicyId();
-        } else if ("single".equalsIgnoreCase(ticketType) || "test".equalsIgnoreCase(ticketType)) {
+        } else if ("single".equalsIgnoreCase(ticketType)) {
             // Get single fare for the route, fallback to 7000 if not configured
             List<BigDecimal> fares = jdbcTemplate.queryForList(
                     "SELECT amount FROM fares WHERE route_id = ? AND fare_type = 'SINGLE' AND effective_from <= CURRENT_DATE AND (effective_until IS NULL OR effective_until >= CURRENT_DATE) ORDER BY effective_from DESC LIMIT 1",
@@ -129,7 +129,7 @@ public class SePayService {
                     "INSERT INTO tb_orders (student_code, ticket_type, route_id, total, payment_status, name) VALUES (?, ?, ?, ?, 'Unpaid', ?)",
                     new String[] { "id" });
             statement.setString(1, studentCode);
-            statement.setString(2, ticketType.toLowerCase());
+            statement.setString(2, "test".equalsIgnoreCase(ticketType) ? "single" : ticketType.toLowerCase());
             statement.setInt(3, registration.routeId());
             statement.setBigDecimal(4, amount);
             statement.setString(5, "monthly".equalsIgnoreCase(ticketType) ? "V? th?ng UniBus" : "V? th??ng UniBus");
@@ -371,7 +371,7 @@ public class SePayService {
                             payId.intValue(), studentCode, finalAmount, finalOrigFare, finalSubAmount, finalAmount);
                 }
             }
-        } else if ("single".equalsIgnoreCase(ticketType) || "test".equalsIgnoreCase(ticketType)) {
+        } else if ("single".equalsIgnoreCase(ticketType)) {
             String qrCode = "UB-SINGLE-" + UUID.randomUUID();
             LocalDate now = LocalDate.now();
             OffsetDateTime expiresAt = now.atTime(23, 59, 59).atOffset(ZoneOffset.UTC); // valid until end of day
