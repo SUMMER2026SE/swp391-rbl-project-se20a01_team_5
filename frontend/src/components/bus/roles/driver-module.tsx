@@ -108,13 +108,18 @@ function TripsScreen({ mode }: { mode: string }) {
     mode === "drv-active" ? "Chuyến đang chạy"
     : mode === "drv-route" ? "Tuyến được phân"
     : mode === "drv-history" ? "Lịch sử chuyến"
-    : mode === "drv-schedule" ? "Lịch chạy xe"
-    : "Lịch hôm nay";
+    : "Lịch chạy xe";
+
+  const description =
+    mode === "drv-active" ? "Thông tin chuyến xe bạn đang thực hiện live."
+    : mode === "drv-route" ? "Lộ trình và các trạm dừng của tuyến được phân công."
+    : mode === "drv-history" ? "Lịch sử các chuyến xe đã hoàn thành hoặc hủy."
+    : "Danh sách lịch trình chạy xe được phân công hôm nay.";
 
   const start = async (trip: DriverTripView) => {
     try {
       await operationsApi.startTrip(trip.tripId);
-      toast.success("Đã bắt đầu chuyến");
+      toast.success("Đã bắt đầu chuyến chạy!");
       resource.reload();
     } catch (error) {
       toast.error(getErrorMessage(error, "Không thể bắt đầu chuyến"));
@@ -124,37 +129,108 @@ function TripsScreen({ mode }: { mode: string }) {
   const end = async (trip: DriverTripView) => {
     try {
       await operationsApi.endTrip(trip.tripId);
-      toast.success("Đã kết thúc chuyến");
+      toast.success("Đã kết thúc chuyến chạy!");
       resource.reload();
     } catch (error) {
       toast.error(getErrorMessage(error, "Không thể kết thúc chuyến"));
     }
   };
 
+  const displayTrips = useMemo(() => {
+    const list = resource.data || [];
+    if (mode === "drv-active") {
+      return activeTrip ? [activeTrip] : [];
+    }
+    if (mode === "drv-history") {
+      return list.filter(t => t.status === "COMPLETED" || t.status === "CANCELLED");
+    }
+    if (mode === "drv-schedule") {
+      return list.filter(t => t.status !== "COMPLETED" && t.status !== "CANCELLED");
+    }
+    if (mode === "drv-route") {
+      const seen = new Set();
+      const routes: DriverTripView[] = [];
+      for (const trip of list) {
+        const key = trip.routeName;
+        if (!seen.has(key)) {
+          seen.add(key);
+          routes.push(trip);
+        }
+      }
+      return routes;
+    }
+    return list;
+  }, [resource.data, mode, activeTrip]);
+
   return (
-    <div>
+    <div className="space-y-6">
       <PageHeader
         title={title}
-        description="Dữ liệu chuyến xe thật từ driver operations API."
+        description={description}
         icon={<CalendarClock className="size-7" />}
-        actions={<Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-11 rounded-full bg-white" />}
+        actions={mode !== "drv-active" && (
+          <Input 
+            type="date" 
+            value={date} 
+            onChange={(e) => setDate(e.target.value)} 
+            className="h-11 rounded-full bg-white px-4 border" 
+          />
+        )}
       />
       <AsyncBlock resource={resource}>
-        {(trips) => (
+        {() => (
           <div className="space-y-6">
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <StatCard label="Tổng chuyến" value={trips.length} icon={<Route className="size-6" />} accent="primary" />
-              <StatCard label="Đang chạy" value={activeTrip ? "Có" : "Không"} icon={<PlayCircle className="size-6" />} accent={activeTrip ? "success" : "secondary"} />
-              <StatCard label="Ngày" value={formatDate(date)} icon={<CalendarClock className="size-6" />} accent="tertiary" />
-              <StatCard label="Hoàn tất" value={trips.filter((t) => t.endedAt).length} icon={<History className="size-6" />} accent="success" />
-            </div>
+            {mode !== "drv-active" && (
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <StatCard label="Tổng chuyến" value={(resource.data || []).length} icon={<Route className="size-6" />} accent="primary" />
+                <StatCard label="Đang chạy" value={activeTrip ? "Có" : "Không"} icon={<PlayCircle className="size-6" />} accent={activeTrip ? "success" : "secondary"} />
+                <StatCard label="Ngày xem" value={formatDate(date)} icon={<CalendarClock className="size-6" />} accent="tertiary" />
+                <StatCard label="Hoàn tất" value={(resource.data || []).filter((t) => t.status === "COMPLETED").length} icon={<History className="size-6" />} accent="success" />
+              </div>
+            )}
 
-            {mode === "drv-active" && !activeTrip ? (
-              <EmptyState icon={<PlayCircle className="size-7" />} title="Chưa có chuyến đang chạy" description="Bắt đầu một chuyến trong lịch để trạng thái xuất hiện tại đây." />
+            {mode === "drv-active" && displayTrips.length === 0 ? (
+              <EmptyState 
+                icon={<PlayCircle className="size-7" />} 
+                title="Chưa có chuyến đang chạy" 
+                description="Hãy vào phần 'Lịch chạy xe' để bắt đầu chuyến đi được phân công của bạn." 
+              />
+            ) : mode === "drv-route" ? (
+              <Section title="Tuyến đường của bạn">
+                <DataList emptyTitle="Chưa có tuyến đường" emptyDescription="Không tìm thấy tuyến đường được phân công nào cho ngày này.">
+                  {displayTrips.map((route) => (
+                    <ExpressiveCard key={route.tripId} variant="elevated" className="p-5 space-y-4">
+                      <div className="flex items-center justify-between border-b pb-3">
+                        <div>
+                          <h3 className="text-lg font-bold text-on-surface">{route.routeName}</h3>
+                          <p className="text-xs text-on-surface-variant mt-1">Xe chạy: {route.licensePlate || "Chưa gán"}</p>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Danh sách trạm dừng lộ trình:</p>
+                        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                          {(route.stops || []).map((stop) => (
+                            <div key={stop.stopId} className="rounded-xl bg-surface-container-high p-3 border">
+                              <div className="flex items-center gap-2">
+                                <MapPin className="size-4 text-primary shrink-0" />
+                                <span className="truncate text-sm font-bold text-on-surface">{stop.stopName}</span>
+                              </div>
+                              <p className="mt-1 text-xs text-on-surface-variant">Thứ tự: {stop.stopOrder}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </ExpressiveCard>
+                  ))}
+                </DataList>
+              </Section>
             ) : (
-              <Section title={mode === "drv-active" ? "Chuyến đang chạy" : "Danh sách chuyến"}>
-                <DataList emptyTitle="Chưa có chuyến" emptyDescription="Backend chưa phân chuyến nào cho ngày này.">
-                  {(mode === "drv-active" ? trips.filter((trip) => trip.tripId === activeTrip?.tripId) : trips).map((trip) => (
+              <Section title={mode === "drv-active" ? "Thông tin chuyến chạy live" : "Danh sách chuyến đi"}>
+                <DataList 
+                  emptyTitle={mode === "drv-history" ? "Chưa có lịch sử" : "Chưa có lịch chạy"} 
+                  emptyDescription={mode === "drv-history" ? "Các chuyến đã chạy xong hoặc hủy sẽ xuất hiện tại đây." : "Không có lịch trình phân công chạy xe cho ngày này."}
+                >
+                  {displayTrips.map((trip) => (
                     <TripCard key={trip.tripId} trip={trip} onStart={() => start(trip)} onEnd={() => end(trip)} />
                   ))}
                 </DataList>
