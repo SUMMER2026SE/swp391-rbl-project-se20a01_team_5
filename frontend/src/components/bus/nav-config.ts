@@ -151,6 +151,7 @@ export const NAV_CONFIG: Record<Role, NavItem[]> = {
     { id: "adm-complaints", label: "Xử lý khiếu nại", icon: ShieldAlert, group: "Quản lý" },
     { id: "adm-violations", label: "Xác minh sinh viên", icon: BadgeCheck, group: "Quản lý" },
     { id: "adm-audit", label: "Audit log", icon: ScrollText, group: "Quản lý" },
+    { id: "adm-transactions", label: "Lịch sử giao dịch", icon: Receipt, group: "Tài chính" },
     { id: "adm-fare", label: "Điều chỉnh giá vé", icon: Tag, group: "Quản lý" },
     { id: "adm-notify", label: "Gửi thông báo", icon: Megaphone, group: "Hỗ trợ" },
     { id: "adm-notifications", label: "Thông báo", icon: Bell, group: "Tài khoản" },
@@ -167,6 +168,7 @@ export const NAV_CONFIG: Record<Role, NavItem[]> = {
     { id: "uniadm-notify", label: "Gửi thông báo trường", icon: Megaphone, group: "Theo dõi" },
     { id: "uniadm-recon", label: "Báo cáo đối soát", icon: FileBarChart, group: "Theo dõi" },
     { id: "uniadm-notifications", label: "Thông báo", icon: Bell, group: "Tài khoản" },
+    { id: "uniadm-transactions", label: "Lịch sử giao dịch", icon: Receipt, group: "Theo dõi" },
     { id: "uniadm-profile", label: "Hồ sơ cá nhân", icon: UserIcon, group: "Tài khoản" },
   ],
 };
