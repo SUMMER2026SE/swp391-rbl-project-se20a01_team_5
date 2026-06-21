@@ -557,6 +557,19 @@ function ConductorMonthlyScreen() {
 // ----------------------------------------------------
 function AssistantLostItemsScreen() {
   const resource = useApiResource<ExperienceLostItemCard[]>(useCallback(() => experienceApi.assistantLostItems(), []));
+  const [contact, setContact] = useState<ConductorContactView | null>(null);
+  
+  // Form State
+  const [itemDescription, setItemDescription] = useState("");
+  const [passengerName, setPassengerName] = useState("");
+  const [location, setLocation] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    conductorApi.contact()
+      .then(data => setContact(data))
+      .catch(err => console.error("Lỗi lấy thông tin chuyến:", err));
+  }, []);
 
   const update = async (item: ExperienceLostItemCard, status: string) => {
     try {
@@ -571,35 +584,130 @@ function AssistantLostItemsScreen() {
     }
   };
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!itemDescription.trim() || !contact) return;
+    if (!contact.activeTripId) {
+      toast.error("Bạn cần có chuyến xe đang hoạt động để gửi khai báo đồ nhặt được!");
+      return;
+    }
+    setSaving(true);
+    try {
+      await conductorApi.submitSupport({
+        tripId: contact.activeTripId,
+        reportType: "LOST_ITEM",
+        passengerName: passengerName.trim() || undefined,
+        location: location.trim() || undefined,
+        description: itemDescription.trim()
+      });
+      toast.success("Khai báo đồ thất lạc thành công! Thông tin đã chuyển tới tài xế và điều phối.");
+      setItemDescription("");
+      setPassengerName("");
+      setLocation("");
+      resource.reload();
+    } catch (error: any) {
+      toast.error(getErrorMessage(error, "Không thể khai báo đồ thất lạc"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader title="Hỗ trợ mất đồ" description="Hỗ trợ tìm kiếm và trả lại đồ thất lạc cho sinh viên." icon={<PackageSearch className="size-7" />} />
-      <AsyncBlock resource={resource}>
-        {(items) => (
-          <DataList emptyTitle="Chưa có báo mất đồ" emptyDescription="Danh sách khai báo mất đồ của sinh viên sẽ xuất hiện ở đây.">
-            {items.map((item) => (
-              <ExpressiveCard key={item.lostItemReportId} variant="elevated" className="p-5">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="space-y-1.5">
-                    <h3 className="font-bold text-on-surface text-base sm:text-lg">{item.itemDescription}</h3>
-                    <p className="text-sm text-on-surface-variant font-medium">Báo bởi: {item.reporterName || "Sinh viên"} · Tuyến: {item.routeCode || item.routeName || "Chưa gắn"}</p>
-                    <p className="text-xs text-on-surface-variant">Thời gian báo: {formatDateTime(item.reportedAt)}</p>
-                    {item.notes && <p className="mt-2 rounded-2xl bg-surface-container-low p-3.5 text-sm text-on-surface-variant border border-outline-variant/20">{item.notes}</p>}
-                  </div>
-                  <div className="flex flex-wrap gap-2 shrink-0">
-                    <StatusPill status={item.status} />
-                    <div className="flex gap-1.5 w-full sm:w-auto">
-                      <ExpressiveButton size="sm" variant="tonal" onClick={() => update(item, "SEARCHING")}>Đang tìm</ExpressiveButton>
-                      <ExpressiveButton size="sm" onClick={() => update(item, "FOUND")}>Đã tìm thấy</ExpressiveButton>
-                      <ExpressiveButton size="sm" variant="error" onClick={() => update(item, "NOT_FOUND")}>Không thấy</ExpressiveButton>
+      
+      <div className="grid gap-6 lg:grid-cols-[400px_1fr] items-start">
+        {/* Form khai báo đồ nhặt được của Phụ xe */}
+        <ExpressiveCard variant="elevated" className="p-5 space-y-4 h-fit">
+          <div className="flex items-center gap-2 text-primary">
+            <PackageSearch className="size-6 shrink-0" />
+            <h3 className="font-bold text-lg">Khai báo đồ nhặt được</h3>
+          </div>
+          
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-on-surface-variant">Tên vật phẩm nhặt được</label>
+              <textarea
+                value={itemDescription}
+                onChange={(e) => setItemDescription(e.target.value)}
+                placeholder="Ví dụ: Điện thoại iPhone 11 màu đen, Ví da nâu..."
+                required
+                rows={3}
+                className="w-full rounded-2xl border bg-surface-container-lowest px-4 py-3 text-sm outline-none focus:border-primary resize-none transition-colors"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-on-surface-variant">Tên/Mã SV nghi ngờ (nếu có)</label>
+              <Input 
+                value={passengerName}
+                onChange={(e) => setPassengerName(e.target.value)}
+                placeholder="Tên hoặc mã SV hành khách để quên..."
+                className="rounded-2xl bg-surface-container-lowest"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-on-surface-variant">Vị trí nhặt được trên xe</label>
+              <Input 
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                placeholder="Ví dụ: Ghế số 4, Sàn xe cửa sau..."
+                className="rounded-2xl bg-surface-container-lowest"
+              />
+            </div>
+
+            {contact?.activeTripId ? (
+              <p className="text-[11px] text-on-surface-variant/80">
+                Thông tin nhặt được đồ sẽ gửi đến sinh viên và bắn thông báo tới tài xế + điều phối.
+              </p>
+            ) : (
+              <p className="text-[11px] text-error font-medium">
+                Cảnh báo: Bạn hiện không trong chuyến xe active. Vui lòng kiểm tra lại ca chạy để gửi khai báo.
+              </p>
+            )}
+
+            <ExpressiveButton 
+              type="submit" 
+              disabled={saving || !itemDescription.trim() || !contact?.activeTripId} 
+              className="w-full justify-center rounded-full mt-2 bg-[#14140f] text-white"
+            >
+              {saving ? "Đang gửi..." : "GỬI KHAI BÁO MẤT ĐỒ"}
+            </ExpressiveButton>
+          </form>
+        </ExpressiveCard>
+
+        {/* Danh sách đồ thất lạc của sinh viên báo */}
+        <div className="space-y-4">
+          <h3 className="font-bold text-lg text-on-surface">Danh sách đồ thất lạc cần xử lý</h3>
+          <AsyncBlock resource={resource}>
+            {(items) => (
+              <DataList emptyTitle="Chưa có báo mất đồ" emptyDescription="Danh sách khai báo mất đồ của sinh viên sẽ xuất hiện ở đây.">
+                {items.map((item) => (
+                  <ExpressiveCard key={item.lostItemReportId} variant="elevated" className="p-5">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="space-y-1.5">
+                        <h3 className="font-bold text-on-surface text-base sm:text-lg">{item.itemDescription}</h3>
+                        <p className="text-sm text-on-surface-variant font-medium">Báo bởi: {item.reporterName || "Sinh viên"} · Tuyến: {item.routeCode || item.routeName || "Chưa gắn"}</p>
+                        <p className="text-xs text-on-surface-variant">Thời gian báo: {formatDateTime(item.reportedAt)}</p>
+                        {item.notes && <p className="mt-2 rounded-2xl bg-surface-container-low p-3.5 text-sm text-on-surface-variant border border-outline-variant/20">{item.notes}</p>}
+                      </div>
+                      <div className="flex flex-wrap gap-2 shrink-0">
+                        <StatusPill status={item.status} />
+                        <div className="flex gap-1.5 w-full sm:w-auto">
+                          <ExpressiveButton size="sm" variant="tonal" onClick={() => update(item, "SEARCHING")}>Đang tìm</ExpressiveButton>
+                          <ExpressiveButton size="sm" onClick={() => update(item, "FOUND")}>Đã tìm thấy</ExpressiveButton>
+                          <ExpressiveButton size="sm" variant="error" onClick={() => update(item, "NOT_FOUND")}>Không thấy</ExpressiveButton>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              </ExpressiveCard>
-            ))}
-          </DataList>
-        )}
-      </AsyncBlock>
+                  </ExpressiveCard>
+                ))}
+              </DataList>
+            )}
+          </AsyncBlock>
+        </div>
+      </div>
     </div>
   );
 }
