@@ -26,3 +26,5 @@ frontend/UIPrototype_v1.1.tar
 run-backend.bat
 run-frontend.bat
 run-dev.bat
+node_modules/
+backend/*.log
