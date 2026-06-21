@@ -654,8 +654,8 @@ public class UniversityManagementRepository {
                 LIMIT 300
                 """, (rs, rowNum) -> new PaymentTransactionView(
                         rs.getLong("order_id"),
-                        (Long) rs.getObject("transaction_id"),
-                        (Long) rs.getObject("sepay_transaction_id"),
+                        getLong(rs, "transaction_id"),
+                        getLong(rs, "sepay_transaction_id"),
                         rs.getString("student_code"),
                         rs.getString("student_name"),
                         (Integer) rs.getObject("university_id"),
@@ -916,6 +916,22 @@ public class UniversityManagementRepository {
 
     private java.time.OffsetDateTime toOffsetDateTime(java.sql.Timestamp timestamp) {
         return timestamp == null ? null : timestamp.toInstant().atOffset(java.time.ZoneOffset.UTC);
+    }
+
+
+    private Long getLong(ResultSet rs, String columnLabel) throws SQLException {
+        Object val = rs.getObject(columnLabel);
+        if (val == null) {
+            return null;
+        }
+        if (val instanceof Number number) {
+            return number.longValue();
+        }
+        try {
+            return Long.parseLong(val.toString());
+        } catch (Exception e) {
+            return null;
+        }
     }
 
 }
