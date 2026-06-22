@@ -1741,109 +1741,340 @@ function HistoryScreen({ ctx }: { ctx: Ctx }) {
 }
 
 // =============================================================================
-// Screen 9: AI Route Suggestions
+// Screen 9: AI Route Suggestions (prototype-aligned — purple hero + ranked cards)
 // =============================================================================
 function AIScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
-  const [preference, setPreference] = useState("");
+  // Form state
+  const [freeTime, setFreeTime] = useState("07:00");
+  const [destination, setDestination] = useState("");
+  const [prefs, setPrefs] = useState<string[]>(["fast", "cheap"]);
   const [loading, setLoading] = useState(false);
-  const [suggestions, setSuggestions] = useState<any[]>(ctx.suggestions);
+  const [results, setResults] = useState<any[] | null>(null);
 
-  const fetchSuggestions = async () => {
+  const togglePref = (p: string) =>
+    setPrefs((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
+
+  const prefOptions = [
+    { id: "fast", label: "Nhanh nhất", icon: Navigation },
+    { id: "cheap", label: "Rẻ nhất", icon: Wallet },
+    { id: "comfort", label: "Tiện nghi", icon: Coffee },
+    { id: "fewer-stops", label: "Ít trạm", icon: MapPin },
+  ];
+
+  /**
+   * CÁCH HOẠT ĐỘNG:
+   * 1. User nhập giờ rảnh + điểm đến + chọn preferences
+   * 2. Gọi POST /api/v1/students/me/route-suggestions với body { freeTime, destination, preferences }
+   * 3. Backend (ExperienceService.studentRouteSuggestions) thực hiện rule-based ranking:
+   *    - Lọc routes đi qua "destination" stop
+   *    - Tính điểm phù hợp theo prefs (fast = ưu tiên estimatedMinutes thấp, cheap = ưu tiên fare thấp, v.v.)
+   *    - Bonus điểm nếu route liên kết với trường sinh viên (universityLinked)
+   *    - Sắp xếp giảm dần theo matchScore
+   * 4. FE nhận list routes, hiển thị 3 cards ranked #1/#2/#3
+   *
+   * Nếu backend chưa hỗ trợ POST, fallback sang GET /students/me/route-suggestions (no body).
+   */
+  const analyze = async () => {
     setLoading(true);
+    setResults(null);
     try {
-      const res = await fetch("/api/v1/students/me/route-suggestions", {
+      // Try POST with preferences first
+      let res = await fetch("/api/v1/students/me/route-suggestions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ preference }),
+        body: JSON.stringify({
+          freeTime,
+          destinationStopId: destination ? Number(destination) : undefined,
+          preferences: prefs,
+        }),
       });
+      // If POST not supported (405), fallback to GET
+      if (!res.ok && res.status === 405) {
+        res = await fetch("/api/v1/students/me/route-suggestions");
+      }
       if (res.ok) {
         const data = await res.json();
-        setSuggestions(Array.isArray(data) ? data : data?.data || []);
+        const list = Array.isArray(data) ? data : data?.data || [];
+        // Sort by backend matchScore if available, else by estimatedMinutes (shorter = better)
+        const sorted = [...list].sort((a: any, b: any) => {
+          const sa = a.matchScore ?? (100 - (a.estimatedMinutes || 60));
+          const sb = b.matchScore ?? (100 - (b.estimatedMinutes || 60));
+          return sb - sa;
+        });
+        // Simulate AI thinking delay for UX (1.2s minimum)
+        await new Promise((r) => setTimeout(r, 1200));
+        setResults(sorted);
       } else {
-        setSuggestions(ctx.suggestions);
+        // Fallback to ctx.suggestions (from initial dashboard load)
+        await new Promise((r) => setTimeout(r, 1200));
+        setResults(ctx.suggestions);
       }
     } catch {
-      setSuggestions(ctx.suggestions);
+      // Offline / network error — fallback
+      await new Promise((r) => setTimeout(r, 1200));
+      setResults(ctx.suggestions.length > 0 ? ctx.suggestions : []);
     } finally {
       setLoading(false);
     }
   };
 
+  // Tính "Độ tin cậy" (confidence) cho mỗi kết quả — dựa trên rank
+  const getConfidence = (idx: number, total: number) => {
+    if (total <= 1) return 95;
+    // Top result 92-95%, second 78-85%, third 65-72%
+    const presets = [94, 82, 70];
+    return presets[idx] ?? Math.max(50, 70 - idx * 8);
+  };
+
+  // Tính "Điểm phù hợp" (matchScore 1-5) — dựa trên prefs + route data
+  const getMatchScore = (r: any, idx: number) => {
+    let score = 5 - idx; // top = 5, second = 4, third = 3
+    if (prefs.includes("cheap") && (r.monthlyFare ?? 999999) < 200000) score = Math.min(5, score + 1);
+    if (prefs.includes("fast") && (r.estimatedMinutes ?? 60) < 30) score = Math.min(5, score + 1);
+    if (prefs.includes("fewer-stops") && (r.stops?.length ?? 99) < 5) score = Math.min(5, score + 1);
+    if (r.universityLinked) score = Math.min(5, score + 1);
+    return Math.max(1, Math.min(5, score - 1));
+  };
+
+  // Tạo "Lý do" gợi ý tự động dựa trên prefs + route data
+  const getReason = (r: any) => {
+    const reasons: string[] = [];
+    if (r.universityLinked) reasons.push("Tuyến liên kết trực tiếp với trường bạn");
+    if (prefs.includes("fast") && (r.estimatedMinutes ?? 0) > 0) reasons.push(`Chỉ ${r.estimatedMinutes} phút đi xe`);
+    if (prefs.includes("cheap") && (r.monthlyFare ?? 0) > 0) reasons.push(`Vé tháng chỉ ${formatVND(r.monthlyFare)}`);
+    if (prefs.includes("fewer-stops") && (r.stops?.length ?? 0) > 0) reasons.push(`Chỉ ${r.stops.length} trạm dừng`);
+    if (prefs.includes("comfort")) reasons.push("Xe có điều hòa, ghế nệm");
+    if (r.frequencyMin) reasons.push(`Tần suất chuyến mỗi ${r.frequencyMin} phút`);
+    if (reasons.length === 0) {
+      reasons.push("Tuyến phù hợp với lịch trình và vị trí của bạn");
+    }
+    return reasons.join(" · ");
+  };
+
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
-        title="AI gợi ý tuyến xe"
-        description="Hệ thống đề xuất tuyến phù hợp dựa trên vị trí trường và lịch sử đi lại."
-        icon={<Sparkles className="size-7" />}
+        title="AI gợi ý tuyến"
+        description="Để AI đề xuất tuyến xe phù hợp nhất."
+        icon={<Sparkles className="size-6 sm:size-7" />}
       />
 
+      {/* Hero — bold purple card (prototype style) */}
       <ScrollReveal>
-        <ExpressiveCard variant="elevated" className="p-5 min-w-0">
-          <Label className="text-xs font-bold">Sở thích của bạn (tùy chọn)</Label>
-          <div className="flex gap-2 mt-2 min-w-0">
-            <Input
-              placeholder="VD: ít chuyển tuyến, gần trường, rẻ nhất..."
-              value={preference}
-              onChange={(e) => setPreference(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && fetchSuggestions()}
-              className="flex-1 min-w-0"
+        <motion.div
+          initial={{ opacity: 0, y: 16, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ type: "spring", stiffness: 260, damping: 24 }}
+          className="relative overflow-hidden rounded-3xl p-6 sm:p-8 min-w-0"
+          style={{ backgroundColor: "#c8a0ff", color: "#14140f" }}
+        >
+          <div className="absolute -top-12 -right-12 size-48 rounded-full bg-[#14140f]/8 blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-16 -left-8 size-40 rounded-full bg-[#beff50]/20 blur-3xl pointer-events-none" />
+
+          <div className="relative space-y-4 min-w-0">
+            <div className="inline-flex size-14 items-center justify-center rounded-2xl bg-[#14140f] text-[#c8a0ff]">
+              <Sparkles className="size-7" />
+            </div>
+            <SplitText
+              as="h2"
+              text="AI gợi ý tuyến cho bạn"
+              className="text-3xl sm:text-4xl font-bold tracking-tight text-balance leading-tight"
+              stagger={0.05}
             />
-            <ExpressiveButton variant="filled" onClick={fetchSuggestions} disabled={loading}>
-              {loading ? <RefreshCw className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-              Gợi ý
-            </ExpressiveButton>
+            <p className="text-sm font-medium opacity-80 max-w-xl">
+              Dựa trên giờ rảnh, điểm đến và sở thích — UniBus AI đề xuất 3 tuyến tối ưu.
+            </p>
           </div>
-        </ExpressiveCard>
+
+          <div className="relative mt-6 space-y-4 min-w-0">
+            <div className="grid sm:grid-cols-2 gap-4 min-w-0">
+              <div className="space-y-2 min-w-0">
+                <Label className="text-xs font-bold opacity-70 uppercase tracking-wide">Giờ rảnh</Label>
+                <input
+                  type="time"
+                  value={freeTime}
+                  onChange={(e) => setFreeTime(e.target.value)}
+                  className="w-full h-12 rounded-xl bg-white border-2 border-[#14140f]/20 text-[#14140f] font-bold px-4 focus:outline-none focus:border-[#144fcc] min-w-0"
+                />
+              </div>
+              <div className="space-y-2 min-w-0">
+                <Label className="text-xs font-bold opacity-70 uppercase tracking-wide">Điểm đến</Label>
+                <Select value={destination} onValueChange={setDestination}>
+                  <SelectTrigger className="h-12 rounded-xl bg-white border-2 border-[#14140f]/20 text-[#14140f] font-bold">
+                    <SelectValue placeholder="Chọn điểm đến" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ctx.stops.map((s: any) => (
+                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2 min-w-0">
+              <Label className="text-xs font-bold opacity-70 uppercase tracking-wide">Sở thích</Label>
+              <div className="flex flex-wrap gap-2 min-w-0">
+                {prefOptions.map((p) => {
+                  const selected = prefs.includes(p.id);
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => togglePref(p.id)}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 h-9 px-4 rounded-full text-xs font-bold border-2 transition-all shrink-0",
+                        selected
+                          ? "bg-[#14140f] text-[#beff50] border-[#14140f]"
+                          : "bg-white/60 text-[#14140f] border-[#14140f]/20 hover:bg-white"
+                      )}
+                    >
+                      {selected && <CheckCircle2 className="size-3.5" />}
+                      {p.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <motion.button
+              whileHover={{ y: -1 }}
+              whileTap={{ scale: 0.97 }}
+              transition={{ type: "spring", stiffness: 400, damping: 22 }}
+              onClick={analyze}
+              disabled={loading}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 h-12 px-8 rounded-full bg-[#14140f] text-[#beff50] text-base font-bold disabled:opacity-60"
+            >
+              <Sparkles className="size-4" />
+              {loading ? "Đang phân tích…" : "Phân tích"}
+            </motion.button>
+          </div>
+        </motion.div>
       </ScrollReveal>
 
-      {suggestions.length === 0 ? (
+      {/* Loading shimmer */}
+      {loading && (
+        <div className="space-y-4 min-w-0">
+          {[1, 2, 3].map((i) => (
+            <Shimmer key={i} className="h-44 rounded-2xl" />
+          ))}
+        </div>
+      )}
+
+      {/* Empty state — chưa có kết quả */}
+      {!loading && !results && (
         <EmptyState
           icon={<Sparkles className="size-7" />}
-          title="Chưa có gợi ý"
-          description="Nhập sở thích và nhấn Gợi ý để nhận tuyến phù hợp."
+          title="Sẵn sàng phân tích"
+          description="Nhập giờ rảnh, điểm đến và sở thích bên trên, rồi nhấn 'Phân tích' để AI gợi ý 3 tuyến phù hợp nhất."
         />
-      ) : (
-        <StaggerGroup className="space-y-3 min-w-0">
-          {suggestions.map((r: any, i: number) => {
-            const route = ctx.routes.find((x) => x.id === String(r.routeId)) || r;
+      )}
+
+      {/* Results — bold ranked cards (prototype style) */}
+      {results && !loading && (
+        <StaggerGroup className="space-y-4 min-w-0">
+          <p className="text-sm font-medium text-on-surface-variant">
+            Tìm thấy <span className="font-bold text-[#14140f] dark:text-on-surface">{results.length}</span> tuyến phù hợp:
+          </p>
+          {results.slice(0, 3).map((r: any, idx: number) => {
+            const route = ctx.routes.find((x: any) => x.id === String(r.routeId)) || r;
+            const isUni = !!r.universityLinked;
+            const rankColors = [
+              { bg: "#14140f", fg: "#beff50", label: "#1 TỐT NHẤT" },
+              { bg: "#144fcc", fg: "#ffffff", label: "#2 PHÙ HỢP" },
+              { bg: "#ff8c5f", fg: "#14140f", label: "#3 THAM KHẢO" },
+            ];
+            const rank = rankColors[idx] ?? { bg: "#14140f", fg: "#beff50", label: `#${idx + 1}` };
+            const confidence = getConfidence(idx, results.length);
+            const matchScore = getMatchScore(r, idx);
+            const reason = getReason(r);
+            const fare = r.singleFare ?? r.monthlyFare ?? route.fare ?? 0;
+
             return (
-              <StaggerItem key={r.routeId || i}>
-                <ExpressiveCard variant="elevated" className="p-5 min-w-0">
-                  <div className="flex items-start gap-4 min-w-0">
-                    <div className="relative shrink-0">
-                      <div
-                        className="size-12 rounded-2xl flex items-center justify-center font-black"
-                        style={{ backgroundColor: r.colorHex || route.color || "#14b8a6", color: "#14140f" }}
-                      >
-                        {r.routeCode?.slice(0, 2) || "?"}
-                      </div>
-                      {i === 0 && (
-                        <span className="absolute -top-2 -right-2 bg-[#beff50] text-[#14140f] text-[9px] font-black px-1.5 py-0.5 rounded-full border-2 border-white">
-                          TOP
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="text-base font-bold truncate">{r.routeName}</h3>
-                        {r.universityLinked && <UniRouteChip active />}
-                      </div>
-                      <p className="text-xs text-on-surface-variant">
-                        {r.distanceKm ? `${r.distanceKm}km` : ""} •{" "}
-                        {r.estimatedMinutes ? `${r.estimatedMinutes} phút` : ""} •{" "}
-                        {r.frequencyMin ? `mỗi ${r.frequencyMin} phút` : ""}
-                      </p>
-                      {r.monthlyFare && (
-                        <p className="text-sm font-bold text-primary mt-1">
-                          Vé tháng: {formatVND(r.monthlyFare)}
+              <StaggerItem key={r.routeId || idx}>
+                <motion.div
+                  whileHover={{ y: -1 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                  className="rounded-2xl p-5 sm:p-6 elev-2 min-w-0"
+                  style={{ backgroundColor: rank.bg, color: rank.fg }}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3 mb-4 min-w-0">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="inline-flex items-center h-7 px-3 rounded-full bg-white/20 text-xs font-bold shrink-0">
+                        {rank.label}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-base font-bold truncate">{r.routeName || route.name}</p>
+                        <p className="text-xs opacity-70">
+                          {r.routeCode || route.code}
+                          {(r.estimatedMinutes || route.durationMin) ? ` · ${r.estimatedMinutes || route.durationMin} phút` : ""}
+                          {r.distanceKm ? ` · ${r.distanceKm}km` : ""}
                         </p>
-                      )}
+                      </div>
                     </div>
-                    <ExpressiveButton variant="tonal" size="sm" onClick={() => onNavigate("stu-my-routes")}>
-                      Đăng ký <ArrowRight className="size-4" />
-                    </ExpressiveButton>
+                    {isUni && (
+                      <span className="inline-flex items-center h-6 px-2.5 rounded-full bg-[#beff50] text-[#14140f] text-[10px] font-bold shrink-0">
+                        TRƯỜNG BẠN
+                      </span>
+                    )}
                   </div>
-                </ExpressiveCard>
+
+                  {/* Lý do gợi ý */}
+                  <p className="text-sm opacity-90 bg-white/10 rounded-xl p-3 mb-4">
+                    {reason}
+                  </p>
+
+                  {/* Độ tin cậy + Điểm phù hợp */}
+                  <div className="grid sm:grid-cols-2 gap-4 mb-4 min-w-0">
+                    <div>
+                      <div className="flex items-center justify-between text-xs mb-1.5">
+                        <span className="opacity-70">Độ tin cậy</span>
+                        <span className="font-bold">{confidence}%</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-white/15 overflow-hidden">
+                        <motion.div
+                          className="h-full rounded-full"
+                          style={{ backgroundColor: rank.fg }}
+                          initial={{ width: 0 }}
+                          animate={{ width: `${confidence}%` }}
+                          transition={{ type: "spring", stiffness: 120, damping: 20, delay: 0.2 + idx * 0.1 }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs opacity-70 mb-1.5">Điểm phù hợp</p>
+                      <div className="flex items-center gap-1">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Star
+                            key={star}
+                            className={cn("size-4", star <= matchScore ? "fill-current" : "opacity-25")}
+                          />
+                        ))}
+                        <span className="ml-2 text-xs font-bold">{matchScore}/5</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Action */}
+                  <div className="flex items-center justify-between gap-3 pt-3 border-t border-white/15 min-w-0">
+                    <p className="text-sm min-w-0">
+                      <span className="opacity-70">Giá vé: </span>
+                      <span className="font-bold text-lg">{fare ? formatVND(fare) : "—"}</span>
+                    </p>
+                    <motion.button
+                      whileHover={{ y: -1 }}
+                      whileTap={{ scale: 0.97 }}
+                      transition={{ type: "spring", stiffness: 400, damping: 22 }}
+                      onClick={() => {
+                        toast.success(`Đã chuyển đến đăng ký tuyến ${r.routeCode || route.code}`);
+                        onNavigate("stu-my-routes");
+                      }}
+                      className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-[#beff50] text-[#14140f] text-sm font-bold shrink-0"
+                    >
+                      Đăng ký
+                      <ArrowRight className="size-4" />
+                    </motion.button>
+                  </div>
+                </motion.div>
               </StaggerItem>
             );
           })}
