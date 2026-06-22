@@ -966,27 +966,78 @@ function OcrSummary({ verification }: { verification?: VerificationView | null }
 
   if (!hasOcr) return null;
 
+  const confidence = verification.ocrConfidenceScore;
+  const confidencePercent = confidence == null ? null : (confidence <= 1 ? confidence * 100 : confidence);
+  const confidenceTone = confidencePercent == null ? "neutral" : confidencePercent >= 80 ? "success" : confidencePercent >= 60 ? "warning" : "error";
+
   return (
-    <ExpressiveCard variant="filled" className="p-5 min-w-0">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="text-base font-bold">Kết quả OCR</h3>
-          <p className="text-xs text-on-surface-variant">Dữ liệu backend đọc từ ảnh thẻ sinh viên.</p>
+    <ExpressiveCard variant="elevated" className="p-5 min-w-0">
+      {/* Header with icon + confidence bar */}
+      <div className="flex items-center gap-3 mb-4 min-w-0">
+        <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-[#c8a0ff] text-[#14140f]">
+          <Sparkles className="size-5" />
         </div>
-        <M3StatusPill label={formatOcrConfidence(verification.ocrConfidenceScore)} tone="primary" />
+        <div className="flex-1 min-w-0">
+          <h3 className="text-base font-bold flex items-center gap-2">
+            Kết quả OCR
+            <span className="inline-flex items-center h-5 px-2 rounded-full bg-[#c8a0ff]/20 text-[#c8a0ff] text-[10px] font-bold uppercase tracking-wide">
+              AI
+            </span>
+          </h3>
+          <p className="text-xs text-on-surface-variant mt-0.5">Dữ liệu backend đọc từ ảnh thẻ sinh viên</p>
+        </div>
       </div>
+
+      {/* Confidence progress bar */}
+      {confidencePercent != null && (
+        <div className="mb-4">
+          <div className="flex items-center justify-between text-xs mb-1.5">
+            <span className="text-on-surface-variant font-medium">Độ tin cậy</span>
+            <span className={cn(
+              "font-bold",
+              confidenceTone === "success" && "text-success",
+              confidenceTone === "warning" && "text-warning",
+              confidenceTone === "error" && "text-error"
+            )}>
+              {Math.round(confidencePercent)}%
+            </span>
+          </div>
+          <div className="h-2 rounded-full bg-surface-container-high overflow-hidden">
+            <motion.div
+              className={cn(
+                "h-full rounded-full",
+                confidenceTone === "success" && "bg-success",
+                confidenceTone === "warning" && "bg-warning",
+                confidenceTone === "error" && "bg-error"
+              )}
+              initial={{ width: 0 }}
+              animate={{ width: `${confidencePercent}%` }}
+              transition={{ type: "spring", stiffness: 120, damping: 20 }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Fields grid */}
       <div className="grid gap-2 sm:grid-cols-3">
         <FieldLine label="Họ tên OCR" value={verification.ocrFullName} />
         <FieldLine label="MSSV OCR" value={verification.ocrStudentCode} />
         <FieldLine label="Trường OCR" value={verification.ocrUniversity} />
       </div>
+
+      {/* Raw text collapsible */}
       {verification.ocrRawText && (
-        <div className="mt-3 rounded-2xl border border-outline-variant/50 bg-surface-container-lowest p-3">
-          <p className="text-[11px] font-bold uppercase tracking-wide text-on-surface-variant">Raw text</p>
-          <p className="mt-1 max-h-32 overflow-y-auto whitespace-pre-wrap text-xs text-on-surface-variant scrollbar-soft">
-            {verification.ocrRawText}
-          </p>
-        </div>
+        <details className="mt-3 group">
+          <summary className="cursor-pointer text-xs font-bold text-on-surface-variant hover:text-on-surface flex items-center gap-1.5 list-none">
+            <ChevronRight className="size-3.5 group-open:rotate-90 transition-transform" />
+            Xem raw text OCR
+          </summary>
+          <div className="mt-2 rounded-2xl border border-outline-variant/50 bg-surface-container-lowest p-3">
+            <p className="max-h-32 overflow-y-auto whitespace-pre-wrap text-xs text-on-surface-variant scrollbar-soft font-mono">
+              {verification.ocrRawText}
+            </p>
+          </div>
+        </details>
       )}
     </ExpressiveCard>
   );
@@ -1001,27 +1052,45 @@ function StudentCardPreview({
 }) {
   if (previewUrl) {
     return (
-      <img
-        src={previewUrl}
-        alt="Ảnh thẻ sinh viên chuẩn bị gửi"
-        className="aspect-[4/3] w-full rounded-2xl border border-outline-variant/60 object-cover"
-      />
+      <div className="relative group">
+        <img
+          src={previewUrl}
+          alt="Ảnh thẻ sinh viên chuẩn bị gửi"
+          className="aspect-[4/3] w-full rounded-2xl border-2 border-[#beff50] object-cover shadow-lg"
+        />
+        <div className="absolute top-2 right-2 inline-flex items-center gap-1 h-6 px-2 rounded-full bg-[#beff50] text-[#14140f] text-[10px] font-bold">
+          <span className="size-1.5 rounded-full bg-[#14140f] animate-pulse" />
+          Ảnh mới
+        </div>
+      </div>
     );
   }
   if (verification?.cardImageUrl) {
     return (
-      <ProtectedImage
-        src={verification.cardImageUrl}
-        alt="Ảnh thẻ sinh viên đã gửi"
-        className="aspect-[4/3] w-full rounded-2xl border border-outline-variant/60"
-      />
+      <div className="relative group">
+        <ProtectedImage
+          src={verification.cardImageUrl}
+          alt="Ảnh thẻ sinh viên đã gửi"
+          className="aspect-[4/3] w-full rounded-2xl border-2 border-outline-variant/60"
+        />
+        <div className="absolute top-2 right-2 inline-flex items-center gap-1 h-6 px-2 rounded-full bg-[#14140f] text-white text-[10px] font-bold">
+          Đã gửi
+        </div>
+      </div>
     );
   }
   return (
-    <div className="flex aspect-[4/3] w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed border-outline-variant bg-surface-container-low text-center">
-      <ImageUp className="size-9 text-on-surface-variant" />
-      <p className="mt-3 text-sm font-bold text-on-surface">Chưa chọn ảnh thẻ</p>
-      <p className="mt-1 max-w-xs text-xs text-on-surface-variant">JPG, PNG hoặc WebP, tối đa 10MB.</p>
+    <div className="relative flex aspect-[4/3] w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed border-outline-variant bg-gradient-to-br from-surface-container-low to-surface-container-lowest text-center overflow-hidden">
+      {/* Decorative blobs */}
+      <div className="absolute -top-8 -right-8 size-32 rounded-full bg-[#beff50]/10 blur-2xl pointer-events-none" />
+      <div className="absolute -bottom-8 -left-8 size-28 rounded-full bg-[#144fcc]/10 blur-2xl pointer-events-none" />
+      <div className="relative z-10 flex flex-col items-center">
+        <div className="flex size-14 items-center justify-center rounded-2xl bg-[#14140f] text-[#beff50] mb-3">
+          <ImageUp className="size-7" />
+        </div>
+        <p className="text-sm font-bold text-on-surface">Chưa chọn ảnh thẻ</p>
+        <p className="mt-1 max-w-xs text-xs text-on-surface-variant">JPG, PNG hoặc WebP, tối đa 10MB</p>
+      </div>
     </div>
   );
 }
@@ -1245,22 +1314,55 @@ function UniversityScreen({ ctx, onProfileRefresh }: { ctx: Ctx; onProfileRefres
 
               <div className="mt-4 grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
                 <StudentCardPreview verification={currentVerification} previewUrl={previewUrl} />
-                <div className="space-y-3">
-                  <Label htmlFor="student-card-image">Ảnh thẻ sinh viên</Label>
-                  <Input
-                    id="student-card-image"
-                    type="file"
-                    accept={STUDENT_CARD_TYPES.join(",")}
-                    onChange={(e) => handleFile(e.target.files?.[0])}
-                    disabled={submitting}
-                  />
-                  <div className="rounded-2xl bg-surface-container-low p-4 text-sm text-on-surface-variant">
-                    <p className="font-semibold text-on-surface">Mẹo để OCR đọc tốt hơn</p>
-                    <p className="mt-1">Chụp thẳng mặt thẻ, đủ sáng, không che MSSV và tên trường.</p>
+                <div className="space-y-3 min-w-0">
+                  <Label htmlFor="student-card-image" className="text-xs font-bold uppercase tracking-wide">Ảnh thẻ sinh viên</Label>
+                  {/* Drag-drop upload zone */}
+                  <label
+                    htmlFor="student-card-image"
+                    className={cn(
+                      "group relative flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed p-6 transition-colors min-w-0",
+                      cardImage
+                        ? "border-[#beff50] bg-[#beff50]/5"
+                        : "border-outline-variant hover:border-primary/50 hover:bg-primary/5"
+                    )}
+                  >
+                    <input
+                      id="student-card-image"
+                      type="file"
+                      accept={STUDENT_CARD_TYPES.join(",")}
+                      onChange={(e) => handleFile(e.target.files?.[0])}
+                      disabled={submitting}
+                      className="sr-only"
+                    />
+                    <div className={cn(
+                      "flex size-10 items-center justify-center rounded-xl transition-colors",
+                      cardImage ? "bg-[#beff50] text-[#14140f]" : "bg-surface-container-high text-on-surface-variant group-hover:bg-primary group-hover:text-on-primary"
+                    )}>
+                      {cardImage ? <CheckCircle2 className="size-5" /> : <Upload className="size-5" />}
+                    </div>
+                    <div className="text-center min-w-0">
+                      <p className="text-sm font-bold text-on-surface truncate">
+                        {cardImage ? cardImage.name : "Chạm để chọn ảnh"}
+                      </p>
+                      <p className="text-xs text-on-surface-variant mt-0.5">
+                        {cardImage ? `${(cardImage.size / 1024 / 1024).toFixed(2)} MB` : "JPG, PNG, WebP — tối đa 10MB"}
+                      </p>
+                    </div>
+                  </label>
+                  <div className="rounded-2xl bg-[#144fcc]/5 border border-[#144fcc]/20 p-4 text-sm text-on-surface-variant">
+                    <p className="font-bold text-[#144fcc] flex items-center gap-1.5">
+                      <Sparkles className="size-4" />
+                      Mẹo OCR đọc tốt hơn
+                    </p>
+                    <ul className="mt-2 space-y-1 text-xs">
+                      <li className="flex items-start gap-1.5"><span className="text-[#144fcc]">•</span> Chụp thẳng mặt thẻ, không nghiêng</li>
+                      <li className="flex items-start gap-1.5"><span className="text-[#144fcc]">•</span> Đủ sáng, không bóng đổ</li>
+                      <li className="flex items-start gap-1.5"><span className="text-[#144fcc]">•</span> Không che MSSV và tên trường</li>
+                    </ul>
                   </div>
-                  <ExpressiveButton variant="filled" onClick={submit} disabled={submitting} className="w-full sm:w-auto">
+                  <ExpressiveButton variant="filled" onClick={submit} disabled={submitting || !cardImage} className="w-full">
                     {submitting ? <RefreshCw className="size-4 animate-spin" /> : <Upload className="size-4" />}
-                    Gửi xác minh
+                    {submitting ? "Đang gửi..." : "Gửi xác minh"}
                   </ExpressiveButton>
                 </div>
               </div>
@@ -1456,12 +1558,17 @@ function FindRoutesScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
       />
 
       <ScrollReveal>
-        <ExpressiveCard variant="elevated" className="p-5 sm:p-6 min-w-0">
-          <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr_auto] gap-3 items-end min-w-0">
-            <div>
-              <Label className="text-xs font-bold">Trạm lên</Label>
+        {/* Hero search card — bold dark với lime accent (giống prototype) */}
+        <div className="relative overflow-hidden rounded-3xl p-5 sm:p-6 bg-[#14140f] min-w-0">
+          <div className="absolute -top-10 -right-10 size-40 rounded-full bg-[#beff50]/15 blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-12 -left-6 size-32 rounded-full bg-[#ff8c5f]/15 blur-3xl pointer-events-none" />
+          <div className="relative grid sm:grid-cols-[1fr_1fr_auto] gap-3 items-end min-w-0">
+            <div className="space-y-2 min-w-0">
+              <Label className="text-xs font-bold text-[#beff50] uppercase tracking-wide">Từ trạm</Label>
               <Select value={boardingId} onValueChange={setBoardingId}>
-                <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn trạm lên" /></SelectTrigger>
+                <SelectTrigger className="h-12 rounded-xl bg-white border-2 border-[#beff50]/30 text-[#14140f] font-semibold">
+                  <SelectValue placeholder="Chọn trạm đi" />
+                </SelectTrigger>
                 <SelectContent>
                   {ctx.stops.map((s: any) => (
                     <SelectItem key={s.id} value={s.id}>{s.name} ({s.code})</SelectItem>
@@ -1469,19 +1576,12 @@ function FindRoutesScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
                 </SelectContent>
               </Select>
             </div>
-            <div className="hidden md:flex items-center justify-center pb-2">
-              <button
-                onClick={() => { setBoardingId(alightingId); setAlightingId(boardingId); }}
-                className="size-9 rounded-full bg-surface-container-high flex items-center justify-center hover:bg-primary-container"
-                title="Đảo chiều"
-              >
-                <ArrowLeftRight className="size-4" />
-              </button>
-            </div>
-            <div>
-              <Label className="text-xs font-bold">Trạm xuống</Label>
+            <div className="space-y-2 min-w-0">
+              <Label className="text-xs font-bold text-[#beff50] uppercase tracking-wide">Đến trạm</Label>
               <Select value={alightingId} onValueChange={setAlightingId}>
-                <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn trạm xuống" /></SelectTrigger>
+                <SelectTrigger className="h-12 rounded-xl bg-white border-2 border-[#beff50]/30 text-[#14140f] font-semibold">
+                  <SelectValue placeholder="Chọn trạm đến" />
+                </SelectTrigger>
                 <SelectContent>
                   {ctx.stops.map((s: any) => (
                     <SelectItem key={s.id} value={s.id}>{s.name} ({s.code})</SelectItem>
@@ -1489,12 +1589,28 @@ function FindRoutesScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
                 </SelectContent>
               </Select>
             </div>
-            <ExpressiveButton variant="filled" onClick={search} disabled={loading}>
+            <motion.button
+              whileHover={{ y: -2 }}
+              whileTap={{ scale: 0.97 }}
+              transition={{ type: "spring", stiffness: 400, damping: 22 }}
+              onClick={search}
+              disabled={loading}
+              className="inline-flex items-center justify-center gap-2 h-12 px-6 rounded-xl bg-[#beff50] text-[#14140f] text-sm font-bold disabled:opacity-60 shrink-0"
+            >
               {loading ? <RefreshCw className="size-4 animate-spin" /> : <Search className="size-4" />}
-              Tìm
-            </ExpressiveButton>
+              Tìm tuyến
+            </motion.button>
           </div>
-        </ExpressiveCard>
+          {/* Swap button */}
+          <button
+            onClick={() => { setBoardingId(alightingId); setAlightingId(boardingId); }}
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 size-8 rounded-full bg-[#beff50] text-[#14140f] flex items-center justify-center hover:scale-110 transition-transform hidden sm:flex"
+            style={{ left: "calc(50% - 8px)", top: "calc(50% + 8px)" }}
+            title="Đảo chiều"
+          >
+            <ArrowLeftRight className="size-3.5" />
+          </button>
+        </div>
       </ScrollReveal>
 
       {error && <ErrorScreen message={error} onRetry={search} />}
@@ -1503,57 +1619,90 @@ function FindRoutesScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
         <ScrollReveal delay={0.1}>
           <Section title={`${results.length} tuyến phù hợp`}>
             <StaggerGroup className="space-y-3 min-w-0">
-              {results.map((r) => {
+              {results.map((r, idx) => {
                 const route = ctx.routes.find((x) => x.id === String(r.routeId)) || r;
+                // Alternating palettes like prototype: dark/blue/coral
+                const palettes = [
+                  { bg: "#14140f", fg: "#ffffff", accent: "#beff50", chipBg: "#beff50", chipFg: "#14140f" },
+                  { bg: "#144fcc", fg: "#ffffff", accent: "#beff50", chipBg: "#beff50", chipFg: "#14140f" },
+                  { bg: "#ff8c5f", fg: "#14140f", accent: "#14140f", chipBg: "#14140f", chipFg: "#beff50" },
+                ];
+                const pal = palettes[idx % palettes.length];
                 return (
                   <StaggerItem key={r.routeId}>
-                    <ExpressiveCard variant="elevated" className="p-5 min-w-0">
-                      <div className="flex items-start gap-4 min-w-0">
-                        <div
-                          className="size-12 shrink-0 rounded-2xl flex items-center justify-center font-black"
-                          style={{ backgroundColor: r.colorHex || route.color || "#14b8a6", color: "#14140f" }}
-                        >
-                          {r.routeCode?.slice(0, 2) || "?"}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <h3 className="text-base font-bold truncate">{r.routeName}</h3>
-                            {r.universityLinked && <UniRouteChip active />}
+                    <div
+                      className="relative overflow-hidden rounded-3xl p-5 sm:p-6 min-w-0"
+                      style={{ backgroundColor: pal.bg, color: pal.fg }}
+                    >
+                      {idx % 3 === 0 && <div className="absolute -top-8 -right-8 size-32 rounded-full bg-[#beff50]/15 blur-2xl pointer-events-none" />}
+                      {idx % 3 === 1 && <div className="absolute -bottom-10 -left-6 size-32 rounded-full bg-[#beff50]/20 blur-2xl pointer-events-none" />}
+                      {idx % 3 === 2 && <div className="absolute -top-6 -right-12 size-36 rounded-full bg-[#14140f]/15 blur-2xl pointer-events-none" />}
+
+                      <div className="relative flex flex-wrap items-start justify-between gap-4 mb-4 min-w-0">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span
+                            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-full text-sm font-bold shrink-0"
+                            style={{ backgroundColor: pal.chipBg, color: pal.chipFg }}
+                          >
+                            <Bus className="size-4" />
+                            {r.routeCode || route.code}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-base font-bold truncate">{r.routeName}</p>
+                            <p className="text-xs flex items-center gap-1.5 opacity-80 min-w-0">
+                              <span className="truncate">{r.fromStopName || route.from}</span>
+                              <ArrowLeftRight className="size-3 shrink-0" />
+                              <span className="truncate">{r.toStopName || route.to}</span>
+                            </p>
                           </div>
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                            <div>
-                              <p className="text-on-surface-variant">Khoảng cách</p>
-                              <p className="font-bold">{r.distanceKm ? `${r.distanceKm} km` : "—"}</p>
-                            </div>
-                            <div>
-                              <p className="text-on-surface-variant">Thời gian</p>
-                              <p className="font-bold">{r.estimatedMinutes ? `${r.estimatedMinutes} phút` : "—"}</p>
-                            </div>
-                            <div>
-                              <p className="text-on-surface-variant">Tần suất</p>
-                              <p className="font-bold">{r.frequencyMin ? `${r.frequencyMin} phút` : "—"}</p>
-                            </div>
-                            <div>
-                              <p className="text-on-surface-variant">Giá vé</p>
-                              <p className="font-bold text-primary">{r.singleFare ? formatVND(r.singleFare) : "—"}</p>
-                            </div>
-                          </div>
-                          {r.monthlyFare && (
-                            <div className="mt-3 inline-flex items-center gap-2 text-xs bg-primary-container text-on-primary-container px-3 py-1.5 rounded-full">
-                              <Wallet className="size-3.5" />
-                              Vé tháng: <span className="font-bold">{formatVND(r.monthlyFare)}</span>
-                            </div>
-                          )}
                         </div>
-                        <ExpressiveButton
-                          variant="filled"
-                          size="sm"
-                          onClick={() => onNavigate("stu-my-routes")}
-                        >
-                          Đăng ký
-                        </ExpressiveButton>
+                        {r.universityLinked && (
+                          <span className="inline-flex items-center gap-1.5 h-7 px-3 rounded-full text-xs font-bold shrink-0" style={{ backgroundColor: "#beff50", color: "#14140f" }}>
+                            <School className="size-3.5" />
+                            Dành cho trường bạn
+                          </span>
+                        )}
                       </div>
-                    </ExpressiveCard>
+
+                      <div className="relative grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 min-w-0">
+                        {[
+                          { label: "Thời gian", value: r.estimatedMinutes ? `${r.estimatedMinutes} phút` : "—", icon: Clock },
+                          { label: "Quãng đường", value: r.distanceKm ? `${r.distanceKm} km` : "—", icon: MapPin },
+                          { label: "Tần suất", value: r.frequencyMin ? `${r.frequencyMin} phút` : "—", icon: RefreshCw },
+                          { label: "Giá vé", value: r.singleFare ? formatVND(r.singleFare) : "—", icon: Wallet },
+                        ].map((m) => (
+                          <div
+                            key={m.label}
+                            className="rounded-xl p-3 min-w-0"
+                            style={{ backgroundColor: idx % 3 === 2 ? "rgba(20,20,15,0.10)" : "rgba(255,255,255,0.12)" }}
+                          >
+                            <m.icon className="size-4 mb-1" style={{ color: pal.accent }} />
+                            <p className="text-[10px] opacity-70 truncate">{m.label}</p>
+                            <p className="text-sm font-bold truncate">{m.value}</p>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="relative flex flex-wrap items-center justify-between gap-3 min-w-0">
+                        {r.monthlyFare && (
+                          <p className="text-sm">
+                            <span className="opacity-70">Vé tháng: </span>
+                            <span className="font-bold text-lg" style={{ color: pal.accent }}>{formatVND(r.monthlyFare)}</span>
+                          </p>
+                        )}
+                        <motion.button
+                          whileHover={{ y: -2 }}
+                          whileTap={{ scale: 0.97 }}
+                          transition={{ type: "spring", stiffness: 400, damping: 22 }}
+                          onClick={() => onNavigate("stu-my-routes")}
+                          className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full text-xs font-bold shrink-0"
+                          style={{ backgroundColor: pal.accent, color: pal.bg }}
+                        >
+                          Đăng ký tuyến
+                          <ArrowRight className="size-4" />
+                        </motion.button>
+                      </div>
+                    </div>
                   </StaggerItem>
                 );
               })}
@@ -1728,62 +1877,85 @@ function MyRoutesScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string
         />
       ) : (
         <ScrollReveal>
-          <ExpressiveCard variant="elevated" className="p-6 min-w-0">
-            <div className="flex items-start gap-4 min-w-0">
+          <motion.div
+            initial={{ opacity: 0, y: 16, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ type: "spring", stiffness: 260, damping: 24 }}
+            className="relative overflow-hidden rounded-3xl p-6 sm:p-8 elev-2 min-w-0"
+            style={{ backgroundColor: "#beff50", color: "#14140f" }}
+          >
+            {/* Decorative blobs */}
+            <div className="absolute -top-12 -right-12 size-48 rounded-full bg-[#14140f]/8 blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-16 -left-8 size-40 rounded-full bg-[#144fcc]/10 blur-3xl pointer-events-none" />
+
+            <div className="relative flex flex-col sm:flex-row sm:items-start gap-5 min-w-0">
               {regRoute && (
                 <div
-                  className="size-16 shrink-0 rounded-2xl flex items-center justify-center font-black text-xl"
-                  style={{ backgroundColor: regRoute.color, color: "#14140f" }}
+                  className="size-16 sm:size-20 shrink-0 rounded-2xl flex items-center justify-center font-black text-xl sm:text-2xl shadow-lg"
+                  style={{ backgroundColor: "#14140f", color: regRoute.color || "#beff50" }}
                 >
                   {regRoute.code?.slice(0, 2)}
                 </div>
               )}
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap mb-2">
-                  <h2 className="text-xl font-bold truncate">{reg!.routeName}</h2>
-                  <M3StatusPill label={reg!.status} tone={reg!.status === "ACTIVE" ? "success" : "warning"} />
+                <div className="flex items-center gap-2 flex-wrap mb-3">
+                  <h2 className="text-xl sm:text-2xl font-black truncate">{reg!.routeName}</h2>
+                  <span className={cn(
+                    "inline-flex items-center h-6 px-2.5 rounded-full text-[10px] font-bold",
+                    reg!.status === "ACTIVE" ? "bg-[#14140f] text-[#beff50]" : "bg-[#f59e0b] text-[#14140f]"
+                  )}>
+                    {reg!.status}
+                  </span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                  <div className="flex items-start gap-2">
-                    <MapPin className="size-4 text-primary mt-0.5 shrink-0" />
+                  <div className="flex items-start gap-2 bg-[#14140f]/8 rounded-xl p-3 min-w-0">
+                    <MapPin className="size-4 mt-0.5 shrink-0" />
                     <div className="min-w-0">
-                      <p className="text-xs text-on-surface-variant">Trạm lên</p>
+                      <p className="text-[10px] font-bold opacity-70 uppercase">Trạm lên</p>
                       <p className="font-bold truncate">{reg!.boardingStopName}</p>
                     </div>
                   </div>
-                  <div className="flex items-start gap-2">
-                    <MapPin className="size-4 text-error mt-0.5 shrink-0" />
+                  <div className="flex items-start gap-2 bg-[#14140f]/8 rounded-xl p-3 min-w-0">
+                    <MapPin className="size-4 mt-0.5 shrink-0" />
                     <div className="min-w-0">
-                      <p className="text-xs text-on-surface-variant">Trạm xuống</p>
+                      <p className="text-[10px] font-bold opacity-70 uppercase">Trạm xuống</p>
                       <p className="font-bold truncate">{reg!.alightingStopName}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Calendar className="size-4 text-on-surface-variant" />
-                    <span className="text-xs">Hiệu lực: <span className="font-bold">{formatDate(reg!.effectiveDate)}</span></span>
+                  <div className="flex items-center gap-2 bg-[#14140f]/8 rounded-xl p-3 min-w-0">
+                    <Calendar className="size-4 shrink-0" />
+                    <span className="text-xs"><span className="opacity-70">Hiệu lực:</span> <span className="font-bold">{formatDate(reg!.effectiveDate)}</span></span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Clock className="size-4 text-on-surface-variant" />
-                    <span className="text-xs">Đăng ký: <span className="font-bold">{formatDate(reg!.registeredAt)}</span></span>
+                  <div className="flex items-center gap-2 bg-[#14140f]/8 rounded-xl p-3 min-w-0">
+                    <Clock className="size-4 shrink-0" />
+                    <span className="text-xs"><span className="opacity-70">Đăng ký:</span> <span className="font-bold">{formatDate(reg!.registeredAt)}</span></span>
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2 mt-4">
-                  <ExpressiveButton variant="tonal" size="sm" onClick={() => onNavigate("stu-payment")}>
+                  <motion.button
+                    whileHover={{ y: -2 }}
+                    whileTap={{ scale: 0.97 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 22 }}
+                    onClick={() => onNavigate("stu-payment")}
+                    className="inline-flex items-center gap-1.5 h-10 px-5 rounded-full bg-[#14140f] text-[#beff50] text-sm font-bold"
+                  >
                     <CreditCard className="size-4" />
                     Mua vé tháng
-                  </ExpressiveButton>
-                  <ExpressiveButton
-                    variant="outlined"
-                    size="sm"
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ y: -2 }}
+                    whileTap={{ scale: 0.97 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 22 }}
                     onClick={() => setCancelling(true)}
+                    className="inline-flex items-center gap-1.5 h-10 px-5 rounded-full bg-white text-[#14140f] text-sm font-bold border-2 border-[#14140f]"
                   >
                     <Trash2 className="size-4" />
                     Hủy đăng ký
-                  </ExpressiveButton>
+                  </motion.button>
                 </div>
               </div>
             </div>
-          </ExpressiveCard>
+          </motion.div>
         </ScrollReveal>
       )}
 
@@ -1974,60 +2146,91 @@ function MyTicketScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string
           <div className="absolute -bottom-16 -left-8 size-40 rounded-full bg-[#144fcc]/10 blur-3xl pointer-events-none" />
 
           <div className="relative p-6 sm:p-8 min-w-0">
-            <div className="flex items-start justify-between mb-6 min-w-0">
-              <div className="min-w-0">
-                <p className="text-[10px] font-bold opacity-70 uppercase tracking-wider">Vé tháng</p>
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6 min-w-0">
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] font-bold opacity-70 uppercase tracking-wider">Vé tháng sinh viên</p>
                 <h2 className="text-2xl sm:text-3xl font-black mt-1 truncate">{t.routeName}</h2>
-                <div className="flex items-center gap-2 mt-2">
+                <div className="flex flex-wrap items-center gap-2 mt-3">
                   <span className="inline-flex h-7 px-3 rounded-full bg-[#14140f] text-white text-xs font-bold items-center">
                     {t.routeCode || route?.code || "UNIBUS"}
                   </span>
-                  <M3StatusPill label={t.status} tone={t.status === "ACTIVE" ? "success" : "warning"} />
+                  <span className={cn(
+                    "inline-flex items-center gap-1 h-7 px-3 rounded-full text-xs font-bold",
+                    t.status === "ACTIVE" ? "bg-[#14140f] text-[#beff50]" : "bg-[#f59e0b] text-[#14140f]"
+                  )}>
+                    <span className={cn("size-1.5 rounded-full", t.status === "ACTIVE" && "animate-pulse")} style={{ backgroundColor: t.status === "ACTIVE" ? "#beff50" : "#14140f" }} />
+                    {t.status === "ACTIVE" ? "Đang hoạt động" : t.status}
+                  </span>
+                  <span className="inline-flex items-center gap-1 h-7 px-3 rounded-full bg-white/20 text-xs font-bold backdrop-blur">
+                    <Calendar className="size-3.5" />
+                    30 ngày
+                  </span>
                 </div>
               </div>
               {t.qrCode && (
                 <motion.button
                   onClick={() => setExpanded((v) => !v)}
-                  className="bg-white p-2 rounded-xl shadow-lg shrink-0"
+                  className="bg-white p-3 rounded-2xl shadow-lg shrink-0 relative"
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 22 }}
                 >
-                  <QRCodeCanvas value={t.qrCode} size={expanded ? 160 : 80} level="H" />
+                  <QRCodeCanvas value={t.qrCode} size={expanded ? 180 : 100} level="H" />
+                  <div className="absolute -top-1.5 -right-1.5 size-6 rounded-full bg-[#14140f] text-[#beff50] flex items-center justify-center">
+                    <Maximize2 className="size-3" />
+                  </div>
                 </motion.button>
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
+            {/* Info chips — rounded boxes với icon */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5 min-w-0">
+              <div className="bg-[#14140f]/10 rounded-xl p-3 min-w-0">
+                <MapPin className="size-4 mb-1 opacity-70" />
                 <p className="text-[10px] font-bold opacity-70 uppercase">Trạm lên</p>
-                <p className="font-bold truncate">{t.boardingStopName || "—"}</p>
+                <p className="font-bold text-sm truncate">{t.boardingStopName || "—"}</p>
               </div>
-              <div>
+              <div className="bg-[#14140f]/10 rounded-xl p-3 min-w-0">
+                <MapPin className="size-4 mb-1 opacity-70" />
                 <p className="text-[10px] font-bold opacity-70 uppercase">Trạm xuống</p>
-                <p className="font-bold truncate">{t.alightingStopName || "—"}</p>
+                <p className="font-bold text-sm truncate">{t.alightingStopName || "—"}</p>
               </div>
-              <div>
-                <p className="text-[10px] font-bold opacity-70 uppercase">Hiệu lực từ</p>
-                <p className="font-bold">{formatDate(t.validFrom)}</p>
+              <div className="bg-[#14140f]/10 rounded-xl p-3 min-w-0">
+                <Calendar className="size-4 mb-1 opacity-70" />
+                <p className="text-[10px] font-bold opacity-70 uppercase">Hiệu lực</p>
+                <p className="font-bold text-sm truncate">{formatDate(t.validFrom)}</p>
               </div>
-              <div>
+              <div className="bg-[#14140f]/10 rounded-xl p-3 min-w-0">
+                <Clock className="size-4 mb-1 opacity-70" />
                 <p className="text-[10px] font-bold opacity-70 uppercase">Hết hạn</p>
-                <p className="font-bold">{formatDate(t.expiresAt || t.expiresOn)}</p>
+                <p className="font-bold text-sm truncate">{formatDate(t.expiresAt || t.expiresOn)}</p>
               </div>
             </div>
 
             {t.finalFareAmount != null && (
-              <div className="mt-5 flex flex-wrap items-center gap-3">
-                <div className="bg-[#14140f] text-[#beff50] px-4 py-2 rounded-full text-sm font-black">
-                  {formatVND(t.finalFareAmount)}
-                </div>
-                {t.subsidyAmount != null && t.subsidyAmount > 0 && (
-                  <div className="text-xs font-bold">
-                    <span className="line-through opacity-60">{formatVND(t.originalFareAmount || 0)}</span>
-                    {" → "}
-                    <span className="text-success">-{formatVND(t.subsidyAmount)} trợ giá</span>
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-[#14140f]/15 min-w-0">
+                <div className="flex flex-wrap items-center gap-3 min-w-0">
+                  <div className="bg-[#14140f] text-[#beff50] px-4 py-2 rounded-full text-sm font-black">
+                    {formatVND(t.finalFareAmount)}
                   </div>
-                )}
+                  {t.subsidyAmount != null && t.subsidyAmount > 0 && (
+                    <div className="text-xs font-bold">
+                      <span className="line-through opacity-60">{formatVND(t.originalFareAmount || 0)}</span>
+                      {" → "}
+                      <span className="text-success">-{formatVND(t.subsidyAmount)} trợ giá</span>
+                    </div>
+                  )}
+                </div>
+                <motion.button
+                  whileHover={{ y: -2 }}
+                  whileTap={{ scale: 0.97 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 22 }}
+                  onClick={() => onNavigate("stu-payment")}
+                  className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-[#14140f] text-[#beff50] text-xs font-bold shrink-0"
+                >
+                  Gia hạn vé
+                  <ArrowRight className="size-4" />
+                </motion.button>
               </div>
             )}
           </div>
@@ -2047,17 +2250,51 @@ function MyTicketScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string
 }
 
 // =============================================================================
-// Screen 8: History — travel history list
+// Screen 8: History — travel history list with stat cards
 // =============================================================================
 function HistoryScreen({ ctx }: { ctx: Ctx }) {
+  const totalTrips = ctx.tripsHistory.length;
+  // Estimate monthly spend from active ticket fare
+  const monthlyFare = ctx.activeTicket?.finalFareAmount ?? ctx.activeTicket?.originalFareAmount ?? 0;
+  const thisMonthTrips = ctx.tripsHistory.filter((h: any) => {
+    const d = new Date(h.boardedAt || h.serviceDate || "");
+    const now = new Date();
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  }).length;
+
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Lịch sử chuyến đi"
-        description={`${ctx.tripsHistory.length} chuyến đã đi`}
+        description={`${totalTrips} chuyến đã đi`}
         icon={<History className="size-7" />}
       />
-      {ctx.tripsHistory.length === 0 ? (
+
+      {/* Stat cards — 3 mini cards giống prototype */}
+      {totalTrips > 0 && (
+        <StaggerGroup className="grid grid-cols-3 gap-2 sm:gap-3 min-w-0">
+          <StaggerItem>
+            <div className="rounded-2xl bg-[#14140f] text-[#beff50] p-3 sm:p-4 text-center min-w-0">
+              <p className="text-xl sm:text-2xl font-bold tabular-nums">{totalTrips}</p>
+              <p className="text-[10px] sm:text-xs font-bold opacity-70 uppercase truncate">Tổng chuyến</p>
+            </div>
+          </StaggerItem>
+          <StaggerItem>
+            <div className="rounded-2xl bg-[#144fcc] text-white p-3 sm:p-4 text-center min-w-0">
+              <p className="text-xl sm:text-2xl font-bold tabular-nums">{thisMonthTrips}</p>
+              <p className="text-[10px] sm:text-xs font-bold opacity-70 uppercase truncate">Tháng này</p>
+            </div>
+          </StaggerItem>
+          <StaggerItem>
+            <div className="rounded-2xl bg-[#ff8c5f] text-[#14140f] p-3 sm:p-4 text-center min-w-0">
+              <p className="text-base sm:text-lg font-bold tabular-nums truncate">{monthlyFare ? formatVND(monthlyFare) : "—"}</p>
+              <p className="text-[10px] sm:text-xs font-bold opacity-70 uppercase truncate">Chi phí tháng</p>
+            </div>
+          </StaggerItem>
+        </StaggerGroup>
+      )}
+
+      {totalTrips === 0 ? (
         <EmptyState
           icon={<History className="size-7" />}
           title="Chưa có chuyến đi nào"

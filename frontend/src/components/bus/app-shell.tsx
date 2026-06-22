@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useMotionValueEvent, useScroll } from "framer-motion";
-import { ArrowLeft, BadgeCheck, Bell, ChevronDown, Clock3, LogOut, Menu, QrCode, Search, School, UserCircle } from "lucide-react";
+import { ArrowLeft, BadgeCheck, Bell, ChevronDown, Clock3, LogOut, Menu, PanelLeftClose, PanelLeftOpen, QrCode, School, UserCircle } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -45,14 +44,8 @@ export function AppShell({
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [unread, setUnread] = useState<number | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const nav = NAV_CONFIG[role] ?? NAV_CONFIG.student;
-  const filteredSuggestions = useMemo(() => {
-    if (!searchQuery.trim()) return [];
-    const query = searchQuery.toLowerCase().trim();
-    return nav.filter((item) => item.label.toLowerCase().includes(query));
-  }, [searchQuery, nav]);
   const groups = useMemo(() => {
     const map = new Map<string, NavItem[]>();
     nav.forEach((item) => {
@@ -104,26 +97,38 @@ export function AppShell({
     };
   }, [activeId]);
 
+  // Listen for real-time notification read events from NotificationsScreen
   useEffect(() => {
-    if (!showSuggestions) return;
-    const handleOutsideClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest(".search-container")) {
-        setShowSuggestions(false);
-      }
+    const handleNotificationRead = () => {
+      setUnread((prev) => (prev == null ? null : Math.max(0, prev - 1)));
     };
-    document.addEventListener("click", handleOutsideClick);
-    return () => document.removeEventListener("click", handleOutsideClick);
-  }, [showSuggestions]);
+    window.addEventListener("notification-read", handleNotificationRead as EventListener);
+    return () => window.removeEventListener("notification-read", handleNotificationRead as EventListener);
+  }, []);
 
+  // Debounce navigation to prevent lag when user clicks rapidly.
+  // Each new click cancels the previous pending navigation.
+  const navTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const goTo = (id: string) => {
     setMobileOpen(false);
-    // Defer heavy rendering to unblock the sidebar's closing animation (300ms)
-    setTimeout(() => {
+    // Cancel any pending navigation from previous click
+    if (navTimerRef.current) {
+      clearTimeout(navTimerRef.current);
+    }
+    // Defer heavy rendering to unblock the sidebar's closing animation
+    navTimerRef.current = setTimeout(() => {
       onNavigate(id);
       window.scrollTo({ top: 0, behavior: "instant" });
-    }, 150);
+      navTimerRef.current = null;
+    }, 120);
   };
+
+  // Cleanup pending navigation on unmount
+  useEffect(() => {
+    return () => {
+      if (navTimerRef.current) clearTimeout(navTimerRef.current);
+    };
+  }, []);
 
   const SidebarContent = (
     <div className="flex h-full flex-col bg-surface-container-low">
@@ -189,11 +194,21 @@ export function AppShell({
 
   return (
     <div className="flex min-h-screen w-full flex-col overflow-x-hidden bg-background" data-role-theme={role}>
-      <aside className="fixed left-0 top-0 z-40 hidden h-screen w-72 shrink-0 flex-col border-r border-outline-variant/40 bg-surface-container-low lg:flex">
+      <motion.aside
+        animate={{ width: sidebarCollapsed ? 0 : 288 }}
+        transition={{ type: "spring", stiffness: 400, damping: 32 }}
+        className="fixed left-0 top-0 z-40 hidden h-screen shrink-0 flex-col border-r border-outline-variant/40 bg-surface-container-low overflow-hidden lg:flex"
+        style={{ width: 288 }}
+      >
         {SidebarContent}
-      </aside>
+      </motion.aside>
 
-      <div className="flex min-h-screen min-w-0 flex-1 flex-col lg:ml-72">
+      <div
+        className={cn(
+          "flex min-h-screen min-w-0 flex-1 flex-col transition-[margin] duration-300",
+          sidebarCollapsed ? "lg:ml-0" : "lg:ml-72",
+        )}
+      >
         <motion.header
           animate={{
             height: scrolled ? 52 : 64,
@@ -223,6 +238,16 @@ export function AppShell({
             </button>
           )}
 
+          {/* Toggle sidebar button (desktop only) */}
+          <button
+            className="state-layer flex size-10 shrink-0 items-center justify-center rounded-full text-on-surface hidden lg:flex"
+            onClick={() => setSidebarCollapsed((v) => !v)}
+            aria-label={sidebarCollapsed ? "Mở sidebar" : "Đóng sidebar"}
+            title={sidebarCollapsed ? "Mở sidebar" : "Đóng sidebar"}
+          >
+            {sidebarCollapsed ? <PanelLeftOpen className="size-5" /> : <PanelLeftClose className="size-5" />}
+          </button>
+
           <div className="hidden min-w-0 items-center gap-2 text-sm sm:flex">
             <span className="font-medium text-on-surface-variant">{ROLE_LABELS[role]}</span>
             <span className="text-on-surface-variant/40">/</span>
@@ -233,50 +258,7 @@ export function AppShell({
             <span className="truncate text-base font-semibold text-on-surface">{currentNav?.label}</span>
           </div>
 
-          <div className="hidden flex-1 sm:block" />
-
-          <div className="relative hidden w-64 md:flex flex-col search-container">
-            <div className="relative flex w-full items-center">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-on-surface-variant" />
-              <Input
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  setShowSuggestions(true);
-                }}
-                onFocus={() => setShowSuggestions(true)}
-                placeholder="Tìm chức năng..."
-                className="h-9 w-full rounded-full border-transparent bg-surface-container-high pl-9 focus-visible:bg-surface-container-lowest text-sm transition-all focus-visible:ring-1 focus-visible:ring-primary/20"
-              />
-            </div>
-            
-            {showSuggestions && searchQuery.trim() !== "" && (
-              <div className="absolute top-[40px] left-0 z-50 w-full rounded-2xl border border-outline-variant/50 bg-surface-container-lowest p-1.5 shadow-xl max-h-60 overflow-y-auto scrollbar-soft animate-in fade-in slide-in-from-top-1 duration-150">
-                {filteredSuggestions.length > 0 ? (
-                  <div className="space-y-0.5">
-                    {filteredSuggestions.map((item) => (
-                      <button
-                        key={item.id}
-                        onClick={() => {
-                          goTo(item.id);
-                          setSearchQuery("");
-                          setShowSuggestions(false);
-                        }}
-                        className="group flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-on-surface hover:bg-primary/10 hover:text-primary transition-all duration-100"
-                      >
-                        <item.icon className="size-4 shrink-0 text-on-surface-variant group-hover:text-primary transition-colors" />
-                        <span className="truncate font-medium">{item.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="px-3 py-3 text-xs text-on-surface-variant/80 text-center font-medium">
-                    Không tìm thấy kết quả
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          <div className="flex-1" />
 
           <button
             className="state-layer relative flex size-10 shrink-0 items-center justify-center rounded-full text-on-surface"

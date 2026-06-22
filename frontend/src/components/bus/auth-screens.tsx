@@ -103,13 +103,27 @@ export function AuthScreens({
     }
 
     setGoogleLoading(true);
+
+    // Revoke any existing Google OAuth token before requesting a new one.
+    // This fixes the bug where after logout → login again, Google popup
+    // doesn't appear because GIS caches the previous token.
+    try {
+      // @ts-ignore — revoke exists on google.accounts.oauth2
+      window.google.accounts.oauth2.revoke(null, () => {});
+    } catch {
+      // ignore revoke errors
+    }
+
     const client = window.google.accounts.oauth2.initTokenClient({
       client_id: clientId,
       scope: "openid email profile",
       callback: async (response) => {
         if (response.error || !response.access_token) {
           setGoogleLoading(false);
-          toast.error("Không nhận được token Google hợp lệ.");
+          // User closed popup or error — don't show error toast if user cancelled
+          if (response.error !== "user_closed") {
+            toast.error("Không nhận được token Google hợp lệ.");
+          }
           return;
         }
         try {
@@ -129,7 +143,10 @@ export function AuthScreens({
         }
       },
     });
-    client.requestAccessToken({ prompt: "select_account" });
+    // prompt: '' forces Google to show account picker every time,
+    // even if user previously logged in. Combined with revoke above,
+    // this ensures login-logout-login works without F5.
+    client.requestAccessToken({ prompt: "consent" });
   }, [googleReady, onLogin]);
 
   return (
@@ -147,11 +164,27 @@ export function AuthScreens({
             <span className="text-lg font-bold tracking-tight">UniBus</span>
           </Link>
           <nav className="hidden md:flex items-center gap-1">
-            {["Tính năng", "Trường đối tác", "Bảng giá"].map((l) => (
-              <button key={l} type="button" disabled className="h-9 px-4 rounded-full text-sm font-medium text-on-surface-variant/50 cursor-not-allowed">
-                {l}
-              </button>
-            ))}
+            <button
+              type="button"
+              onClick={() => document.getElementById("features")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+              className="h-9 px-4 rounded-full text-sm font-medium text-on-surface-variant hover:bg-[#14140f]/8 hover:text-on-surface transition-colors"
+            >
+              Tính năng
+            </button>
+            <button
+              type="button"
+              onClick={() => document.getElementById("partners")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+              className="h-9 px-4 rounded-full text-sm font-medium text-on-surface-variant hover:bg-[#14140f]/8 hover:text-on-surface transition-colors"
+            >
+              Trường đối tác
+            </button>
+            <button
+              type="button"
+              onClick={() => document.getElementById("auth")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+              className="h-9 px-4 rounded-full text-sm font-medium text-on-surface-variant hover:bg-[#14140f]/8 hover:text-on-surface transition-colors"
+            >
+              Bắt đầu
+            </button>
           </nav>
           <div className="flex items-center gap-2">
             <button
@@ -280,7 +313,7 @@ export function AuthScreens({
       </section>
 
       {/* University partners marquee */}
-      <section className="py-10 sm:py-12 border-y border-outline-variant/40 bg-surface-container-low">
+      <section id="partners" className="py-10 sm:py-12 border-y border-outline-variant/40 bg-surface-container-low scroll-mt-20">
         <p className="text-center text-sm font-medium text-on-surface-variant mb-6 px-4">
           Đang phục vụ sinh viên các trường đại học tại Đà Nẵng
         </p>
