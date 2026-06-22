@@ -36,6 +36,7 @@ import com.unibus.api.university.UniversityDtos.CreateUniversityNotificationRequ
 import com.unibus.api.university.UniversityDtos.CreateUniversityRequest;
 import com.unibus.api.university.UniversityDtos.DomainView;
 import com.unibus.api.university.UniversityDtos.ImportBatchView;
+import com.unibus.api.university.UniversityDtos.PaymentTransactionView;
 import com.unibus.api.university.UniversityDtos.ReconciliationView;
 import com.unibus.api.university.UniversityDtos.PaymentTransactionView;
 import com.unibus.api.university.UniversityDtos.RosterStudentView;
@@ -292,6 +293,14 @@ public class UniversityManagementService {
         return recipients;
     }
 
+
+    @Transactional(readOnly = true)
+    public List<PaymentTransactionView> paymentTransactions(Integer universityId) {
+        if (universityId != null) {
+            requireUniversity(universityId);
+        }
+        return repository.paymentTransactions(universityId);
+    }
 
     @Transactional(readOnly = true)
     public List<PaymentTransactionView> paymentTransactions(Integer universityId) {

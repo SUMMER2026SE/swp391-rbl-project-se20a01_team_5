@@ -280,9 +280,10 @@ export function Parallax({
   offset?: number;
 }) {
   const ref = React.useRef<HTMLDivElement>(null);
-  const [enabled] = React.useState(
-    () => typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches
-  );
+  const [enabled, setEnabled] = React.useState(false);
+  React.useEffect(() => {
+    setEnabled(window.matchMedia("(min-width: 768px)").matches);
+  }, []);
   const { scrollYProgress } = useScroll({
     target: ref,
     offset: ["start end", "end start"],

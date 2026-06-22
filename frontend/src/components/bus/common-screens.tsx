@@ -100,6 +100,8 @@ export function NotificationsScreen() {
     try {
       await notificationApi.markRead(item.notificationId);
       resource.setData((resource.data || []).map((n) => n.notificationId === item.notificationId ? { ...n, read: true } : n));
+      // Notify app-shell to update bell badge in real-time
+      window.dispatchEvent(new CustomEvent("notification-read", { detail: { notificationId: item.notificationId } }));
     } catch (error) {
       toast.error(getErrorMessage(error, "Không thể đánh dấu đã đọc"));
     }

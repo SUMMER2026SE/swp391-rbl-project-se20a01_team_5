@@ -225,7 +225,7 @@ WITH student_data AS (
 route_data AS (
     SELECT route_id
     FROM routes
-    WHERE description LIKE 'ITER1 seed route:%'
+    WHERE description LIKE 'Tuyến nội khu (Seed):%'
 )
 INSERT INTO route_universities (route_id, university_id, active_from, active_until, status)
 SELECT r.route_id, sd.university_id, CURRENT_DATE - INTERVAL '1 day', NULL, 'ACTIVE'
@@ -283,8 +283,8 @@ WITH student_data AS (
 route_data AS (
     SELECT route_id
     FROM routes
-    WHERE route_name = 'ITER1 - Campus Loop'
-      AND description LIKE 'ITER1 seed route:%'
+    WHERE route_name = 'Tuyến số 1 - Campus Loop'
+      AND description LIKE 'Tuyến nội khu (Seed):%'
 ),
 boarding_stop AS (
     SELECT rs.stop_id
@@ -350,8 +350,8 @@ WITH student_data AS (
 route_data AS (
     SELECT route_id
     FROM routes
-    WHERE route_name = 'ITER1 - Campus Loop'
-      AND description LIKE 'ITER1 seed route:%'
+    WHERE route_name = 'Tuyến số 1 - Campus Loop'
+      AND description LIKE 'Tuyến nội khu (Seed):%'
 ),
 fare_data AS (
     SELECT f.amount
@@ -515,8 +515,8 @@ WITH student_data AS (
 route_data AS (
     SELECT route_id
     FROM routes
-    WHERE route_name = 'ITER1 - Campus Loop'
-      AND description LIKE 'ITER1 seed route:%'
+    WHERE route_name = 'Tuyến số 1 - Campus Loop'
+      AND description LIKE 'Tuyến nội khu (Seed):%'
 ),
 completed_trip AS (
     SELECT t.trip_id
@@ -641,7 +641,7 @@ trip_data AS (
     SELECT t.trip_id
     FROM trips t
     JOIN routes r ON r.route_id = t.route_id
-    WHERE r.description LIKE 'ITER1 seed route:%'
+    WHERE r.description LIKE 'Tuyến nội khu (Seed):%'
       AND t.status = 'COMPLETED'
     ORDER BY t.service_date DESC, t.trip_id DESC
     LIMIT 1
@@ -666,7 +666,7 @@ INSERT INTO feedback (
 SELECT
     sd.student_code,
     t.trip_id,
-    'UI QA Khanh: Dữ liệu feedback thật để test màn phản hồi sinh viên.',
+    'Chuyến đi rất thoải mái, tài xế thân thiện và đúng giờ.',
     5,
     CURRENT_TIMESTAMP,
     'RESOLVED',
@@ -679,7 +679,7 @@ WHERE NOT EXISTS (
     SELECT 1
     FROM feedback f
     WHERE f.student_code = sd.student_code
-      AND f.content = 'UI QA Khanh: Dữ liệu feedback thật để test màn phản hồi sinh viên.'
+      AND f.content = 'Chuyến đi rất thoải mái, tài xế thân thiện và đúng giờ.'
 );
 
 COMMIT;

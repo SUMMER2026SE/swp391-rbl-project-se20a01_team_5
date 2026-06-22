@@ -104,13 +104,27 @@ export function AuthScreens({
     }
 
     setGoogleLoading(true);
+
+    // Revoke any existing Google OAuth token before requesting a new one.
+    // This fixes the bug where after logout → login again, Google popup
+    // doesn't appear because GIS caches the previous token.
+    try {
+      // @ts-ignore — revoke exists on google.accounts.oauth2
+      window.google.accounts.oauth2.revoke(null, () => {});
+    } catch {
+      // ignore revoke errors
+    }
+
     const client = window.google.accounts.oauth2.initTokenClient({
       client_id: clientId,
       scope: "openid email profile",
       callback: async (response) => {
         if (response.error || !response.access_token) {
           setGoogleLoading(false);
-          toast.error("Không nhận được token Google hợp lệ.");
+          // User closed popup or error — don't show error toast if user cancelled
+          if (response.error !== "user_closed") {
+            toast.error("Không nhận được token Google hợp lệ.");
+          }
           return;
         }
         try {
@@ -130,7 +144,10 @@ export function AuthScreens({
         }
       },
     });
-    client.requestAccessToken({ prompt: "select_account" });
+    // prompt: '' forces Google to show account picker every time,
+    // even if user previously logged in. Combined with revoke above,
+    // this ensures login-logout-login works without F5.
+    client.requestAccessToken({ prompt: "consent" });
   }, [googleReady, onLogin]);
 
   return (
@@ -148,11 +165,27 @@ export function AuthScreens({
             <span className="text-lg font-bold tracking-tight">UniBus</span>
           </Link>
           <nav className="hidden md:flex items-center gap-1">
-            {["Tính năng", "Trường đối tác", "Bảng giá"].map((l) => (
-              <button key={l} type="button" disabled className="h-9 px-4 rounded-full text-sm font-medium text-on-surface-variant/50 cursor-not-allowed">
-                {l}
-              </button>
-            ))}
+            <button
+              type="button"
+              onClick={() => document.getElementById("features")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+              className="h-9 px-4 rounded-full text-sm font-medium text-on-surface-variant hover:bg-[#14140f]/8 hover:text-on-surface transition-colors"
+            >
+              Tính năng
+            </button>
+            <button
+              type="button"
+              onClick={() => document.getElementById("partners")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+              className="h-9 px-4 rounded-full text-sm font-medium text-on-surface-variant hover:bg-[#14140f]/8 hover:text-on-surface transition-colors"
+            >
+              Trường đối tác
+            </button>
+            <button
+              type="button"
+              onClick={() => document.getElementById("auth")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+              className="h-9 px-4 rounded-full text-sm font-medium text-on-surface-variant hover:bg-[#14140f]/8 hover:text-on-surface transition-colors"
+            >
+              Bắt đầu
+            </button>
           </nav>
           <div className="flex items-center gap-2">
             <button
@@ -281,7 +314,7 @@ export function AuthScreens({
       </section>
 
       {/* University partners marquee */}
-      <section className="py-10 sm:py-12 border-y border-outline-variant/40 bg-surface-container-low">
+      <section id="partners" className="py-10 sm:py-12 border-y border-outline-variant/40 bg-surface-container-low scroll-mt-20">
         <p className="text-center text-sm font-medium text-on-surface-variant mb-6 px-4">
           Đang phục vụ sinh viên các trường đại học tại Đà Nẵng
         </p>
@@ -299,9 +332,7 @@ export function AuthScreens({
               </div>
             ))}
           </Marquee>
-        ) : (
-          <p className="text-center text-sm text-on-surface-variant">Danh sách trường sẽ hiển thị khi backend catalog phản hồi.</p>
-        )}
+        ) : null}
       </section>
 
       <footer className="border-t border-outline-variant/40 py-10 px-6 text-center">
@@ -319,9 +350,9 @@ function Hero({ onGetStarted }: { onGetStarted: () => void }) {
   const opacity = useTransform(scrollYProgress, [0, 0.85], [1, 0]);
 
   return (
-    <section ref={ref} className="relative min-h-[80vh] sm:min-h-[88vh] flex flex-col justify-center overflow-hidden">
+    <section ref={ref} className="relative min-h-[80vh] sm:min-h-[88vh] flex flex-col justify-center">
       {/* Background — bold lime block top-right, dark block bottom-left */}
-      <div className="absolute top-0 right-0 size-[50vw] rounded-full bg-[#beff50] blur-[100px] opacity-50 pointer-events-none" />
+      <div className="absolute -top-[10%] right-0 size-[45vw] rounded-full bg-[#beff50] blur-[120px] opacity-60 pointer-events-none" />
       <div className="absolute bottom-0 left-0 size-[40vw] rounded-full bg-[#144fcc] blur-[100px] opacity-20 pointer-events-none" />
       <div className="absolute top-1/3 left-1/4 size-[30vw] rounded-full bg-[#ff8c5f] blur-[80px] opacity-25 pointer-events-none" />
 
@@ -379,8 +410,8 @@ function Hero({ onGetStarted }: { onGetStarted: () => void }) {
                   <Bus className="size-5" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs text-white/60">Dữ liệu vận hành</p>
-                  <p className="font-bold truncate">Hiển thị sau khi đăng nhập</p>
+                  <p className="text-xs text-white/60">Trải nghiệm chuyến đi</p>
+                  <p className="font-bold truncate">Đăng nhập để theo dõi xe & mua vé</p>
                 </div>
               </div>
               <span className="size-2.5 rounded-full bg-[#beff50] animate-pulse shrink-0" />
@@ -597,7 +628,6 @@ function RegisterForm({
         <ArrowLeft className="size-4" /> Quay lại đăng nhập
       </button>
       <h3 className="text-2xl font-bold tracking-tight">Tạo tài khoản</h3>
-      <p className="text-sm text-on-surface-variant mt-1">Email trường giúp tự nhận diện trường đại học.</p>
 
       {/* Google signup */}
       <motion.button

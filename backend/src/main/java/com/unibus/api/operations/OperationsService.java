@@ -21,6 +21,7 @@ import com.unibus.api.operations.OperationsDtos.ConductorTicketView;
 import com.unibus.api.operations.OperationsDtos.ConductorTripView;
 import com.unibus.api.operations.OperationsDtos.DriverTripOverview;
 import com.unibus.api.operations.OperationsDtos.DriverTripView;
+import com.unibus.api.operations.OperationsDtos.DriverContactView;
 import com.unibus.api.operations.OperationsDtos.InternalMessageView;
 import com.unibus.api.operations.OperationsDtos.LiveFleetVehicle;
 import com.unibus.api.operations.OperationsDtos.SaveSchedulesRequest;
@@ -31,15 +32,19 @@ import com.unibus.api.operations.OperationsDtos.TicketScanResult;
 import com.unibus.api.operations.OperationsDtos.VehicleLocationRequest;
 import com.unibus.api.operations.OperationsRepository.DriverScheduleTemplate;
 import com.unibus.api.operations.OperationsRepository.TripRouteInfo;
+import com.unibus.api.realtime.RealtimePublisher;
 import com.unibus.api.security.CurrentUser;
 
 @Service
 public class OperationsService {
 
     private final OperationsRepository operationsRepository;
+    private final RealtimePublisher realtimePublisher;
 
-    public OperationsService(OperationsRepository operationsRepository) {
+    public OperationsService(OperationsRepository operationsRepository,
+            RealtimePublisher realtimePublisher) {
         this.operationsRepository = operationsRepository;
+        this.realtimePublisher = realtimePublisher;
     }
 
     @Transactional(readOnly = true)
@@ -89,6 +94,19 @@ public class OperationsService {
     public List<DriverTripView> getDriverTrips(CurrentUser currentUser, LocalDate date) {
         Integer driverStaffId = requireDriverStaffId(currentUser);
         return operationsRepository.findDriverTrips(driverStaffId, date == null ? LocalDate.now() : date);
+    }
+
+    @Transactional(readOnly = true)
+    public List<DriverContactView> getDriverContacts(CurrentUser currentUser) {
+        requireDriverStaffId(currentUser);
+        List<DriverContactView> contacts = new ArrayList<>(operationsRepository.findDriverDispatcherContacts());
+        contacts.add(new DriverContactView(
+                "EMERGENCY",
+                "Tổng đài khẩn cấp",
+                "Hỗ trợ 24/7",
+                "1900 1234",
+                null));
+        return contacts;
     }
 
     @Transactional(readOnly = true)
@@ -304,6 +322,15 @@ public class OperationsService {
         requireOwnedTrip(tripId, driverStaffId);
         operationsRepository.updateTripLocation(tripId, request.longitude(), request.latitude(), request.speedKmh(),
                 request.occupancy());
+        // Broadcast to all subscribers (students tracking this trip + coordinator live fleet).
+        TripRouteInfo tripInfo = operationsRepository.tripRouteInfo(tripId).orElse(null);
+        if (tripInfo != null) {
+            realtimePublisher.publishTripLocation(tripId, tripInfo.routeId(),
+                    request.longitude(), request.latitude(), request.speedKmh(), request.occupancy());
+        } else {
+            realtimePublisher.publishTripLocation(tripId, null,
+                    request.longitude(), request.latitude(), request.speedKmh(), request.occupancy());
+        }
     }
 
     @Transactional(readOnly = true)

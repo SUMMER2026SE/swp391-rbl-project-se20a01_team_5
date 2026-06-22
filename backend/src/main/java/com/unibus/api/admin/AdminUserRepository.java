@@ -24,6 +24,10 @@ public class AdminUserRepository {
     }
 
     public List<UserView> findUsers(String keyword, String role, String status) {
+        return findUsers(keyword, role, status, 0, Integer.MAX_VALUE);
+    }
+
+    public List<UserView> findUsers(String keyword, String role, String status, int page, int size) {
         String like = keyword == null || keyword.isBlank() ? null : "%" + keyword.trim().toLowerCase() + "%";
         String normalizedRole = role == null || role.equalsIgnoreCase("all") ? null : role.toUpperCase();
         String normalizedStatus = status == null || status.equalsIgnoreCase("all") ? null : status.toUpperCase();
@@ -50,7 +54,46 @@ public class AdminUserRepository {
             params.add(normalizedStatus);
         }
         where.append("ORDER BY u.created_at DESC, u.user_id DESC\n");
+        where.append("LIMIT ? OFFSET ?\n");
+        params.add(size);
+        params.add(Math.max(0, page) * size);
         return jdbcTemplate.query(userQuery(where.toString()), (rs, rowNum) -> mapUser(rs), params.toArray());
+    }
+
+    public long countUsers(String keyword, String role, String status) {
+        String like = keyword == null || keyword.isBlank() ? null : "%" + keyword.trim().toLowerCase() + "%";
+        String normalizedRole = role == null || role.equalsIgnoreCase("all") ? null : role.toUpperCase();
+        String normalizedStatus = status == null || status.equalsIgnoreCase("all") ? null : status.toUpperCase();
+        List<Object> params = new ArrayList<>();
+        StringBuilder where = new StringBuilder("WHERE 1 = 1\n");
+        if (like != null) {
+            where.append("""
+                    AND (
+                        LOWER(u.email) LIKE ?
+                        OR LOWER(u.full_name) LIKE ?
+                        OR LOWER(COALESCE(d.license_number, c.employee_code, dp.employee_code, s.student_code, '')) LIKE ?
+                    )
+                    """);
+            params.add(like);
+            params.add(like);
+            params.add(like);
+        }
+        if (normalizedRole != null) {
+            where.append("AND u.role = ?\n");
+            params.add(normalizedRole);
+        }
+        if (normalizedStatus != null) {
+            where.append("AND u.status = ?\n");
+            params.add(normalizedStatus);
+        }
+        String sql = "SELECT COUNT(*) FROM users u "
+                + "LEFT JOIN drivers d ON d.user_id = u.user_id "
+                + "LEFT JOIN conductors c ON c.user_id = u.user_id "
+                + "LEFT JOIN dispatchers dp ON dp.user_id = u.user_id "
+                + "LEFT JOIN students s ON s.user_id = u.user_id "
+                + where;
+        Long c = jdbcTemplate.queryForObject(sql, Long.class, params.toArray());
+        return c == null ? 0 : c;
     }
 
     public Optional<UserView> findUser(Integer userId) {

@@ -162,7 +162,51 @@ public final class UniversityDtos {
             int activeRoutes,
             int activeSubsidyPolicies,
             BigDecimal totalSubsidyAmount,
-            int monthlyPasses) {
+            int monthlyPasses,
+            List<PassesByRoutePoint> passesByRoute,
+            List<UniversityTripsSeriesPoint> tripsSeries,
+            List<SubsidyDistributionPoint> subsidyDistribution) {
+    }
+
+    public record PassesByRoutePoint(
+            Integer routeId,
+            String routeCode,
+            String routeName,
+            String colorHex,
+            int passes) {
+    }
+
+    public record UniversityTripsSeriesPoint(String day, LocalDate date, int trips) {
+    }
+
+    public record SubsidyDistributionPoint(
+            String policyName,
+            String subsidyType,
+            BigDecimal value,
+            String colorHex) {
+    }
+
+    public record PaymentTransactionView(
+            Long orderId,
+            Long transactionId,
+            Long sepayTransactionId,
+            String studentCode,
+            String studentName,
+            Integer universityId,
+            String universityName,
+            String ticketType,
+            Integer routeId,
+            String routeName,
+            BigDecimal orderTotal,
+            String paymentStatus,
+            String gateway,
+            BigDecimal amountIn,
+            BigDecimal amountOut,
+            String transactionContent,
+            String referenceNumber,
+            OffsetDateTime transactionDate,
+            OffsetDateTime paidAt,
+            OffsetDateTime createdAt) {
     }
 
 
