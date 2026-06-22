@@ -429,6 +429,7 @@ export const notificationApi = {
   unreadCount: async () => normalizeCount(await apiFetch.get<CountResponse>("/notifications/me/unread-count")),
   markRead: (notificationId: number) => apiFetch.post<void>(`/notifications/${notificationId}/read`),
   create: (data: { title: string; content: string; target?: string }) => apiFetch.post<NotificationView>("/notifications", data),
+  createCoordinator: (data: { title: string; content: string; target?: string }) => apiFetch.post<NotificationView>("/coordinator/notifications", data),
 };
 
 export interface FeedbackView {
@@ -455,6 +456,12 @@ export const feedbackApi = {
   all: (status?: string) => apiFetch.get<FeedbackView[]>("/feedback", { status }),
   resolve: (feedbackId: number, response?: string) =>
     apiFetch.patch<FeedbackView>(`/feedback/${feedbackId}/resolve`, { response }),
+};
+
+export const coordinatorFeedbackApi = {
+  all: (status?: string) => apiFetch.get<FeedbackView[]>("/coordinator/feedback", { status }),
+  resolve: (feedbackId: number, response?: string) =>
+    apiFetch.patch<FeedbackView>(`/coordinator/feedback/${feedbackId}/resolve`, { response }),
 };
 
 export interface ExperienceStopCard {
@@ -692,6 +699,39 @@ export const experienceApi = {
   complaints: (status?: string) => apiFetch.get<AdminStatsView["complaints"]>("/admin/complaints", { status }),
   violations: (status?: string) => apiFetch.get<AdminStatsView["violations"]>("/admin/violations", { status }),
 };
+
+export interface ContactThreadCard {
+  peerUserId: number;
+  peerName: string;
+  peerRole: string;
+  lastMessageBody: string;
+  lastMessageAt: string;
+  unreadCount: number;
+}
+
+export interface InternalMessageCard {
+  messageId: number;
+  senderUserId: number;
+  senderName: string;
+  recipientUserId: number;
+  recipientName: string;
+  body: string;
+  sentAt: string;
+  readAt?: string | null;
+}
+
+export interface SendInternalMessageRequest {
+  recipientUserId: number;
+  body: string;
+}
+
+export const messagingApi = {
+  getThreads: () => apiFetch.get<ContactThreadCard[]>("/me/messages/threads"),
+  getConversation: (peerUserId: number) => apiFetch.get<InternalMessageCard[]>(`/me/messages/${peerUserId}`),
+  sendMessage: (data: SendInternalMessageRequest) => apiFetch.post<{ messageId: number }>("/me/messages", data),
+  markAsRead: (peerUserId: number) => apiFetch.post<void>(`/me/messages/${peerUserId}/read`),
+};
+
 
 export interface TripStopView {
   routeStopId?: number;
@@ -1076,4 +1116,5 @@ export const api = {
   operations: operationsApi,
   admin: adminApi,
   universities: universityApi,
+  messaging: messagingApi,
 };

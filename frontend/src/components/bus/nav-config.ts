@@ -136,7 +136,7 @@ export const NAV_CONFIG: Record<Role, NavItem[]> = {
     { id: "crd-routes", label: "Tuyến đường", icon: RouteIcon, group: "Quản lý" },
     { id: "crd-stops", label: "Trạm dừng", icon: MapPinned, group: "Quản lý" },
     { id: "crd-by-university", label: "Điều phối theo trường", icon: School, group: "Quản lý" },
-    { id: "crd-feedback", label: "Phản hồi sinh viên", icon: MessageSquare, group: "Hỗ trợ" },
+    { id: "crd-feedback", label: "Ý kiến phản hồi", icon: MessageSquare, group: "Hỗ trợ" },
     { id: "crd-notify", label: "Gửi thông báo", icon: Megaphone, group: "Hỗ trợ" },
     { id: "crd-notifications", label: "Thông báo", icon: Bell, group: "Tài khoản" },
     { id: "crd-profile", label: "Hồ sơ cá nhân", icon: UserIcon, group: "Tài khoản" },

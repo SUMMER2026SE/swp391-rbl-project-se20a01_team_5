@@ -45,8 +45,20 @@ export default function Page() {
   const [ready, setReady] = useState(false);
   const [authed, setAuthed] = useState(false);
   const [role, setRole] = useState<Role>("student");
-  const [activeId, setActiveId] = useState(firstNav("student"));
+  const [activeId, setActiveId] = useState(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("unibus_active_nav_id");
+      if (stored) return stored;
+    }
+    return firstNav("student");
+  });
   const [profile, setProfile] = useState<UserProfile | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("unibus_active_nav_id", activeId);
+    }
+  }, [activeId]);
 
   const loadProfile = useCallback(async (fallbackRole?: Role) => {
     const me = await profileApi.me();
