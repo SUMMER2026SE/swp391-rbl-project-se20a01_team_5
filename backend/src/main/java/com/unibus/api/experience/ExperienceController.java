@@ -3,12 +3,10 @@ package com.unibus.api.experience;
 import static com.unibus.api.experience.ExperienceDtos.*;
 
 import java.util.List;
-import java.util.Map;
 
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -131,8 +129,11 @@ public class ExperienceController {
         return ApiResponse.ok("Coordinator dashboard retrieved", service.coordinatorDashboard());
     }
 
-    // Note: /coordinator/feedback is handled by CoordinatorFeedbackController (team module).
-    // The coordinatorFeedback() service method is still available for the dashboard aggregate.
+    @GetMapping("/coordinator/experience-feedback")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'ADMIN')")
+    ApiResponse<List<FeedbackCard>> coordinatorFeedback(@RequestParam(required = false) String status) {
+        return ApiResponse.ok("Coordinator feedback retrieved", service.coordinatorFeedback(status));
+    }
 
     @GetMapping("/admin/stats")
     @PreAuthorize("hasRole('ADMIN')")
@@ -161,118 +162,9 @@ public class ExperienceController {
         return ApiResponse.ok("Complaints retrieved", service.complaints(status));
     }
 
-    @PostMapping("/admin/complaints")
-    @PreAuthorize("hasAnyRole('STUDENT', 'DRIVER', 'CONDUCTOR', 'DISPATCHER', 'UNIVERSITY_ADMIN')")
-    ApiResponse<Map<String, Object>> submitComplaint(
-            @AuthenticationPrincipal CurrentUser currentUser,
-            @Valid @RequestBody CreateComplaintRequest request) {
-        Long id = service.submitComplaint(currentUser, request);
-        return ApiResponse.ok("Complaint submitted", Map.of("complaintId", id));
-    }
-
-    @PatchMapping("/admin/complaints/{complaintId}")
-    @PreAuthorize("hasRole('ADMIN')")
-    ApiResponse<Map<String, Object>> resolveComplaint(
-            @AuthenticationPrincipal CurrentUser currentUser,
-            @PathVariable Integer complaintId,
-            @Valid @RequestBody ResolveComplaintRequest request) {
-        service.resolveComplaint(currentUser, complaintId, request);
-        return ApiResponse.ok("Complaint resolved", Map.of("complaintId", complaintId));
-    }
-
     @GetMapping("/admin/violations")
     @PreAuthorize("hasRole('ADMIN')")
     ApiResponse<List<ViolationCard>> violations(@RequestParam(required = false) String status) {
         return ApiResponse.ok("Violations retrieved", service.violations(status));
-    }
-
-    @PostMapping("/admin/violations")
-    @PreAuthorize("hasAnyRole('CONDUCTOR', 'DISPATCHER', 'ADMIN')")
-    ApiResponse<Map<String, Object>> submitViolation(
-            @AuthenticationPrincipal CurrentUser currentUser,
-            @Valid @RequestBody CreateViolationRequest request) {
-        Long id = service.submitViolation(currentUser, request);
-        return ApiResponse.ok("Violation reported", Map.of("violationId", id));
-    }
-
-    @PatchMapping("/admin/violations/{violationId}")
-    @PreAuthorize("hasRole('ADMIN')")
-    ApiResponse<Map<String, Object>> reviewViolation(
-            @AuthenticationPrincipal CurrentUser currentUser,
-            @PathVariable Integer violationId,
-            @Valid @RequestBody ReviewViolationRequest request) {
-        service.reviewViolation(currentUser, violationId, request);
-        return ApiResponse.ok("Violation reviewed", Map.of("violationId", violationId));
-    }
-
-    @GetMapping("/admin/fares/{fareId}/history")
-    @PreAuthorize("hasRole('ADMIN')")
-    ApiResponse<List<Map<String, Object>>> fareHistory(@PathVariable Integer fareId) {
-        // Use route_id from fare to fetch history; for simplicity, fetch by fareId's route via service.
-        return ApiResponse.ok("Fare change history retrieved", service.fares().stream()
-                .filter(f -> f.fareId().equals(fareId))
-                .findFirst()
-                .map(f -> service.fareChangeHistory(f.routeId()))
-                .orElse(List.of()));
-    }
-
-    // ===== Driver ratings (REQ-STU-011) =====
-
-    @PostMapping("/students/me/ratings")
-    @PreAuthorize("hasRole('STUDENT')")
-    ApiResponse<Map<String, Object>> rateDriver(
-            @AuthenticationPrincipal CurrentUser currentUser,
-            @Valid @RequestBody RatingRequest request) {
-        service.rateDriver(currentUser, request);
-        return ApiResponse.ok("Driver rated", Map.of("tripId", request.tripId(), "rating", request.rating()));
-    }
-
-    @GetMapping("/driver/ratings")
-    @PreAuthorize("hasRole('DRIVER')")
-    ApiResponse<List<DriverRatingCard>> driverRatings(@AuthenticationPrincipal CurrentUser currentUser) {
-        return ApiResponse.ok("Driver ratings retrieved", service.driverRatings(currentUser));
-    }
-
-    @GetMapping("/driver/ratings/summary")
-    @PreAuthorize("hasRole('DRIVER')")
-    ApiResponse<DriverRatingSummary> driverRatingSummary(@AuthenticationPrincipal CurrentUser currentUser) {
-        return ApiResponse.ok("Driver rating summary retrieved", service.driverRatingSummary(currentUser));
-    }
-
-    // ===== Internal messaging (REQ-DRV-006, REQ-AST-007) =====
-
-    @PostMapping("/me/messages")
-    @PreAuthorize("hasAnyRole('DRIVER', 'CONDUCTOR', 'DISPATCHER', 'ADMIN')")
-    ApiResponse<Map<String, Object>> sendMessage(
-            @AuthenticationPrincipal CurrentUser currentUser,
-            @Valid @RequestBody SendInternalMessageRequest request) {
-        Long id = service.sendMessage(currentUser, request);
-        return ApiResponse.ok("Message sent", Map.of("messageId", id));
-    }
-
-    @GetMapping("/me/messages/threads")
-    @PreAuthorize("hasAnyRole('DRIVER', 'CONDUCTOR', 'DISPATCHER', 'ADMIN')")
-    ApiResponse<List<ContactThreadCard>> messageThreads(@AuthenticationPrincipal CurrentUser currentUser) {
-        return ApiResponse.ok("Message threads retrieved", service.contactThreads(currentUser));
-    }
-
-    @GetMapping("/me/messages/{peerUserId}")
-    @PreAuthorize("hasAnyRole('DRIVER', 'CONDUCTOR', 'DISPATCHER', 'ADMIN')")
-    ApiResponse<List<InternalMessageCard>> conversation(
-            @AuthenticationPrincipal CurrentUser currentUser,
-            @PathVariable Integer peerUserId) {
-        List<InternalMessageCard> msgs = service.conversation(currentUser, peerUserId);
-        // mark as read on view
-        service.markRead(currentUser, peerUserId);
-        return ApiResponse.ok("Conversation retrieved", msgs);
-    }
-
-    @PostMapping("/me/messages/{peerUserId}/read")
-    @PreAuthorize("hasAnyRole('DRIVER', 'CONDUCTOR', 'DISPATCHER', 'ADMIN')")
-    ApiResponse<Map<String, Object>> markConversationRead(
-            @AuthenticationPrincipal CurrentUser currentUser,
-            @PathVariable Integer peerUserId) {
-        service.markRead(currentUser, peerUserId);
-        return ApiResponse.ok("Marked as read", Map.of());
     }
 }
