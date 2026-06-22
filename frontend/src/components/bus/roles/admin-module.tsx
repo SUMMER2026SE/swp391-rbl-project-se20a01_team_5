@@ -363,13 +363,6 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
     low: "neutral",
   };
 
-  const quickActions = [
-    { id: "adm-users", label: "Người dùng", icon: Users, accent: "primary" as const },
-    { id: "adm-universities", label: "Trường ĐH", icon: School, accent: "tertiary" as const },
-    { id: "adm-complaints", label: "Khiếu nại", icon: ShieldAlert, accent: "error" as const },
-    { id: "adm-fare", label: "Giá vé", icon: Tag, accent: "secondary" as const },
-  ];
-
   return (
     <PageTransition className="space-y-6 sm:space-y-8 min-w-0">
       {/* Headline */}
@@ -404,38 +397,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
         </div>
       </motion.div>
 
-      {/* Quick actions */}
-      <ScrollReveal>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 min-w-0">
-          {quickActions.map((action) => {
-            const accentMap: Record<string, { bg: string; fg: string }> = {
-              primary: { bg: "#14140f", fg: "#beff50" },
-              tertiary: { bg: "#ff8c5f", fg: "#14140f" },
-              secondary: { bg: "#144fcc", fg: "#beff50" },
-              error: { bg: "#dc2626", fg: "#ffffff" },
-            };
-            const a = accentMap[action.accent];
-            return (
-              <motion.button
-                key={action.id}
-                onClick={() => onNavigate(action.id)}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                whileHover={{ y: -3, scale: 1.02 }}
-                whileTap={{ scale: 0.96 }}
-                className="group relative overflow-hidden rounded-2xl p-4 elev-1 hover:elev-2 transition-shadow text-left min-w-0"
-                style={{ backgroundColor: a.bg, color: a.fg }}
-              >
-                <action.icon className="size-6 mb-3" />
-                <p className="text-sm font-bold leading-tight">{action.label}</p>
-                <ChevronRight className="size-4 mt-2 opacity-70 group-hover:translate-x-1 transition-transform" />
-              </motion.button>
-            );
-          })}
-        </div>
-      </ScrollReveal>
-
-      {/* StatCards */}
+      {/* StatCards — 1 hàng 4 card (giống prototype, bỏ quickActions row riêng) */}
       <StaggerGroup className="grid grid-cols-2 lg:grid-cols-4 gap-3 min-w-0">
         <StaggerItem>
           <StatCard
