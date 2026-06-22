@@ -61,8 +61,8 @@ export function StudentModule({ activeId, onNavigate }: StudentModuleProps) {
   if (activeId === "stu-tracking") return <TrackingScreen />;
   if (activeId === "stu-my-routes") return <RegistrationScreen />;
   if (activeId === "stu-my-ticket") return <TicketsScreen title="Vé của tôi" />;
-  if (activeId === "stu-payment") return <InvoicesScreen />;
-  if (activeId === "stu-invoices") return <InvoicesScreen />;
+  if (activeId === "stu-payment") return <InvoicesScreen title="Thanh toán & vé" showBuySection={true} />;
+  if (activeId === "stu-invoices") return <InvoicesScreen title="Hóa đơn" showBuySection={false} />;
   if (activeId === "stu-history") return <HistoryScreen />;
   if (activeId === "stu-feedback") return <FeedbackScreen />;
   if (activeId === "stu-ai") return <AiRouteSuggestionsScreen />;
@@ -977,80 +977,15 @@ type SePayOrderView = {
 function TicketsScreen({ title }: { title: string }) {
   const loader = useCallback(() => studentApi.tickets(), []);
   const resource = useApiResource<PassesDashboard>(loader);
-  const [activeOrder, setActiveOrder] = useState<SePayOrderView | null>(null);
-  const [buying, setBuying] = useState(false);
-  const [paymentSuccess, setPaymentSuccess] = useState(false);
-  const [countdown, setCountdown] = useState(10);
-
-  const handleBuy = async (type: "monthly" | "single") => {
-    try {
-      setBuying(true);
-      const order = await studentApi.createSePayOrder(type);
-      setActiveOrder(order);
-      setPaymentSuccess(false);
-      toast.success("Đã tạo đơn hàng thanh toán SePay");
-    } catch (error) {
-      toast.error(getErrorMessage(error, "Tạo đơn hàng thất bại"));
-    } finally {
-      setBuying(false);
-    }
-  };
-
-  const handleClosePopup = () => {
-    setActiveOrder(null);
-    setPaymentSuccess(false);
-  };
-
-  useEffect(() => {
-    if (!activeOrder || paymentSuccess) return;
-    const intervalId = setInterval(async () => {
-      try {
-        const res = await studentApi.getSePayOrderStatus(activeOrder.orderId);
-        if (res.paid) {
-          toast.success("Thanh toán thành công");
-          setPaymentSuccess(true);
-          setCountdown(10);
-          resource.reload();
-        }
-      } catch (error) {
-        console.warn("Không thể kiểm tra trạng thái đơn SePay:", error);
-      }
-    }, 3000);
-    return () => clearInterval(intervalId);
-  }, [activeOrder, paymentSuccess, resource]);
-
-  useEffect(() => {
-    if (!paymentSuccess) return;
-    if (countdown <= 0) {
-      const deferId = setTimeout(() => {
-        setActiveOrder(null);
-        setPaymentSuccess(false);
-      }, 0);
-      return () => clearTimeout(deferId);
-    }
-    const timerId = setTimeout(() => setCountdown((value) => value - 1), 1000);
-    return () => clearTimeout(timerId);
-  }, [paymentSuccess, countdown]);
 
   return (
     <div>
-      <PageHeader title={title} description="Vé và thanh toán thật từ ticketing backend qua SePay." icon={<QrCode className="size-7" />} />
+      <PageHeader title={title} description="Danh sách vé và mã QR điện tử." icon={<QrCode className="size-7" />} />
       <AsyncBlock resource={resource}>
         {(dashboard) => (
           <div className="grid gap-4 lg:grid-cols-[420px_1fr]">
             <ExpressiveCard variant="elevated" className="p-5">
               <TicketSummary dashboard={dashboard} onNavigate={() => {}} />
-              <div className="mt-5 grid gap-3">
-                <ExpressiveButton onClick={() => handleBuy("monthly")} disabled={buying} className="w-full">
-                  <CreditCard className="size-4" />
-                  {buying ? "Đang xử lý..." : "Mua vé tháng qua SePay"}
-                </ExpressiveButton>
-                <ExpressiveButton variant="tonal" onClick={() => handleBuy("single")} disabled={buying} className="w-full">
-                  <TicketCheck className="size-4" />
-                  Mua vé thường qua SePay
-                </ExpressiveButton>
-                <p className="text-xs font-semibold text-on-surface-variant">Thanh toán an toàn qua cổng SePay tự động.</p>
-              </div>
             </ExpressiveCard>
             <Section title="Danh sách vé">
               <DataList emptyTitle="Chưa có vé" emptyDescription="Mua vé tháng để QR xuất hiện tại đây.">
@@ -1076,88 +1011,41 @@ function TicketsScreen({ title }: { title: string }) {
           </div>
         )}
       </AsyncBlock>
-
-      {activeOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
-            <div className="flex items-center justify-between border-b pb-3">
-              <h3 className="text-lg font-bold text-gray-900">Thanh toán SePay</h3>
-              <button onClick={handleClosePopup} className="text-gray-500 hover:text-gray-700">
-                <XCircle className="size-6" />
-              </button>
-            </div>
-
-            {paymentSuccess ? (
-              <div className="mt-6 flex flex-col items-center gap-4 py-6 text-center">
-                <div className="animate-bounce rounded-full bg-emerald-100 p-4 text-emerald-600">
-                  <ShieldCheck className="size-16" />
-                </div>
-                <h4 className="text-xl font-bold text-emerald-600">Thanh toán thành công!</h4>
-                <p className="px-4 text-sm text-gray-600">Vé của bạn đã được hệ thống kích hoạt tự động.</p>
-                <div className="mt-2 text-xs font-semibold text-gray-400">
-                  Tự động đóng sau <span className="text-sm font-bold text-emerald-600">{countdown}</span> giây...
-                </div>
-              </div>
-            ) : (
-              <div className="mt-4 flex flex-col items-center gap-4 text-center">
-                <p className="text-sm font-semibold text-gray-600">Quét mã QR bằng ứng dụng ngân hàng để thanh toán tự động</p>
-
-                {activeOrder.qrUrl && (
-                  <div className="rounded-2xl bg-gray-100 p-4">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={activeOrder.qrUrl} alt="SePay QR" className="max-w-[240px] rounded-lg" />
-                  </div>
-                )}
-
-                <div className="w-full space-y-2 rounded-2xl bg-gray-50 p-4 text-left text-sm">
-                  <div className="flex justify-between border-b pb-1">
-                    <span className="text-gray-500">Số tiền:</span>
-                    <span className="font-bold text-blue-600">{formatMoney(activeOrder.amount ?? activeOrder.total)}</span>
-                  </div>
-                  <div className="flex justify-between border-b pb-1">
-                    <span className="text-gray-500">Nội dung CK:</span>
-                    <span className="select-all font-bold text-red-600">{activeOrder.description || `DH${activeOrder.orderId}`}</span>
-                  </div>
-                  <div className="flex justify-between border-b pb-1">
-                    <span className="text-gray-500">Ngân hàng:</span>
-                    <span className="font-semibold">{activeOrder.bankCode || "MB"}</span>
-                  </div>
-                  <div className="flex justify-between border-b pb-1">
-                    <span className="text-gray-500">Số tài khoản:</span>
-                    <span className="font-semibold">{activeOrder.accountNo || "-"}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Chủ tài khoản:</span>
-                    <span className="font-semibold">{activeOrder.accountName || "-"}</span>
-                  </div>
-                </div>
-
-                <div className="mt-2 flex items-center gap-2">
-                  <div className="size-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                  <span className="text-xs font-semibold text-gray-500">Đang chờ thanh toán tự động...</span>
-                </div>
-              </div>
-            )}
-
-            <div className="mt-6 flex justify-end">
-              <ExpressiveButton variant="tonal" onClick={handleClosePopup}>
-                Đóng
-              </ExpressiveButton>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
-function InvoicesScreen() {
+function InvoicesScreen({ title, showBuySection }: { title: string; showBuySection?: boolean }) {
   const loader = useCallback(() => studentApi.payments(), []);
   const resource = useApiResource<PaymentView[]>(loader);
   const [activeOrder, setActiveOrder] = useState<SePayOrderView | null>(null);
   const [openingOrderId, setOpeningOrderId] = useState<number | null>(null);
+  const [buying, setBuying] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [countdown, setCountdown] = useState(10);
+
+  const handleBuy = async (type: "monthly" | "single") => {
+    try {
+      setBuying(true);
+      const order = await studentApi.createSePayOrder(type);
+      setActiveOrder({
+        orderId: order.orderId,
+        amount: order.amount ?? order.total,
+        total: order.total,
+        description: order.description ?? `DH${order.orderId}`,
+        qrUrl: order.qrUrl,
+        bankCode: order.bankCode,
+        accountNo: order.accountNo,
+        accountName: order.accountName,
+      });
+      setPaymentSuccess(false);
+      toast.success("Đã tạo đơn hàng thanh toán SePay");
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Tạo đơn hàng thất bại"));
+    } finally {
+      setBuying(false);
+    }
+  };
 
   const openPayment = async (payment: PaymentView) => {
     const orderId = payment.paymentId < 0 ? Math.abs(payment.paymentId) : null;
@@ -1221,10 +1109,29 @@ function InvoicesScreen() {
 
   return (
     <div>
-      <PageHeader title="Hóa đơn" description="Thanh toán và hóa đơn từ backend." icon={<CreditCard className="size-7" />} />
+      <PageHeader title={title} description={showBuySection ? "Mua vé và quản lý lịch sử hóa đơn." : "Thanh toán và hóa đơn từ backend."} icon={<CreditCard className="size-7" />} />
       <AsyncBlock resource={resource}>
         {(payments) => (
-          <DataList emptyTitle="Chưa có hóa đơn" emptyDescription="Hóa đơn chưa thanh toán và thanh toán thành công sẽ xuất hiện tại đây.">
+          <div className="space-y-6">
+            {showBuySection && (
+              <ExpressiveCard variant="elevated" className="p-5">
+                <h3 className="text-lg font-bold text-on-surface">Mua vé mới</h3>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <ExpressiveButton onClick={() => handleBuy("monthly")} disabled={buying} className="w-full">
+                    <CreditCard className="size-4" />
+                    {buying ? "Đang xử lý..." : "Mua vé tháng qua SePay"}
+                  </ExpressiveButton>
+                  <ExpressiveButton variant="tonal" onClick={() => handleBuy("single")} disabled={buying} className="w-full">
+                    <TicketCheck className="size-4" />
+                    Mua vé thường qua SePay
+                  </ExpressiveButton>
+                </div>
+                <p className="mt-3 text-xs font-semibold text-on-surface-variant">Thanh toán an toàn qua cổng SePay tự động.</p>
+              </ExpressiveCard>
+            )}
+
+            <Section title="Lịch sử hóa đơn">
+              <DataList emptyTitle="Chưa có hóa đơn" emptyDescription="Hóa đơn chưa thanh toán và thanh toán thành công sẽ xuất hiện tại đây.">
             {payments.map((payment) => {
               const orderId = payment.paymentId < 0 ? Math.abs(payment.paymentId) : null;
               const canPay = Boolean(orderId && ["PENDING", "UNPAID", "Unpaid"].includes(payment.status || ""));
@@ -1250,7 +1157,9 @@ function InvoicesScreen() {
                 </ExpressiveCard>
               );
             })}
-          </DataList>
+              </DataList>
+            </Section>
+          </div>
         )}
       </AsyncBlock>
 

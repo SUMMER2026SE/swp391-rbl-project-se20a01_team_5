@@ -1022,8 +1022,10 @@ export interface AuditLogView {
 }
 
 export const adminApi = {
-  users: (params?: { role?: string; status?: string; search?: string }) =>
-    apiFetch.get<AdminUserView[]>("/admin/users", { role: params?.role, status: params?.status, keyword: params?.search }),
+  users: async (params?: { role?: string; status?: string; search?: string }) => {
+    const res = await apiFetch.get<{ items: AdminUserView[] }>("/admin/users", { role: params?.role, status: params?.status, keyword: params?.search });
+    return res.items || [];
+  },
   user: (userId: number) => apiFetch.get<AdminUserView>(`/admin/users/${userId}`),
   updateUserStatus: (userId: number, data: { status: "ACTIVE" | "LOCKED"; lockReason?: string }) =>
     apiFetch.put<AdminUserView>(`/admin/users/${userId}/status`, data),
