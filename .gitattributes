@@ -1,0 +1,4 @@
+# Ignore node_modules from GitHub statistics (Linguist)
+node_modules/** linguist-generated=true
+frontend/node_modules/** linguist-generated=true
+backend/node_modules/** linguist-generated=true
