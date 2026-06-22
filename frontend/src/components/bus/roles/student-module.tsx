@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, Bell, Bot, Bus, CreditCard, History, MapPin, Navigation, PackageSearch, QrCode, Route, School, Send, ShieldCheck, Sparkles, Star, TicketCheck, XCircle } from "lucide-react";
+import { ArrowRight, Bell, Bus, CreditCard, History, MapPin, Navigation, PackageSearch, QrCode, Route, School, Send, ShieldCheck, Star, TicketCheck, XCircle } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
 import { toast } from "sonner";
 import { EmptyState, PageHeader, Section } from "@/components/bus/primitives";
@@ -64,265 +64,10 @@ export function StudentModule({ activeId, onNavigate }: StudentModuleProps) {
   if (activeId === "stu-invoices") return <InvoicesScreen />;
   if (activeId === "stu-history") return <HistoryScreen />;
   if (activeId === "stu-feedback") return <FeedbackScreen />;
-  if (activeId === "stu-ai") return <AiRouteSuggestionsScreen />;
-  if (activeId === "stu-chatbot") return <ChatbotScreen />;
+  if (activeId === "stu-ai") return <Unavailable title="AI gợi ý tuyến" />;
+  if (activeId === "stu-chatbot") return <Unavailable title="Chatbot tra cứu" />;
   if (activeId === "stu-lost") return <LostItemsScreen />;
   return <Unavailable title="Màn sinh viên" />;
-}
-
-/**
- * REQ-STU-016: AI gợi ý tuyến xe phù hợp - rule-based suggestions from backend.
- */
-function AiRouteSuggestionsScreen() {
-  const [preference, setPreference] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [suggestions, setSuggestions] = useState<Array<{
-    routeId: number;
-    routeName: string;
-    routeCode: string | null;
-    colorHex: string | null;
-    distanceKm: number | null;
-    estimatedMinutes: number | null;
-    frequencyMin: number | null;
-    finalFare: number | null;
-    hasSubsidy: boolean;
-    directMatch: boolean;
-    reasons: string;
-  }>>([]);
-
-  const fetchSuggestions = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/v1/students/me/route-suggestions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("unibus_access_token") || ""}`,
-        },
-        body: JSON.stringify({ preference: preference || null }),
-      });
-      if (res.ok) {
-        const json = await res.json();
-        setSuggestions(json.data || []);
-      } else {
-        toast.error("Không lấy được gợi ý tuyến");
-      }
-    } catch {
-      toast.error("Lỗi mạng");
-    } finally {
-      setLoading(false);
-    }
-  }, [preference]);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchSuggestions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  return (
-    <div>
-      <PageHeader
-        title="AI gợi ý tuyến"
-        description="Hệ thống phân tích tuyến xe liên kết trường và xếp hạng theo tần suất, thời gian, khoảng cách và trợ giá."
-        icon={<Sparkles className="size-7" />}
-      />
-      <div className="space-y-4">
-        <ExpressiveCard variant="elevated" className="p-4">
-          <Label htmlFor="ai-preference">Sở thích của bạn</Label>
-          <Input
-            id="ai-preference"
-            placeholder="VD: nhanh, rẻ, gần... (để trống để gợi ý mặc định)"
-            value={preference}
-            onChange={(e) => setPreference(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") fetchSuggestions();
-            }}
-            className="mt-1"
-          />
-          <ExpressiveButton variant="filled" className="mt-3" onClick={fetchSuggestions} disabled={loading}>
-            <Sparkles className="size-4" /> {loading ? "Đang gợi ý..." : "Gợi ý lại"}
-          </ExpressiveButton>
-        </ExpressiveCard>
-
-        <DataList emptyTitle="Chưa có gợi ý" emptyDescription="Hoàn tất xác thực sinh viên để nhận gợi ý tuyến.">
-          {suggestions.map((s, idx) => (
-            <ExpressiveCard key={s.routeId} variant="elevated" className="p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="inline-flex size-7 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-                      #{idx + 1}
-                    </span>
-                    <h3 className="font-bold text-on-surface">{s.routeCode || s.routeName}</h3>
-                    {s.hasSubsidy && (
-                      <span className="rounded-full bg-success/20 px-2 py-0.5 text-xs font-bold text-success">Có trợ giá</span>
-                    )}
-                  </div>
-                  <p className="mt-1 text-sm text-on-surface-variant">{s.routeName}</p>
-                  {s.reasons && (
-                    <p className="mt-2 text-xs text-on-surface-variant">💡 {s.reasons}</p>
-                  )}
-                  <div className="mt-2 flex flex-wrap gap-3 text-xs text-on-surface-variant">
-                    {s.estimatedMinutes && <span>⏱ {s.estimatedMinutes} phút</span>}
-                    {s.distanceKm && <span>📏 {s.distanceKm} km</span>}
-                    {s.frequencyMin && <span>🔄 mỗi {s.frequencyMin} phút</span>}
-                    {s.finalFare != null && <span>💰 {s.finalFare.toLocaleString("vi-VN")}đ/tháng</span>}
-                  </div>
-                </div>
-              </div>
-            </ExpressiveCard>
-          ))}
-        </DataList>
-      </div>
-    </div>
-  );
-}
-
-/**
- * REQ-STU-017: Chatbot tra cứu tuyến và giá vé - rule-based NLP from backend.
- */
-function ChatbotScreen() {
-  const [messages, setMessages] = useState<Array<{
-    chatHistoryId?: number;
-    role: "USER" | "AI";
-    content: string;
-    sentAt: string;
-  }>>([]);
-  const [draft, setDraft] = useState("");
-  const [loading, setLoading] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  // Load chat history on mount.
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch("/api/v1/students/me/assistant-chat", {
-          headers: { Authorization: `Bearer ${localStorage.getItem("unibus_access_token") || ""}` },
-        });
-        if (res.ok) {
-          const json = await res.json();
-          setMessages(json.data || []);
-        }
-      } catch {
-        /* ignore */
-      }
-    })();
-  }, []);
-
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages]);
-
-  const send = useCallback(async () => {
-    if (!draft.trim() || loading) return;
-    const userMsg = { role: "USER" as const, content: draft.trim(), sentAt: new Date().toISOString() };
-    setMessages((prev) => [...prev, userMsg]);
-    setDraft("");
-    setLoading(true);
-    try {
-      const res = await fetch("/api/v1/students/me/assistant-chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("unibus_access_token") || ""}`,
-        },
-        body: JSON.stringify({ message: userMsg.content }),
-      });
-      if (res.ok) {
-        const json = await res.json();
-        const turn = json.data;
-        setMessages((prev) => [...prev, { role: "AI", content: turn.content, sentAt: turn.sentAt, chatHistoryId: turn.chatHistoryId }]);
-      } else {
-        toast.error("Chatbot đang bận, thử lại sau");
-      }
-    } catch {
-      toast.error("Lỗi mạng");
-    } finally {
-      setLoading(false);
-    }
-  }, [draft, loading]);
-
-  const suggestions = [
-    "Giá vé tuyến 1 bao nhiêu?",
-    "Lịch chạy tuyến 2",
-    "Gợi ý tuyến phù hợp",
-    "Mấy giờ chuyến cuối tuyến 1?",
-  ];
-
-  return (
-    <div>
-      <PageHeader
-        title="Trợ lý UniBus"
-        description="Tra cứu giá vé, lịch chạy xe và gợi ý tuyến bằng tiếng Việt."
-        icon={<Bot className="size-7" />}
-      />
-      <div className="space-y-4">
-        <div ref={scrollRef} className="max-h-[500px] min-h-[300px] space-y-3 overflow-y-auto rounded-2xl bg-surface-container p-4">
-          {messages.length === 0 && (
-            <div className="text-center text-sm text-on-surface-variant">
-              <Bot className="mx-auto mb-2 size-10 opacity-50" />
-              Xin chào! Mình là trợ lý ảo UniBus. Hỏi mình về giá vé, lịch chạy hoặc gợi ý tuyến nhé!
-            </div>
-          )}
-          {messages.map((m, idx) => (
-            <div
-              key={idx}
-              className={`flex ${m.role === "USER" ? "justify-end" : "justify-start"}`}
-            >
-              <div
-                className={`max-w-[80%] whitespace-pre-wrap rounded-2xl p-3 text-sm ${
-                  m.role === "USER"
-                    ? "bg-primary text-on-primary"
-                    : "bg-surface-container-high text-on-surface"
-                }`}
-              >
-                {m.content}
-              </div>
-            </div>
-          ))}
-          {loading && (
-            <div className="flex justify-start">
-              <div className="rounded-2xl bg-surface-container-high p-3 text-sm text-on-surface-variant">
-                Đang gõ...
-              </div>
-            </div>
-          )}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {suggestions.map((s) => (
-            <button
-              key={s}
-              onClick={() => setDraft(s)}
-              className="rounded-full bg-surface-container-high px-3 py-1 text-xs font-semibold text-on-surface-variant hover:bg-surface-container-highest"
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-        <div className="flex gap-2">
-          <Input
-            placeholder="Nhập câu hỏi bằng tiếng Việt..."
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                send();
-              }
-            }}
-            disabled={loading}
-            className="flex-1"
-          />
-          <ExpressiveButton variant="filled" onClick={send} disabled={!draft.trim() || loading}>
-            <Send className="size-4" /> Gửi
-          </ExpressiveButton>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 function StudentUniversityScreen() {
@@ -965,57 +710,81 @@ function RegistrationScreen() {
 function TicketsScreen({ title }: { title: string }) {
   const loader = useCallback(() => studentApi.tickets(), []);
   const resource = useApiResource<PassesDashboard>(loader);
+  const [activeOrder, setActiveOrder] = useState<any>(null);
   const [buying, setBuying] = useState(false);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<"VNPAY" | "MOMO" | "BANK_TRANSFER" | "CASH">("VNPAY");
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [countdown, setCountdown] = useState(10);
 
-  const purchase = async () => {
-    setBuying(true);
+  const handleBuy = async (type: "monthly" | "single") => {
     try {
-      // Simulate payment gateway redirect: open modal first, then confirm on the modal.
-      setShowPaymentModal(true);
+      setBuying(true);
+      const order = await studentApi.createSePayOrder(type);
+      setActiveOrder(order);
+      setPaymentSuccess(false);
+      toast.success("Dã tạo đơn hàng thanh toán SePay!");
+    } catch (err: any) {
+      toast.error(err.message || "Tạo đơn hàng thất bại");
     } finally {
       setBuying(false);
     }
   };
 
-  const confirmPayment = async () => {
-    setBuying(true);
-    try {
-      // In a real VNPay/MoMo integration, we'd:
-      // 1. POST /api/v1/payments/checkout to get redirect URL
-      // 2. window.location.href = redirectUrl
-      // 3. gateway returns to /payment/return?token=xxx
-      // 4. backend IPN webhook confirms PAID
-      // For mock gateway, we just call purchaseMonthlyPass directly with the selected method.
-      const apiMethod = paymentMethod === "VNPAY" || paymentMethod === "MOMO" ? "E_WALLET" : paymentMethod;
-      await studentApi.purchaseMonthlyPass(apiMethod);
-      toast.success("Thanh toán thành công qua " + paymentMethod);
-      setShowPaymentModal(false);
-      resource.reload();
-    } catch (error) {
-      toast.error(getErrorMessage(error, "Thanh toán thất bại"));
-    } finally {
-      setBuying(false);
-    }
+  const handleClosePopup = () => {
+    setActiveOrder(null);
+    setPaymentSuccess(false);
   };
+
+  useEffect(() => {
+    if (!activeOrder || paymentSuccess) return;
+    const intervalId = setInterval(async () => {
+      try {
+        const res = await studentApi.getSePayOrderStatus(activeOrder.orderId);
+        if (res.paid) {
+          toast.success("Thanh toán thành công!");
+          setPaymentSuccess(true);
+          setCountdown(10);
+          resource.reload();
+        }
+      } catch (err) {
+        console.warn("Lỗi kiểm tra trạng thái đơn hàng:", err);
+      }
+    }, 3000);
+    return () => clearInterval(intervalId);
+  }, [activeOrder, paymentSuccess, resource]);
+
+  useEffect(() => {
+    if (!paymentSuccess) return;
+    if (countdown <= 0) {
+      const deferId = setTimeout(() => {
+        setActiveOrder(null);
+        setPaymentSuccess(false);
+      }, 0);
+      return () => clearTimeout(deferId);
+    }
+    const timerId = setTimeout(() => {
+      setCountdown(countdown - 1);
+    }, 1000);
+    return () => clearTimeout(timerId);
+  }, [paymentSuccess, countdown]);
 
   return (
     <div>
-      <PageHeader title={title} description="Vé và thanh toán thật từ ticketing backend. Tích hợp VNPay/MoMo (mock) cho demo." icon={<QrCode className="size-7" />} />
+      <PageHeader title={title} description="Vé và thanh toán thật từ ticketing backend." icon={<QrCode className="size-7" />} />
       <AsyncBlock resource={resource}>
         {(dashboard) => (
           <div className="grid gap-4 lg:grid-cols-[420px_1fr]">
             <ExpressiveCard variant="elevated" className="p-5">
               <TicketSummary dashboard={dashboard} onNavigate={() => {}} />
-              <div className="mt-5">
-                <ExpressiveButton onClick={purchase} disabled={buying} className="w-full">
+              <div className="mt-5 grid gap-3">
+                <ExpressiveButton onClick={() => handleBuy("monthly")} disabled={buying} className="w-full">
                   <CreditCard className="size-4" />
-                  {buying ? "Đang xử lý..." : "Mua vé tháng"}
+                  Mua vé tháng qua SePay
                 </ExpressiveButton>
-                <p className="mt-2 text-center text-xs text-on-surface-variant">
-                  Hỗ trợ VNPay, MoMo, chuyển khoản
-                </p>
+                <ExpressiveButton variant="tonal" onClick={() => handleBuy("single")} disabled={buying} className="w-full">
+                  <TicketCheck className="size-4" />
+                  Mua vé thường qua SePay
+                </ExpressiveButton>
+                <p className="text-xs font-semibold text-on-surface-variant">Thanh toán an toàn qua cổng SePay tự động.</p>
               </div>
             </ExpressiveCard>
             <Section title="Danh sách vé">
@@ -1043,63 +812,74 @@ function TicketsScreen({ title }: { title: string }) {
         )}
       </AsyncBlock>
 
-      {showPaymentModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <ExpressiveCard variant="elevated" className="w-full max-w-md p-6">
-            <div className="flex items-start justify-between">
-              <h2 className="text-xl font-bold text-on-surface">Thanh toán vé tháng</h2>
-              <button
-                onClick={() => !buying && setShowPaymentModal(false)}
-                className="rounded-full p-1 hover:bg-surface-container-high"
-                disabled={buying}
-              >
-                <XCircle className="size-5" />
+      {activeOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b pb-3">
+              <h3 className="text-lg font-bold text-gray-900">Thanh toán SePay</h3>
+              <button onClick={handleClosePopup} className="text-gray-500 hover:text-gray-700">
+                <XCircle className="size-6" />
               </button>
             </div>
-            <p className="mt-2 text-sm text-on-surface-variant">
-              Chọn phương thức thanh toán. Bạn sẽ được chuyển đến cổng thanh toán.
-            </p>
-            <div className="mt-4 space-y-2">
-              {([
-                { id: "VNPAY", name: "VNPay QR", desc: "Quét mã QR VNPay để thanh toán" },
-                { id: "MOMO", name: "MoMo Wallet", desc: "Ví điện tử MoMo" },
-                { id: "BANK_TRANSFER", name: "Chuyển khoản ngân hàng", desc: "Vietcombank, Techcombank, MB Bank" },
-                { id: "CASH", name: "Tiền mặt trên xe", desc: "Thanh toán trực tiếp cho phụ xe" },
-              ] as const).map((m) => (
-                <label
-                  key={m.id}
-                  className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-3 ${
-                    paymentMethod === m.id ? "border-primary bg-primary/5" : "border-outline"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="payment-method"
-                    value={m.id}
-                    checked={paymentMethod === m.id}
-                    onChange={() => setPaymentMethod(m.id)}
-                    className="mt-1"
-                  />
-                  <div>
-                    <p className="font-bold text-on-surface">{m.name}</p>
-                    <p className="text-xs text-on-surface-variant">{m.desc}</p>
+            
+            {paymentSuccess ? (
+              <div className="mt-6 flex flex-col items-center gap-4 text-center py-6">
+                <div className="rounded-full bg-emerald-100 p-4 text-emerald-600 animate-bounce">
+                  <ShieldCheck className="size-16" />
+                </div>
+                <h4 className="text-xl font-bold text-emerald-600">Thanh toán thành công!</h4>
+                <p className="text-sm text-gray-600 px-4">Vé của bạn đã được hệ thống kích hoạt tự động. Chúc bạn có những chuyến đi vui vẻ cùng UniBus!</p>
+                <div className="mt-2 text-xs font-semibold text-gray-400">
+                  Tự động đóng sau <span className="text-emerald-600 font-bold text-sm">{countdown}</span> giây...
+                </div>
+              </div>
+            ) : (
+              <div className="mt-4 flex flex-col items-center gap-4 text-center">
+                <p className="text-sm font-semibold text-gray-600">Quét mã QR bằng ứng dụng Ngân hàng để thanh toán tự động</p>
+                
+                {activeOrder.qrUrl && (
+                  <div className="rounded-2xl bg-gray-100 p-4">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={activeOrder.qrUrl} alt="SePay QR" className="max-w-[240px] rounded-lg" />
                   </div>
-                </label>
-              ))}
+                )}
+
+                <div className="w-full space-y-2 text-left text-sm bg-gray-50 p-4 rounded-2xl">
+                  <div className="flex justify-between border-b pb-1">
+                    <span className="text-gray-500">Số tiền:</span>
+                    <span className="font-bold text-blue-600">{formatMoney(activeOrder.amount)}</span>
+                  </div>
+                  <div className="flex justify-between border-b pb-1">
+                    <span className="text-gray-500">Nội dung CK:</span>
+                    <span className="font-bold text-red-600 select-all">{activeOrder.description}</span>
+                  </div>
+                  <div className="flex justify-between border-b pb-1">
+                    <span className="text-gray-500">Ngân hàng:</span>
+                    <span className="font-semibold">{activeOrder.bankCode}</span>
+                  </div>
+                  <div className="flex justify-between border-b pb-1">
+                    <span className="text-gray-500">Số tài khoản:</span>
+                    <span className="font-semibold">{activeOrder.accountNo}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Chủ tài khoản:</span>
+                    <span className="font-semibold">{activeOrder.accountName}</span>
+                  </div>
+                </div>
+                
+                <div className="mt-2 flex items-center gap-2">
+                  <div className="size-4 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
+                  <span className="text-xs text-gray-500 font-semibold">Đang chờ thanh toán tự động...</span>
+                </div>
+              </div>
+            )}
+
+            <div className="mt-6 flex justify-end">
+              <ExpressiveButton variant="tonal" onClick={handleClosePopup}>
+                Đóng
+              </ExpressiveButton>
             </div>
-            <ExpressiveButton
-              variant="filled"
-              className="mt-4 w-full"
-              onClick={confirmPayment}
-              disabled={buying}
-            >
-              <CreditCard className="size-4" />
-              {buying ? "Đang xử lý..." : `Xác nhận thanh toán (${paymentMethod})`}
-            </ExpressiveButton>
-            <p className="mt-3 text-center text-xs text-on-surface-variant">
-              🔒 Mock gateway - demo only. Thanh toán sẽ được tự động xác nhận.
-            </p>
-          </ExpressiveCard>
+          </div>
         </div>
       )}
     </div>

@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarClock, History, MapPin, MessageSquare, Navigation, PlayCircle, Route } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
+import { CalendarClock, History, MapPin, MessageSquare, PlayCircle, Route } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState, PageHeader, Section, StatCard } from "@/components/bus/primitives";
-import { AsyncBlock, DataList, StatusPill, formatDate, formatDateTime, getErrorMessage, useApiResource } from "@/components/bus/real-data";
+import { AsyncBlock, DataList, StatusPill, UnavailablePanel, formatDate, formatDateTime, getErrorMessage, useApiResource } from "@/components/bus/real-data";
 import { ExpressiveButton, ExpressiveCard } from "@/components/m3/primitives";
 import { Input } from "@/components/ui/input";
 import { experienceApi, operationsApi, type DriverDashboardView, type DriverTripView } from "@/lib/api/client";
@@ -16,175 +16,8 @@ type Props = {
 
 export function DriverModule({ activeId }: Props) {
   if (activeId === "drv-dashboard") return <DriverDashboardOverview />;
-  if (activeId === "drv-contact") return <ContactCoordinator />;
+  if (activeId === "drv-contact") return <Unavailable title="Liên hệ điều phối" icon={<MessageSquare className="size-7" />} />;
   return <TripsScreen mode={activeId} />;
-}
-
-/**
- * REQ-DRV-006: Liên hệ điều phối viên - in-app messaging via internal_messages.
- */
-function ContactCoordinator() {
-  return <MessagingPanel title="Liên hệ điều phối viên" icon={<MessageSquare className="size-7" />} />;
-}
-
-function MessagingPanel({ title, icon }: { title: string; icon: React.ReactNode }) {
-  const [threads, setThreads] = useState<Array<{
-    peerUserId: number;
-    peerName: string;
-    peerRole: string;
-    lastMessageBody: string;
-    lastMessageAt: string;
-    unreadCount: number;
-  }>>([]);
-  const [selectedPeer, setSelectedPeer] = useState<number | null>(null);
-  const [messages, setMessages] = useState<Array<{
-    messageId: number;
-    senderUserId: number;
-    senderName: string;
-    recipientUserId: number;
-    recipientName: string;
-    body: string;
-    sentAt: string;
-    readAt: string | null;
-  }>>([]);
-  const [draft, setDraft] = useState("");
-  const [recipientId, setRecipientId] = useState<number | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const loadThreads = useCallback(async () => {
-    try {
-      const res = await fetch("/api/v1/me/messages/threads", {
-        headers: { Authorization: `Bearer ${localStorage.getItem("unibus_access_token") || ""}` },
-      });
-      if (res.ok) {
-        const json = await res.json();
-        setThreads(json.data || []);
-      }
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadThreads();
-  }, [loadThreads]);
-
-  const loadConversation = useCallback(async (peerId: number) => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/v1/me/messages/${peerId}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("unibus_access_token") || ""}` },
-      });
-      if (res.ok) {
-        const json = await res.json();
-        setMessages(json.data || []);
-        setSelectedPeer(peerId);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const send = useCallback(async () => {
-    if (!recipientId || !draft.trim()) return;
-    try {
-      const res = await fetch("/api/v1/me/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("unibus_access_token") || ""}`,
-        },
-        body: JSON.stringify({ recipientUserId: recipientId, body: draft.trim() }),
-      });
-      if (res.ok) {
-        setDraft("");
-        if (selectedPeer === recipientId) {
-          await loadConversation(recipientId);
-        }
-        await loadThreads();
-        toast.success("Đã gửi tin nhắn");
-      } else {
-        toast.error("Không gửi được tin nhắn");
-      }
-    } catch {
-      toast.error("Lỗi mạng");
-    }
-  }, [recipientId, draft, selectedPeer, loadConversation, loadThreads]);
-
-  return (
-    <div>
-      <PageHeader title={title} description="Trao đổi nội bộ với điều phối viên và tài xế qua internal messages." icon={icon} />
-      <div className="grid gap-4 lg:grid-cols-[1fr_2fr]">
-        <Section title="Hội thoại" description="Danh sách cuộc trò chuyện">
-          <DataList emptyTitle="Chưa có tin nhắn" emptyDescription="Bắt đầu một cuộc trò chuyện bằng cách nhập user ID người nhận bên dưới.">
-            {threads.map((t) => (
-              <ExpressiveCard
-                key={t.peerUserId}
-                variant="elevated"
-                className={`cursor-pointer p-4 ${selectedPeer === t.peerUserId ? "ring-2 ring-primary" : ""}`}
-                onClick={() => loadConversation(t.peerUserId)}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-bold text-on-surface">{t.peerName}</h3>
-                    <p className="text-xs text-on-surface-variant">{t.peerRole}</p>
-                    <p className="mt-1 truncate text-sm text-on-surface-variant">{t.lastMessageBody}</p>
-                  </div>
-                  {t.unreadCount > 0 && (
-                    <span className="rounded-full bg-error px-2 py-0.5 text-xs font-bold text-white">{t.unreadCount}</span>
-                  )}
-                </div>
-              </ExpressiveCard>
-            ))}
-          </DataList>
-        </Section>
-        <Section title="Tin nhắn" description={selectedPeer ? `Cuộc trò chuyện với user #${selectedPeer}` : "Chọn một hội thoại"}>
-          {loading ? <p className="text-sm text-on-surface-variant">Đang tải...</p> : null}
-          <div className="space-y-2 max-h-[400px] overflow-y-auto">
-            {messages.length === 0 && !loading && (
-              <p className="text-sm text-on-surface-variant">Chưa có tin nhắn. Hãy gửi tin đầu tiên!</p>
-            )}
-            {messages.map((m) => (
-              <div
-                key={m.messageId}
-                className={`rounded-2xl p-3 ${m.senderUserId === selectedPeer ? "bg-surface-container-high" : "bg-primary/10 ml-auto max-w-[80%]"}`}
-              >
-                <p className="text-sm">{m.body}</p>
-                <p className="mt-1 text-xs text-on-surface-variant">{formatDateTime(m.sentAt)}</p>
-              </div>
-            ))}
-          </div>
-          <div className="mt-4 space-y-2 border-t pt-3">
-            <Input
-              type="number"
-              placeholder="User ID người nhận (ví dụ: 5)"
-              value={recipientId ?? ""}
-              onChange={(e) => setRecipientId(e.target.value ? Number(e.target.value) : null)}
-              className="h-10"
-            />
-            <div className="flex gap-2">
-              <Input
-                placeholder="Nhập tin nhắn..."
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    send();
-                  }
-                }}
-                className="flex-1"
-              />
-              <ExpressiveButton variant="filled" onClick={send} disabled={!recipientId || !draft.trim()}>
-                Gửi
-              </ExpressiveButton>
-            </div>
-          </div>
-        </Section>
-      </div>
-    </div>
-  );
 }
 
 function DriverDashboardOverview() {
@@ -344,66 +177,6 @@ function TripCard({
   onEnd: () => void;
 }) {
   const running = !!trip.departedAt && !trip.endedAt;
-  const [gpsStatus, setGpsStatus] = useState<"idle" | "tracking" | "error" | "denied">("idle");
-  const gpsWatchRef = useRef<number | null>(null);
-
-  // REQ-DRV-003 AC1: GPS tracking bắt đầu trong 10 giây - start watching position when trip is RUNNING.
-  useEffect(() => {
-    if (!running) {
-      if (gpsWatchRef.current !== null && typeof navigator !== "undefined" && navigator.geolocation) {
-        navigator.geolocation.clearWatch(gpsWatchRef.current);
-        gpsWatchRef.current = null;
-      }
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setGpsStatus("idle");
-      return;
-    }
-
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setGpsStatus("error");
-      return;
-    }
-
-    setGpsStatus("tracking");
-    const pushLocation = (pos: GeolocationPosition) => {
-      const token = localStorage.getItem("unibus_access_token") || "";
-      fetch(`/api/v1/driver/trips/${trip.tripId}/location`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          longitude: pos.coords.longitude,
-          latitude: pos.coords.latitude,
-          speedKmh: pos.coords.speed != null && pos.coords.speed >= 0 ? pos.coords.speed * 3.6 : null,
-          occupancy: null,
-        }),
-      }).catch(() => {
-        /* silent fail - GPS push is best-effort */
-      });
-    };
-
-    gpsWatchRef.current = navigator.geolocation.watchPosition(
-      pushLocation,
-      (err) => {
-        if (err.code === err.PERMISSION_DENIED) {
-          setGpsStatus("denied");
-        } else {
-          setGpsStatus("error");
-        }
-      },
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
-    );
-
-    return () => {
-      if (gpsWatchRef.current !== null) {
-        navigator.geolocation.clearWatch(gpsWatchRef.current);
-        gpsWatchRef.current = null;
-      }
-    };
-  }, [running, trip.tripId]);
-
   return (
     <ExpressiveCard variant="elevated" className="p-4">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -420,20 +193,6 @@ function TripCard({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {running && (
-            <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-bold ${
-              gpsStatus === "tracking" ? "bg-success/20 text-success"
-              : gpsStatus === "denied" ? "bg-error/20 text-error"
-              : gpsStatus === "error" ? "bg-warning/20 text-warning"
-              : "bg-surface-container-high text-on-surface-variant"
-            }`}>
-              <Navigation className="size-3" />
-              {gpsStatus === "tracking" ? "Đang truyền GPS"
-                : gpsStatus === "denied" ? "GPS bị từ chối"
-                : gpsStatus === "error" ? "Lỗi GPS"
-                : "Chờ GPS"}
-            </span>
-          )}
           <ExpressiveButton variant="filled" disabled={!!trip.departedAt} onClick={onStart}>
             <PlayCircle className="size-4" /> Bắt đầu
           </ExpressiveButton>
@@ -454,5 +213,14 @@ function TripCard({
         ))}
       </div>
     </ExpressiveCard>
+  );
+}
+
+function Unavailable({ title, icon }: { title: string; icon: React.ReactNode }) {
+  return (
+    <div>
+      <PageHeader title={title} description="UI được giữ lại, nhưng MVP hiện chưa có API chat/call riêng." icon={icon} />
+      <UnavailablePanel />
+    </div>
   );
 }

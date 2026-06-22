@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useRef } from "react";
-import { Bell, CalendarClock, Megaphone, MessageSquare, Navigation, Route, School, UserCog, Send, ArrowLeft, Plus, Search, Loader2, X, MapPinned } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
+import { Bell, CalendarClock, Megaphone, MessageSquare, Navigation, Route, School, UserCog } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader, Section, StatCard } from "@/components/bus/primitives";
 import { AsyncBlock, DataList, StatusPill, UnavailablePanel, formatDate, formatDateTime, getErrorMessage, useApiResource } from "@/components/bus/real-data";
@@ -263,90 +263,30 @@ function LiveFleetScreen() {
     <div>
       <PageHeader
         title="Theo dõi tất cả xe"
-        description="Bản đồ trực tuyến hiển thị thời gian thực vị trí các phương tiện đang hoạt động và hành trình di chuyển."
+        description="Dữ liệu live fleet từ backend."
         icon={<Navigation className="size-7" />}
         actions={<Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-11 rounded-full bg-white" />}
       />
       <AsyncBlock resource={resource}>
         {(vehicles) => (
-          <div className="space-y-4">
-            <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-              <ExpressiveCard variant="elevated" className="overflow-hidden p-0">
-                <div className="border-b p-3">
-                  <h3 className="font-bold text-on-surface">Bản đồ đội xe</h3>
-                  <p className="text-xs text-on-surface-variant">Vị trí các xe đang chạy trên Leaflet + OpenStreetMap</p>
+          <DataList emptyTitle="Chưa có xe live" emptyDescription="Xe sẽ xuất hiện khi driver cập nhật vị trí.">
+            {vehicles.map((vehicle) => (
+              <ExpressiveCard key={vehicle.tripId} variant="elevated" className="p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h3 className="font-bold text-on-surface">{vehicle.routeName}</h3>
+                    <p className="text-sm text-on-surface-variant">Xe {vehicle.licensePlate || "chưa có biển"} · Tài xế {vehicle.driverName || "chưa gán"}</p>
+                    <p className="mt-1 text-xs text-on-surface-variant">
+                      Vị trí: {vehicle.latitude ?? "?"}, {vehicle.longitude ?? "?"} · {vehicle.occupancy ?? 0} khách · {formatDateTime(vehicle.locationUpdatedAt)}
+                    </p>
+                  </div>
+                  <StatusPill status={vehicle.status} />
                 </div>
-                <LiveFleetMap vehicles={vehicles} />
               </ExpressiveCard>
-              <Section title="Danh sách xe" description={`${vehicles.length} xe`}>
-                <DataList emptyTitle="Chưa có xe live" emptyDescription="Xe sẽ xuất hiện khi driver cập nhật vị trí.">
-                  {vehicles.map((vehicle) => (
-                    <ExpressiveCard key={vehicle.tripId} variant="elevated" className="p-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <h3 className="truncate text-sm font-bold text-on-surface">{vehicle.routeName}</h3>
-                          <p className="text-xs text-on-surface-variant">Xe {vehicle.licensePlate || "không biển"}</p>
-                          <p className="mt-1 text-xs text-on-surface-variant">
-                            {vehicle.occupancy ?? 0} khách · {formatDateTime(vehicle.locationUpdatedAt)}
-                          </p>
-                        </div>
-                        <StatusPill status={vehicle.status} />
-                      </div>
-                    </ExpressiveCard>
-                  ))}
-                </DataList>
-              </Section>
-            </div>
-          </div>
+            ))}
+          </DataList>
         )}
       </AsyncBlock>
-    </div>
-  );
-}
-
-/**
- * Live fleet map - uses Leaflet via dynamic import (real-map.tsx is already a Leaflet component).
- * We pass vehicles as BusStop[] so each becomes a marker on the map.
- */
-function LiveFleetMap({ vehicles }: { vehicles: LiveFleetVehicle[] }) {
-  const [mapModule, setMapModule] = useState<{ RealMap: React.ComponentType<any> } | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const mod = await import("@/components/m3/real-map");
-        if (mounted) setMapModule(mod as any);
-      } catch {
-        if (mounted) setLoadError("Không tải được bản đồ. Vui lòng kiểm tra kết nối.");
-      }
-    })();
-    return () => { mounted = false; };
-  }, []);
-
-  const stops = vehicles
-    .filter((v) => v.latitude != null && v.longitude != null)
-    .map((v) => ({
-      id: v.tripId,
-      name: `${v.routeName} - Xe ${v.licensePlate || "?"}`,
-      lat: v.latitude!,
-      lng: v.longitude!,
-    }));
-
-  if (loadError) {
-    return <div className="flex h-[400px] items-center justify-center text-sm text-on-surface-variant">{loadError}</div>;
-  }
-  if (!mapModule) {
-    return <div className="flex h-[400px] items-center justify-center text-sm text-on-surface-variant">Đang tải bản đồ...</div>;
-  }
-  if (stops.length === 0) {
-    return <div className="flex h-[400px] items-center justify-center text-sm text-on-surface-variant">Chưa có xe nào có vị trí GPS. Bắt đầu chuyến để cập nhật.</div>;
-  }
-  const RealMap = mapModule.RealMap;
-  return (
-    <div className="h-[400px]">
-      <RealMap stops={stops} route={{ color: "#10b981" }} progress={0} height={400} />
     </div>
   );
 }
