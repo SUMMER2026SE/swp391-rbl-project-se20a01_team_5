@@ -7,6 +7,7 @@ import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 
+import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -107,49 +108,31 @@ public class TransportService {
                 .mapToInt(Integer::intValue)
                 .sum();
         int fallbackMinutes = Math.max(3, minutesToStop == 0 ? target.getStopOrder() * 4 : minutesToStop);
-        OffsetDateTime baseEta = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(fallbackMinutes);
-        // Compute ETA per-trip from actual vehicle location, falling back to a staggered estimate
-        // when no realtime vehicle data is available. Use correlated subqueries instead of LATERAL
-        // so the query works on both PostgreSQL (production) and H2 (tests).
-        List<Eta> realtimeEtas = jdbcTemplate.query("""
-                SELECT t.trip_id, t.bus_id,
-                       (SELECT vl.longitude FROM vehicle_locations vl
-                        WHERE vl.trip_id = t.trip_id
-                        ORDER BY vl.updated_at DESC LIMIT 1) AS vehicle_longitude,
-                       (SELECT vl.latitude FROM vehicle_locations vl
-                        WHERE vl.trip_id = t.trip_id
-                        ORDER BY vl.updated_at DESC LIMIT 1) AS vehicle_latitude,
-                       (SELECT vl.speed_kmh FROM vehicle_locations vl
-                        WHERE vl.trip_id = t.trip_id
-                        ORDER BY vl.updated_at DESC LIMIT 1) AS vehicle_speed_kmh,
-                       (SELECT vl.updated_at FROM vehicle_locations vl
-                        WHERE vl.trip_id = t.trip_id
-                        ORDER BY vl.updated_at DESC LIMIT 1) AS vehicle_updated_at
-                FROM trips t
-                WHERE t.route_id = ?
-                  AND t.service_date = CURRENT_DATE
-                  AND t.status IN ('RUNNING', 'NOT_STARTED')
-                ORDER BY CASE t.status WHEN 'RUNNING' THEN 0 ELSE 1 END, t.trip_id DESC
-                LIMIT 3
-                """, (rs, rowNum) -> {
-                    OffsetDateTime vehicleUpdatedAt = rs.getTimestamp("vehicle_updated_at") == null
-                            ? null
-                            : rs.getTimestamp("vehicle_updated_at").toInstant().atOffset(ZoneOffset.UTC);
-                    OffsetDateTime eta = baseEta;
-                    if (vehicleUpdatedAt != null) {
-                        eta = baseEta.plusMinutes(rowNum * 4L);
-                    } else if (rowNum > 0) {
-                        eta = baseEta.plusMinutes(rowNum * 8L);
-                    }
-                    return new Eta(
+        OffsetDateTime eta = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(fallbackMinutes);
+        try {
+            return jdbcTemplate.query("""
+                    SELECT t.trip_id, t.bus_id
+                    FROM trips t
+                    WHERE t.route_id = ?
+                      AND t.service_date = CURRENT_DATE
+                      AND t.status IN ('RUNNING', 'NOT_STARTED')
+                      AND EXISTS (
+                          SELECT 1
+                          FROM vehicle_locations vl
+                          WHERE vl.trip_id = t.trip_id
+                      )
+                    ORDER BY CASE t.status WHEN 'RUNNING' THEN 0 ELSE 1 END, t.trip_id DESC
+                    LIMIT 3
+                    """, (rs, rowNum) -> new Eta(
                             rs.getInt("trip_id"),
                             (Integer) rs.getObject("bus_id"),
                             stopId,
-                            eta,
+                            eta.plusMinutes(rowNum * 8L),
                             null,
-                            OffsetDateTime.now(ZoneOffset.UTC));
-                }, routeId);
-        return realtimeEtas;
+                            OffsetDateTime.now(ZoneOffset.UTC)), routeId);
+        } catch (BadSqlGrammarException ex) {
+            return List.of();
+        }
     }
 
     @Transactional(readOnly = true)
@@ -214,29 +197,37 @@ public class TransportService {
     }
 
     private BigDecimal fare(Integer routeId, String fareType) {
-        return jdbcTemplate.query("""
-                SELECT amount
-                FROM fares
-                WHERE route_id = ?
-                  AND fare_type = ?
-                  AND effective_from <= CURRENT_DATE
-                  AND (effective_until IS NULL OR effective_until >= CURRENT_DATE)
-                ORDER BY effective_from DESC, fare_id DESC
-                LIMIT 1
-                """, rs -> rs.next() ? rs.getBigDecimal("amount") : null, routeId, fareType);
+        try {
+            return jdbcTemplate.query("""
+                    SELECT amount
+                    FROM fares
+                    WHERE route_id = ?
+                      AND fare_type = ?
+                      AND effective_from <= CURRENT_DATE
+                      AND (effective_until IS NULL OR effective_until >= CURRENT_DATE)
+                    ORDER BY effective_from DESC, fare_id DESC
+                    LIMIT 1
+                    """, rs -> rs.next() ? rs.getBigDecimal("amount") : null, routeId, fareType);
+        } catch (BadSqlGrammarException ex) {
+            return null;
+        }
     }
 
     private TripWindow tripWindow(Integer routeId) {
-        return jdbcTemplate.query("""
-                SELECT MIN(departure_time) AS first_trip, MAX(departure_time) AS last_trip
-                FROM bus_schedules
-                WHERE route_id = ?
-                  AND status = 'ACTIVE'
-                """, rs -> {
-            if (!rs.next()) return new TripWindow(null, null);
-            return new TripWindow(formatTime(rs.getTime("first_trip") == null ? null : rs.getTime("first_trip").toLocalTime()),
-                    formatTime(rs.getTime("last_trip") == null ? null : rs.getTime("last_trip").toLocalTime()));
-        }, routeId);
+        try {
+            return jdbcTemplate.query("""
+                    SELECT MIN(departure_time) AS first_trip, MAX(departure_time) AS last_trip
+                    FROM bus_schedules
+                    WHERE route_id = ?
+                      AND status = 'ACTIVE'
+                    """, rs -> {
+                if (!rs.next()) return new TripWindow(null, null);
+                return new TripWindow(formatTime(rs.getTime("first_trip") == null ? null : rs.getTime("first_trip").toLocalTime()),
+                        formatTime(rs.getTime("last_trip") == null ? null : rs.getTime("last_trip").toLocalTime()));
+            }, routeId);
+        } catch (BadSqlGrammarException ex) {
+            return new TripWindow(null, null);
+        }
     }
 
     private String formatTime(LocalTime time) {

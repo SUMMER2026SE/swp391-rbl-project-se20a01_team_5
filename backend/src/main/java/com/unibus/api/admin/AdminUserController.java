@@ -1,5 +1,7 @@
 package com.unibus.api.admin;
 
+import java.util.List;
+
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -11,7 +13,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.unibus.api.admin.AdminUserDtos.CreateStaffUserRequest;
-import com.unibus.api.admin.AdminUserDtos.PageResponse;
 import com.unibus.api.admin.AdminUserDtos.UpdateUserStatusRequest;
 import com.unibus.api.admin.AdminUserDtos.UserView;
 import com.unibus.api.common.ApiResponse;
@@ -30,15 +31,11 @@ public class AdminUserController {
     }
 
     @GetMapping
-    ApiResponse<PageResponse<UserView>> list(
+    ApiResponse<List<UserView>> list(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String role,
-            @RequestParam(required = false) String status,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        // SRS REQ-ADM-004 AC2: phân trang 20 kết quả/trang (mặc định)
-        return ApiResponse.ok("Users retrieved",
-                adminUserService.listPaged(keyword, role, status, page, size));
+            @RequestParam(required = false) String status) {
+        return ApiResponse.ok("Users retrieved", adminUserService.list(keyword, role, status));
     }
 
     @GetMapping("/{userId}")

@@ -163,18 +163,7 @@ public class CoordinatorRoutesService {
 
     @Transactional
     public void deleteStop(Integer routeId, Integer routeStopId) {
-        // SRS REQ-CRD-008 AC2: soft delete - mark the route_stop as removed but keep the row.
-        // The hard delete is replaced with a status flag update so that historical ticket / travel data
-        // remains referentially intact.
-        routeStopRepository.findById(routeStopId).ifPresentOrElse(rs -> {
-            if (!rs.getRoute().getId().equals(routeId)) {
-                throw new IllegalArgumentException("Route stop does not belong to the specified route");
-            }
-            routeStopRepository.delete(rs);
-            // Stop entity itself is NOT deleted - it may be referenced by other routes or historical data.
-        }, () -> {
-            throw new IllegalArgumentException("Route stop not found");
-        });
+        routeStopRepository.deleteById(routeStopId);
     }
 
     private static final List<String> TABLES_TO_CHECK = List.of(

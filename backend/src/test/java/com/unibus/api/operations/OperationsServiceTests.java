@@ -22,7 +22,6 @@ import com.unibus.api.operations.OperationsDtos.ConductorTicketView;
 import com.unibus.api.operations.OperationsDtos.TicketScanRequest;
 import com.unibus.api.operations.OperationsDtos.TicketScanResult;
 import com.unibus.api.operations.OperationsRepository.TripRouteInfo;
-import com.unibus.api.realtime.RealtimePublisher;
 import com.unibus.api.security.CurrentUser;
 import com.unibus.api.user.model.UserRole;
 
@@ -38,15 +37,12 @@ class OperationsServiceTests {
     @Mock
     private OperationsRepository operationsRepository;
 
-    @Mock
-    private RealtimePublisher realtimePublisher;
-
     private OperationsService operationsService;
     private CurrentUser conductor;
 
     @BeforeEach
     void setUp() {
-        operationsService = new OperationsService(operationsRepository, realtimePublisher);
+        operationsService = new OperationsService(operationsRepository);
         conductor = new CurrentUser(CONDUCTOR_USER_ID, "conductor@example.com", UserRole.CONDUCTOR, 1L);
         when(operationsRepository.staffIdForUser(CONDUCTOR_USER_ID, "CONDUCTOR")).thenReturn(CONDUCTOR_ID);
         when(operationsRepository.conductorOwnsTrip(TRIP_ID, CONDUCTOR_ID)).thenReturn(true);
