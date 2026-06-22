@@ -55,9 +55,9 @@ SET university_id = EXCLUDED.university_id,
 
 INSERT INTO users (email, password_hash, full_name, phone_number, role, status, email_verified_at, student_verification_status, created_at, updated_at)
 VALUES
-    ('driver.iter1@unibus.local', '$2a$10$EBx14iAsXMpv3k69BQ5/C.GtzEiFqeMvBuMNanRkwHlwx//7yMzWu', 'Nguyễn Minh Tài', '0901000001', 'DRIVER', 'ACTIVE', CURRENT_TIMESTAMP, 'NOT_SUBMITTED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-    ('conductor.iter1@unibus.local', '$2a$10$EBx14iAsXMpv3k69BQ5/C.GtzEiFqeMvBuMNanRkwHlwx//7yMzWu', 'Trần Gia Hân', '0901000002', 'CONDUCTOR', 'ACTIVE', CURRENT_TIMESTAMP, 'NOT_SUBMITTED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-    ('dispatcher.iter1@unibus.local', '$2a$10$EBx14iAsXMpv3k69BQ5/C.GtzEiFqeMvBuMNanRkwHlwx//7yMzWu', 'Lê Quốc Bảo', '0901000003', 'DISPATCHER', 'ACTIVE', CURRENT_TIMESTAMP, 'NOT_SUBMITTED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    ('driver.demo@unibus.local', '$2a$10$EBx14iAsXMpv3k69BQ5/C.GtzEiFqeMvBuMNanRkwHlwx//7yMzWu', 'Nguyễn Minh Tài', '0901000001', 'DRIVER', 'ACTIVE', CURRENT_TIMESTAMP, 'NOT_SUBMITTED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    ('conductor.demo@unibus.local', '$2a$10$EBx14iAsXMpv3k69BQ5/C.GtzEiFqeMvBuMNanRkwHlwx//7yMzWu', 'Trần Gia Hân', '0901000002', 'CONDUCTOR', 'ACTIVE', CURRENT_TIMESTAMP, 'NOT_SUBMITTED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    ('dispatcher.demo@unibus.local', '$2a$10$EBx14iAsXMpv3k69BQ5/C.GtzEiFqeMvBuMNanRkwHlwx//7yMzWu', 'Lê Quốc Bảo', '0901000003', 'DISPATCHER', 'ACTIVE', CURRENT_TIMESTAMP, 'NOT_SUBMITTED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 ON CONFLICT (email) DO UPDATE
 SET full_name = EXCLUDED.full_name,
     phone_number = EXCLUDED.phone_number,
@@ -67,10 +67,10 @@ SET full_name = EXCLUDED.full_name,
     updated_at = CURRENT_TIMESTAMP;
 
 WITH driver_user AS (
-    SELECT user_id FROM users WHERE email = 'driver.iter1@unibus.local'
+    SELECT user_id FROM users WHERE email = 'driver.demo@unibus.local'
 )
 INSERT INTO drivers (user_id, license_number, years_experience, average_rating, work_status)
-SELECT user_id, 'ITER1-DRIVER-LICENSE', 6, 4.80, 'RUNNING'
+SELECT user_id, 'DRIVER-DEMO-LICENSE', 6, 4.80, 'RUNNING'
 FROM driver_user
 ON CONFLICT (license_number) DO UPDATE
 SET user_id = EXCLUDED.user_id,
@@ -79,19 +79,19 @@ SET user_id = EXCLUDED.user_id,
     work_status = EXCLUDED.work_status;
 
 WITH conductor_user AS (
-    SELECT user_id FROM users WHERE email = 'conductor.iter1@unibus.local'
+    SELECT user_id FROM users WHERE email = 'conductor.demo@unibus.local'
 )
 INSERT INTO conductors (user_id, employee_code)
-SELECT user_id, 'ITER1-CONDUCTOR'
+SELECT user_id, 'CONDUCTOR-DEMO'
 FROM conductor_user
 ON CONFLICT (employee_code) DO UPDATE
 SET user_id = EXCLUDED.user_id;
 
 WITH dispatcher_user AS (
-    SELECT user_id FROM users WHERE email = 'dispatcher.iter1@unibus.local'
+    SELECT user_id FROM users WHERE email = 'dispatcher.demo@unibus.local'
 )
 INSERT INTO dispatchers (user_id, employee_code, department)
-SELECT user_id, 'ITER1-DISPATCHER', 'Operations'
+SELECT user_id, 'DISPATCHER-DEMO', 'Operations'
 FROM dispatcher_user
 ON CONFLICT (employee_code) DO UPDATE
 SET user_id = EXCLUDED.user_id,
@@ -171,18 +171,18 @@ SET route_name = 'DN-01 Campus Loop',
     route_code = 'DN-01',
     color_hex = '#1565C0',
     frequency_min = 8
-WHERE description LIKE 'ITER1 seed route:%Campus Loop%'
-   OR description ILIKE 'ITER1 seed route:%campus loop%'
-   OR route_name = 'ITER1 - Campus Loop';
+WHERE description LIKE 'Tuyến nội khu (Seed):%Campus Loop%'
+   OR description ILIKE 'Tuyến nội khu (Seed):%campus loop%'
+   OR route_name = 'Tuyến số 1 - Campus Loop';
 
 UPDATE routes
 SET route_name = 'DN-02 City Connector',
     route_code = 'DN-02',
     color_hex = '#00897B',
     frequency_min = 12
-WHERE description LIKE 'ITER1 seed route:%City Connector%'
-   OR description ILIKE 'ITER1 seed route:%city connector%'
-   OR route_name = 'ITER1 - City Connector';
+WHERE description LIKE 'Tuyến nội khu (Seed):%City Connector%'
+   OR description ILIKE 'Tuyến nội khu (Seed):%city connector%'
+   OR route_name = 'Tuyến số 2 - City Connector';
 
 WITH new_routes(route_code, route_name, description, distance_km, estimated_minutes, frequency_min, color_hex) AS (
     VALUES
@@ -270,10 +270,10 @@ bus_data AS (
     SELECT bus_id, license_plate FROM buses WHERE license_plate IN ('43B-DN01', '43B-DN02', '43B-DN03', '43B-DN04')
 ),
 driver_data AS (
-    SELECT driver_id FROM drivers WHERE license_number = 'ITER1-DRIVER-LICENSE'
+    SELECT driver_id FROM drivers WHERE license_number = 'DRIVER-DEMO-LICENSE'
 ),
 conductor_data AS (
-    SELECT conductor_id FROM conductors WHERE employee_code = 'ITER1-CONDUCTOR'
+    SELECT conductor_id FROM conductors WHERE employee_code = 'CONDUCTOR-DEMO'
 ),
 schedule_rows(route_code, license_plate, departure_time, end_time) AS (
     VALUES
@@ -285,7 +285,7 @@ schedule_rows(route_code, license_plate, departure_time, end_time) AS (
 INSERT INTO bus_schedules (route_id, bus_id, driver_id, conductor_id, weekday_number, departure_time, end_time, status, assigned_by_user_id, assigned_at)
 SELECT r.route_id, b.bus_id, d.driver_id, c.conductor_id, EXTRACT(ISODOW FROM CURRENT_DATE)::int,
        sr.departure_time, sr.end_time, 'ACTIVE',
-       (SELECT user_id FROM users WHERE email = 'dispatcher.iter1@unibus.local'),
+       (SELECT user_id FROM users WHERE email = 'dispatcher.demo@unibus.local'),
        CURRENT_TIMESTAMP
 FROM schedule_rows sr
 JOIN route_data r ON r.route_code = sr.route_code
@@ -441,7 +441,7 @@ registration AS (
     LIMIT 1
 ),
 conductor_data AS (
-    SELECT conductor_id FROM conductors WHERE employee_code = 'ITER1-CONDUCTOR'
+    SELECT conductor_id FROM conductors WHERE employee_code = 'CONDUCTOR-DEMO'
 )
 INSERT INTO travel_history (student_code, trip_id, registration_id, boarding_stop_id, alighting_stop_id, boarded_at, alighted_at, confirmation_method, confirmed_by_conductor_id)
 SELECT khanh.student_code, completed_trip.trip_id, registration.registration_id, registration.boarding_stop_id,
@@ -496,7 +496,7 @@ WHERE NOT EXISTS (
 );
 
 WITH conductor_data AS (
-    SELECT conductor_id FROM conductors WHERE employee_code = 'ITER1-CONDUCTOR'
+    SELECT conductor_id FROM conductors WHERE employee_code = 'CONDUCTOR-DEMO'
 ),
 trip_data AS (
     SELECT t.trip_id
@@ -522,7 +522,7 @@ WITH recipient AS (
     SELECT user_id FROM users WHERE LOWER(email) = 'khanhnv20a02@gmail.com'
 ),
 sender AS (
-    SELECT user_id FROM users WHERE email = 'dispatcher.iter1@unibus.local'
+    SELECT user_id FROM users WHERE email = 'dispatcher.demo@unibus.local'
 ),
 notification_rows(title, content, notification_type, is_read) AS (
     VALUES

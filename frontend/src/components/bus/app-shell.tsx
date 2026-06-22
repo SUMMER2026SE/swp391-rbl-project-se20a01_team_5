@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion, useMotionValueEvent, useScroll } from "framer-motion";
 import { ArrowLeft, Bell, ChevronDown, LogOut, Menu, QrCode, Search, School, UserCircle } from "lucide-react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
@@ -284,6 +284,7 @@ export function AppShell({
             <DropdownMenuTrigger asChild>
               <button className="state-layer flex shrink-0 items-center gap-2 rounded-full py-1 pl-1 pr-1 sm:pr-3">
                 <Avatar className="size-9">
+                  <AvatarImage src={profile?.avatarUrl} alt={profile?.fullName || "Avatar"} />
                   <AvatarFallback className={cn("text-xs font-bold text-white", ROLE_COLORS[role])}>
                     {initials(profile, role)}
                   </AvatarFallback>

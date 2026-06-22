@@ -61,7 +61,7 @@ export function StudentModule({ activeId, onNavigate }: StudentModuleProps) {
   if (activeId === "stu-tracking") return <TrackingScreen />;
   if (activeId === "stu-my-routes") return <RegistrationScreen />;
   if (activeId === "stu-my-ticket") return <TicketsScreen title="Vé của tôi" />;
-  if (activeId === "stu-payment") return <TicketsScreen title="Thanh toán & vé" />;
+  if (activeId === "stu-payment") return <InvoicesScreen />;
   if (activeId === "stu-invoices") return <InvoicesScreen />;
   if (activeId === "stu-history") return <HistoryScreen />;
   if (activeId === "stu-feedback") return <FeedbackScreen />;

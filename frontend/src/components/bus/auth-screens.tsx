@@ -298,9 +298,7 @@ export function AuthScreens({
               </div>
             ))}
           </Marquee>
-        ) : (
-          <p className="text-center text-sm text-on-surface-variant">Danh sách trường sẽ hiển thị khi backend catalog phản hồi.</p>
-        )}
+        ) : null}
       </section>
 
       <footer className="border-t border-outline-variant/40 py-10 px-6 text-center">

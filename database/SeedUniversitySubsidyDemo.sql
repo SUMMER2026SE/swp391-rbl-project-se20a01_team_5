@@ -63,8 +63,8 @@ WITH university_data AS (
 route_data AS (
     SELECT route_id
     FROM routes
-    WHERE route_name = 'ITER1 - Campus Loop'
-      AND description LIKE 'ITER1 seed route:%'
+    WHERE route_name = 'Tuyến số 1 - Campus Loop'
+      AND description LIKE 'Tuyến nội khu (Seed):%'
 )
 INSERT INTO route_universities (route_id, university_id, active_from, active_until, status)
 SELECT r.route_id, u.university_id, CURRENT_DATE - INTERVAL '1 day', NULL, 'ACTIVE'
