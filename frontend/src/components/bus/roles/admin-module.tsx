@@ -1,710 +1,1113 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import { BarChart3, CreditCard, GraduationCap, Megaphone, School, ShieldAlert, Tag, UserPlus, Users } from "lucide-react";
+// =============================================================================
+// Admin Module — UniBus (M3 Expressive, aligned to UIPrototype v1.1)
+// 10 role-specific screens:
+//   adm-dashboard, adm-universities, adm-uni-admins, adm-route-uni, adm-audit,
+//   adm-users, adm-complaints, adm-violations, adm-fare, adm-notify
+// Visual: keeps prototype v1.1 (hero perk card, dashboard stat grid,
+// university logo cards, audit log table, user management list).
+// Data: real backend via /admin/* endpoints.
+// =============================================================================
+
+import React, { useCallback, useEffect, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  LayoutDashboard,
+  Building2,
+  School,
+  UserCog,
+  Route as RouteIcon,
+  ScrollText,
+  Users,
+  ShieldAlert,
+  AlertOctagon,
+  Tag,
+  Megaphone,
+  TrendingUp,
+  TrendingDown,
+  RefreshCw,
+  AlertTriangle,
+  CheckCircle2,
+  XCircle,
+  Info,
+  Plus,
+  Edit,
+  Trash2,
+  Save,
+  Lock,
+  Unlock,
+  Filter,
+  BarChart3,
+  FileBarChart,
+  Percent,
+  Globe,
+  GraduationCap,
+  BadgeCheck,
+  Banknote,
+  Search,
+} from "lucide-react";
 import { toast } from "sonner";
-import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { PageHeader, Section, StatCard } from "@/components/bus/primitives";
-import { AsyncBlock, DataList, StatusPill, formatDateTime, formatMoney, getErrorMessage, useApiResource } from "@/components/bus/real-data";
-import { ExpressiveButton, ExpressiveCard } from "@/components/m3/primitives";
+
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
+import {
+  ExpressiveButton,
+  ExpressiveCard,
+  StatusPill as M3StatusPill,
+  M3Progress,
+} from "@/components/m3/primitives";
+import {
+  SplitText,
+  ScrollReveal,
+  StaggerGroup,
+  StaggerItem,
+  Counter,
+  PageTransition,
+} from "@/components/m3/motion";
+import { PageHeader, StatCard, Section, EmptyState } from "../primitives";
+
+import {
+  useAdminPrototypeData,
+  formatVND,
+  formatDateTime,
+  formatDate,
+} from "@/lib/prototype-data";
 import {
   adminApi,
   experienceApi,
-  feedbackApi,
   notificationApi,
-  type AdminStatsView,
   type AdminUserView,
-  type AuditLogView,
-  type FeedbackView,
+  type UniversityView,
+  type UniversityAdminView,
+  type VerificationView,
   type PaymentTransactionView,
+  type AuditLogView,
   type RouteUniversityView,
   type SubsidyPolicyView,
-  type UniversityAdminView,
-  type UniversityView,
-  type VerificationView,
+  type ExperienceDashboardStat,
 } from "@/lib/api/client";
 
-type Props = {
+type AdminModuleProps = {
   activeId: string;
   onNavigate: (id: string) => void;
 };
 
-export function AdminModule({ activeId }: Props) {
-  if (activeId === "adm-dashboard") return <AdminDashboard />;
-  if (activeId === "adm-users") return <UsersScreen />;
-  if (activeId === "adm-complaints") return <FeedbackAdminScreen />;
-  if (activeId === "adm-violations") return <VerificationsScreen />;
-  if (activeId === "adm-notify") return <NotifyScreen />;
-  if (activeId === "adm-universities") return <UniversitiesScreen />;
-  if (activeId === "adm-uni-admins") return <UniversityAdminsScreen />;
-  if (activeId === "adm-route-uni") return <RouteUniversitiesScreen />;
-  if (activeId === "adm-audit") return <AuditScreen />;
-  if (activeId === "adm-transactions") return <PaymentTransactionsScreen />;
-  if (activeId === "adm-fare") return <FaresScreen />;
-  return <AdminDashboard />;
-}
+export function AdminModule({ activeId, onNavigate }: AdminModuleProps) {
+  const proto = useAdminPrototypeData();
 
-function AdminDashboard() {
-  const loader = useCallback(async () => {
-    const [stats, users, verifications, transactions] = await Promise.all([
-      experienceApi.adminStats(),
-      adminApi.users(),
-      adminApi.verifications().catch(() => []),
-      adminApi.paymentTransactions().catch(() => []),
-    ]);
-    return { stats, users, verifications, transactions };
-  }, []);
-  const resource = useApiResource(loader);
+  if (proto.loading) return <LoadingScreen label="Đang tải dữ liệu quản trị..." />;
+  if (proto.error) return <ErrorScreen message={proto.error} onRetry={proto.reload} />;
 
-  return (
-    <div>
-      <PageHeader title="Thống kê hệ thống" description="Tổng quan thật từ admin APIs hiện có." icon={<BarChart3 className="size-7" />} />
-      <AsyncBlock resource={resource}>
-        {({ stats, users, verifications, transactions }) => (
-          <div className="space-y-6">
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {stats.stats.map((stat) => (
-                <StatCard key={stat.label} label={stat.label} value={`${stat.value}${stat.unit ? ` ${stat.unit}` : ""}`} icon={<BarChart3 className="size-6" />} accent={adminTone(stat.tone)} />
-              ))}
-            </div>
-            <div className="grid gap-4 xl:grid-cols-[1fr_0.9fr]">
-              <Section title="Route metrics" description="Doanh thu và số chuyến theo tuyến">
-                <ExpressiveCard variant="elevated" className="mb-3 h-64 p-4">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={stats.routeMetrics}>
-                      <XAxis dataKey="routeCode" tickLine={false} axisLine={false} />
-                      <YAxis tickLine={false} axisLine={false} width={70} tickFormatter={(value) => `${Math.round(Number(value) / 1000)}k`} />
-                      <Tooltip formatter={(value) => formatMoney(Number(value))} />
-                      <Bar dataKey="revenue" fill="#144fcc" radius={[10, 10, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </ExpressiveCard>
-                <DataList emptyTitle="Chưa có metrics" emptyDescription="Khi có route/trip/payment, metrics sẽ xuất hiện.">
-                  {stats.routeMetrics.map((metric) => (
-                    <ExpressiveCard key={metric.routeCode || metric.routeName} variant="elevated" className="p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <h3 className="font-bold text-on-surface">{metric.routeCode || metric.routeName}</h3>
-                          <p className="text-sm text-on-surface-variant">{metric.trips} chuyến · {formatMoney(metric.revenue)}</p>
-                        </div>
-                        <span className="size-4 rounded-full" style={{ backgroundColor: metric.colorHex || "#144fcc" }} />
-                      </div>
-                    </ExpressiveCard>
-                  ))}
-                </DataList>
-              </Section>
-              <Section title="Người dùng gần đây" description={`${verifications.length} hồ sơ xác minh trong hệ thống`}>
-                <UserList users={users.slice(0, 6)} onRefresh={resource.reload} />
-              </Section>
-            </div>
-            <Section title="Lịch sử giao dịch hệ thống" description="Theo dõi các đơn thanh toán SePay và giao dịch ngân hàng mới nhất.">
-              <ExpressiveCard variant="elevated" className="overflow-x-auto p-4">
-                <table className="w-full text-left text-sm text-on-surface">
-                  <thead>
-                    <tr className="border-b border-outline-variant font-bold text-on-surface-variant">
-                      <th className="pb-3 pr-4">Thời gian</th>
-                      <th className="pb-3 pr-4">Sinh viên</th>
-                      <th className="pb-3 pr-4">Số tiền</th>
-                      <th className="pb-3 pr-4">Tuyến/vé</th>
-                      <th className="pb-3">Mã CK</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(transactions || []).slice(0, 10).map((tx) => (
-                      <tr key={`dash-tx-${tx.orderId}-${tx.transactionId || 0}`} className="border-b border-outline-variant/40 hover:bg-surface-variant/20">
-                        <td className="py-3 pr-4 text-xs font-semibold text-on-surface-variant">{formatDateTime(tx.paidAt || tx.transactionDate || tx.createdAt)}</td>
-                        <td className="py-3 pr-4 font-bold">{tx.studentName || tx.studentCode || "Không rõ"}</td>
-                        <td className="py-3 pr-4 font-black text-blue-600">{formatMoney(tx.orderTotal || tx.amountIn || 0)}</td>
-                        <td className="py-3 pr-4">
-                          <span className="mr-2 rounded-lg bg-surface-variant px-2 py-1 text-xs font-semibold uppercase">
-                            {tx.ticketType === "monthly" ? "Tháng" : "Thường"}
-                          </span>
-                          {tx.routeName || "Chưa có tuyến"}
-                        </td>
-                        <td className="py-3 font-mono text-xs font-bold text-red-600">{tx.referenceNumber || tx.transactionContent || `DH${tx.orderId}`}</td>
-                      </tr>
-                    ))}
-                    {(transactions || []).length === 0 && (
-                      <tr>
-                        <td colSpan={5} className="py-6 text-center font-semibold text-on-surface-variant">Chưa có lịch sử giao dịch.</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </ExpressiveCard>
-            </Section>
-          </div>
-        )}
-      </AsyncBlock>
-    </div>
-  );
-}
-
-function adminTone(tone?: string): "primary" | "tertiary" | "secondary" | "error" | "success" | "warning" {
-  if (tone === "success") return "success";
-  if (tone === "error") return "error";
-  if (tone === "warning") return "warning";
-  if (tone === "secondary") return "secondary";
-  if (tone === "tertiary") return "tertiary";
-  return "primary";
-}
-
-function UsersScreen() {
-  const loader = useCallback(() => adminApi.users(), []);
-  const resource = useApiResource<AdminUserView[]>(loader);
-  const [showCreate, setShowCreate] = useState(false);
-
-  return (
-    <div>
-      <PageHeader
-        title="Tài khoản người dùng"
-        description="Quản lý người dùng qua admin users API."
-        icon={<Users className="size-7" />}
-        actions={<ExpressiveButton onClick={() => setShowCreate((v) => !v)}><UserPlus className="size-4" />Tạo staff</ExpressiveButton>}
-      />
-      {showCreate && <CreateStaffForm onCreated={resource.reload} />}
-      <AsyncBlock resource={resource}>
-        {(users) => <UserList users={users} onRefresh={resource.reload} />}
-      </AsyncBlock>
-    </div>
-  );
-}
-
-function UserList({ users, onRefresh }: { users: AdminUserView[]; onRefresh: () => void }) {
-  const updateStatus = async (user: AdminUserView) => {
-    const next = user.status === "ACTIVE" ? "LOCKED" : "ACTIVE";
-    try {
-      await adminApi.updateUserStatus(user.userId, {
-        status: next,
-        lockReason: next === "LOCKED" ? "Locked by admin from UniBus frontend" : undefined,
-      });
-      toast.success(next === "ACTIVE" ? "Đã mở khóa tài khoản" : "Đã khóa tài khoản");
-      onRefresh();
-    } catch (error) {
-      toast.error(getErrorMessage(error, "Không thể cập nhật tài khoản"));
-    }
+  const d = proto.data!;
+  const ctx = {
+    user: d.user,
+    stats: d.stats,
+    routeMetrics: d.routeMetrics,
+    complaints: d.complaints,
+    violations: d.violations,
+    fares: d.fares,
+    users: d.users,
+    verifications: d.verifications,
+    universities: d.universities,
+    notifications: d.notifications,
+    audits: d.audits,
+    payments: d.payments,
+    routeUnis: d.routeUnis,
+    subsidies: d.subsidies,
+    uniAdmins: d.uniAdmins,
+    raw: {
+      statsRaw: d.statsRaw,
+      usersRaw: d.usersRaw,
+      verificationsRaw: d.verificationsRaw,
+      universitiesRaw: d.universitiesRaw,
+      complaintsRaw: d.complaintsRaw,
+      violationsRaw: d.violationsRaw,
+      faresRaw: d.faresRaw,
+      notificationsRaw: d.notificationsRaw,
+      profileRaw: d.profileRaw,
+      auditsRaw: d.auditsRaw,
+      paymentsRaw: d.paymentsRaw,
+      routeUnisRaw: d.routeUnisRaw,
+      subsidiesRaw: d.subsidiesRaw,
+      uniAdminsRaw: d.uniAdminsRaw,
+    },
+    reload: proto.reload,
   };
 
+  switch (activeId) {
+    case "adm-dashboard":
+      return <DashboardScreen ctx={ctx} onNavigate={onNavigate} />;
+    case "adm-universities":
+      return <UniversitiesScreen ctx={ctx} />;
+    case "adm-uni-admins":
+      return <UniAdminsScreen ctx={ctx} />;
+    case "adm-route-uni":
+      return <RouteUniScreen ctx={ctx} />;
+    case "adm-audit":
+      return <AuditScreen ctx={ctx} />;
+    case "adm-users":
+      return <UsersScreen ctx={ctx} />;
+    case "adm-complaints":
+      return <ComplaintsScreen ctx={ctx} />;
+    case "adm-violations":
+      return <ViolationsScreen ctx={ctx} />;
+    case "adm-fare":
+      return <FareScreen ctx={ctx} />;
+    case "adm-notify":
+      return <NotifyScreen ctx={ctx} />;
+    default:
+      return <FallbackScreen activeId={activeId} />;
+  }
+}
+
+export default AdminModule;
+
+// =============================================================================
+interface Ctx {
+  user: any;
+  stats: ExperienceDashboardStat[];
+  routeMetrics: any[];
+  complaints: any[];
+  violations: any[];
+  fares: any[];
+  users: AdminUserView[];
+  verifications: VerificationView[];
+  universities: UniversityView[];
+  notifications: any[];
+  audits: AuditLogView[];
+  payments: PaymentTransactionView[];
+  routeUnis: RouteUniversityView[];
+  subsidies: SubsidyPolicyView[];
+  uniAdmins: UniversityAdminView[];
+  raw: any;
+  reload: () => void;
+}
+
+function LoadingScreen({ label = "Đang tải..." }: { label?: string }) {
   return (
-    <DataList emptyTitle="Chưa có người dùng" emptyDescription="Backend chưa trả về tài khoản nào.">
-      {users.map((user) => (
-        <ExpressiveCard key={user.userId} variant="elevated" className="p-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <h3 className="font-bold text-on-surface">{user.fullName}</h3>
-              <p className="text-sm text-on-surface-variant">{user.email} · {user.role}</p>
-              <p className="mt-1 text-xs text-on-surface-variant">{formatDateTime(user.createdAt)}</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <StatusPill status={user.status} />
-              <ExpressiveButton variant="tonal" size="sm" onClick={() => updateStatus(user)}>
-                {user.status === "ACTIVE" ? "Khóa" : "Mở khóa"}
-              </ExpressiveButton>
-            </div>
-          </div>
-        </ExpressiveCard>
-      ))}
-    </DataList>
+    <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center">
+      <div className="size-12 rounded-full border-4 border-primary border-t-transparent animate-spin" />
+      <p className="mt-5 text-sm font-medium text-on-surface-variant">{label}</p>
+    </div>
   );
 }
 
-function CreateStaffForm({ onCreated }: { onCreated: () => void }) {
-  const [fullName, setFullName] = useState("");
+function ErrorScreen({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center">
+      <div className="flex size-14 items-center justify-center rounded-2xl bg-error-container">
+        <AlertTriangle className="size-7 text-error" />
+      </div>
+      <p className="mt-4 text-lg font-bold text-on-surface">Không tải được dữ liệu</p>
+      <p className="mt-1.5 max-w-sm text-sm text-on-surface-variant">{message}</p>
+      {onRetry && (
+        <ExpressiveButton variant="filled" className="mt-5" onClick={onRetry}>
+          <RefreshCw className="size-4" /> Thử lại
+        </ExpressiveButton>
+      )}
+    </div>
+  );
+}
+
+// =============================================================================
+// Screen 1: Dashboard
+// =============================================================================
+function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
+  const firstName = (ctx.user.name || "bạn").split(" ").slice(-1)[0];
+  const statCards = ctx.stats.slice(0, 4);
+
+  const quickActions = [
+    { id: "adm-users", label: "Người dùng", icon: Users, accent: "primary" as const },
+    { id: "adm-universities", label: "Trường ĐH", icon: School, accent: "tertiary" as const },
+    { id: "adm-complaints", label: "Khiếu nại", icon: ShieldAlert, accent: "error" as const },
+    { id: "adm-fare", label: "Giá vé", icon: Tag, accent: "secondary" as const },
+  ];
+
+  return (
+    <PageTransition className="space-y-6 sm:space-y-8 min-w-0">
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ type: "spring", stiffness: 240, damping: 24 }}
+        className="space-y-3 min-w-0"
+      >
+        <SplitText
+          as="h1"
+          text={`Xin chào, ${firstName}!`}
+          className="text-4xl sm:text-5xl font-bold tracking-tight text-on-surface text-balance"
+          stagger={0.06}
+        />
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
+          <span className="inline-flex items-center gap-1.5 h-7 px-3 rounded-full bg-[#dc2626] text-white text-xs font-bold shrink-0">
+            <ShieldAlert className="size-3.5" />
+            Quản trị viên
+          </span>
+          <span className="inline-flex items-center gap-1.5 h-7 px-3 rounded-full bg-[#14140f] text-white text-xs font-bold shrink-0">
+            {ctx.users.length} người dùng
+          </span>
+          <span className="inline-flex items-center gap-1.5 h-7 px-3 rounded-full bg-[#144fcc] text-white text-xs font-bold shrink-0">
+            {ctx.universities.length} trường
+          </span>
+        </div>
+      </motion.div>
+
+      <ScrollReveal>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 min-w-0">
+          {quickActions.map((action) => {
+            const accentMap: Record<string, { bg: string; fg: string }> = {
+              primary: { bg: "#14140f", fg: "#beff50" },
+              tertiary: { bg: "#ff8c5f", fg: "#14140f" },
+              secondary: { bg: "#144fcc", fg: "#beff50" },
+              error: { bg: "#dc2626", fg: "#ffffff" },
+            };
+            const a = accentMap[action.accent];
+            return (
+              <motion.button
+                key={action.id}
+                onClick={() => onNavigate(action.id)}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                whileHover={{ y: -3, scale: 1.02 }}
+                whileTap={{ scale: 0.96 }}
+                className="group relative overflow-hidden rounded-2xl p-4 elev-1 hover:elev-2 transition-shadow text-left min-w-0"
+                style={{ backgroundColor: a.bg, color: a.fg }}
+              >
+                <action.icon className="size-6 mb-3" />
+                <p className="text-sm font-bold leading-tight">{action.label}</p>
+              </motion.button>
+            );
+          })}
+        </div>
+      </ScrollReveal>
+
+      {statCards.length > 0 && (
+        <ScrollReveal delay={0.1}>
+          <Section title="Thống kê hệ thống">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 min-w-0">
+              {statCards.map((s, i) => (
+                <StatCard
+                  key={i}
+                  label={s.label}
+                  value={
+                    <Counter
+                      to={typeof s.value === "number" ? s.value : 0}
+                      format={(n) =>
+                        typeof s.value === "string"
+                          ? s.value
+                          : Math.round(n).toLocaleString("vi-VN")
+                      }
+                    />
+                  }
+                  icon={<TrendingUp className="size-5" />}
+                  hint={s.unit}
+                  accent={(s.tone as any) || "primary"}
+                />
+              ))}
+            </div>
+          </Section>
+        </ScrollReveal>
+      )}
+
+      {ctx.routeMetrics.length > 0 && (
+        <ScrollReveal delay={0.15}>
+          <Section title="Hiệu suất theo tuyến">
+            <ExpressiveCard variant="elevated" className="overflow-hidden min-w-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Tuyến</TableHead>
+                    <TableHead className="text-right">Số chuyến</TableHead>
+                    <TableHead className="text-right">Doanh thu</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {ctx.routeMetrics.slice(0, 10).map((r, i) => (
+                    <TableRow key={i}>
+                      <TableCell>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="size-3 rounded-full" style={{ backgroundColor: r.colorHex || "#14b8a6" }} />
+                          <span className="font-bold truncate">{r.routeName}</span>
+                          {r.routeCode && <Badge variant="outline" className="text-[10px]">{r.routeCode}</Badge>}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right font-bold tabular-nums">{r.trips}</TableCell>
+                      <TableCell className="text-right font-bold tabular-nums text-primary">{formatVND(r.revenue)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </ExpressiveCard>
+          </Section>
+        </ScrollReveal>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
+        <ScrollReveal delay={0.2}>
+          <Section title="Khiếu nại mới" actions={<button onClick={() => onNavigate("adm-complaints")} className="text-xs font-bold text-primary">Xem tất cả</button>}>
+            {ctx.complaints.length === 0 ? (
+              <EmptyState icon={<ShieldAlert className="size-7" />} title="Không có khiếu nại" />
+            ) : (
+              <div className="space-y-2">
+                {ctx.complaints.slice(0, 3).map((c: any) => (
+                  <ExpressiveCard key={c.id} variant="filled" className="p-3 min-w-0">
+                    <div className="flex items-start justify-between gap-2 min-w-0">
+                      <div className="min-w-0">
+                        <p className="font-bold text-sm truncate">{c.subject}</p>
+                        <p className="text-xs text-on-surface-variant line-clamp-2">{c.description}</p>
+                      </div>
+                      <M3StatusPill label={c.status} tone={c.status === "resolved" ? "success" : c.status === "rejected" ? "error" : "warning"} />
+                    </div>
+                  </ExpressiveCard>
+                ))}
+              </div>
+            )}
+          </Section>
+        </ScrollReveal>
+
+        <ScrollReveal delay={0.25}>
+          <Section title="Vi phạm mới" actions={<button onClick={() => onNavigate("adm-violations")} className="text-xs font-bold text-primary">Xem tất cả</button>}>
+            {ctx.violations.length === 0 ? (
+              <EmptyState icon={<AlertOctagon className="size-7" />} title="Không có vi phạm" />
+            ) : (
+              <div className="space-y-2">
+                {ctx.violations.slice(0, 3).map((v: any, i: number) => (
+                  <ExpressiveCard key={i} variant="filled" className="p-3 min-w-0">
+                    <div className="flex items-start justify-between gap-2 min-w-0">
+                      <div className="min-w-0">
+                        <p className="font-bold text-sm truncate">{v.reporterName || "—"}</p>
+                        <p className="text-xs text-on-surface-variant line-clamp-2">{v.content}</p>
+                      </div>
+                      <M3StatusPill label={v.status} tone={v.status === "RESOLVED" ? "success" : "warning"} />
+                    </div>
+                  </ExpressiveCard>
+                ))}
+              </div>
+            )}
+          </Section>
+        </ScrollReveal>
+      </div>
+    </PageTransition>
+  );
+}
+
+// =============================================================================
+// Screen 2: Universities
+// =============================================================================
+function UniversitiesScreen({ ctx }: { ctx: Ctx }) {
+  const [adding, setAdding] = useState(false);
+  return (
+    <PageTransition className="space-y-6 min-w-0">
+      <PageHeader
+        title="Trường đại học"
+        description={`${ctx.universities.length} trường trong hệ thống`}
+        icon={<School className="size-7" />}
+        actions={<ExpressiveButton variant="filled" onClick={() => setAdding(true)}><Plus className="size-4" /> Thêm trường</ExpressiveButton>}
+      />
+      {ctx.universities.length === 0 ? (
+        <EmptyState icon={<School className="size-7" />} title="Chưa có trường" />
+      ) : (
+        <StaggerGroup className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 min-w-0">
+          {ctx.universities.map((u) => (
+            <StaggerItem key={u.universityId}>
+              <ExpressiveCard variant="elevated" className="p-5 h-full min-w-0">
+                <div className="flex items-start gap-3 min-w-0">
+                  <div className="size-14 shrink-0 rounded-2xl bg-[#beff50] text-[#14140f] flex items-center justify-center text-xl font-black">
+                    {(u.shortName || u.name || "U").slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold truncate">{u.name}</p>
+                    {u.shortName && <p className="text-xs text-on-surface-variant">{u.shortName}</p>}
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      <Badge variant="outline" className="text-[10px]">{u.code}</Badge>
+                      <Badge variant="secondary" className="text-[10px]">{u.campusCount} cơ sở</Badge>
+                      <Badge variant="secondary" className="text-[10px]">{u.rosterCount} SV</Badge>
+                    </div>
+                  </div>
+                </div>
+                {u.contactEmail && <p className="text-xs text-on-surface-variant mt-3 truncate">{u.contactEmail}</p>}
+              </ExpressiveCard>
+            </StaggerItem>
+          ))}
+        </StaggerGroup>
+      )}
+      <Dialog open={adding} onOpenChange={setAdding}>
+        <UniversityAddDialog onClose={() => setAdding(false)} onAdded={() => { setAdding(false); ctx.reload(); }} />
+      </Dialog>
+    </PageTransition>
+  );
+}
+
+function UniversityAddDialog({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
+  const [code, setCode] = useState("");
+  const [name, setName] = useState("");
+  const [shortName, setShortName] = useState("");
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [role, setRole] = useState<"DRIVER" | "CONDUCTOR" | "DISPATCHER" | "ADMIN">("DRIVER");
-  const [employeeCode, setEmployeeCode] = useState("");
-  const [licenseNumber, setLicenseNumber] = useState("");
-  const [phoneNumber, setPhoneNumber] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const submit = async () => {
+  const save = async () => {
+    if (!code.trim() || !name.trim()) {
+      toast.error("Vui lòng nhập mã và tên trường");
+      return;
+    }
     setSaving(true);
     try {
-      await adminApi.createStaff({ fullName, email, password, role, employeeCode, licenseNumber, phoneNumber });
-      toast.success("Đã tạo tài khoản staff");
-      setFullName("");
-      setEmail("");
-      setPassword("");
-      onCreated();
-    } catch (error) {
-      toast.error(getErrorMessage(error, "Không thể tạo tài khoản"));
+      await adminApi.createUniversity({
+        code: code.trim(),
+        name: name.trim(),
+        shortName: shortName.trim() || undefined,
+        contactEmail: email.trim() || undefined,
+      });
+      toast.success("Đã thêm trường");
+      onAdded();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Không thể thêm");
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <ExpressiveCard variant="elevated" className="mb-5 grid gap-4 p-5 md:grid-cols-2">
-      <Field label="Họ tên"><Input value={fullName} onChange={(e) => setFullName(e.target.value)} /></Field>
-      <Field label="Email"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
-      <Field label="Mật khẩu"><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></Field>
-      <Field label="Vai trò">
-        <select value={role} onChange={(e) => setRole(e.target.value as typeof role)} className="h-12 w-full rounded-xl border border-outline-variant bg-surface-container-lowest px-3 text-sm">
-          <option value="DRIVER">Driver</option>
-          <option value="CONDUCTOR">Conductor</option>
-          <option value="DISPATCHER">Dispatcher</option>
-          <option value="ADMIN">Admin</option>
-        </select>
-      </Field>
-      <Field label="Mã nhân viên"><Input value={employeeCode} onChange={(e) => setEmployeeCode(e.target.value)} /></Field>
-      <Field label="Bằng lái"><Input value={licenseNumber} onChange={(e) => setLicenseNumber(e.target.value)} /></Field>
-      <Field label="Số điện thoại"><Input value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} /></Field>
-      <div className="flex items-end">
-        <ExpressiveButton onClick={submit} disabled={saving || !fullName || !email || !password}>{saving ? "Đang tạo..." : "Tạo tài khoản"}</ExpressiveButton>
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle>Thêm trường đại học</DialogTitle>
+      </DialogHeader>
+      <div className="space-y-3 py-2">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label className="text-xs font-bold">Mã trường</Label>
+            <Input className="mt-1.5" value={code} onChange={(e) => setCode(e.target.value)} placeholder="VD: DTU" />
+          </div>
+          <div>
+            <Label className="text-xs font-bold">Tên ngắn</Label>
+            <Input className="mt-1.5" value={shortName} onChange={(e) => setShortName(e.target.value)} placeholder="VD: Duy Tân" />
+          </div>
+        </div>
+        <div>
+          <Label className="text-xs font-bold">Tên đầy đủ</Label>
+          <Input className="mt-1.5" value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Trường ĐH Duy Tân" />
+        </div>
+        <div>
+          <Label className="text-xs font-bold">Email liên hệ</Label>
+          <Input className="mt-1.5" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </div>
       </div>
-    </ExpressiveCard>
+      <DialogFooter>
+        <ExpressiveButton variant="text" onClick={onClose} disabled={saving}>Hủy</ExpressiveButton>
+        <ExpressiveButton variant="filled" onClick={save} disabled={saving}>
+          {saving ? <RefreshCw className="size-4 animate-spin" /> : <Plus className="size-4" />}
+          Thêm
+        </ExpressiveButton>
+      </DialogFooter>
+    </DialogContent>
   );
 }
 
-function VerificationsScreen() {
-  const loader = useCallback(() => adminApi.verifications(), []);
-  const resource = useApiResource<VerificationView[]>(loader);
+// =============================================================================
+// Screen 3: University Admins
+// =============================================================================
+function UniAdminsScreen({ ctx }: { ctx: Ctx }) {
+  return (
+    <PageTransition className="space-y-6 min-w-0">
+      <PageHeader
+        title="Admin trường ĐH"
+        description={`${ctx.uniAdmins.length} quản trị viên trường`}
+        icon={<UserCog className="size-7" />}
+      />
+      {ctx.uniAdmins.length === 0 ? (
+        <EmptyState icon={<UserCog className="size-7" />} title="Chưa có admin trường" />
+      ) : (
+        <StaggerGroup className="space-y-3 min-w-0">
+          {ctx.uniAdmins.map((u) => (
+            <StaggerItem key={u.universityAdminId}>
+              <ExpressiveCard variant="elevated" className="p-4 min-w-0">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="size-12 shrink-0 rounded-2xl bg-[#144fcc] text-[#beff50] flex items-center justify-center font-black">
+                    {(u.fullName || "").slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold truncate">{u.fullName}</p>
+                    <p className="text-xs text-on-surface-variant truncate">{u.email}</p>
+                    <p className="text-xs text-on-surface-variant truncate">{u.universityName}</p>
+                  </div>
+                  <M3StatusPill label={u.status} tone={u.status === "ACTIVE" ? "success" : "neutral"} />
+                </div>
+              </ExpressiveCard>
+            </StaggerItem>
+          ))}
+        </StaggerGroup>
+      )}
+    </PageTransition>
+  );
+}
 
-  const review = async (item: VerificationView, action: "approve" | "reject" | "request") => {
+// =============================================================================
+// Screen 4: Route-University linking
+// =============================================================================
+function RouteUniScreen({ ctx }: { ctx: Ctx }) {
+  return (
+    <PageTransition className="space-y-6 min-w-0">
+      <PageHeader
+        title="Tuyến ↔ Trường"
+        description={`${ctx.routeUnis.length} liên kết tuyến-trường`}
+        icon={<RouteIcon className="size-7" />}
+      />
+      {ctx.routeUnis.length === 0 ? (
+        <EmptyState icon={<RouteIcon className="size-7" />} title="Chưa có liên kết" />
+      ) : (
+        <ExpressiveCard variant="elevated" className="overflow-hidden min-w-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Tuyến</TableHead>
+                <TableHead>Trường</TableHead>
+                <TableHead>Cơ sở</TableHead>
+                <TableHead>Hiệu lực</TableHead>
+                <TableHead>Trạng thái</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {ctx.routeUnis.map((ru) => (
+                <TableRow key={ru.routeUniversityId}>
+                  <TableCell className="font-bold truncate">{ru.routeName}</TableCell>
+                  <TableCell className="truncate">{ru.universityName}</TableCell>
+                  <TableCell className="truncate">{ru.campusName || "—"}</TableCell>
+                  <TableCell className="text-xs">{formatDate(ru.activeFrom)} → {formatDate(ru.activeUntil)}</TableCell>
+                  <TableCell><M3StatusPill label={ru.status} tone={ru.status === "ACTIVE" ? "success" : "neutral"} /></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </ExpressiveCard>
+      )}
+    </PageTransition>
+  );
+}
+
+// =============================================================================
+// Screen 5: Audit logs
+// =============================================================================
+function AuditScreen({ ctx }: { ctx: Ctx }) {
+  return (
+    <PageTransition className="space-y-6 min-w-0">
+      <PageHeader
+        title="Nhật ký hệ thống"
+        description={`${ctx.audits.length} bản ghi`}
+        icon={<ScrollText className="size-7" />}
+      />
+      {ctx.audits.length === 0 ? (
+        <EmptyState icon={<ScrollText className="size-7" />} title="Chưa có log" />
+      ) : (
+        <ExpressiveCard variant="elevated" className="overflow-hidden min-w-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Thời gian</TableHead>
+                <TableHead>Người thực hiện</TableHead>
+                <TableHead>Action</TableHead>
+                <TableHead>Kết quả</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {ctx.audits.slice(0, 100).map((a) => (
+                <TableRow key={a.auditLogId}>
+                  <TableCell className="text-xs whitespace-nowrap">{formatDateTime(a.performedAt)}</TableCell>
+                  <TableCell className="truncate">{a.performerName || "—"}</TableCell>
+                  <TableCell className="font-mono text-xs truncate">{a.action}</TableCell>
+                  <TableCell>
+                    <M3StatusPill label={a.result || "SUCCESS"} tone={a.result === "FAILURE" ? "error" : "success"} />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </ExpressiveCard>
+      )}
+    </PageTransition>
+  );
+}
+
+
+// =============================================================================
+// Screen 6: Users
+// =============================================================================
+function UsersScreen({ ctx }: { ctx: Ctx }) {
+  const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [lockTarget, setLockTarget] = useState<AdminUserView | null>(null);
+  const [lockReason, setLockReason] = useState("");
+  const [working, setWorking] = useState(false);
+  const [adding, setAdding] = useState(false);
+
+  const filtered = ctx.users.filter((u) => {
+    if (roleFilter !== "all" && u.role !== roleFilter) return false;
+    if (search && !`${u.fullName} ${u.email}`.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
+  const toggleLock = async (u: AdminUserView) => {
+    setWorking(true);
     try {
-      if (action === "approve") await adminApi.approveVerification(item.verificationId, "Approved from admin UI");
-      if (action === "reject") await adminApi.rejectVerification(item.verificationId, "Rejected from admin UI");
-      if (action === "request") await adminApi.requestResubmission(item.verificationId, "Please resubmit student card");
-      toast.success("Đã cập nhật xác minh");
-      resource.reload();
-    } catch (error) {
-      toast.error(getErrorMessage(error, "Không thể cập nhật xác minh"));
+      const newStatus = u.status === "ACTIVE" ? "LOCKED" : "ACTIVE";
+      await adminApi.updateUserStatus(u.userId, { status: newStatus as any, lockReason: newStatus === "LOCKED" ? lockReason : undefined });
+      toast.success(newStatus === "LOCKED" ? "Đã khóa tài khoản" : "Đã mở khóa");
+      setLockTarget(null);
+      setLockReason("");
+      ctx.reload();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Không thể cập nhật");
+    } finally {
+      setWorking(false);
     }
   };
 
   return (
-    <div>
-      <PageHeader title="Xác minh sinh viên" description="Duyệt hồ sơ xác minh qua admin student-verifications API." icon={<GraduationCap className="size-7" />} />
-      <AsyncBlock resource={resource}>
-        {(items) => (
-          <DataList emptyTitle="Chưa có hồ sơ xác minh" emptyDescription="Backend chưa trả về hồ sơ xác minh nào.">
-            {items.map((item) => (
-              <ExpressiveCard key={item.verificationId} variant="elevated" className="p-4">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                  <div>
-                    <h3 className="font-bold text-on-surface">{item.fullName}</h3>
-                    <p className="text-sm text-on-surface-variant">{item.email} · {item.university || "Chưa có trường"} · {item.studentCode || "Chưa có MSSV"}</p>
-                    <p className="mt-1 text-xs text-on-surface-variant">Nộp: {formatDateTime(item.submittedAt)}</p>
-                    {item.rejectionReason && <p className="mt-2 rounded-xl bg-surface-container-high p-3 text-sm text-on-surface">{item.rejectionReason}</p>}
+    <PageTransition className="space-y-6 min-w-0">
+      <PageHeader
+        title="Người dùng"
+        description={`${ctx.users.length} người dùng`}
+        icon={<Users className="size-7" />}
+        actions={<ExpressiveButton variant="filled" onClick={() => setAdding(true)}><Plus className="size-4" /> Thêm nhân viên</ExpressiveButton>}
+      />
+      <div className="flex flex-wrap gap-2 min-w-0">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant" />
+          <Input className="pl-9" placeholder="Tìm theo tên hoặc email..." value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
+        <Select value={roleFilter} onValueChange={setRoleFilter}>
+          <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Tất cả vai trò</SelectItem>
+            <SelectItem value="STUDENT">Sinh viên</SelectItem>
+            <SelectItem value="DRIVER">Tài xế</SelectItem>
+            <SelectItem value="CONDUCTOR">Phụ xe</SelectItem>
+            <SelectItem value="DISPATCHER">Điều phối</SelectItem>
+            <SelectItem value="ADMIN">Quản trị</SelectItem>
+            <SelectItem value="UNIVERSITY_ADMIN">Admin trường</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      {filtered.length === 0 ? (
+        <EmptyState icon={<Users className="size-7" />} title="Không có người dùng" />
+      ) : (
+        <StaggerGroup className="space-y-2 min-w-0">
+          {filtered.slice(0, 100).map((u) => (
+            <StaggerItem key={u.userId}>
+              <ExpressiveCard variant="elevated" className="p-4 min-w-0">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="size-10 shrink-0 rounded-xl bg-surface-container-high flex items-center justify-center font-bold text-sm">
+                    {(u.fullName || "").slice(0, 2).toUpperCase()}
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <StatusPill status={item.status} />
-                    <ExpressiveButton size="sm" onClick={() => review(item, "approve")}>Duyệt</ExpressiveButton>
-                    <ExpressiveButton size="sm" variant="tonal" onClick={() => review(item, "request")}>Yêu cầu nộp lại</ExpressiveButton>
-                    <ExpressiveButton size="sm" variant="error" onClick={() => review(item, "reject")}>Từ chối</ExpressiveButton>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold truncate">{u.fullName}</p>
+                    <p className="text-xs text-on-surface-variant truncate">{u.email}</p>
                   </div>
+                  <Badge variant="outline" className="text-[10px]">{u.role}</Badge>
+                  <M3StatusPill label={u.status} tone={u.status === "ACTIVE" ? "success" : "error"} />
+                  <ExpressiveButton
+                    variant="text"
+                    size="icon-sm"
+                    onClick={() => setLockTarget(u)}
+                  >
+                    {u.status === "ACTIVE" ? <Lock className="size-4" /> : <Unlock className="size-4" />}
+                  </ExpressiveButton>
                 </div>
               </ExpressiveCard>
-            ))}
-          </DataList>
-        )}
-      </AsyncBlock>
-    </div>
+            </StaggerItem>
+          ))}
+        </StaggerGroup>
+      )}
+
+      <AlertDialog open={!!lockTarget} onOpenChange={(o) => !o && setLockTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{lockTarget?.status === "ACTIVE" ? "Khóa tài khoản?" : "Mở khóa tài khoản?"}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {lockTarget?.status === "ACTIVE"
+                ? `Người dùng ${lockTarget?.fullName} sẽ không thể đăng nhập.`
+                : `Người dùng ${lockTarget?.fullName} sẽ có thể đăng nhập lại.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {lockTarget?.status === "ACTIVE" && (
+            <div>
+              <Label className="text-xs">Lý do khóa</Label>
+              <Textarea className="mt-1.5" value={lockReason} onChange={(e) => setLockReason(e.target.value)} rows={2} />
+            </div>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={working}>Hủy</AlertDialogCancel>
+            <AlertDialogAction onClick={() => lockTarget && toggleLock(lockTarget)} disabled={working}>
+              {working ? <RefreshCw className="size-4 animate-spin" /> : null}
+              Xác nhận
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog open={adding} onOpenChange={setAdding}>
+        <CreateStaffDialog onClose={() => setAdding(false)} onCreated={() => { setAdding(false); ctx.reload(); }} />
+      </Dialog>
+    </PageTransition>
   );
 }
 
-function FeedbackAdminScreen() {
-  const loader = useCallback(() => feedbackApi.all(), []);
-  const resource = useApiResource<FeedbackView[]>(loader);
+function CreateStaffDialog({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState<"DRIVER" | "CONDUCTOR" | "DISPATCHER" | "ADMIN">("DRIVER");
+  const [phone, setPhone] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  const resolve = async (item: FeedbackView) => {
+  const save = async () => {
+    if (!name.trim() || !email.trim() || !password.trim()) {
+      toast.error("Vui lòng nhập đầy đủ họ tên, email, mật khẩu");
+      return;
+    }
+    setSaving(true);
     try {
-      await feedbackApi.resolve(item.feedbackId, "Đã xử lý bởi quản trị viên.");
-      toast.success("Đã xử lý phản hồi");
-      resource.reload();
-    } catch (error) {
-      toast.error(getErrorMessage(error, "Không thể xử lý phản hồi"));
+      await adminApi.createStaff({
+        fullName: name.trim(),
+        email: email.trim(),
+        password,
+        role,
+        phoneNumber: phone.trim() || undefined,
+      });
+      toast.success("Đã tạo tài khoản nhân viên");
+      onCreated();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Không thể tạo");
+    } finally {
+      setSaving(false);
     }
   };
 
   return (
-    <div>
-      <PageHeader title="Xử lý khiếu nại" description="Phản hồi/khiếu nại thật từ backend feedback API." icon={<ShieldAlert className="size-7" />} />
-      <AsyncBlock resource={resource}>
-        {(items) => (
-          <DataList emptyTitle="Chưa có phản hồi" emptyDescription="Backend chưa trả về phản hồi nào.">
-            {items.map((item) => (
-              <ExpressiveCard key={item.feedbackId} variant="elevated" className="p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <h3 className="font-bold text-on-surface">{item.studentName || item.studentCode || "Sinh viên"}</h3>
-                    <p className="text-sm text-on-surface-variant">{item.content}</p>
-                    <p className="mt-1 text-xs text-on-surface-variant">{item.routeName || "Không gắn tuyến"} · {formatDateTime(item.createdAt)}</p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <StatusPill status={item.status} />
-                    {(item.status || "").toUpperCase() !== "RESOLVED" && <ExpressiveButton size="sm" onClick={() => resolve(item)}>Xử lý</ExpressiveButton>}
-                  </div>
-                </div>
-              </ExpressiveCard>
-            ))}
-          </DataList>
-        )}
-      </AsyncBlock>
-    </div>
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle>Tạo tài khoản nhân viên</DialogTitle>
+        <DialogDescription>Tài khoản cho tài xế, phụ xe, điều phối, hoặc quản trị.</DialogDescription>
+      </DialogHeader>
+      <div className="space-y-3 py-2">
+        <div>
+          <Label className="text-xs font-bold">Họ tên</Label>
+          <Input className="mt-1.5" value={name} onChange={(e) => setName(e.target.value)} />
+        </div>
+        <div>
+          <Label className="text-xs font-bold">Email</Label>
+          <Input className="mt-1.5" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </div>
+        <div>
+          <Label className="text-xs font-bold">Mật khẩu tạm</Label>
+          <Input className="mt-1.5" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label className="text-xs font-bold">Vai trò</Label>
+            <Select value={role} onValueChange={(v: any) => setRole(v)}>
+              <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="DRIVER">Tài xế</SelectItem>
+                <SelectItem value="CONDUCTOR">Phụ xe</SelectItem>
+                <SelectItem value="DISPATCHER">Điều phối</SelectItem>
+                <SelectItem value="ADMIN">Quản trị</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs font-bold">Điện thoại</Label>
+            <Input className="mt-1.5" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          </div>
+        </div>
+      </div>
+      <DialogFooter>
+        <ExpressiveButton variant="text" onClick={onClose} disabled={saving}>Hủy</ExpressiveButton>
+        <ExpressiveButton variant="filled" onClick={save} disabled={saving}>
+          {saving ? <RefreshCw className="size-4 animate-spin" /> : <Plus className="size-4" />}
+          Tạo
+        </ExpressiveButton>
+      </DialogFooter>
+    </DialogContent>
   );
 }
 
-function NotifyScreen() {
+// =============================================================================
+// Screen 7: Complaints
+// =============================================================================
+function ComplaintsScreen({ ctx }: { ctx: Ctx }) {
+  return (
+    <PageTransition className="space-y-6 min-w-0">
+      <PageHeader
+        title="Khiếu nại"
+        description={`${ctx.complaints.length} khiếu nại`}
+        icon={<ShieldAlert className="size-7" />}
+      />
+      {ctx.complaints.length === 0 ? (
+        <EmptyState icon={<ShieldAlert className="size-7" />} title="Không có khiếu nại" />
+      ) : (
+        <StaggerGroup className="space-y-3 min-w-0">
+          {ctx.complaints.map((c: any) => (
+            <StaggerItem key={c.id}>
+              <ExpressiveCard variant="elevated" className="p-4 min-w-0">
+                <div className="flex items-start justify-between gap-2 mb-2 min-w-0">
+                  <p className="font-bold truncate">{c.subject}</p>
+                  <M3StatusPill label={c.status} tone={c.status === "resolved" ? "success" : c.status === "rejected" ? "error" : "warning"} />
+                </div>
+                <p className="text-xs text-on-surface-variant mb-2">{formatDate(c.createdAt)}</p>
+                <p className="text-sm line-clamp-3">{c.description}</p>
+              </ExpressiveCard>
+            </StaggerItem>
+          ))}
+        </StaggerGroup>
+      )}
+    </PageTransition>
+  );
+}
+
+// =============================================================================
+// Screen 8: Violations
+// =============================================================================
+function ViolationsScreen({ ctx }: { ctx: Ctx }) {
+  return (
+    <PageTransition className="space-y-6 min-w-0">
+      <PageHeader
+        title="Vi phạm"
+        description={`${ctx.violations.length} báo cáo vi phạm`}
+        icon={<AlertOctagon className="size-7" />}
+      />
+      {ctx.violations.length === 0 ? (
+        <EmptyState icon={<AlertOctagon className="size-7" />} title="Không có vi phạm" />
+      ) : (
+        <StaggerGroup className="space-y-3 min-w-0">
+          {ctx.violations.map((v: any, i: number) => (
+            <StaggerItem key={i}>
+              <ExpressiveCard variant="elevated" className="p-4 min-w-0">
+                <div className="flex items-start justify-between gap-2 mb-2 min-w-0">
+                  <p className="font-bold truncate">{v.reporterName || "—"}</p>
+                  <M3StatusPill label={v.status} tone={v.status === "RESOLVED" ? "success" : "warning"} />
+                </div>
+                <p className="text-xs text-on-surface-variant mb-2">{formatDate(v.submittedAt)}</p>
+                <p className="text-sm line-clamp-3">{v.content}</p>
+              </ExpressiveCard>
+            </StaggerItem>
+          ))}
+        </StaggerGroup>
+      )}
+    </PageTransition>
+  );
+}
+
+// =============================================================================
+// Screen 9: Fares
+// =============================================================================
+function FareScreen({ ctx }: { ctx: Ctx }) {
+  const [editing, setEditing] = useState<any | null>(null);
+  const [amount, setAmount] = useState("");
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    if (!editing) return;
+    setSaving(true);
+    try {
+      await experienceApi.updateFare(editing.fareId, {
+        amount: Number(amount) || 0,
+        notes: notes.trim() || undefined,
+      });
+      toast.success("Đã cập nhật giá vé");
+      setEditing(null);
+      setAmount("");
+      setNotes("");
+      ctx.reload();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Không thể lưu");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <PageTransition className="space-y-6 min-w-0">
+      <PageHeader
+        title="Giá vé"
+        description={`${ctx.fares.length} bảng giá`}
+        icon={<Tag className="size-7" />}
+      />
+      {ctx.fares.length === 0 ? (
+        <EmptyState icon={<Tag className="size-7" />} title="Chưa có giá vé" />
+      ) : (
+        <StaggerGroup className="space-y-2 min-w-0">
+          {ctx.fares.map((f) => (
+            <StaggerItem key={f.fareId}>
+              <ExpressiveCard variant="elevated" className="p-4 min-w-0">
+                <div className="flex items-start justify-between gap-3 min-w-0">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold truncate">{f.routeName}</p>
+                    <p className="text-xs text-on-surface-variant">{f.fareType}</p>
+                    {f.notes && <p className="text-xs mt-1 line-clamp-1">{f.notes}</p>}
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="font-black text-primary text-lg">{formatVND(f.amount)}</p>
+                    <ExpressiveButton variant="text" size="sm" onClick={() => { setEditing(f); setAmount(String(f.amount)); setNotes(f.notes || ""); }}>
+                      <Edit className="size-3" /> Sửa
+                    </ExpressiveButton>
+                  </div>
+                </div>
+              </ExpressiveCard>
+            </StaggerItem>
+          ))}
+        </StaggerGroup>
+      )}
+
+      <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Sửa giá vé</DialogTitle>
+            <DialogDescription>{editing?.routeName} • {editing?.fareType}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <Label className="text-xs font-bold">Số tiền (VND)</Label>
+              <Input className="mt-1.5" type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs font-bold">Ghi chú</Label>
+              <Textarea className="mt-1.5" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
+            </div>
+          </div>
+          <DialogFooter>
+            <ExpressiveButton variant="text" onClick={() => setEditing(null)} disabled={saving}>Hủy</ExpressiveButton>
+            <ExpressiveButton variant="filled" onClick={save} disabled={saving}>
+              {saving ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
+              Lưu
+            </ExpressiveButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </PageTransition>
+  );
+}
+
+// =============================================================================
+// Screen 10: Notify
+// =============================================================================
+function NotifyScreen({ ctx }: { ctx: Ctx }) {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
-  const [target, setTarget] = useState("ALL");
   const [sending, setSending] = useState(false);
 
   const send = async () => {
+    if (!title.trim() || !content.trim()) {
+      toast.error("Vui lòng nhập tiêu đề và nội dung");
+      return;
+    }
     setSending(true);
     try {
-      await notificationApi.create({ title, content, target });
+      await notificationApi.create({ title: title.trim(), content: content.trim() });
+      toast.success("Đã gửi thông báo");
       setTitle("");
       setContent("");
-      toast.success("Đã gửi thông báo");
-    } catch (error) {
-      toast.error(getErrorMessage(error, "Không thể gửi thông báo"));
+      ctx.reload();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Không thể gửi");
     } finally {
       setSending(false);
     }
   };
 
   return (
-    <div>
-      <PageHeader title="Gửi thông báo" description="Tạo thông báo qua backend notifications API." icon={<Megaphone className="size-7" />} />
-      <ExpressiveCard variant="elevated" className="max-w-2xl space-y-4 p-5">
-        <Field label="Tiêu đề"><Input value={title} onChange={(e) => setTitle(e.target.value)} /></Field>
-        <Field label="Đối tượng"><Input value={target} onChange={(e) => setTarget(e.target.value)} /></Field>
-        <Field label="Nội dung"><Textarea value={content} onChange={(e) => setContent(e.target.value)} /></Field>
-        <ExpressiveButton onClick={send} disabled={sending || !title || !content}>{sending ? "Đang gửi..." : "Gửi thông báo"}</ExpressiveButton>
-      </ExpressiveCard>
-    </div>
+    <PageTransition className="space-y-6 min-w-0">
+      <PageHeader
+        title="Gửi thông báo"
+        description="Gửi thông báo toàn hệ thống."
+        icon={<Megaphone className="size-7" />}
+      />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
+        <ScrollReveal>
+          <ExpressiveCard variant="elevated" className="p-5 min-w-0">
+            <h3 className="text-base font-bold mb-4">Soạn thông báo</h3>
+            <div className="space-y-3">
+              <div>
+                <Label className="text-xs font-bold">Tiêu đề</Label>
+                <Input className="mt-1.5" value={title} onChange={(e) => setTitle(e.target.value)} />
+              </div>
+              <div>
+                <Label className="text-xs font-bold">Nội dung</Label>
+                <Textarea className="mt-1.5" value={content} onChange={(e) => setContent(e.target.value)} rows={5} />
+              </div>
+              <ExpressiveButton variant="filled" className="w-full" onClick={send} disabled={sending}>
+                {sending ? <RefreshCw className="size-4 animate-spin" /> : <Megaphone className="size-4" />}
+                Gửi
+              </ExpressiveButton>
+            </div>
+          </ExpressiveCard>
+        </ScrollReveal>
+        <ScrollReveal delay={0.1}>
+          <Section title={`Gần đây (${ctx.notifications.length})`}>
+            {ctx.notifications.length === 0 ? (
+              <EmptyState icon={<Megaphone className="size-7" />} title="Chưa có thông báo" />
+            ) : (
+              <div className="space-y-2">
+                {ctx.notifications.slice(0, 6).map((n: any) => (
+                  <ExpressiveCard key={n.id} variant="filled" className="p-3 min-w-0">
+                    <p className="font-bold text-sm truncate">{n.title}</p>
+                    <p className="text-xs text-on-surface-variant line-clamp-2">{n.body}</p>
+                    <p className="text-[10px] text-on-surface-variant mt-1">{formatDateTime(n.createdAt)}</p>
+                  </ExpressiveCard>
+                ))}
+              </div>
+            )}
+          </Section>
+        </ScrollReveal>
+      </div>
+    </PageTransition>
   );
 }
 
-function UniversitiesScreen() {
-  const resource = useApiResource<UniversityView[]>(useCallback(() => adminApi.universities(), []));
-  const [code, setCode] = useState("");
-  const [name, setName] = useState("");
-  const [shortName, setShortName] = useState("");
-  const [contactEmail, setContactEmail] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  const submit = async () => {
-    setSaving(true);
-    try {
-      await adminApi.createUniversity({ code, name, shortName, contactEmail });
-      setCode("");
-      setName("");
-      setShortName("");
-      setContactEmail("");
-      toast.success("Đã tạo trường đối tác");
-      resource.reload();
-    } catch (error) {
-      toast.error(getErrorMessage(error, "Không thể tạo trường"));
-    } finally {
-      setSaving(false);
-    }
-  };
-
+// =============================================================================
+function FallbackScreen({ activeId }: { activeId: string }) {
   return (
-    <div>
-      <PageHeader title="Trường đại học đối tác" description="Quản lý universities thật cho domain, route và trợ giá." icon={<School className="size-7" />} />
-      <ExpressiveCard variant="elevated" className="mb-5 grid gap-4 p-5 md:grid-cols-4">
-        <Field label="Mã trường"><Input value={code} onChange={(e) => setCode(e.target.value)} /></Field>
-        <Field label="Tên trường"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
-        <Field label="Tên ngắn"><Input value={shortName} onChange={(e) => setShortName(e.target.value)} /></Field>
-        <Field label="Email liên hệ"><Input value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} /></Field>
-        <div className="md:col-span-4"><ExpressiveButton onClick={submit} disabled={saving || !code || !name}>{saving ? "Đang tạo..." : "Tạo trường"}</ExpressiveButton></div>
-      </ExpressiveCard>
-      <AsyncBlock resource={resource}>
-        {(items) => (
-          <DataList emptyTitle="Chưa có trường đối tác" emptyDescription="Tạo trường để gắn domain, roster và trợ giá.">
-            {items.map((item) => (
-              <ExpressiveCard key={item.universityId} variant="elevated" className="p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <h3 className="font-bold text-on-surface">{item.name}</h3>
-                    <p className="text-sm text-on-surface-variant">{item.code} · {item.contactEmail || "Chưa có email"}</p>
-                    <p className="mt-1 text-xs text-on-surface-variant">{item.campusCount} campus · {item.domainCount} domain · {item.rosterCount} roster</p>
-                  </div>
-                  <StatusPill status={item.status} />
-                </div>
-              </ExpressiveCard>
-            ))}
-          </DataList>
-        )}
-      </AsyncBlock>
-    </div>
+    <EmptyState
+      icon={<Info className="size-7" />}
+      title="Màn chưa hỗ trợ"
+      description={`Mãn "${activeId}" chưa được triển khai.`}
+    />
   );
-}
-
-function UniversityAdminsScreen() {
-  const resource = useApiResource<UniversityAdminView[]>(useCallback(() => adminApi.universityAdmins(), []));
-  const universities = useApiResource<UniversityView[]>(useCallback(() => adminApi.universities(), []));
-  const [universityId, setUniversityId] = useState("");
-  const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [title, setTitle] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  const submit = async () => {
-    setSaving(true);
-    try {
-      await adminApi.createUniversityAdmin({ universityId: Number(universityId), fullName, email, password, title });
-      setFullName("");
-      setEmail("");
-      setPassword("");
-      setTitle("");
-      toast.success("Đã tạo admin trường");
-      resource.reload();
-    } catch (error) {
-      toast.error(getErrorMessage(error, "Không thể tạo admin trường"));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div>
-      <PageHeader title="Tài khoản Admin trường" description="Tạo user role UNIVERSITY_ADMIN và scope vào một trường." icon={<GraduationCap className="size-7" />} />
-      <ExpressiveCard variant="elevated" className="mb-5 grid gap-4 p-5 md:grid-cols-3">
-        <Field label="Trường">
-          <select value={universityId} onChange={(e) => setUniversityId(e.target.value)} className="h-12 w-full rounded-xl border border-outline-variant bg-surface-container-lowest px-3 text-sm">
-            <option value="">Chọn trường</option>
-            {(universities.data || []).map((item) => <option key={item.universityId} value={item.universityId}>{item.name}</option>)}
-          </select>
-        </Field>
-        <Field label="Họ tên"><Input value={fullName} onChange={(e) => setFullName(e.target.value)} /></Field>
-        <Field label="Email"><Input value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
-        <Field label="Mật khẩu"><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></Field>
-        <Field label="Chức danh"><Input value={title} onChange={(e) => setTitle(e.target.value)} /></Field>
-        <div className="flex items-end"><ExpressiveButton onClick={submit} disabled={saving || !universityId || !fullName || !email || !password}>{saving ? "Đang tạo..." : "Tạo admin trường"}</ExpressiveButton></div>
-      </ExpressiveCard>
-      <AsyncBlock resource={resource}>
-        {(items) => (
-          <DataList emptyTitle="Chưa có admin trường" emptyDescription="Tạo tài khoản UNIVERSITY_ADMIN để trường tự quản lý roster.">
-            {items.map((item) => (
-              <ExpressiveCard key={item.universityAdminId} variant="elevated" className="p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <h3 className="font-bold text-on-surface">{item.fullName}</h3>
-                    <p className="text-sm text-on-surface-variant">{item.email} · {item.universityName}</p>
-                    <p className="mt-1 text-xs text-on-surface-variant">{item.title || "University Admin"} · {formatDateTime(item.assignedAt)}</p>
-                  </div>
-                  <StatusPill status={item.status} />
-                </div>
-              </ExpressiveCard>
-            ))}
-          </DataList>
-        )}
-      </AsyncBlock>
-    </div>
-  );
-}
-
-function RouteUniversitiesScreen() {
-  const resource = useApiResource<RouteUniversityView[]>(useCallback(() => adminApi.routeUniversities(), []));
-  const universities = useApiResource<UniversityView[]>(useCallback(() => adminApi.universities(), []));
-  const [routeId, setRouteId] = useState("");
-  const [universityId, setUniversityId] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  const submit = async () => {
-    setSaving(true);
-    try {
-      await adminApi.createRouteUniversity({ routeId: Number(routeId), universityId: Number(universityId) });
-      setRouteId("");
-      toast.success("Đã gán tuyến cho trường");
-      resource.reload();
-    } catch (error) {
-      toast.error(getErrorMessage(error, "Không thể gán tuyến"));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div>
-      <PageHeader title="Gán tuyến cho trường" description="Liên kết route_universities để lọc route và tính trợ giá." icon={<School className="size-7" />} />
-      <ExpressiveCard variant="elevated" className="mb-5 grid gap-4 p-5 md:grid-cols-[1fr_1fr_auto] md:items-end">
-        <Field label="Trường">
-          <select value={universityId} onChange={(e) => setUniversityId(e.target.value)} className="h-12 w-full rounded-xl border border-outline-variant bg-surface-container-lowest px-3 text-sm">
-            <option value="">Chọn trường</option>
-            {(universities.data || []).map((item) => <option key={item.universityId} value={item.universityId}>{item.name}</option>)}
-          </select>
-        </Field>
-        <Field label="Route ID"><Input type="number" value={routeId} onChange={(e) => setRouteId(e.target.value)} /></Field>
-        <ExpressiveButton onClick={submit} disabled={saving || !routeId || !universityId}>{saving ? "Đang gán..." : "Gán tuyến"}</ExpressiveButton>
-      </ExpressiveCard>
-      <AsyncBlock resource={resource}>
-        {(items) => (
-          <DataList emptyTitle="Chưa có route-university" emptyDescription="Gán tuyến để sinh viên trường đó nhìn thấy route.">
-            {items.map((item) => (
-              <ExpressiveCard key={item.routeUniversityId} variant="elevated" className="p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <h3 className="font-bold text-on-surface">{item.routeName}</h3>
-                    <p className="text-sm text-on-surface-variant">{item.universityName} · Route #{item.routeId}</p>
-                  </div>
-                  <StatusPill status={item.status} />
-                </div>
-              </ExpressiveCard>
-            ))}
-          </DataList>
-        )}
-      </AsyncBlock>
-    </div>
-  );
-}
-
-function FaresScreen() {
-  const resource = useApiResource<AdminStatsView["fares"]>(useCallback(() => experienceApi.fares(), []));
-  const [editing, setEditing] = useState<number | null>(null);
-  const [amount, setAmount] = useState("");
-  const [notes, setNotes] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  const startEdit = (fare: AdminStatsView["fares"][number]) => {
-    setEditing(fare.fareId);
-    setAmount(String(fare.amount ?? ""));
-    setNotes(fare.notes || "");
-  };
-
-  const save = async () => {
-    if (!editing || !amount) return;
-    setSaving(true);
-    try {
-      await experienceApi.updateFare(editing, { amount: Number(amount), notes });
-      setEditing(null);
-      setAmount("");
-      setNotes("");
-      toast.success("Đã cập nhật giá vé");
-      resource.reload();
-    } catch (error) {
-      toast.error(getErrorMessage(error, "Không thể cập nhật giá vé"));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div>
-      <PageHeader title="Điều chỉnh giá vé" description="Cập nhật bảng fares thật, không dùng dữ liệu demo frontend." icon={<Tag className="size-7" />} />
-      {editing && (
-        <ExpressiveCard variant="elevated" className="mb-5 grid gap-4 p-5 md:grid-cols-[1fr_1fr_auto] md:items-end">
-          <Field label="Số tiền"><Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
-          <Field label="Ghi chú"><Input value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
-          <ExpressiveButton onClick={save} disabled={saving}>{saving ? "Đang lưu..." : "Lưu giá vé"}</ExpressiveButton>
-        </ExpressiveCard>
-      )}
-      <AsyncBlock resource={resource}>
-        {(fares) => (
-          <DataList emptyTitle="Chưa có fares" emptyDescription="Seed hoặc tạo fares để admin điều chỉnh giá.">
-            {fares.map((fare) => (
-              <ExpressiveCard key={fare.fareId} variant="elevated" className="p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <h3 className="font-bold text-on-surface">{fare.routeCode || fare.routeName} · {fare.fareType}</h3>
-                    <p className="text-sm text-on-surface-variant">{formatMoney(fare.amount)} · từ {fare.effectiveFrom || "chưa rõ"}</p>
-                    {fare.notes && <p className="mt-1 text-xs text-on-surface-variant">{fare.notes}</p>}
-                  </div>
-                  <ExpressiveButton size="sm" variant="tonal" onClick={() => startEdit(fare)}>Sửa giá</ExpressiveButton>
-                </div>
-              </ExpressiveCard>
-            ))}
-          </DataList>
-        )}
-      </AsyncBlock>
-    </div>
-  );
-}
-
-function SubsidyPoliciesScreen() {
-  const resource = useApiResource<SubsidyPolicyView[]>(useCallback(() => adminApi.subsidyPolicies(), []));
-  return (
-    <div>
-      <PageHeader title="Điều chỉnh giá vé" description="Danh sách chính sách trợ giá đang cấu hình cho các trường." icon={<Tag className="size-7" />} />
-      <AsyncBlock resource={resource}>
-        {(items) => (
-          <DataList emptyTitle="Chưa có chính sách trợ giá" emptyDescription="University Admin hoặc Admin tạo policy để áp dụng vé tháng.">
-            {items.map((item) => (
-              <ExpressiveCard key={item.subsidyPolicyId} variant="elevated" className="p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <h3 className="font-bold text-on-surface">{item.policyName}</h3>
-                    <p className="text-sm text-on-surface-variant">{item.universityName} · {item.subsidyType} · {item.value}</p>
-                  </div>
-                  <StatusPill status={item.status} />
-                </div>
-              </ExpressiveCard>
-            ))}
-          </DataList>
-        )}
-      </AsyncBlock>
-    </div>
-  );
-}
-
-function PaymentTransactionsScreen() {
-  const resource = useApiResource<PaymentTransactionView[]>(useCallback(() => adminApi.paymentTransactions(), []));
-  return (
-    <div>
-      <PageHeader title="Lịch sử giao dịch" description="Theo dõi đơn thanh toán SePay và giao dịch ngân hàng." icon={<CreditCard className="size-7" />} />
-      <AsyncBlock resource={resource}>
-        {(transactions) => (
-          <DataList emptyTitle="Chưa có giao dịch" emptyDescription="Các đơn thanh toán sẽ xuất hiện tại đây.">
-            {transactions.map((tx) => (
-              <ExpressiveCard key={`admin-tx-${tx.orderId}-${tx.transactionId || 0}`} variant="elevated" className="p-4">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="font-bold text-on-surface">
-                        {formatDateTime(tx.paidAt || tx.transactionDate || tx.createdAt)} | {tx.studentName ? `${tx.studentName} (${tx.studentCode})` : tx.studentCode} | {formatMoney(tx.orderTotal || tx.amountIn || 0)}
-                      </h3>
-                      <StatusPill status={tx.paymentStatus || "UNKNOWN"} />
-                    </div>
-                    <p className="mt-1 text-sm text-on-surface-variant">Thông tin chuyến xe: {tx.universityName ? `${tx.universityName} - ` : ""}{tx.routeName || "Chưa có tuyến"}</p>
-                    <p className="mt-1 text-xs text-on-surface-variant">Nội dung chuyển khoản: {tx.transactionContent || `DH${tx.orderId}`} | Ref: {tx.referenceNumber || "Chưa có"}</p>
-                  </div>
-                </div>
-              </ExpressiveCard>
-            ))}
-          </DataList>
-        )}
-      </AsyncBlock>
-    </div>
-  );
-}
-
-function AuditScreen() {
-  const resource = useApiResource<AuditLogView[]>(useCallback(() => adminApi.auditLogs(), []));
-  return (
-    <div>
-      <PageHeader title="Audit log" description="Theo dõi hành động admin/university-admin liên quan university MVP." icon={<ShieldAlert className="size-7" />} />
-      <AsyncBlock resource={resource}>
-        {(items) => (
-          <DataList emptyTitle="Chưa có audit log" emptyDescription="Khi có thao tác university, log sẽ xuất hiện.">
-            {items.map((item) => (
-              <ExpressiveCard key={item.auditLogId} variant="elevated" className="p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <h3 className="font-bold text-on-surface">{item.action}</h3>
-                    <p className="text-sm text-on-surface-variant">{item.universityName || "Toàn hệ thống"} · {item.performerName || `User #${item.performedByUserId}`}</p>
-                    <p className="mt-1 text-xs text-on-surface-variant">{formatDateTime(item.performedAt)} · {item.notes || item.affectedTable}</p>
-                  </div>
-                  <StatusPill status={item.result} />
-                </div>
-              </ExpressiveCard>
-            ))}
-          </DataList>
-        )}
-      </AsyncBlock>
-    </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div className="space-y-2"><Label>{label}</Label>{children}</div>;
 }
