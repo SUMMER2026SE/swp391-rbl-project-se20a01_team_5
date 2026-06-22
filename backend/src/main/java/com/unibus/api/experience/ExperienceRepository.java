@@ -846,6 +846,83 @@ public class ExperienceRepository {
         return timestamp == null ? null : timestamp.toInstant().atOffset(ZoneOffset.UTC);
     }
 
+    // =========================================================================
+    // Internal messages (REQ-DRV-006, REQ-AST-007)
+    // =========================================================================
+
+    public Long sendInternalMessage(Integer senderUserId, Integer recipientUserId, String body) {
+        return jdbcTemplate.queryForObject("""
+                INSERT INTO internal_messages (sender_user_id, recipient_user_id, body, content, sent_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                RETURNING message_id
+                """, Long.class, senderUserId, recipientUserId, body, body);
+    }
+
+    public List<InternalMessageCard> conversation(Integer userA, Integer userB, int limit) {
+        return jdbcTemplate.query("""
+                SELECT im.message_id, im.sender_user_id, im.recipient_user_id, COALESCE(im.body, im.content) AS body, im.sent_at, im.read_at,
+                       su.full_name AS sender_name, ru.full_name AS recipient_name
+                FROM internal_messages im
+                LEFT JOIN users su ON su.user_id = im.sender_user_id
+                LEFT JOIN users ru ON ru.user_id = im.recipient_user_id
+                WHERE ((im.sender_user_id = ? AND im.recipient_user_id = ?)
+                   OR (im.sender_user_id = ? AND im.recipient_user_id = ?))
+                  AND COALESCE(im.body, im.content) NOT LIKE '[SOS]%'
+                ORDER BY im.sent_at DESC
+                LIMIT ?
+                """, (rs, rowNum) -> new InternalMessageCard(
+                        rs.getLong("message_id"),
+                        rs.getInt("sender_user_id"),
+                        rs.getString("sender_name"),
+                        rs.getInt("recipient_user_id"),
+                        rs.getString("recipient_name"),
+                        rs.getString("body"),
+                        toOffset(rs.getTimestamp("sent_at")),
+                        toOffset(rs.getTimestamp("read_at"))),
+                userA, userB, userB, userA, limit);
+    }
+
+    public void markConversationRead(Integer currentUser, Integer peerUser) {
+        jdbcTemplate.update("""
+                UPDATE internal_messages
+                SET read_at = CURRENT_TIMESTAMP, is_read = true
+                WHERE recipient_user_id = ? AND sender_user_id = ? AND read_at IS NULL
+                """, currentUser, peerUser);
+    }
+
+    public List<ContactThreadCard> contactThreads(Integer userId) {
+        return jdbcTemplate.query("""
+                WITH peer_messages AS (
+                    SELECT
+                        CASE WHEN sender_user_id = ? THEN recipient_user_id ELSE sender_user_id END AS peer_id,
+                        COALESCE(body, content) AS body, sent_at, recipient_user_id, read_at,
+                        ROW_NUMBER() OVER (PARTITION BY
+                            CASE WHEN sender_user_id = ? THEN recipient_user_id ELSE sender_user_id END
+                            ORDER BY sent_at DESC) AS rn
+                    FROM internal_messages
+                    WHERE (sender_user_id = ? OR recipient_user_id = ?)
+                      AND COALESCE(body, content) NOT LIKE '[SOS]%'
+                )
+                SELECT pm.peer_id, u.full_name AS peer_name, u.role AS peer_role,
+                       pm.body AS last_body, pm.sent_at AS last_sent_at,
+                       (SELECT COUNT(*) FROM internal_messages im2
+                        WHERE im2.recipient_user_id = ? AND im2.sender_user_id = pm.peer_id
+                          AND im2.read_at IS NULL
+                          AND COALESCE(im2.body, im2.content) NOT LIKE '[SOS]%') AS unread_count
+                FROM peer_messages pm
+                JOIN users u ON u.user_id = pm.peer_id
+                WHERE pm.rn = 1
+                ORDER BY pm.sent_at DESC
+                """, (rs, rowNum) -> new ContactThreadCard(
+                        rs.getInt("peer_id"),
+                        rs.getString("peer_name"),
+                        rs.getString("peer_role"),
+                        rs.getString("last_body"),
+                        toOffset(rs.getTimestamp("last_sent_at")),
+                        rs.getInt("unread_count")),
+                userId, userId, userId, userId, userId);
+    }
+
     private record ProfileRow(String fullName, String verificationStatus, String studentCode, Integer universityId,
             String universityName) {
     }
