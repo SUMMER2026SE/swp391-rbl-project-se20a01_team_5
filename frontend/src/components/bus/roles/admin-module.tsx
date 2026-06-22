@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { BarChart3, GraduationCap, Megaphone, School, ShieldAlert, Tag, UserPlus, Users } from "lucide-react";
+import { BarChart3, CreditCard, GraduationCap, Megaphone, School, ShieldAlert, Tag, UserPlus, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { PageHeader, Section, StatCard } from "@/components/bus/primitives";
@@ -19,6 +19,7 @@ import {
   type AdminUserView,
   type AuditLogView,
   type FeedbackView,
+  type PaymentTransactionView,
   type RouteUniversityView,
   type SubsidyPolicyView,
   type UniversityAdminView,
@@ -41,18 +42,20 @@ export function AdminModule({ activeId }: Props) {
   if (activeId === "adm-uni-admins") return <UniversityAdminsScreen />;
   if (activeId === "adm-route-uni") return <RouteUniversitiesScreen />;
   if (activeId === "adm-audit") return <AuditScreen />;
+  if (activeId === "adm-transactions") return <PaymentTransactionsScreen />;
   if (activeId === "adm-fare") return <FaresScreen />;
   return <AdminDashboard />;
 }
 
 function AdminDashboard() {
   const loader = useCallback(async () => {
-    const [stats, users, verifications] = await Promise.all([
+    const [stats, users, verifications, transactions] = await Promise.all([
       experienceApi.adminStats(),
       adminApi.users(),
       adminApi.verifications().catch(() => []),
+      adminApi.paymentTransactions().catch(() => []),
     ]);
-    return { stats, users, verifications };
+    return { stats, users, verifications, transactions };
   }, []);
   const resource = useApiResource(loader);
 
@@ -60,7 +63,7 @@ function AdminDashboard() {
     <div>
       <PageHeader title="Thống kê hệ thống" description="Tổng quan thật từ admin APIs hiện có." icon={<BarChart3 className="size-7" />} />
       <AsyncBlock resource={resource}>
-        {({ stats, users, verifications }) => (
+        {({ stats, users, verifications, transactions }) => (
           <div className="space-y-6">
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {stats.stats.map((stat) => (
@@ -97,6 +100,42 @@ function AdminDashboard() {
                 <UserList users={users.slice(0, 6)} onRefresh={resource.reload} />
               </Section>
             </div>
+            <Section title="Lịch sử giao dịch hệ thống" description="Theo dõi các đơn thanh toán SePay và giao dịch ngân hàng mới nhất.">
+              <ExpressiveCard variant="elevated" className="overflow-x-auto p-4">
+                <table className="w-full text-left text-sm text-on-surface">
+                  <thead>
+                    <tr className="border-b border-outline-variant font-bold text-on-surface-variant">
+                      <th className="pb-3 pr-4">Thời gian</th>
+                      <th className="pb-3 pr-4">Sinh viên</th>
+                      <th className="pb-3 pr-4">Số tiền</th>
+                      <th className="pb-3 pr-4">Tuyến/vé</th>
+                      <th className="pb-3">Mã CK</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(transactions || []).slice(0, 10).map((tx) => (
+                      <tr key={`dash-tx-${tx.orderId}-${tx.transactionId || 0}`} className="border-b border-outline-variant/40 hover:bg-surface-variant/20">
+                        <td className="py-3 pr-4 text-xs font-semibold text-on-surface-variant">{formatDateTime(tx.paidAt || tx.transactionDate || tx.createdAt)}</td>
+                        <td className="py-3 pr-4 font-bold">{tx.studentName || tx.studentCode || "Không rõ"}</td>
+                        <td className="py-3 pr-4 font-black text-blue-600">{formatMoney(tx.orderTotal || tx.amountIn || 0)}</td>
+                        <td className="py-3 pr-4">
+                          <span className="mr-2 rounded-lg bg-surface-variant px-2 py-1 text-xs font-semibold uppercase">
+                            {tx.ticketType === "monthly" ? "Tháng" : "Thường"}
+                          </span>
+                          {tx.routeName || "Chưa có tuyến"}
+                        </td>
+                        <td className="py-3 font-mono text-xs font-bold text-red-600">{tx.referenceNumber || tx.transactionContent || `DH${tx.orderId}`}</td>
+                      </tr>
+                    ))}
+                    {(transactions || []).length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="py-6 text-center font-semibold text-on-surface-variant">Chưa có lịch sử giao dịch.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </ExpressiveCard>
+            </Section>
           </div>
         )}
       </AsyncBlock>
@@ -598,6 +637,37 @@ function SubsidyPoliciesScreen() {
                     <p className="text-sm text-on-surface-variant">{item.universityName} · {item.subsidyType} · {item.value}</p>
                   </div>
                   <StatusPill status={item.status} />
+                </div>
+              </ExpressiveCard>
+            ))}
+          </DataList>
+        )}
+      </AsyncBlock>
+    </div>
+  );
+}
+
+function PaymentTransactionsScreen() {
+  const resource = useApiResource<PaymentTransactionView[]>(useCallback(() => adminApi.paymentTransactions(), []));
+  return (
+    <div>
+      <PageHeader title="Lịch sử giao dịch" description="Theo dõi đơn thanh toán SePay và giao dịch ngân hàng." icon={<CreditCard className="size-7" />} />
+      <AsyncBlock resource={resource}>
+        {(transactions) => (
+          <DataList emptyTitle="Chưa có giao dịch" emptyDescription="Các đơn thanh toán sẽ xuất hiện tại đây.">
+            {transactions.map((tx) => (
+              <ExpressiveCard key={`admin-tx-${tx.orderId}-${tx.transactionId || 0}`} variant="elevated" className="p-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-bold text-on-surface">
+                        {formatDateTime(tx.paidAt || tx.transactionDate || tx.createdAt)} | {tx.studentName ? `${tx.studentName} (${tx.studentCode})` : tx.studentCode} | {formatMoney(tx.orderTotal || tx.amountIn || 0)}
+                      </h3>
+                      <StatusPill status={tx.paymentStatus || "UNKNOWN"} />
+                    </div>
+                    <p className="mt-1 text-sm text-on-surface-variant">Thông tin chuyến xe: {tx.universityName ? `${tx.universityName} - ` : ""}{tx.routeName || "Chưa có tuyến"}</p>
+                    <p className="mt-1 text-xs text-on-surface-variant">Nội dung chuyển khoản: {tx.transactionContent || `DH${tx.orderId}`} | Ref: {tx.referenceNumber || "Chưa có"}</p>
+                  </div>
                 </div>
               </ExpressiveCard>
             ))}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { BarChart3, Building2, FileBarChart, FileSpreadsheet, Globe, Megaphone, Percent, School, Users } from "lucide-react";
+import { BarChart3, Building2, CreditCard, FileBarChart, FileSpreadsheet, Globe, Megaphone, Percent, School, Users } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader, Section, StatCard } from "@/components/bus/primitives";
 import { AsyncBlock, DataList, StatusPill, formatDate, formatDateTime, formatMoney, getErrorMessage, useApiResource } from "@/components/bus/real-data";
@@ -14,6 +14,7 @@ import {
   type CampusView,
   type DomainView,
   type ImportBatchView,
+  type PaymentTransactionView,
   type RosterStudentView,
   type SubsidyPolicyView,
 } from "@/lib/api/client";
@@ -33,6 +34,7 @@ export function UniversityAdminModule({ activeId }: Props) {
   if (activeId === "uniadm-stats") return <StatsScreen />;
   if (activeId === "uniadm-notify") return <NotifyScreen />;
   if (activeId === "uniadm-recon") return <ReconciliationScreen />;
+  if (activeId === "uniadm-transactions") return <UniversityPaymentTransactionsScreen />;
   return <Dashboard />;
 }
 
@@ -400,6 +402,37 @@ function PolicyList({ policies }: { policies: SubsidyPolicyView[] }) {
         </ExpressiveCard>
       ))}
     </DataList>
+  );
+}
+
+function UniversityPaymentTransactionsScreen() {
+  const resource = useApiResource<PaymentTransactionView[]>(useCallback(() => universityApi.paymentTransactions(), []));
+  return (
+    <div>
+      <PageHeader title="Lịch sử giao dịch" description="Chỉ hiển thị giao dịch của sinh viên thuộc trường bạn." icon={<CreditCard className="size-7" />} />
+      <AsyncBlock resource={resource}>
+        {(transactions) => (
+          <DataList emptyTitle="Chưa có giao dịch" emptyDescription="Các đơn thanh toán của sinh viên sẽ xuất hiện tại đây.">
+            {transactions.map((tx) => (
+              <ExpressiveCard key={`uni-tx-${tx.orderId}-${tx.transactionId || 0}`} variant="elevated" className="p-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-bold text-on-surface">
+                        {formatDateTime(tx.paidAt || tx.transactionDate || tx.createdAt)} | {tx.studentName ? `${tx.studentName} (${tx.studentCode})` : tx.studentCode} | {formatMoney(tx.orderTotal || tx.amountIn || 0)}
+                      </h3>
+                      <StatusPill status={tx.paymentStatus || "UNKNOWN"} />
+                    </div>
+                    <p className="mt-1 text-sm text-on-surface-variant">Thông tin chuyến xe: {tx.routeName || "Chưa có tuyến"}</p>
+                    <p className="mt-1 text-xs text-on-surface-variant">Nội dung chuyển khoản: {tx.transactionContent || `DH${tx.orderId}`} | Ref: {tx.referenceNumber || "Chưa có"}</p>
+                  </div>
+                </div>
+              </ExpressiveCard>
+            ))}
+          </DataList>
+        )}
+      </AsyncBlock>
+    </div>
   );
 }
 

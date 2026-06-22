@@ -22,6 +22,7 @@ import com.unibus.api.university.UniversityDtos.CampusView;
 import com.unibus.api.university.UniversityDtos.DomainView;
 import com.unibus.api.university.UniversityDtos.ImportBatchView;
 import com.unibus.api.university.UniversityDtos.ImportErrorView;
+import com.unibus.api.university.UniversityDtos.PaymentTransactionView;
 import com.unibus.api.university.UniversityDtos.ReconciliationView;
 import com.unibus.api.university.UniversityDtos.RosterStudentView;
 import com.unibus.api.university.UniversityDtos.RouteUniversityView;
@@ -604,6 +605,76 @@ public class UniversityManagementRepository {
                         to), from, to, universityId);
     }
 
+    public List<PaymentTransactionView> paymentTransactions(Integer universityId) {
+        List<Object> params = new ArrayList<>();
+        String universityFilter = "";
+        if (universityId != null) {
+            universityFilter = "AND s.university_id = ?\n";
+            params.add(universityId);
+        }
+        return jdbcTemplate.query("""
+                SELECT o.id AS order_id,
+                       tx.id AS transaction_id,
+                       tx.sepay_transaction_id,
+                       o.student_code,
+                       COALESCE(u.full_name, o.student_code) AS student_name,
+                       s.university_id,
+                       uni.name AS university_name,
+                       o.ticket_type,
+                       o.route_id,
+                       r.route_name,
+                       o.total AS order_total,
+                       o.payment_status,
+                       tx.gateway,
+                       COALESCE(tx.amount_in, 0) AS amount_in,
+                       COALESCE(tx.amount_out, 0) AS amount_out,
+                       tx.transaction_content,
+                       tx.reference_number,
+                       tx.transaction_date,
+                       o.paid_at,
+                       o.created_at
+                FROM tb_orders o
+                LEFT JOIN students s ON s.student_code = o.student_code
+                LEFT JOIN users u ON u.user_id = s.user_id
+                LEFT JOIN universities uni ON uni.university_id = s.university_id
+                LEFT JOIN routes r ON r.route_id = o.route_id
+                LEFT JOIN LATERAL (
+                    SELECT t.*
+                    FROM tb_transactions t
+                    WHERE t.matched_order_id = o.id
+                    ORDER BY t.created_at DESC, t.id DESC
+                    LIMIT 1
+                ) tx ON true
+                WHERE 1 = 1
+                """ + universityFilter + """
+                ORDER BY CASE WHEN o.payment_status = 'Unpaid' THEN 0 ELSE 1 END,
+                         o.created_at DESC,
+                         o.id DESC
+                LIMIT 300
+                """, (rs, rowNum) -> new PaymentTransactionView(
+                        rs.getLong("order_id"),
+                        getLong(rs, "transaction_id"),
+                        getLong(rs, "sepay_transaction_id"),
+                        rs.getString("student_code"),
+                        rs.getString("student_name"),
+                        (Integer) rs.getObject("university_id"),
+                        rs.getString("university_name"),
+                        rs.getString("ticket_type"),
+                        (Integer) rs.getObject("route_id"),
+                        rs.getString("route_name"),
+                        rs.getBigDecimal("order_total"),
+                        rs.getString("payment_status"),
+                        rs.getString("gateway"),
+                        rs.getBigDecimal("amount_in"),
+                        rs.getBigDecimal("amount_out"),
+                        rs.getString("transaction_content"),
+                        rs.getString("reference_number"),
+                        toOffset(rs.getTimestamp("transaction_date")),
+                        toOffset(rs.getTimestamp("paid_at")),
+                        toOffset(rs.getTimestamp("created_at"))),
+                params.toArray());
+    }
+
     public List<AuditLogView> findAuditLogs(Integer universityId, String action) {
         List<Object> params = new ArrayList<>();
         StringBuilder where = new StringBuilder("WHERE 1 = 1\n");
@@ -790,6 +861,11 @@ public class UniversityManagementRepository {
 
     private OffsetDateTime toOffset(Timestamp timestamp) {
         return timestamp == null ? null : timestamp.toInstant().atOffset(ZoneOffset.UTC);
+    }
+
+    private Long getLong(ResultSet rs, String column) throws SQLException {
+        long value = rs.getLong(column);
+        return rs.wasNull() ? null : value;
     }
 
     private Integer insertAndReturnInt(String sql, String keyColumn, Object... params) {
