@@ -9,7 +9,9 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -22,13 +24,17 @@ import com.unibus.api.university.UniversityDtos.CampusView;
 import com.unibus.api.university.UniversityDtos.DomainView;
 import com.unibus.api.university.UniversityDtos.ImportBatchView;
 import com.unibus.api.university.UniversityDtos.ImportErrorView;
+import com.unibus.api.university.UniversityDtos.PaymentTransactionView;
+import com.unibus.api.university.UniversityDtos.PassesByRoutePoint;
 import com.unibus.api.university.UniversityDtos.ReconciliationView;
 import com.unibus.api.university.UniversityDtos.RosterStudentView;
 import com.unibus.api.university.UniversityDtos.RouteUniversityView;
 import com.unibus.api.university.UniversityDtos.StudentUniversityView;
+import com.unibus.api.university.UniversityDtos.SubsidyDistributionPoint;
 import com.unibus.api.university.UniversityDtos.SubsidyPolicyView;
 import com.unibus.api.university.UniversityDtos.UniversityAdminView;
 import com.unibus.api.university.UniversityDtos.UniversityStatsView;
+import com.unibus.api.university.UniversityDtos.UniversityTripsSeriesPoint;
 import com.unibus.api.university.UniversityDtos.UniversityView;
 
 @Repository
@@ -547,7 +553,7 @@ public class UniversityManagementRepository {
     }
 
     public UniversityStatsView stats(Integer universityId) {
-        return jdbcTemplate.queryForObject("""
+        UniversityStatsBase base = jdbcTemplate.queryForObject("""
                 SELECT u.university_id, u.name,
                        COUNT(DISTINCT r.roster_id) FILTER (WHERE r.status = 'ACTIVE') AS active_roster_students,
                        COUNT(DISTINCT r.roster_id) FILTER (WHERE r.matched_user_id IS NOT NULL) AS matched_students,
@@ -567,7 +573,7 @@ public class UniversityManagementRepository {
                 LEFT JOIN monthly_passes mp ON mp.student_code = s.student_code
                 WHERE u.university_id = ?
                 GROUP BY u.university_id, u.name
-                """, (rs, rowNum) -> new UniversityStatsView(
+                """, (rs, rowNum) -> new UniversityStatsBase(
                         rs.getInt("university_id"),
                         rs.getString("name"),
                         rs.getInt("active_roster_students"),
@@ -578,6 +584,106 @@ public class UniversityManagementRepository {
                         rs.getInt("active_subsidy_policies"),
                         rs.getBigDecimal("total_subsidy_amount"),
                         rs.getInt("monthly_passes")), universityId);
+        LocalDate today = LocalDate.now();
+        return new UniversityStatsView(
+                base.universityId(),
+                base.universityName(),
+                base.activeRosterStudents(),
+                base.matchedStudents(),
+                base.activeDomains(),
+                base.activeCampuses(),
+                base.activeRoutes(),
+                base.activeSubsidyPolicies(),
+                base.totalSubsidyAmount(),
+                base.monthlyPasses(),
+                passesByRoute(universityId, today.withDayOfMonth(1), today.withDayOfMonth(1).plusMonths(1)),
+                universityTripsSeries(universityId, today.minusDays(6), today),
+                subsidyDistribution(universityId));
+    }
+
+    private List<PassesByRoutePoint> passesByRoute(Integer universityId, LocalDate from, LocalDate toExclusive) {
+        return jdbcTemplate.query("""
+                SELECT r.route_id, r.route_code, r.route_name, r.color_hex,
+                       COUNT(DISTINCT mp.monthly_pass_id) AS passes
+                FROM route_universities ru
+                JOIN routes r ON r.route_id = ru.route_id
+                LEFT JOIN students s ON s.university_id = ru.university_id
+                LEFT JOIN monthly_passes mp ON mp.student_code = s.student_code
+                    AND mp.route_id = r.route_id
+                    AND CAST(mp.purchased_at AS date) >= ?
+                    AND CAST(mp.purchased_at AS date) < ?
+                WHERE ru.university_id = ?
+                  AND ru.status = 'ACTIVE'
+                GROUP BY r.route_id, r.route_code, r.route_name, r.color_hex
+                ORDER BY r.route_code, r.route_name
+                """, (rs, rowNum) -> new PassesByRoutePoint(
+                        rs.getInt("route_id"),
+                        rs.getString("route_code"),
+                        rs.getString("route_name"),
+                        rs.getString("color_hex"),
+                        rs.getInt("passes")), from, toExclusive, universityId);
+    }
+
+    private List<UniversityTripsSeriesPoint> universityTripsSeries(
+            Integer universityId, LocalDate from, LocalDate to) {
+        Map<LocalDate, Integer> values = new HashMap<>();
+        jdbcTemplate.query("""
+                SELECT CAST(th.boarded_at AS date) AS series_date, COUNT(*) AS trips
+                FROM travel_history th
+                JOIN students s ON s.student_code = th.student_code
+                WHERE s.university_id = ?
+                  AND CAST(th.boarded_at AS date) BETWEEN ? AND ?
+                GROUP BY CAST(th.boarded_at AS date)
+                ORDER BY series_date
+                """, rs -> {
+                    values.put(rs.getObject("series_date", LocalDate.class), rs.getInt("trips"));
+                }, universityId, from, to);
+        return from.datesUntil(to.plusDays(1))
+                .map(date -> new UniversityTripsSeriesPoint(
+                        dayLabel(date), date, values.getOrDefault(date, 0)))
+                .toList();
+    }
+
+    private List<SubsidyDistributionPoint> subsidyDistribution(Integer universityId) {
+        String[] colors = {"#144fcc", "#0f9d76", "#eaa21a", "#d84c7f", "#6f5bd3"};
+        List<SubsidyPolicyView> policies = findSubsidyPolicies(universityId).stream()
+                .filter(policy -> "ACTIVE".equalsIgnoreCase(policy.status()))
+                .toList();
+        List<SubsidyDistributionPoint> result = new ArrayList<>();
+        for (int index = 0; index < policies.size(); index++) {
+            SubsidyPolicyView policy = policies.get(index);
+            result.add(new SubsidyDistributionPoint(
+                    policy.policyName(),
+                    policy.subsidyType(),
+                    policy.value(),
+                    colors[index % colors.length]));
+        }
+        return result;
+    }
+
+    private String dayLabel(LocalDate date) {
+        return switch (date.getDayOfWeek()) {
+            case MONDAY -> "T2";
+            case TUESDAY -> "T3";
+            case WEDNESDAY -> "T4";
+            case THURSDAY -> "T5";
+            case FRIDAY -> "T6";
+            case SATURDAY -> "T7";
+            case SUNDAY -> "CN";
+        };
+    }
+
+    private record UniversityStatsBase(
+            Integer universityId,
+            String universityName,
+            int activeRosterStudents,
+            int matchedStudents,
+            int activeDomains,
+            int activeCampuses,
+            int activeRoutes,
+            int activeSubsidyPolicies,
+            BigDecimal totalSubsidyAmount,
+            int monthlyPasses) {
     }
 
     public ReconciliationView reconciliation(Integer universityId, LocalDate from, LocalDate to) {
@@ -602,6 +708,76 @@ public class UniversityManagementRepository {
                         rs.getInt("monthly_passes"),
                         from,
                         to), from, to, universityId);
+    }
+
+    public List<PaymentTransactionView> paymentTransactions(Integer universityId) {
+        List<Object> params = new ArrayList<>();
+        String universityFilter = "";
+        if (universityId != null) {
+            universityFilter = "AND s.university_id = ?\n";
+            params.add(universityId);
+        }
+        return jdbcTemplate.query("""
+                SELECT o.id AS order_id,
+                       tx.id AS transaction_id,
+                       tx.sepay_transaction_id,
+                       o.student_code,
+                       COALESCE(u.full_name, o.student_code) AS student_name,
+                       s.university_id,
+                       uni.name AS university_name,
+                       o.ticket_type,
+                       o.route_id,
+                       r.route_name,
+                       o.total AS order_total,
+                       o.payment_status,
+                       tx.gateway,
+                       COALESCE(tx.amount_in, 0) AS amount_in,
+                       COALESCE(tx.amount_out, 0) AS amount_out,
+                       tx.transaction_content,
+                       tx.reference_number,
+                       tx.transaction_date,
+                       o.paid_at,
+                       o.created_at
+                FROM tb_orders o
+                LEFT JOIN students s ON s.student_code = o.student_code
+                LEFT JOIN users u ON u.user_id = s.user_id
+                LEFT JOIN universities uni ON uni.university_id = s.university_id
+                LEFT JOIN routes r ON r.route_id = o.route_id
+                LEFT JOIN LATERAL (
+                    SELECT t.*
+                    FROM tb_transactions t
+                    WHERE t.matched_order_id = o.id
+                    ORDER BY t.created_at DESC, t.id DESC
+                    LIMIT 1
+                ) tx ON true
+                WHERE 1 = 1
+                """ + universityFilter + """
+                ORDER BY CASE WHEN o.payment_status = 'Unpaid' THEN 0 ELSE 1 END,
+                         o.created_at DESC,
+                         o.id DESC
+                LIMIT 300
+                """, (rs, rowNum) -> new PaymentTransactionView(
+                        rs.getLong("order_id"),
+                        getLong(rs, "transaction_id"),
+                        getLong(rs, "sepay_transaction_id"),
+                        rs.getString("student_code"),
+                        rs.getString("student_name"),
+                        (Integer) rs.getObject("university_id"),
+                        rs.getString("university_name"),
+                        rs.getString("ticket_type"),
+                        (Integer) rs.getObject("route_id"),
+                        rs.getString("route_name"),
+                        rs.getBigDecimal("order_total"),
+                        rs.getString("payment_status"),
+                        rs.getString("gateway"),
+                        rs.getBigDecimal("amount_in"),
+                        rs.getBigDecimal("amount_out"),
+                        rs.getString("transaction_content"),
+                        rs.getString("reference_number"),
+                        toOffset(rs.getTimestamp("transaction_date")),
+                        toOffset(rs.getTimestamp("paid_at")),
+                        toOffset(rs.getTimestamp("created_at"))),
+                params.toArray());
     }
 
     public List<AuditLogView> findAuditLogs(Integer universityId, String action) {
@@ -790,6 +966,11 @@ public class UniversityManagementRepository {
 
     private OffsetDateTime toOffset(Timestamp timestamp) {
         return timestamp == null ? null : timestamp.toInstant().atOffset(ZoneOffset.UTC);
+    }
+
+    private Long getLong(ResultSet rs, String column) throws SQLException {
+        long value = rs.getLong(column);
+        return rs.wasNull() ? null : value;
     }
 
     private Integer insertAndReturnInt(String sql, String keyColumn, Object... params) {

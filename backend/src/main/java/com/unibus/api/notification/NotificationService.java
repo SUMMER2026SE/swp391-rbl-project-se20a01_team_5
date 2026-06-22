@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.unibus.api.common.ApiException;
 import com.unibus.api.notification.NotificationDtos.CreateNotificationRequest;
 import com.unibus.api.notification.NotificationDtos.NotificationView;
+import com.unibus.api.realtime.RealtimePublisher;
 import com.unibus.api.security.CurrentUser;
 import com.unibus.api.user.model.UserRole;
 
@@ -20,9 +21,12 @@ public class NotificationService {
     private static final Pattern ROUTE_TARGET = Pattern.compile("route_(\\d+)");
 
     private final NotificationRepository notificationRepository;
+    private final RealtimePublisher realtimePublisher;
 
-    public NotificationService(NotificationRepository notificationRepository) {
+    public NotificationService(NotificationRepository notificationRepository,
+            RealtimePublisher realtimePublisher) {
         this.notificationRepository = notificationRepository;
+        this.realtimePublisher = realtimePublisher;
     }
 
     @Transactional(readOnly = true)
@@ -61,6 +65,9 @@ public class NotificationService {
                     type,
                     recipientUserId,
                     currentUser.userId());
+            // Push to recipient via WebSocket for instant notification
+            realtimePublisher.pushNotification(recipientUserId.longValue(),
+                    request.title().trim(), request.content().trim(), type);
             if (first == null) {
                 first = created;
             }

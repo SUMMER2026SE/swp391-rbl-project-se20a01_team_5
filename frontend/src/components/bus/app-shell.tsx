@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion, useMotionValueEvent, useScroll } from "framer-motion";
-import { ArrowLeft, Bell, ChevronDown, LogOut, Menu, QrCode, Search, School, UserCircle } from "lucide-react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { ArrowLeft, BadgeCheck, Bell, ChevronDown, Clock3, LogOut, Menu, QrCode, Search, School, UserCircle } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
@@ -79,6 +79,13 @@ export function AppShell({
     : "uniadm-profile";
 
   const isFirstNav = nav.length > 0 && activeId === nav[0].id;
+  const verificationStatus = profile?.studentVerificationStatus || "NOT_SUBMITTED";
+  const verificationMenu = verificationStatus === "VERIFIED"
+    ? { label: "Trường của tôi", icon: School }
+    : verificationStatus === "PENDING_REVIEW"
+      ? { label: "Hồ sơ đang chờ duyệt", icon: Clock3 }
+      : { label: "Xác minh sinh viên", icon: BadgeCheck };
+  const VerificationMenuIcon = verificationMenu.icon;
   const [scrolled, setScrolled] = useState(false);
   const { scrollY } = useScroll();
   useMotionValueEvent(scrollY, "change", (y) => setScrolled(y > 20));
@@ -284,6 +291,7 @@ export function AppShell({
             <DropdownMenuTrigger asChild>
               <button className="state-layer flex shrink-0 items-center gap-2 rounded-full py-1 pl-1 pr-1 sm:pr-3">
                 <Avatar className="size-9">
+                  <AvatarImage src={profile?.avatarUrl} alt={profile?.fullName || "Avatar"} />
                   <AvatarFallback className={cn("text-xs font-bold text-white", ROLE_COLORS[role])}>
                     {initials(profile, role)}
                   </AvatarFallback>
@@ -295,23 +303,34 @@ export function AppShell({
                 <ChevronDown className="hidden size-4 text-on-surface-variant sm:block" />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64 rounded-xl">
-              <DropdownMenuLabel className="flex flex-col gap-0.5">
-                <span className="truncate">{profile?.fullName || "Tài khoản UniBus"}</span>
-                <span className="truncate text-xs font-normal text-on-surface-variant">{profile?.email || ROLE_LABELS[role]}</span>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => goTo(profileNavId)} className="rounded-lg">
-                <UserCircle className="mr-2 size-4" /> Hồ sơ cá nhân
+            <DropdownMenuContent align="end" className="w-72 p-2">
+              <div className="flex items-center gap-3 px-2 py-3 mb-1 rounded-xl bg-surface-container-low">
+                <Avatar className="size-11 shrink-0">
+                  <AvatarImage src={profile?.avatarUrl} alt={profile?.fullName || "Avatar"} />
+                  <AvatarFallback className={cn("text-sm font-bold text-white", ROLE_COLORS[role])}>
+                    {initials(profile, role)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold text-on-surface">{profile?.fullName || "Tài khoản UniBus"}</p>
+                  <p className="truncate text-xs text-on-surface-variant">{profile?.email || ROLE_LABELS[role]}</p>
+                  <span className="inline-flex mt-1 items-center gap-1 h-5 px-2 rounded-full bg-[#beff50] text-[#14140f] text-[10px] font-bold">
+                    <School className="size-2.5" />
+                    {ROLE_LABELS[role]}
+                  </span>
+                </div>
+              </div>
+              <DropdownMenuItem onClick={() => goTo(profileNavId)}>
+                <UserCircle className="size-4" /> Hồ sơ cá nhân
               </DropdownMenuItem>
               {role === "student" && (
-                <DropdownMenuItem onClick={() => goTo("stu-university")} className="rounded-lg">
-                  <School className="mr-2 size-4" /> Trường của tôi
+                <DropdownMenuItem onClick={() => goTo("stu-university")}>
+                  <VerificationMenuIcon className="size-4" /> {verificationMenu.label}
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="rounded-lg text-error focus:text-error" onClick={onLogout}>
-                <LogOut className="mr-2 size-4" /> Đăng xuất
+              <DropdownMenuItem variant="destructive" onClick={onLogout}>
+                <LogOut className="size-4" /> Đăng xuất
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

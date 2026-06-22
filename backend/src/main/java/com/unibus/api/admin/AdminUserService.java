@@ -11,21 +11,32 @@ import com.unibus.api.admin.AdminUserDtos.CreateStaffUserRequest;
 import com.unibus.api.admin.AdminUserDtos.UpdateUserStatusRequest;
 import com.unibus.api.admin.AdminUserDtos.UserView;
 import com.unibus.api.common.ApiException;
+import com.unibus.api.notification.EmailService;
 
 @Service
 public class AdminUserService {
 
     private final AdminUserRepository adminUserRepository;
     private final PasswordEncoder passwordEncoder;
+    private final EmailService emailService;
 
-    public AdminUserService(AdminUserRepository adminUserRepository, PasswordEncoder passwordEncoder) {
+    public AdminUserService(AdminUserRepository adminUserRepository, PasswordEncoder passwordEncoder,
+            EmailService emailService) {
         this.adminUserRepository = adminUserRepository;
         this.passwordEncoder = passwordEncoder;
+        this.emailService = emailService;
     }
 
     @Transactional(readOnly = true)
     public List<UserView> list(String keyword, String role, String status) {
         return adminUserRepository.findUsers(keyword, role, status);
+    }
+
+    @Transactional(readOnly = true)
+    public AdminUserDtos.PageResponse<UserView> listPaged(String keyword, String role, String status, int page, int size) {
+        List<UserView> items = adminUserRepository.findUsers(keyword, role, status, page, size);
+        long total = adminUserRepository.countUsers(keyword, role, status);
+        return new AdminUserDtos.PageResponse<>(items, page, size, total);
     }
 
     @Transactional(readOnly = true)
@@ -36,8 +47,15 @@ public class AdminUserService {
 
     @Transactional
     public UserView updateStatus(Integer userId, UpdateUserStatusRequest request) {
-        get(userId);
-        return adminUserRepository.updateStatus(userId, request.status(), request.lockReason());
+        UserView previous = get(userId);
+        UserView updated = adminUserRepository.updateStatus(userId, request.status(), request.lockReason());
+        // REQ-ADM-001 AC2: Email thông báo gửi đến người dùng khi lock/unlock.
+        if ("LOCKED".equals(request.status())) {
+            emailService.sendAccountLockNotice(updated.email(), updated.fullName(), request.lockReason());
+        } else if ("ACTIVE".equals(request.status()) && "LOCKED".equalsIgnoreCase(previous.status())) {
+            emailService.sendAccountUnlockNotice(updated.email(), updated.fullName());
+        }
+        return updated;
     }
 
     @Transactional

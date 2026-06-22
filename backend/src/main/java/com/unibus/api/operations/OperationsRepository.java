@@ -17,6 +17,7 @@ import org.springframework.stereotype.Repository;
 
 import com.unibus.api.operations.OperationsDtos.BusOption;
 import com.unibus.api.operations.OperationsDtos.DriverTripView;
+import com.unibus.api.operations.OperationsDtos.DriverContactView;
 import com.unibus.api.operations.OperationsDtos.ContactPersonView;
 import com.unibus.api.operations.OperationsDtos.ConductorContactView;
 import com.unibus.api.operations.OperationsDtos.ConductorTicketView;
@@ -438,6 +439,21 @@ public class OperationsRepository {
         return ids.stream().findFirst();
     }
 
+    public List<DriverContactView> findDriverDispatcherContacts() {
+        return jdbcTemplate.query("""
+                SELECT full_name, phone_number, email
+                FROM users
+                WHERE role = 'DISPATCHER'
+                  AND status = 'ACTIVE'
+                ORDER BY full_name
+                """, (rs, rowNum) -> new DriverContactView(
+                        "COORDINATOR",
+                        rs.getString("full_name"),
+                        "Điều phối viên",
+                        rs.getString("phone_number"),
+                        rs.getString("email")));
+    }
+
     public InternalMessageView createInternalMessage(Integer senderUserId, Integer recipientUserId, Integer tripId, String content) {
         return jdbcTemplate.queryForObject("""
                 INSERT INTO internal_messages(sender_user_id, recipient_user_id, trip_id, content)
@@ -707,11 +723,17 @@ public class OperationsRepository {
     public void updateTripLocation(Integer tripId, double longitude, double latitude, Double speedKmh,
             Integer occupancy) {
         Integer busId = jdbcTemplate.queryForObject("SELECT bus_id FROM trips WHERE trip_id = ?", Integer.class, tripId);
-        jdbcTemplate.update("DELETE FROM vehicle_locations WHERE trip_id = ?", tripId);
+        // Insert new location point (preserve history for replay/analytics).
+        // The latest row is surfaced by findLiveFleet via ROW_NUMBER() OVER (PARTITION BY trip_id ORDER BY updated_at DESC).
         jdbcTemplate.update("""
                 INSERT INTO vehicle_locations(bus_id, trip_id, longitude, latitude, speed_kmh, occupancy)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """, busId, tripId, longitude, latitude, speedKmh, occupancy);
+        // Best-effort cleanup of stale points older than 24h to bound table growth.
+        jdbcTemplate.update("""
+                DELETE FROM vehicle_locations
+                WHERE trip_id = ? AND updated_at < NOW() - INTERVAL '24 hours'
+                """, tripId);
     }
 
     public List<LiveFleetVehicle> findLiveFleet(LocalDate serviceDate) {

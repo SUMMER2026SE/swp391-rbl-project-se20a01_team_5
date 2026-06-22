@@ -119,6 +119,29 @@ async function request<T>(path: string, options: RequestInit = {}, retry = true)
   return (payload?.data ?? payload) as T;
 }
 
+async function requestBlob(path: string, retry = true): Promise<Blob> {
+  const token = getAccessToken();
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+
+  if (res.status === 401 && retry) {
+    const ok = await tryRefresh();
+    if (ok) return requestBlob(path, false);
+    clearTokens();
+  }
+
+  if (!res.ok) {
+    const payload = await readPayload(res);
+    throw new ApiError(
+      res.status,
+      payload?.message || payload?.error || res.statusText || "Request failed",
+      payload?.data
+    );
+  }
+  return res.blob();
+}
+
 let refreshPromise: Promise<boolean> | null = null;
 
 async function tryRefresh(): Promise<boolean> {
@@ -153,6 +176,7 @@ export const apiFetch = {
   delete: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: "DELETE", body: body === undefined ? undefined : JSON.stringify(body) }),
   form: <T>(path: string, formData: FormData) => request<T>(path, { method: "POST", body: formData }),
+  blob: (path: string) => requestBlob(path),
 };
 
 export interface TokenPair {
@@ -351,7 +375,7 @@ export interface TravelHistoryView {
 }
 
 export interface VerificationView {
-  verificationId: number;
+  verificationId?: number;
   userId: number;
   email: string;
   fullName: string;
@@ -360,7 +384,13 @@ export interface VerificationView {
   universityId?: number;
   studentCode?: string;
   cardImageUrl?: string;
+  ocrFullName?: string;
+  ocrStudentCode?: string;
+  ocrUniversity?: string;
+  ocrRawText?: string;
+  ocrConfidenceScore?: number;
   rejectionReason?: string;
+  reviewerUserId?: number;
   submittedAt?: string;
   reviewedAt?: string;
 }
@@ -400,7 +430,7 @@ export const studentApi = {
     apiFetch.post<TicketView>("/students/me/tickets/monthly-pass", { method }),
   payments: () => apiFetch.get<PaymentView[]>("/students/me/payments"),
   createSePayOrder: (ticketType: string) => apiFetch.post<{ orderId: number; qrUrl: string; amount: number; description: string; bankCode: string; accountNo: string; accountName: string }>("/students/me/payments/sepay/order", { ticketType }),
-  getSePayOrderStatus: (orderId: number) => apiFetch.get<{ orderId: number; ticketType: string; total: number; status: string; paid: boolean; paidAt: string }>(`/students/me/payments/sepay/order/${orderId}/status`),
+  getSePayOrderStatus: (orderId: number) => apiFetch.get<{ orderId: number; ticketType: string; total: number; amount?: number; description?: string; qrUrl?: string; bankCode?: string; accountNo?: string; accountName?: string; status: string; paid: boolean; paidAt?: string }>(`/students/me/payments/sepay/order/${orderId}/status`),
   travelHistory: (page = 0, size = 20) => apiFetch.get<TravelHistoryView[]>("/students/me/travel-history", { page, size }),
 };
 
@@ -514,6 +544,7 @@ export interface ExperienceTicketCard {
   validFrom?: string;
   expiresOn?: string;
   expiresAt?: string;
+  purchasedAt?: string;
   status: string;
 }
 
@@ -662,6 +693,21 @@ export interface AdminStatsView {
   complaints: { complaintId: number; title: string; content: string; status: string; createdAt?: string }[];
   violations: { violationReportId: number; reporterName?: string; reportedName?: string; content: string; status: string; submittedAt?: string }[];
   fares: { fareId: number; routeId: number; routeCode?: string; routeName: string; fareType: string; amount: number; effectiveFrom?: string; effectiveUntil?: string; notes?: string }[];
+  revenueSeries: { day: string; date: string; revenue: number }[];
+  tripsSeries: { day: string; date: string; trips: number }[];
+  roleDistribution: { role: string; value: number }[];
+}
+
+export interface CoordinatorUniversityMetric {
+  universityId: number;
+  universityName: string;
+  shortName?: string;
+  colorHex?: string;
+  routeCount: number;
+  fleetCount: number;
+  driverCount: number;
+  studentCount: number;
+  tripsToday: number;
 }
 
 export const experienceApi = {
@@ -684,8 +730,9 @@ export const experienceApi = {
   updateAssistantLostItem: (lostItemId: number, data: { status: string; notes?: string }) =>
     apiFetch.put<ExperienceLostItemCard>(`/conductor/lost-items/${lostItemId}`, data),
   coordinatorDashboard: () => apiFetch.get<CoordinatorDashboardView>("/coordinator/dashboard"),
+  coordinatorByUniversity: () => apiFetch.get<CoordinatorUniversityMetric[]>("/coordinator/by-university"),
   coordinatorFeedback: (status?: string) => apiFetch.get<ExperienceFeedbackCard[]>("/coordinator/experience-feedback", { status }),
-  adminStats: () => apiFetch.get<AdminStatsView>("/admin/stats"),
+  adminStats: (days = 7) => apiFetch.get<AdminStatsView>("/admin/stats", { days }),
   fares: () => apiFetch.get<AdminStatsView["fares"]>("/admin/fares"),
   updateFare: (fareId: number, data: { amount: number; notes?: string }) =>
     apiFetch.put<AdminStatsView["fares"][number]>(`/admin/fares/${fareId}`, data),
@@ -790,8 +837,17 @@ export interface LiveFleetVehicle {
   locationUpdatedAt?: string;
 }
 
+export interface DriverContactView {
+  type: "COORDINATOR" | "EMERGENCY";
+  name: string;
+  role: string;
+  phone: string;
+  email?: string;
+}
+
 export const operationsApi = {
   driverTrips: (date?: string) => apiFetch.get<DriverTripView[]>("/driver/trips", { date }),
+  driverContacts: () => apiFetch.get<DriverContactView[]>("/driver/contacts"),
   startTrip: (tripId: number) => apiFetch.post<DriverTripView>(`/driver/trips/${tripId}/start`),
   endTrip: (tripId: number) => apiFetch.post<DriverTripView>(`/driver/trips/${tripId}/end`),
   updateLocation: (tripId: number, data: { longitude: number; latitude: number; speedKmh?: number; occupancy?: number }) =>
@@ -970,6 +1026,20 @@ export interface UniversityStatsView {
   activeSubsidyPolicies: number;
   totalSubsidyAmount: number;
   monthlyPasses: number;
+  passesByRoute: {
+    routeId: number;
+    routeCode?: string;
+    routeName: string;
+    colorHex?: string;
+    passes: number;
+  }[];
+  tripsSeries: { day: string; date: string; trips: number }[];
+  subsidyDistribution: {
+    policyName: string;
+    subsidyType: string;
+    value: number;
+    colorHex: string;
+  }[];
 }
 
 export interface ReconciliationView {
@@ -981,6 +1051,29 @@ export interface ReconciliationView {
   monthlyPasses: number;
   from?: string;
   to?: string;
+}
+
+export interface PaymentTransactionView {
+  orderId: number;
+  transactionId?: number;
+  sepayTransactionId?: number;
+  studentCode?: string;
+  studentName?: string;
+  universityId?: number;
+  universityName?: string;
+  ticketType?: string;
+  routeId?: number;
+  routeName?: string;
+  orderTotal?: number;
+  paymentStatus?: string;
+  gateway?: string;
+  amountIn?: number;
+  amountOut?: number;
+  transactionContent?: string;
+  referenceNumber?: string;
+  transactionDate?: string;
+  paidAt?: string;
+  createdAt?: string;
 }
 
 export interface AuditLogView {
@@ -999,8 +1092,10 @@ export interface AuditLogView {
 }
 
 export const adminApi = {
-  users: (params?: { role?: string; status?: string; search?: string }) =>
-    apiFetch.get<AdminUserView[]>("/admin/users", { role: params?.role, status: params?.status, keyword: params?.search }),
+  users: async (params?: { role?: string; status?: string; search?: string }) => {
+    const res = await apiFetch.get<{ items: AdminUserView[] }>("/admin/users", { role: params?.role, status: params?.status, keyword: params?.search });
+    return res.items || [];
+  },
   user: (userId: number) => apiFetch.get<AdminUserView>(`/admin/users/${userId}`),
   updateUserStatus: (userId: number, data: { status: "ACTIVE" | "LOCKED"; lockReason?: string }) =>
     apiFetch.put<AdminUserView>(`/admin/users/${userId}/status`, data),
@@ -1039,6 +1134,7 @@ export const adminApi = {
   subsidyPolicies: (universityId?: number) => apiFetch.get<SubsidyPolicyView[]>("/admin/subsidy-policies", { universityId }),
   createSubsidyPolicy: (data: { universityId: number; campusId?: number; policyName: string; subsidyType: string; value: number; maxAmount?: number; activeFrom?: string; activeUntil?: string; status?: string }) =>
     apiFetch.post<SubsidyPolicyView>("/admin/subsidy-policies", data),
+  paymentTransactions: (params?: { universityId?: number }) => apiFetch.get<PaymentTransactionView[]>("/admin/payment-transactions", params),
   auditLogs: (params?: { universityId?: number; action?: string }) => apiFetch.get<AuditLogView[]>("/admin/audit-logs", params),
 };
 
@@ -1062,6 +1158,7 @@ export const universityApi = {
     apiFetch.post<SubsidyPolicyView>("/university-admin/subsidy-policies", data),
   stats: () => apiFetch.get<UniversityStatsView>("/university-admin/stats"),
   reconciliation: (params?: { from?: string; to?: string }) => apiFetch.get<ReconciliationView>("/university-admin/reconciliation", params),
+  paymentTransactions: () => apiFetch.get<PaymentTransactionView[]>("/university-admin/payment-transactions"),
   notify: (data: { title: string; content: string }) => apiFetch.post<number>("/university-admin/notifications", data),
 };
 

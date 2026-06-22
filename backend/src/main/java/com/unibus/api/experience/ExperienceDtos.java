@@ -77,6 +77,7 @@ public final class ExperienceDtos {
             LocalDate validFrom,
             LocalDate expiresOn,
             OffsetDateTime expiresAt,
+            OffsetDateTime purchasedAt,
             String status) {
     }
 
@@ -220,10 +221,34 @@ public final class ExperienceDtos {
             List<RouteMetric> routeMetrics,
             List<ComplaintCard> complaints,
             List<ViolationCard> violations,
-            List<FareCard> fares) {
+            List<FareCard> fares,
+            List<RevenueSeriesPoint> revenueSeries,
+            List<TripsSeriesPoint> tripsSeries,
+            List<RoleDistributionPoint> roleDistribution) {
     }
 
     public record RouteMetric(String routeCode, String routeName, String colorHex, int trips, BigDecimal revenue) {
+    }
+
+    public record RevenueSeriesPoint(String day, LocalDate date, BigDecimal revenue) {
+    }
+
+    public record TripsSeriesPoint(String day, LocalDate date, int trips) {
+    }
+
+    public record RoleDistributionPoint(String role, int value) {
+    }
+
+    public record UniversityOperationsMetric(
+            Integer universityId,
+            String universityName,
+            String shortName,
+            String colorHex,
+            int routeCount,
+            int fleetCount,
+            int driverCount,
+            int studentCount,
+            int tripsToday) {
     }
 
     public record ComplaintCard(Integer complaintId, String title, String content, String status, OffsetDateTime createdAt) {
@@ -265,5 +290,44 @@ public final class ExperienceDtos {
 
     public record RatingRequest(@NotNull Integer tripId, @Min(1) @Max(5) Integer rating,
             @Size(max = 1000) String content) {
+    }
+
+    public record DriverRatingCard(Long ratingId, Integer driverId, String driverName,
+            Integer tripId, Integer starRating, String comment, OffsetDateTime createdAt) {
+    }
+
+    public record DriverRatingSummary(Integer driverId, String driverName, Double averageRating,
+            Integer totalRatings) {
+    }
+
+    public record CreateComplaintRequest(@NotBlank @Size(max = 255) String subject,
+            @NotBlank @Size(max = 2000) String description,
+            @Size(max = 50) String category) {
+    }
+
+    public record ResolveComplaintRequest(@NotBlank @Size(max = 30) String status,
+            @Size(max = 2000) String resolution) {
+    }
+
+    public record CreateViolationRequest(@NotNull Integer reportedUserId,
+            @NotBlank @Size(max = 50) String category,
+            @NotBlank @Size(max = 2000) String description) {
+    }
+
+    public record ReviewViolationRequest(@NotBlank @Size(max = 30) String status,
+            @Size(max = 255) String actionTaken) {
+    }
+
+    public record InternalMessageCard(Long messageId, Integer senderUserId, String senderName,
+            Integer recipientUserId, String recipientName, String body, OffsetDateTime sentAt,
+            OffsetDateTime readAt) {
+    }
+
+    public record SendInternalMessageRequest(@NotNull Integer recipientUserId,
+            @NotBlank @Size(max = 2000) String body) {
+    }
+
+    public record ContactThreadCard(Integer peerUserId, String peerName, String peerRole,
+            String lastMessageBody, OffsetDateTime lastMessageAt, int unreadCount) {
     }
 }

@@ -1,6 +1,7 @@
 package com.unibus.api.admin;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -38,5 +39,17 @@ public final class AdminUserDtos {
             @Size(max = 20) String employeeCode,
             @Size(max = 50) String licenseNumber,
             @Size(max = 15) String phoneNumber) {
+    }
+
+    public record PageResponse<T>(
+            List<T> items,
+            int page,
+            int size,
+            long totalItems,
+            int totalPages) {
+        public PageResponse(List<T> items, int page, int size, long totalItems) {
+            this(items, page, size, totalItems,
+                    size <= 0 ? 1 : (int) Math.ceil((double) totalItems / size));
+        }
     }
 }
