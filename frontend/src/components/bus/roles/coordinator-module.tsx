@@ -640,8 +640,10 @@ function InternalChatPanel({ open, onOpenChange, onUnreadCountChange }: Internal
     };
 
     if (open) {
-      setLoadingThreads(true);
-      fetchThreads().finally(() => setLoadingThreads(false));
+      setTimeout(() => setLoadingThreads(true), 0);
+      fetchThreads().finally(() => {
+        setTimeout(() => setLoadingThreads(false), 0);
+      });
       
       const interval = setInterval(fetchThreads, 4000);
       return () => clearInterval(interval);
@@ -656,7 +658,7 @@ function InternalChatPanel({ open, onOpenChange, onUnreadCountChange }: Internal
   // Poll conversation messages when a thread is active
   useEffect(() => {
     if (!open || !activeThread) {
-      setMessages([]);
+      setTimeout(() => setMessages([]), 0);
       return;
     }
 
@@ -672,8 +674,10 @@ function InternalChatPanel({ open, onOpenChange, onUnreadCountChange }: Internal
     // Mark as read immediately
     messagingApi.markAsRead(activeThread.peerUserId).catch(() => {});
 
-    setLoadingMessages(true);
-    fetchConversation().finally(() => setLoadingMessages(false));
+    setTimeout(() => setLoadingMessages(true), 0);
+    fetchConversation().finally(() => {
+      setTimeout(() => setLoadingMessages(false), 0);
+    });
 
     const interval = setInterval(fetchConversation, 3000);
     return () => clearInterval(interval);
