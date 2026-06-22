@@ -25,6 +25,7 @@ import com.unibus.api.university.UniversityDtos.CreateScopedSubsidyPolicyRequest
 import com.unibus.api.university.UniversityDtos.CreateUniversityNotificationRequest;
 import com.unibus.api.university.UniversityDtos.DomainView;
 import com.unibus.api.university.UniversityDtos.ImportBatchView;
+import com.unibus.api.university.UniversityDtos.PaymentTransactionView;
 import com.unibus.api.university.UniversityDtos.ReconciliationView;
 import com.unibus.api.university.UniversityDtos.RosterStudentView;
 import com.unibus.api.university.UniversityDtos.SubsidyPolicyView;
@@ -137,6 +138,12 @@ public class UniversityAdminController {
             @RequestParam(required = false) LocalDate to) {
         Integer universityId = service.requireUniversityAdmin(currentUser).universityId();
         return ApiResponse.ok("Reconciliation retrieved", service.reconciliation(universityId, from, to));
+    }
+
+    @GetMapping("/payment-transactions")
+    ApiResponse<List<PaymentTransactionView>> paymentTransactions(@AuthenticationPrincipal CurrentUser currentUser) {
+        Integer universityId = service.requireUniversityAdmin(currentUser).universityId();
+        return ApiResponse.ok("Payment transactions retrieved", service.paymentTransactions(universityId));
     }
 
     @PostMapping("/notifications")

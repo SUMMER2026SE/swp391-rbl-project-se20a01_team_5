@@ -25,6 +25,7 @@ import com.unibus.api.university.UniversityDtos.CreateSubsidyPolicyRequest;
 import com.unibus.api.university.UniversityDtos.CreateUniversityAdminRequest;
 import com.unibus.api.university.UniversityDtos.CreateUniversityRequest;
 import com.unibus.api.university.UniversityDtos.DomainView;
+import com.unibus.api.university.UniversityDtos.PaymentTransactionView;
 import com.unibus.api.university.UniversityDtos.RouteUniversityView;
 import com.unibus.api.university.UniversityDtos.SubsidyPolicyView;
 import com.unibus.api.university.UniversityDtos.UniversityAdminView;
@@ -137,6 +138,12 @@ public class AdminUniversityController {
             @AuthenticationPrincipal CurrentUser currentUser,
             @Valid @RequestBody CreateSubsidyPolicyRequest request) {
         return ApiResponse.ok("Subsidy policy created", service.createSubsidyPolicy(currentUser, request));
+    }
+
+    @GetMapping("/payment-transactions")
+    ApiResponse<List<PaymentTransactionView>> paymentTransactions(
+            @RequestParam(required = false) Integer universityId) {
+        return ApiResponse.ok("Payment transactions retrieved", service.paymentTransactions(universityId));
     }
 
     @GetMapping("/audit-logs")
