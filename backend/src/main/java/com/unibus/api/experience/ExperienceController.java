@@ -167,4 +167,41 @@ public class ExperienceController {
     ApiResponse<List<ViolationCard>> violations(@RequestParam(required = false) String status) {
         return ApiResponse.ok("Violations retrieved", service.violations(status));
     }
+
+    // ===== Internal messaging (REQ-DRV-006, REQ-AST-007) =====
+
+    @PostMapping("/me/messages")
+    @PreAuthorize("hasAnyRole('DRIVER', 'CONDUCTOR', 'DISPATCHER', 'ADMIN')")
+    ApiResponse<java.util.Map<String, Object>> sendMessage(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @Valid @RequestBody SendInternalMessageRequest request) {
+        Long id = service.sendMessage(currentUser, request);
+        return ApiResponse.ok("Message sent", java.util.Map.of("messageId", id));
+    }
+
+    @GetMapping("/me/messages/threads")
+    @PreAuthorize("hasAnyRole('DRIVER', 'CONDUCTOR', 'DISPATCHER', 'ADMIN')")
+    ApiResponse<List<ContactThreadCard>> messageThreads(@AuthenticationPrincipal CurrentUser currentUser) {
+        return ApiResponse.ok("Message threads retrieved", service.contactThreads(currentUser));
+    }
+
+    @GetMapping("/me/messages/{peerUserId}")
+    @PreAuthorize("hasAnyRole('DRIVER', 'CONDUCTOR', 'DISPATCHER', 'ADMIN')")
+    ApiResponse<List<InternalMessageCard>> conversation(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @PathVariable Integer peerUserId) {
+        List<InternalMessageCard> msgs = service.conversation(currentUser, peerUserId);
+        // mark as read on view
+        service.markRead(currentUser, peerUserId);
+        return ApiResponse.ok("Conversation retrieved", msgs);
+    }
+
+    @PostMapping("/me/messages/{peerUserId}/read")
+    @PreAuthorize("hasAnyRole('DRIVER', 'CONDUCTOR', 'DISPATCHER', 'ADMIN')")
+    ApiResponse<java.util.Map<String, Object>> markConversationRead(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @PathVariable Integer peerUserId) {
+        service.markRead(currentUser, peerUserId);
+        return ApiResponse.ok("Marked as read", java.util.Map.of());
+    }
 }

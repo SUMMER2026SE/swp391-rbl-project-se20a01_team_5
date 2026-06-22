@@ -266,4 +266,17 @@ public final class ExperienceDtos {
     public record RatingRequest(@NotNull Integer tripId, @Min(1) @Max(5) Integer rating,
             @Size(max = 1000) String content) {
     }
+
+    public record InternalMessageCard(Long messageId, Integer senderUserId, String senderName,
+            Integer recipientUserId, String recipientName, String body, java.time.OffsetDateTime sentAt,
+            java.time.OffsetDateTime readAt) {
+    }
+
+    public record SendInternalMessageRequest(@NotNull Integer recipientUserId,
+            @NotBlank @Size(max = 2000) String body) {
+    }
+
+    public record ContactThreadCard(Integer peerUserId, String peerName, String peerRole,
+            String lastMessageBody, java.time.OffsetDateTime lastMessageAt, int unreadCount) {
+    }
 }

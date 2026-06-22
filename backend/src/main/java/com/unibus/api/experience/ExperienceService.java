@@ -133,6 +133,31 @@ public class ExperienceService {
         return repository.violations(status, 50);
     }
 
+    // ===== Internal messaging (REQ-DRV-006, REQ-AST-007) =====
+
+    @Transactional
+    public Long sendMessage(CurrentUser currentUser, SendInternalMessageRequest request) {
+        if (request.recipientUserId().equals(currentUser.userId())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Cannot send a message to yourself");
+        }
+        return repository.sendInternalMessage(currentUser.userId(), request.recipientUserId(), request.body());
+    }
+
+    @Transactional(readOnly = true)
+    public List<InternalMessageCard> conversation(CurrentUser currentUser, Integer peerUserId) {
+        return repository.conversation(currentUser.userId(), peerUserId, 100);
+    }
+
+    @Transactional
+    public void markRead(CurrentUser currentUser, Integer peerUserId) {
+        repository.markConversationRead(currentUser.userId(), peerUserId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ContactThreadCard> contactThreads(CurrentUser currentUser) {
+        return repository.contactThreads(currentUser.userId());
+    }
+
     private Integer requireDriver(CurrentUser currentUser) {
         return repository.driverIdForUser(currentUser.userId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Driver profile not found"));
