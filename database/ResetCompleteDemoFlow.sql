@@ -1,7 +1,6 @@
--- Reset only the transactional state for the dedicated complete-flow account.
--- The student remains VERIFIED and linked to UniBus Demo University.
--- After running this file, log in as student.flow@unibus.local / Password123!
--- and demonstrate route registration followed by SePay order creation.
+-- Return the dedicated demo account to a brand-new verified-student state.
+-- Login: student.flow@unibus.local / Password123!
+-- The identity, university link and VERIFIED status remain intact.
 
 BEGIN;
 
@@ -36,5 +35,12 @@ WHERE student_code = 'SV-FLOW-001';
 
 DELETE FROM route_registrations
 WHERE student_code = 'SV-FLOW-001';
+
+DELETE FROM notifications
+WHERE recipient_user_id = (
+    SELECT user_id
+    FROM users
+    WHERE email = 'student.flow@unibus.local'
+);
 
 COMMIT;
