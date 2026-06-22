@@ -45,6 +45,7 @@ import {
   GraduationCap,
   BadgeCheck,
   Banknote,
+  Receipt,
   Search,
   CalendarClock,
   Wallet,
@@ -126,6 +127,8 @@ import { PageHeader, StatCard, Section, EmptyState } from "../primitives";
 
 import {
   useAdminPrototypeData,
+  useAdminVerifications,
+  useAdminPayments,
   formatVND,
   formatDateTime,
   formatDate,
@@ -145,6 +148,7 @@ import {
   type ExperienceDashboardStat,
   type AdminStatsView,
 } from "@/lib/api/client";
+import { ProtectedImage } from "@/components/bus/protected-image";
 
 type AdminModuleProps = {
   activeId: string;
@@ -208,8 +212,12 @@ export function AdminModule({ activeId, onNavigate }: AdminModuleProps) {
       return <UsersScreen ctx={ctx} />;
     case "adm-complaints":
       return <ComplaintsScreen ctx={ctx} />;
+    case "adm-verifications":
+      return <VerificationsScreen ctx={ctx} />;
     case "adm-violations":
       return <ViolationsScreen ctx={ctx} />;
+    case "adm-transactions":
+      return <TransactionsScreen />;
     case "adm-fare":
       return <FareScreen ctx={ctx} />;
     case "adm-notify":
@@ -1077,6 +1085,344 @@ function CreateStaffDialog({ onClose, onCreated }: { onClose: () => void; onCrea
         </ExpressiveButton>
       </DialogFooter>
     </DialogContent>
+  );
+}
+
+// =============================================================================
+// Screen 7: Student verifications
+// =============================================================================
+type VerificationReviewAction = "approve" | "reject" | "resubmit";
+
+function adminVerificationMeta(status?: string) {
+  const meta: Record<string, { label: string; tone: "neutral" | "primary" | "tertiary" | "success" | "warning" | "error" }> = {
+    NOT_SUBMITTED: { label: "Chưa gửi", tone: "neutral" },
+    PENDING_REVIEW: { label: "Chờ duyệt", tone: "warning" },
+    VERIFIED: { label: "Đã duyệt", tone: "success" },
+    REJECTED: { label: "Từ chối", tone: "error" },
+    RESUBMISSION_REQUIRED: { label: "Cần gửi lại", tone: "warning" },
+  };
+  return meta[status || ""] || { label: status || "Không rõ", tone: "neutral" as const };
+}
+
+function normalizeCompare(value?: string | null) {
+  return (value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function hasOcrMismatch(expected?: string | null, actual?: string | null) {
+  const a = normalizeCompare(expected);
+  const b = normalizeCompare(actual);
+  if (!a || !b) return false;
+  return !a.includes(b) && !b.includes(a);
+}
+
+function formatAdminConfidence(score?: number) {
+  if (score == null || Number.isNaN(score)) return "Chưa có";
+  const percent = score <= 1 ? score * 100 : score;
+  return `${Math.round(percent)}%`;
+}
+
+function ReviewField({
+  label,
+  submitted,
+  ocr,
+}: {
+  label: string;
+  submitted?: string | null;
+  ocr?: string | null;
+}) {
+  const mismatch = hasOcrMismatch(submitted, ocr);
+  return (
+    <div className="rounded-2xl bg-surface-container-low p-3 min-w-0">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-on-surface-variant">{label}</p>
+        {mismatch && <Badge variant="destructive" className="text-[10px]">Lệch OCR</Badge>}
+      </div>
+      <p className="mt-1 truncate text-sm font-bold text-on-surface">{submitted || "—"}</p>
+      <p className={cn("mt-1 truncate text-xs", mismatch ? "text-error" : "text-on-surface-variant")}>
+        OCR: {ocr || "—"}
+      </p>
+    </div>
+  );
+}
+
+function VerificationsScreen({ ctx }: { ctx: Ctx }) {
+  const [statusFilter, setStatusFilter] = useState("PENDING_REVIEW");
+  const [review, setReview] = useState<{ item: VerificationView; action: VerificationReviewAction } | null>(null);
+  const [reason, setReason] = useState("");
+  const [working, setWorking] = useState(false);
+  const resource = useAdminVerifications(statusFilter === "all" ? undefined : statusFilter);
+  const items = resource.raw || [];
+
+  const openReview = (item: VerificationView, action: VerificationReviewAction) => {
+    setReason("");
+    setReview({ item, action });
+  };
+
+  const runReview = async () => {
+    if (!review?.item.verificationId) return;
+    if ((review.action === "reject" || review.action === "resubmit") && !reason.trim()) {
+      toast.error("Vui lòng nhập lý do để sinh viên biết cần sửa gì");
+      return;
+    }
+
+    setWorking(true);
+    try {
+      if (review.action === "approve") {
+        await adminApi.approveVerification(review.item.verificationId);
+        toast.success("Đã duyệt xác minh sinh viên");
+      } else if (review.action === "reject") {
+        await adminApi.rejectVerification(review.item.verificationId, reason.trim());
+        toast.success("Đã từ chối hồ sơ");
+      } else {
+        await adminApi.requestResubmission(review.item.verificationId, reason.trim());
+        toast.success("Đã yêu cầu sinh viên gửi lại");
+      }
+      setReview(null);
+      setReason("");
+      resource.reload();
+      ctx.reload();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Không thể cập nhật hồ sơ");
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  const actionCopy = review?.action === "approve"
+    ? { title: "Duyệt hồ sơ?", description: "Sinh viên sẽ được liên kết với trường và trạng thái chuyển sang đã xác minh.", cta: "Duyệt" }
+    : review?.action === "reject"
+      ? { title: "Từ chối hồ sơ?", description: "Sinh viên sẽ thấy lý do từ chối và có thể gửi lại hồ sơ mới.", cta: "Từ chối" }
+      : { title: "Yêu cầu gửi lại?", description: "Sinh viên sẽ phải bổ sung ảnh hoặc thông tin theo lý do bạn nhập.", cta: "Yêu cầu gửi lại" };
+
+  return (
+    <PageTransition className="space-y-6 min-w-0">
+      <PageHeader
+        title="Xác minh sinh viên"
+        description={`${items.length} hồ sơ theo bộ lọc hiện tại`}
+        icon={<BadgeCheck className="size-7" />}
+        actions={
+          <ExpressiveButton variant="tonal" onClick={resource.reload} disabled={resource.loading}>
+            <RefreshCw className={cn("size-4", resource.loading && "animate-spin")} />
+            Làm mới
+          </ExpressiveButton>
+        }
+      />
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-56">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="PENDING_REVIEW">Chờ duyệt</SelectItem>
+            <SelectItem value="RESUBMISSION_REQUIRED">Cần gửi lại</SelectItem>
+            <SelectItem value="REJECTED">Từ chối</SelectItem>
+            <SelectItem value="VERIFIED">Đã duyệt</SelectItem>
+            <SelectItem value="all">Tất cả</SelectItem>
+          </SelectContent>
+        </Select>
+        {resource.loading && <span className="text-sm text-on-surface-variant">Đang tải...</span>}
+        {resource.error && <span className="text-sm text-error">{resource.error}</span>}
+      </div>
+
+      {items.length === 0 && !resource.loading ? (
+        <EmptyState
+          icon={<BadgeCheck className="size-7" />}
+          title="Không có hồ sơ"
+          description="Bộ lọc hiện tại chưa có sinh viên cần xử lý."
+        />
+      ) : (
+        <StaggerGroup className="space-y-4 min-w-0">
+          {items.map((item) => {
+            const meta = adminVerificationMeta(item.status);
+            const pending = item.status === "PENDING_REVIEW";
+            return (
+              <StaggerItem key={item.verificationId || `${item.userId}-${item.submittedAt}`}>
+                <ExpressiveCard variant="elevated" className="p-4 min-w-0">
+                  <div className="grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)]">
+                    <ProtectedImage
+                      src={item.cardImageUrl}
+                      alt={`Ảnh thẻ sinh viên của ${item.fullName}`}
+                      className="aspect-[4/3] w-full rounded-2xl border border-outline-variant/60"
+                    />
+                    <div className="space-y-4 min-w-0">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-lg font-black text-on-surface">{item.fullName}</h3>
+                            <M3StatusPill label={meta.label} tone={meta.tone} />
+                          </div>
+                          <p className="mt-1 truncate text-sm text-on-surface-variant">{item.email}</p>
+                          <p className="mt-1 text-xs font-semibold text-on-surface-variant">
+                            Gửi lúc: {formatDateTime(item.submittedAt)}
+                          </p>
+                        </div>
+                        <M3StatusPill label={`OCR ${formatAdminConfidence(item.ocrConfidenceScore)}`} tone="primary" />
+                      </div>
+
+                      <div className="grid gap-2 md:grid-cols-3">
+                        <ReviewField label="Họ tên" submitted={item.fullName} ocr={item.ocrFullName} />
+                        <ReviewField label="MSSV" submitted={item.studentCode} ocr={item.ocrStudentCode} />
+                        <ReviewField label="Trường" submitted={item.university} ocr={item.ocrUniversity} />
+                      </div>
+
+                      {item.ocrRawText && (
+                        <details className="rounded-2xl border border-outline-variant/50 bg-surface-container-lowest p-3">
+                          <summary className="cursor-pointer text-xs font-bold text-on-surface">Xem raw OCR</summary>
+                          <p className="mt-2 max-h-32 overflow-y-auto whitespace-pre-wrap text-xs text-on-surface-variant scrollbar-soft">
+                            {item.ocrRawText}
+                          </p>
+                        </details>
+                      )}
+
+                      {item.rejectionReason && (
+                        <div className="rounded-2xl border border-error/25 bg-error-container/40 p-3 text-sm">
+                          <p className="font-bold text-error">Lý do hiện tại</p>
+                          <p className="mt-1 text-on-surface-variant">{item.rejectionReason}</p>
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap gap-2">
+                        <ExpressiveButton
+                          variant="filled"
+                          disabled={!pending}
+                          onClick={() => openReview(item, "approve")}
+                        >
+                          <CheckCircle2 className="size-4" /> Duyệt
+                        </ExpressiveButton>
+                        <ExpressiveButton
+                          variant="tonal"
+                          disabled={!pending}
+                          onClick={() => openReview(item, "resubmit")}
+                        >
+                          <RefreshCw className="size-4" /> Yêu cầu gửi lại
+                        </ExpressiveButton>
+                        <ExpressiveButton
+                          variant="text"
+                          disabled={!pending}
+                          onClick={() => openReview(item, "reject")}
+                        >
+                          <XCircle className="size-4" /> Từ chối
+                        </ExpressiveButton>
+                      </div>
+                    </div>
+                  </div>
+                </ExpressiveCard>
+              </StaggerItem>
+            );
+          })}
+        </StaggerGroup>
+      )}
+
+      <Dialog open={!!review} onOpenChange={(open) => !open && !working && setReview(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{actionCopy.title}</DialogTitle>
+            <DialogDescription>{actionCopy.description}</DialogDescription>
+          </DialogHeader>
+          {review?.action !== "approve" && (
+            <div className="space-y-2 py-2">
+              <Label htmlFor="verification-review-reason">Lý do gửi cho sinh viên</Label>
+              <Textarea
+                id="verification-review-reason"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                rows={3}
+                placeholder="Ví dụ: Ảnh bị mờ, MSSV trên thẻ không khớp thông tin đã nhập..."
+              />
+            </div>
+          )}
+          <DialogFooter>
+            <ExpressiveButton variant="text" onClick={() => setReview(null)} disabled={working}>Hủy</ExpressiveButton>
+            <ExpressiveButton
+              variant={review?.action === "reject" ? "text" : "filled"}
+              onClick={runReview}
+              disabled={working}
+            >
+              {working ? <RefreshCw className="size-4 animate-spin" /> : <BadgeCheck className="size-4" />}
+              {actionCopy.cta}
+            </ExpressiveButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </PageTransition>
+  );
+}
+
+function TransactionsScreen() {
+  const payments = useAdminPayments();
+  const rows = payments.raw || [];
+  const paidRows = rows.filter((row) => row.paymentStatus === "PAID");
+  const totalPaid = paidRows.reduce((sum, row) => sum + (row.orderTotal || row.amountIn || 0), 0);
+  const pendingRows = rows.filter((row) => row.paymentStatus !== "PAID").length;
+
+  return (
+    <PageTransition className="space-y-6 min-w-0">
+      <PageHeader
+        title="Lịch sử giao dịch"
+        description={`${rows.length} giao dịch SePay/vé tháng`}
+        icon={<Receipt className="size-7" />}
+        actions={
+          <ExpressiveButton variant="tonal" onClick={payments.reload} disabled={payments.loading}>
+            <RefreshCw className={cn("size-4", payments.loading && "animate-spin")} />
+            Làm mới
+          </ExpressiveButton>
+        }
+      />
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <StatCard label="Đã thanh toán" value={paidRows.length} icon={<CheckCircle2 className="size-5" />} accent="success" />
+        <StatCard label="Tổng tiền" value={formatVND(totalPaid)} icon={<Banknote className="size-5" />} accent="primary" />
+        <StatCard label="Chưa tất toán" value={pendingRows} icon={<Clock className="size-5" />} accent="warning" />
+      </div>
+
+      {payments.error && (
+        <ExpressiveCard variant="filled" className="p-4 text-sm text-error">{payments.error}</ExpressiveCard>
+      )}
+
+      {rows.length === 0 && !payments.loading ? (
+        <EmptyState icon={<Receipt className="size-7" />} title="Chưa có giao dịch" />
+      ) : (
+        <ExpressiveCard variant="elevated" className="overflow-hidden min-w-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Sinh viên</TableHead>
+                <TableHead>Trường</TableHead>
+                <TableHead>Vé/Tuyến</TableHead>
+                <TableHead className="text-right">Số tiền</TableHead>
+                <TableHead>Trạng thái</TableHead>
+                <TableHead>Ngày</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.slice(0, 100).map((p) => (
+                <TableRow key={`${p.orderId}-${p.transactionId || p.sepayTransactionId || "order"}`}>
+                  <TableCell className="truncate">
+                    <p className="font-semibold">{p.studentName || p.studentCode || "—"}</p>
+                    {p.referenceNumber && <p className="text-[11px] text-on-surface-variant">{p.referenceNumber}</p>}
+                  </TableCell>
+                  <TableCell className="truncate text-xs">{p.universityName || "—"}</TableCell>
+                  <TableCell className="truncate text-xs">{p.routeName || p.ticketType || "—"}</TableCell>
+                  <TableCell className="text-right font-bold tabular-nums">
+                    {formatVND(p.orderTotal || p.amountIn || 0)}
+                  </TableCell>
+                  <TableCell>
+                    <M3StatusPill label={p.paymentStatus || "—"} tone={p.paymentStatus === "PAID" ? "success" : "warning"} />
+                  </TableCell>
+                  <TableCell className="text-xs whitespace-nowrap">{formatDateTime(p.paidAt || p.transactionDate || p.createdAt)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </ExpressiveCard>
+      )}
+    </PageTransition>
   );
 }
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion, useMotionValueEvent, useScroll } from "framer-motion";
-import { ArrowLeft, Bell, ChevronDown, LogOut, Menu, QrCode, Search, School, UserCircle } from "lucide-react";
+import { ArrowLeft, BadgeCheck, Bell, ChevronDown, Clock3, LogOut, Menu, QrCode, Search, School, UserCircle } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import {
@@ -79,6 +79,13 @@ export function AppShell({
     : "uniadm-profile";
 
   const isFirstNav = nav.length > 0 && activeId === nav[0].id;
+  const verificationStatus = profile?.studentVerificationStatus || "NOT_SUBMITTED";
+  const verificationMenu = verificationStatus === "VERIFIED"
+    ? { label: "Trường của tôi", icon: School }
+    : verificationStatus === "PENDING_REVIEW"
+      ? { label: "Hồ sơ đang chờ duyệt", icon: Clock3 }
+      : { label: "Xác minh sinh viên", icon: BadgeCheck };
+  const VerificationMenuIcon = verificationMenu.icon;
   const [scrolled, setScrolled] = useState(false);
   const { scrollY } = useScroll();
   useMotionValueEvent(scrollY, "change", (y) => setScrolled(y > 20));
@@ -318,7 +325,7 @@ export function AppShell({
               </DropdownMenuItem>
               {role === "student" && (
                 <DropdownMenuItem onClick={() => goTo("stu-university")}>
-                  <School className="size-4" /> Trường của tôi
+                  <VerificationMenuIcon className="size-4" /> {verificationMenu.label}
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />

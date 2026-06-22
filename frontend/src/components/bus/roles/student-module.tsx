@@ -44,6 +44,7 @@ import {
   ChevronRight,
   CircleDot,
   Download,
+  Bell,
   Plus,
   Coffee,
   Wifi,
@@ -70,6 +71,8 @@ import {
   LifeBuoy,
   MessageSquare,
   ChevronLeft,
+  ImageUp,
+  Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -141,6 +144,7 @@ import { PageHeader, StatCard, Section, EmptyState } from "../primitives";
 // Real backend data adapter
 import {
   useStudentPrototypeData,
+  useApi,
   formatVND,
   formatDateTime,
   formatDate,
@@ -151,7 +155,10 @@ import {
   experienceApi,
   feedbackApi,
   notificationApi,
+  universityApi,
   type StudentDashboardView,
+  type StudentUniversityView,
+  type VerificationView,
   type ExperienceRouteCard,
   type ExperienceStopCard,
   type ExperienceTripCard,
@@ -168,13 +175,15 @@ import {
   type EtaDTO,
   ApiError,
 } from "@/lib/api/client";
+import { ProtectedImage } from "@/components/bus/protected-image";
 
 type StudentModuleProps = {
   activeId: string;
   onNavigate: (id: string) => void;
+  onProfileRefresh?: () => Promise<void>;
 };
 
-export function StudentModule({ activeId, onNavigate }: StudentModuleProps) {
+export function StudentModule({ activeId, onNavigate, onProfileRefresh }: StudentModuleProps) {
   const proto = useStudentPrototypeData();
 
   if (proto.loading) return <LoadingScreen label="Đang tải dữ liệu sinh viên..." />;
@@ -218,7 +227,7 @@ export function StudentModule({ activeId, onNavigate }: StudentModuleProps) {
     case "stu-dashboard":
       return <DashboardScreen ctx={ctx} onNavigate={onNavigate} />;
     case "stu-university":
-      return <UniversityScreen ctx={ctx} />;
+      return <UniversityScreen ctx={ctx} onProfileRefresh={onProfileRefresh} />;
     case "stu-stops":
       return <StopsScreen ctx={ctx} />;
     case "stu-find":
@@ -889,78 +898,405 @@ function HistoryRow({ history, routes }: { history: any; routes: any[] }) {
   );
 }
 
-// Placeholder for Bell icon (already imported at top, but use it directly)
-import { Bell } from "lucide-react";
-
 // =============================================================================
 // Screen 2: University linkage
 // =============================================================================
-function UniversityScreen({ ctx }: { ctx: Ctx }) {
-  const u = ctx.university;
+const MAX_STUDENT_CARD_SIZE = 10 * 1024 * 1024;
+const STUDENT_CARD_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+function normalizeVerificationStatus(status?: string | null) {
+  if (!status) return "NOT_SUBMITTED";
+  return status === "PENDING" ? "PENDING_REVIEW" : status;
+}
+
+function verificationStatusCopy(status: string) {
+  const copy: Record<string, { label: string; description: string; tone: "neutral" | "primary" | "tertiary" | "success" | "warning" | "error" }> = {
+    NOT_SUBMITTED: {
+      label: "Chưa xác minh",
+      description: "Gửi ảnh thẻ sinh viên để hệ thống OCR đọc thông tin và admin duyệt.",
+      tone: "neutral",
+    },
+    PENDING_REVIEW: {
+      label: "Đang chờ duyệt",
+      description: "Hồ sơ đã gửi thành công. Admin sẽ kiểm tra ảnh thẻ và kết quả OCR.",
+      tone: "warning",
+    },
+    VERIFIED: {
+      label: "Đã xác minh",
+      description: "Tài khoản đã liên kết với trường và có thể dùng quyền lợi sinh viên.",
+      tone: "success",
+    },
+    REJECTED: {
+      label: "Bị từ chối",
+      description: "Hồ sơ cần sửa lại trước khi gửi mới.",
+      tone: "error",
+    },
+    RESUBMISSION_REQUIRED: {
+      label: "Cần gửi lại",
+      description: "Admin yêu cầu bổ sung ảnh hoặc thông tin rõ hơn.",
+      tone: "warning",
+    },
+  };
+  return copy[status] || copy.NOT_SUBMITTED;
+}
+
+function formatOcrConfidence(score?: number) {
+  if (score == null || Number.isNaN(score)) return "Chưa có";
+  const percent = score <= 1 ? score * 100 : score;
+  return `${Math.round(percent)}%`;
+}
+
+function FieldLine({ label, value }: { label: string; value?: string | number | null }) {
+  return (
+    <div className="rounded-2xl bg-surface-container-low p-3 min-w-0">
+      <p className="text-[11px] font-bold uppercase tracking-wide text-on-surface-variant">{label}</p>
+      <p className="mt-1 truncate text-sm font-semibold text-on-surface">{value || "—"}</p>
+    </div>
+  );
+}
+
+function OcrSummary({ verification }: { verification?: VerificationView | null }) {
+  if (!verification) return null;
+  const hasOcr =
+    !!verification.ocrFullName ||
+    !!verification.ocrStudentCode ||
+    !!verification.ocrUniversity ||
+    !!verification.ocrRawText ||
+    verification.ocrConfidenceScore != null;
+
+  if (!hasOcr) return null;
+
+  return (
+    <ExpressiveCard variant="filled" className="p-5 min-w-0">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-base font-bold">Kết quả OCR</h3>
+          <p className="text-xs text-on-surface-variant">Dữ liệu backend đọc từ ảnh thẻ sinh viên.</p>
+        </div>
+        <M3StatusPill label={formatOcrConfidence(verification.ocrConfidenceScore)} tone="primary" />
+      </div>
+      <div className="grid gap-2 sm:grid-cols-3">
+        <FieldLine label="Họ tên OCR" value={verification.ocrFullName} />
+        <FieldLine label="MSSV OCR" value={verification.ocrStudentCode} />
+        <FieldLine label="Trường OCR" value={verification.ocrUniversity} />
+      </div>
+      {verification.ocrRawText && (
+        <div className="mt-3 rounded-2xl border border-outline-variant/50 bg-surface-container-lowest p-3">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-on-surface-variant">Raw text</p>
+          <p className="mt-1 max-h-32 overflow-y-auto whitespace-pre-wrap text-xs text-on-surface-variant scrollbar-soft">
+            {verification.ocrRawText}
+          </p>
+        </div>
+      )}
+    </ExpressiveCard>
+  );
+}
+
+function StudentCardPreview({
+  verification,
+  previewUrl,
+}: {
+  verification?: VerificationView | null;
+  previewUrl?: string | null;
+}) {
+  if (previewUrl) {
+    return (
+      <img
+        src={previewUrl}
+        alt="Ảnh thẻ sinh viên chuẩn bị gửi"
+        className="aspect-[4/3] w-full rounded-2xl border border-outline-variant/60 object-cover"
+      />
+    );
+  }
+  if (verification?.cardImageUrl) {
+    return (
+      <ProtectedImage
+        src={verification.cardImageUrl}
+        alt="Ảnh thẻ sinh viên đã gửi"
+        className="aspect-[4/3] w-full rounded-2xl border border-outline-variant/60"
+      />
+    );
+  }
+  return (
+    <div className="flex aspect-[4/3] w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed border-outline-variant bg-surface-container-low text-center">
+      <ImageUp className="size-9 text-on-surface-variant" />
+      <p className="mt-3 text-sm font-bold text-on-surface">Chưa chọn ảnh thẻ</p>
+      <p className="mt-1 max-w-xs text-xs text-on-surface-variant">JPG, PNG hoặc WebP, tối đa 10MB.</p>
+    </div>
+  );
+}
+
+function UniversityScreen({ ctx, onProfileRefresh }: { ctx: Ctx; onProfileRefresh?: () => Promise<void> }) {
+  const verification = useApi(() => studentApi.verification(), undefined, []);
+  const university = useApi(() => studentApi.university(), undefined, []);
+  const catalog = useApi(() => universityApi.daNang(), undefined, []);
+
+  const [selectedUniversity, setSelectedUniversity] = useState("");
+  const [studentCode, setStudentCode] = useState("");
+  const [cardImage, setCardImage] = useState<File | null>(null);
+  const [lastSubmission, setLastSubmission] = useState<VerificationView | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const currentVerification = lastSubmission || verification.raw;
+  const currentUniversity = (university.raw || ctx.raw.universityRaw?.raw || ctx.university) as StudentUniversityView | null;
+  const status = normalizeVerificationStatus(
+    currentVerification?.status ||
+      currentUniversity?.studentVerificationStatus ||
+      ctx.user.verificationStatus
+  );
+  const statusCopy = verificationStatusCopy(status);
+  const canSubmit = status === "NOT_SUBMITTED" || status === "REJECTED" || status === "RESUBMISSION_REQUIRED";
+  const isVerified = status === "VERIFIED";
+  const isPending = status === "PENDING_REVIEW";
+  const universityOptions = catalog.raw || [];
+
+  const previewUrl = useMemo(() => (cardImage ? URL.createObjectURL(cardImage) : null), [cardImage]);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  useEffect(() => {
+    if (!selectedUniversity && (currentVerification?.university || currentUniversity?.universityName)) {
+      setSelectedUniversity(currentVerification?.university || currentUniversity?.universityName || "");
+    }
+    if (!studentCode && (currentVerification?.studentCode || currentUniversity?.studentCode)) {
+      setStudentCode(currentVerification?.studentCode || currentUniversity?.studentCode || "");
+    }
+  }, [
+    currentVerification?.studentCode,
+    currentVerification?.university,
+    currentUniversity?.studentCode,
+    currentUniversity?.universityName,
+    selectedUniversity,
+    studentCode,
+  ]);
+
+  const handleFile = (file?: File | null) => {
+    if (!file) {
+      setCardImage(null);
+      return;
+    }
+    if (!STUDENT_CARD_TYPES.includes(file.type)) {
+      toast.error("Ảnh thẻ phải là JPG, PNG hoặc WebP");
+      return;
+    }
+    if (file.size > MAX_STUDENT_CARD_SIZE) {
+      toast.error("Ảnh thẻ tối đa 10MB");
+      return;
+    }
+    setCardImage(file);
+  };
+
+  const submit = async () => {
+    const universityName = selectedUniversity.trim();
+    const normalizedCode = studentCode.trim().toUpperCase();
+    if (!universityName || !normalizedCode) {
+      toast.error("Vui lòng nhập trường và mã sinh viên");
+      return;
+    }
+    if (!cardImage) {
+      toast.error("Vui lòng chọn ảnh thẻ sinh viên");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const result = await studentApi.submitVerification({
+        university: universityName,
+        studentCode: normalizedCode,
+        cardImage,
+      });
+      setLastSubmission(result);
+      setCardImage(null);
+      verification.reload();
+      university.reload();
+      ctx.reload();
+      await onProfileRefresh?.();
+      toast.success("Đã gửi hồ sơ xác minh. OCR đã đọc ảnh và chuyển sang chờ duyệt.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Không thể gửi xác minh");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
-        title="Trường của tôi"
-        description="Liên kết tài khoản với trường đại học để nhận trợ giá vé."
-        icon={<School className="size-7" />}
+        title={isVerified ? "Trường của tôi" : "Xác minh sinh viên"}
+        description={statusCopy.description}
+        icon={isVerified ? <School className="size-7" /> : <ShieldCheck className="size-7" />}
       />
-      {!u || !u.universityName ? (
-        <EmptyState
-          icon={<School className="size-7" />}
-          title="Chưa liên kết trường"
-          description="Đăng ký xác thực sinh viên để liên kết với trường đại học của bạn."
-          action={<ExpressiveButton variant="filled"><ShieldCheck className="size-4" />Xác thực ngay</ExpressiveButton>}
-        />
-      ) : (
-        <StaggerGroup className="space-y-4 min-w-0">
-          <StaggerItem>
-            <ExpressiveCard variant="elevated" className="p-6 min-w-0">
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="space-y-4 min-w-0">
+          <ExpressiveCard variant="elevated" className="p-5 min-w-0">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex items-start gap-4 min-w-0">
-                <div className="size-16 shrink-0 rounded-2xl bg-[#beff50] text-[#14140f] flex items-center justify-center text-2xl font-black">
-                  {(u.shortName || u.universityName || "U").slice(0, 2).toUpperCase()}
+                <div className="size-14 shrink-0 rounded-2xl bg-[#beff50] text-[#14140f] flex items-center justify-center text-xl font-black">
+                  {(currentUniversity?.shortName || currentVerification?.university || currentUniversity?.universityName || "SV").slice(0, 2).toUpperCase()}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <h2 className="text-xl font-bold truncate">{u.universityName}</h2>
-                  <p className="text-sm text-on-surface-variant mt-1">Mã sinh viên: <span className="font-bold text-on-surface">{u.studentCode || "—"}</span></p>
-                  <div className="flex items-center gap-2 mt-2">
-                    <M3StatusPill label={u.linkStatus || "LINKED"} tone="success" />
-                    <M3StatusPill label={u.rosterStatus || "ACTIVE"} tone="primary" />
+                <div className="min-w-0">
+                  <h2 className="truncate text-xl font-bold">
+                    {currentUniversity?.universityName || currentVerification?.university || "Chưa liên kết trường"}
+                  </h2>
+                  <p className="mt-1 text-sm text-on-surface-variant">
+                    MSSV: <span className="font-bold text-on-surface">{currentUniversity?.studentCode || currentVerification?.studentCode || "—"}</span>
+                  </p>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <M3StatusPill label={statusCopy.label} tone={statusCopy.tone} />
+                    {currentUniversity?.rosterStatus && <M3StatusPill label={currentUniversity.rosterStatus} tone="primary" />}
+                    {currentUniversity?.linkStatus && <M3StatusPill label={currentUniversity.linkStatus} tone="success" />}
                   </div>
                 </div>
               </div>
-            </ExpressiveCard>
-          </StaggerItem>
+              {(verification.loading || university.loading) && (
+                <RefreshCw className="size-5 animate-spin text-on-surface-variant" />
+              )}
+            </div>
+            {currentVerification?.rejectionReason && (
+              <div className="mt-4 rounded-2xl border border-error/30 bg-error-container/50 p-4 text-sm text-on-surface">
+                <p className="font-bold text-error">Lý do từ admin</p>
+                <p className="mt-1 text-on-surface-variant">{currentVerification.rejectionReason}</p>
+              </div>
+            )}
+          </ExpressiveCard>
 
-          <StaggerItem>
+          {isVerified && (
             <ExpressiveCard variant="filled" className="p-5 min-w-0">
               <h3 className="text-base font-bold mb-3">Domain xác thực</h3>
-              {u.domainHint ? (
+              {currentUniversity?.domainHint ? (
                 <p className="text-sm">
-                  Email trường: <span className="font-mono font-bold text-primary">@{u.domainHint}</span>
+                  Email trường: <span className="font-mono font-bold text-primary">@{currentUniversity.domainHint}</span>
                 </p>
               ) : (
                 <p className="text-sm text-on-surface-variant">Chưa có thông tin domain</p>
               )}
             </ExpressiveCard>
-          </StaggerItem>
+          )}
 
-          <StaggerItem>
+          {isPending && (
             <ExpressiveCard variant="filled" className="p-5 min-w-0">
-              <h3 className="text-base font-bold mb-3">Trạng thái xác thực</h3>
-              <M3StatusPill
-                label={u.studentVerificationStatus || ctx.user.verificationStatus || "UNKNOWN"}
-                tone={
-                  (u.studentVerificationStatus || ctx.user.verificationStatus) === "VERIFIED"
-                    ? "success"
-                    : (u.studentVerificationStatus || ctx.user.verificationStatus) === "PENDING"
-                    ? "warning"
-                    : "error"
-                }
-              />
+              <div className="flex items-start gap-3">
+                <Clock className="mt-0.5 size-5 text-warning" />
+                <div className="min-w-0">
+                  <h3 className="font-bold">Hồ sơ đang chờ admin duyệt</h3>
+                  <p className="mt-1 text-sm text-on-surface-variant">
+                    Bạn không cần gửi lại. Nếu admin yêu cầu bổ sung, form upload sẽ mở lại ở màn này.
+                  </p>
+                  {currentVerification?.submittedAt && (
+                    <p className="mt-2 text-xs font-semibold text-on-surface-variant">
+                      Đã gửi: {formatDateTime(currentVerification.submittedAt)}
+                    </p>
+                  )}
+                </div>
+              </div>
             </ExpressiveCard>
-          </StaggerItem>
-        </StaggerGroup>
-      )}
+          )}
+
+          <OcrSummary verification={currentVerification} />
+
+          {canSubmit && (
+            <ExpressiveCard variant="elevated" className="p-5 min-w-0">
+              <div className="mb-4">
+                <h3 className="text-base font-bold">Gửi hồ sơ xác minh</h3>
+                <p className="mt-1 text-sm text-on-surface-variant">
+                  Nhập đúng trường/MSSV và chọn ảnh thẻ rõ nét để OCR đọc thông tin.
+                </p>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="student-university">Trường đại học</Label>
+                  {universityOptions.length > 0 ? (
+                    <Select value={selectedUniversity} onValueChange={setSelectedUniversity}>
+                      <SelectTrigger id="student-university">
+                        <SelectValue placeholder={catalog.loading ? "Đang tải danh sách..." : "Chọn trường"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {universityOptions.map((name) => (
+                          <SelectItem key={name} value={name}>{name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input
+                      id="student-university"
+                      value={selectedUniversity}
+                      onChange={(e) => setSelectedUniversity(e.target.value)}
+                      placeholder="Ví dụ: Đại học Bách khoa - ĐHĐN"
+                    />
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="student-code">Mã sinh viên</Label>
+                  <Input
+                    id="student-code"
+                    value={studentCode}
+                    onChange={(e) => setStudentCode(e.target.value.toUpperCase())}
+                    placeholder="Nhập MSSV"
+                    autoComplete="off"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
+                <StudentCardPreview verification={currentVerification} previewUrl={previewUrl} />
+                <div className="space-y-3">
+                  <Label htmlFor="student-card-image">Ảnh thẻ sinh viên</Label>
+                  <Input
+                    id="student-card-image"
+                    type="file"
+                    accept={STUDENT_CARD_TYPES.join(",")}
+                    onChange={(e) => handleFile(e.target.files?.[0])}
+                    disabled={submitting}
+                  />
+                  <div className="rounded-2xl bg-surface-container-low p-4 text-sm text-on-surface-variant">
+                    <p className="font-semibold text-on-surface">Mẹo để OCR đọc tốt hơn</p>
+                    <p className="mt-1">Chụp thẳng mặt thẻ, đủ sáng, không che MSSV và tên trường.</p>
+                  </div>
+                  <ExpressiveButton variant="filled" onClick={submit} disabled={submitting} className="w-full sm:w-auto">
+                    {submitting ? <RefreshCw className="size-4 animate-spin" /> : <Upload className="size-4" />}
+                    Gửi xác minh
+                  </ExpressiveButton>
+                </div>
+              </div>
+            </ExpressiveCard>
+          )}
+
+          {!canSubmit && !isVerified && !isPending && (
+            <EmptyState
+              icon={<ShieldCheck className="size-7" />}
+              title="Chưa thể gửi lại"
+              description="Trạng thái hồ sơ hiện tại chưa cho phép tạo yêu cầu mới."
+            />
+          )}
+        </div>
+
+        <div className="space-y-4 min-w-0">
+          <StudentCardPreview verification={currentVerification} previewUrl={previewUrl} />
+          <ExpressiveCard variant="filled" className="p-5 min-w-0">
+            <h3 className="text-base font-bold">Quy trình duyệt</h3>
+            <div className="mt-4 space-y-3">
+              {[
+                ["1", "Sinh viên gửi ảnh thẻ và MSSV"],
+                ["2", "OCR đọc tên, MSSV, trường"],
+                ["3", "Admin đối chiếu và duyệt"],
+              ].map(([step, label]) => (
+                <div key={step} className="flex items-center gap-3">
+                  <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[#14140f] text-xs font-bold text-[#beff50]">
+                    {step}
+                  </span>
+                  <span className="text-sm font-medium text-on-surface">{label}</span>
+                </div>
+              ))}
+            </div>
+          </ExpressiveCard>
+        </div>
+      </div>
     </PageTransition>
   );
 }
@@ -1761,58 +2097,33 @@ function AIScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => v
     { id: "fewer-stops", label: "Ít trạm", icon: MapPin },
   ];
 
-  /**
-   * CÁCH HOẠT ĐỘNG:
-   * 1. User nhập giờ rảnh + điểm đến + chọn preferences
-   * 2. Gọi POST /api/v1/students/me/route-suggestions với body { freeTime, destination, preferences }
-   * 3. Backend (ExperienceService.studentRouteSuggestions) thực hiện rule-based ranking:
-   *    - Lọc routes đi qua "destination" stop
-   *    - Tính điểm phù hợp theo prefs (fast = ưu tiên estimatedMinutes thấp, cheap = ưu tiên fare thấp, v.v.)
-   *    - Bonus điểm nếu route liên kết với trường sinh viên (universityLinked)
-   *    - Sắp xếp giảm dần theo matchScore
-   * 4. FE nhận list routes, hiển thị 3 cards ranked #1/#2/#3
-   *
-   * Nếu backend chưa hỗ trợ POST, fallback sang GET /students/me/route-suggestions (no body).
-   */
   const analyze = async () => {
     setLoading(true);
     setResults(null);
     try {
-      // Try POST with preferences first
-      let res = await fetch("/api/v1/students/me/route-suggestions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          freeTime,
-          destinationStopId: destination ? Number(destination) : undefined,
-          preferences: prefs,
-        }),
+      const list = await experienceApi.studentRouteSuggestions();
+      const destinationStop = ctx.stops.find((stop: any) => String(stop.id) === destination);
+      const sorted = [...list].sort((a: any, b: any) => {
+        const destinationBonusA = destinationStop && a.stops?.some(
+          (stop: any) => String(stop.stopId ?? stop.id) === destination
+        ) ? 20 : 0;
+        const destinationBonusB = destinationStop && b.stops?.some(
+          (stop: any) => String(stop.stopId ?? stop.id) === destination
+        ) ? 20 : 0;
+        const score = (route: any, bonus: number) => {
+          let value = bonus + (route.universityLinked ? 30 : 0);
+          if (prefs.includes("fast")) value -= route.estimatedMinutes || 60;
+          if (prefs.includes("cheap")) value -= (route.monthlyFare || 0) / 10000;
+          if (prefs.includes("fewer-stops")) value -= route.stops?.length || 0;
+          return value;
+        };
+        return score(b, destinationBonusB) - score(a, destinationBonusA);
       });
-      // If POST not supported (405), fallback to GET
-      if (!res.ok && res.status === 405) {
-        res = await fetch("/api/v1/students/me/route-suggestions");
-      }
-      if (res.ok) {
-        const data = await res.json();
-        const list = Array.isArray(data) ? data : data?.data || [];
-        // Sort by backend matchScore if available, else by estimatedMinutes (shorter = better)
-        const sorted = [...list].sort((a: any, b: any) => {
-          const sa = a.matchScore ?? (100 - (a.estimatedMinutes || 60));
-          const sb = b.matchScore ?? (100 - (b.estimatedMinutes || 60));
-          return sb - sa;
-        });
-        // Simulate AI thinking delay for UX (1.2s minimum)
-        await new Promise((r) => setTimeout(r, 1200));
-        setResults(sorted);
-      } else {
-        // Fallback to ctx.suggestions (from initial dashboard load)
-        await new Promise((r) => setTimeout(r, 1200));
-        setResults(ctx.suggestions);
-      }
-    } catch {
-      // Offline / network error — fallback
-      await new Promise((r) => setTimeout(r, 1200));
-      setResults(ctx.suggestions.length > 0 ? ctx.suggestions : []);
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      setResults(sorted);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể tải gợi ý tuyến");
+      setResults([]);
     } finally {
       setLoading(false);
     }

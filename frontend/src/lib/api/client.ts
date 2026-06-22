@@ -119,6 +119,29 @@ async function request<T>(path: string, options: RequestInit = {}, retry = true)
   return (payload?.data ?? payload) as T;
 }
 
+async function requestBlob(path: string, retry = true): Promise<Blob> {
+  const token = getAccessToken();
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+
+  if (res.status === 401 && retry) {
+    const ok = await tryRefresh();
+    if (ok) return requestBlob(path, false);
+    clearTokens();
+  }
+
+  if (!res.ok) {
+    const payload = await readPayload(res);
+    throw new ApiError(
+      res.status,
+      payload?.message || payload?.error || res.statusText || "Request failed",
+      payload?.data
+    );
+  }
+  return res.blob();
+}
+
 let refreshPromise: Promise<boolean> | null = null;
 
 async function tryRefresh(): Promise<boolean> {
@@ -153,6 +176,7 @@ export const apiFetch = {
   delete: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: "DELETE", body: body === undefined ? undefined : JSON.stringify(body) }),
   form: <T>(path: string, formData: FormData) => request<T>(path, { method: "POST", body: formData }),
+  blob: (path: string) => requestBlob(path),
 };
 
 export interface TokenPair {
@@ -351,7 +375,7 @@ export interface TravelHistoryView {
 }
 
 export interface VerificationView {
-  verificationId: number;
+  verificationId?: number;
   userId: number;
   email: string;
   fullName: string;
@@ -360,7 +384,13 @@ export interface VerificationView {
   universityId?: number;
   studentCode?: string;
   cardImageUrl?: string;
+  ocrFullName?: string;
+  ocrStudentCode?: string;
+  ocrUniversity?: string;
+  ocrRawText?: string;
+  ocrConfidenceScore?: number;
   rejectionReason?: string;
+  reviewerUserId?: number;
   submittedAt?: string;
   reviewedAt?: string;
 }
