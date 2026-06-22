@@ -1157,7 +1157,6 @@ export const adminApi = {
   subsidyPolicies: (universityId?: number) => apiFetch.get<SubsidyPolicyView[]>("/admin/subsidy-policies", { universityId }),
   createSubsidyPolicy: (data: { universityId: number; campusId?: number; policyName: string; subsidyType: string; value: number; maxAmount?: number; activeFrom?: string; activeUntil?: string; status?: string }) =>
     apiFetch.post<SubsidyPolicyView>("/admin/subsidy-policies", data),
-  paymentTransactions: (params?: { universityId?: number }) => apiFetch.get<PaymentTransactionView[]>("/admin/payment-transactions", params),
   auditLogs: (params?: { universityId?: number; action?: string }) => apiFetch.get<AuditLogView[]>("/admin/audit-logs", params),
   paymentTransactions: (params?: { universityId?: number }) => apiFetch.get<PaymentTransactionView[]>("/admin/payment-transactions", params),
 };

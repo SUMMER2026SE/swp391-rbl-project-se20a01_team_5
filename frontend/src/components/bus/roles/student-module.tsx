@@ -41,6 +41,7 @@ import {
 type StudentModuleProps = {
   activeId: string;
   onNavigate: (id: string) => void;
+  onProfileRefresh?: () => void;
 };
 
 async function optional<T>(loader: () => Promise<T>): Promise<T | null> {

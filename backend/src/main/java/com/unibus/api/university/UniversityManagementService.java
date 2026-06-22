@@ -294,13 +294,7 @@ public class UniversityManagementService {
     }
 
 
-    @Transactional(readOnly = true)
-    public List<PaymentTransactionView> paymentTransactions(Integer universityId) {
-        if (universityId != null) {
-            requireUniversity(universityId);
-        }
-        return repository.paymentTransactions(universityId);
-    }
+
 
     @Transactional(readOnly = true)
     public List<PaymentTransactionView> paymentTransactions(Integer universityId) {

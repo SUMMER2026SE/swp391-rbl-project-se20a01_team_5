@@ -28,6 +28,7 @@ import {
   CheckCircle2,
   XCircle,
   AlertTriangle,
+  ShieldAlert,
   Info,
   Send,
   ChevronRight,
@@ -102,6 +103,8 @@ import {
   type ExperienceFeedbackCard,
   type ExperienceDashboardStat,
   type DriverContactView,
+  driverDispatchApi,
+  type DispatcherContact,
 } from "@/lib/api/client";
 
 type DriverModuleProps = {
@@ -1015,113 +1018,222 @@ function DriverHistory({ ctx }: { ctx: Ctx }) {
 // Screen 6: Driver Contact — coordinator + dispatcher
 // =============================================================================
 function DriverContact() {
-  const contacts = useApi<DriverContactView[]>(() => operationsApi.driverContacts(), undefined, []);
-  const [message, setMessage] = useState("");
+  const [contact, setContact] = useState<DispatcherContact | null>(null);
+  const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
-  const [sent, setSent] = useState<{ role: "user" | "dispatch"; text: string; time: string }[]>([]);
+  const [reporting, setReporting] = useState(false);
+  const [chatText, setChatText] = useState("");
+  
+  // Incident Form State
+  const [incidentType, setIncidentType] = useState("OTHER");
+  const [description, setDescription] = useState("");
 
-  const send = async () => {
-    if (!message.trim() || sending) return;
-    const m = { role: "user" as const, text: message.trim(), time: new Date().toISOString() };
-    setSent((s) => [...s, m]);
-    setMessage("");
-    setSending(true);
-    setTimeout(() => {
-      setSent((s) => [...s, { role: "dispatch", text: "Đã tiếp nhận. Đội điều phối sẽ phản hồi trong ít phút.", time: new Date().toISOString() }]);
+  const loadContact = useCallback(async () => {
+    try {
+      const data = await driverDispatchApi.contact();
+      setContact(data);
+    } catch (err: any) {
+      console.error("Lỗi lấy thông tin liên hệ điều phối:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      loadContact();
+    }, 0);
+    const interval = setInterval(() => {
+      loadContact();
+    }, 4000);
+    return () => {
+      clearTimeout(timer);
+      clearInterval(interval);
+    };
+  }, [loadContact]);
+
+  const handleSendMessage = async () => {
+    if (!chatText.trim() || !contact || sending) return;
+    try {
+      setSending(true);
+      await driverDispatchApi.sendMessage({
+        tripId: contact.activeTripId || undefined,
+        content: chatText.trim()
+      });
+      setChatText("");
+      await loadContact();
+    } catch (err: any) {
+      toast.error(err.message || "Không gửi được tin nhắn");
+    } finally {
       setSending(false);
-    }, 1000);
+    }
   };
+
+  const handleReportIncident = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!description.trim() || !contact || reporting) return;
+    if (!contact.activeTripId) {
+      toast.error("Bạn cần có chuyến xe đang chạy để gửi báo cáo sự cố SOS!");
+      return;
+    }
+    try {
+      setReporting(true);
+      await driverDispatchApi.reportIncident({
+        tripId: contact.activeTripId,
+        incidentType,
+        description: description.trim()
+      });
+      toast.success("Đã gửi báo cáo sự cố khẩn cấp SOS!");
+      setDescription("");
+      await loadContact();
+    } catch (err: any) {
+      toast.error(err.message || "Gửi báo cáo thất bại");
+    } finally {
+      setReporting(false);
+    }
+  };
+
+  const displayMessages = useMemo(() => {
+    if (!contact || !contact.messages) return [];
+    return contact.messages.filter(m => !m.content.startsWith("[SOS]"));
+  }, [contact]);
+
+  if (loading && !contact) {
+    return (
+      <div className="flex h-[300px] items-center justify-center">
+        <RefreshCw className="size-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!contact) {
+    return (
+      <div className="rounded-[28px] bg-surface-container p-6 text-center text-on-surface-variant">
+        Không tìm thấy thông tin điều phối chính cho ca chạy này.
+      </div>
+    );
+  }
 
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
-        title="Liên hệ"
-        description="Liên hệ điều phối viên và bộ phận hỗ trợ."
+        title="Liên hệ điều phối"
+        description="Gửi tin nhắn hoặc báo cáo sự cố khẩn cấp (SOS)."
         icon={<Phone className="size-7" />}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
-        <ScrollReveal>
-          <Section title="Danh bạ">
-            <div className="space-y-3">
-              {contacts.loading ? (
-                <div className="flex items-center gap-2 py-6 text-sm text-on-surface-variant">
-                  <RefreshCw className="size-4 animate-spin" />
-                  Đang tải danh bạ...
-                </div>
-              ) : contacts.error ? (
-                <EmptyState
-                  icon={<Phone className="size-7" />}
-                  title="Không tải được danh bạ"
-                  description={contacts.error}
-                />
-              ) : !contacts.raw?.length ? (
-                <EmptyState icon={<Phone className="size-7" />} title="Chưa có liên hệ" />
-              ) : (
-                contacts.raw.map((contact, index) => (
-                  <ContactPersonCard
-                    key={`${contact.type}-${contact.phone}-${index}`}
-                    name={contact.role}
-                    role={contact.name}
-                    phone={contact.phone}
-                    avatar={contact.type === "EMERGENCY"
-                      ? "EM"
-                      : contact.name.trim().split(/\s+/).slice(-2).map((part) => part[0]).join("").toUpperCase()}
-                    accent={contact.type === "EMERGENCY" ? "#dc2626" : "#beff50"}
-                  />
-                ))
-              )}
-            </div>
-          </Section>
-        </ScrollReveal>
-
-        <ScrollReveal delay={0.1}>
-          <ExpressiveCard variant="elevated" className="flex flex-col h-[400px] min-w-0">
-            <div className="p-4 border-b-2 border-outline-variant">
-              <h3 className="font-bold flex items-center gap-2">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0 items-start">
+        {/* Khung chat */}
+        <ExpressiveCard variant="elevated" className="flex flex-col h-[480px] p-0 overflow-hidden">
+          <div className="p-4 border-b-2 border-outline-variant flex items-center justify-between bg-surface-container-low shrink-0">
+            <div>
+              <h3 className="font-bold flex items-center gap-2 text-on-surface">
                 <MessageSquare className="size-4" />
-                Nhắn tin điều phối
+                {contact.dispatcherName}
               </h3>
+              <p className="text-xs text-on-surface-variant mt-0.5">{contact.department || "Ban Điều Phối"}</p>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-2 min-w-0">
-              {sent.length === 0 && (
-                <p className="text-sm text-on-surface-variant text-center mt-8">
-                  Gửi tin nhắn cho điều phối viên khi cần hỗ trợ.
-                </p>
-              )}
-              {sent.map((m, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className={cn("flex max-w-[85%]", m.role === "user" && "ml-auto justify-end")}
-                >
-                  <div className={cn("px-3 py-2 rounded-2xl text-sm", m.role === "user" ? "bg-primary text-on-primary" : "bg-surface-container-high")}>
-                    {m.text}
+            {contact.phoneNumber && (
+              <a 
+                href={`tel:${contact.phoneNumber}`} 
+                className="flex items-center gap-1.5 rounded-full bg-primary/10 px-3.5 py-1.5 text-xs font-bold text-primary hover:bg-primary/20 transition-colors"
+              >
+                <Phone className="size-3.5" /> {contact.phoneNumber}
+              </a>
+            )}
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-surface-container-lowest scrollbar-soft">
+            {displayMessages.length === 0 ? (
+              <p className="text-sm text-on-surface-variant text-center mt-8">
+                Chưa có tin nhắn nào. Gửi tin nhắn cho điều phối viên khi cần hỗ trợ.
+              </p>
+            ) : (
+              displayMessages.map((m) => {
+                const isMe = m.senderName !== contact.dispatcherName;
+                return (
+                  <div key={m.messageId} className={cn("flex max-w-[85%]", isMe && "ml-auto justify-end")}>
+                    <div className={cn("px-3.5 py-2.5 rounded-2xl text-sm", isMe ? "bg-[#beff50] text-[#14140f] font-medium rounded-tr-none" : "bg-surface-container-high text-on-surface rounded-tl-none")}>
+                      <p className="break-words">{m.content}</p>
+                    </div>
                   </div>
-                </motion.div>
-              ))}
+                );
+              })
+            )}
+          </div>
+          <div className="border-t p-3 bg-surface-container-low flex gap-2 shrink-0">
+            <Input
+              value={chatText}
+              onChange={(e) => setChatText(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
+              placeholder="Nhập tin nhắn..."
+              disabled={sending}
+              className="flex-1 rounded-full bg-surface-container border-none"
+            />
+            <ExpressiveButton variant="filled" size="icon" onClick={handleSendMessage} disabled={sending || !chatText.trim()}>
+              <Send className="size-4" />
+            </ExpressiveButton>
+          </div>
+        </ExpressiveCard>
+
+        {/* Khung SOS */}
+        <ExpressiveCard variant="elevated" className="p-5 h-fit space-y-4 border border-error/20 bg-error-container/5 rounded-[2rem]">
+          <div className="flex items-center gap-2 text-error">
+            <ShieldAlert className="size-6 shrink-0" />
+            <h3 className="font-bold text-lg">Báo cáo sự cố khẩn cấp (SOS)</h3>
+          </div>
+          
+          <form onSubmit={handleReportIncident} className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-on-surface-variant">Phân loại sự cố</label>
+              <select 
+                value={incidentType}
+                onChange={(e) => setIncidentType(e.target.value)}
+                className="w-full rounded-2xl border bg-surface-container-lowest px-4 py-2.5 text-sm outline-none focus:border-primary transition-colors"
+              >
+                <option value="OTHER">Nội bộ / Khác</option>
+                <option value="TECHNICAL">Sự cố kỹ thuật</option>
+                <option value="OVERCROWDED">Xe quá tải</option>
+                <option value="EMERGENCY">Khẩn cấp / Tai nạn</option>
+              </select>
             </div>
-            <div className="p-3 border-t-2 border-outline-variant flex gap-2 min-w-0">
-              <Input
-                placeholder="Nhập tin nhắn..."
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && send()}
-                disabled={sending}
-                className="flex-1 min-w-0"
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-on-surface-variant">Mô tả chi tiết</label>
+              <Textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Nhập mô tả sự cố cụ thể để điều phối hỗ trợ kịp thời..."
+                required
+                rows={4}
+                className="w-full rounded-2xl bg-surface-container-lowest"
               />
-              <ExpressiveButton variant="filled" size="icon" onClick={send} disabled={sending || !message.trim()}>
-                <Send className="size-4" />
-              </ExpressiveButton>
             </div>
-          </ExpressiveCard>
-        </ScrollReveal>
+
+            {contact.activeTripId ? (
+              <p className="text-[11px] text-on-surface-variant/80">
+                Sự cố sẽ được liên kết trực tiếp với chuyến xe đang chạy của bạn.
+              </p>
+            ) : (
+              <p className="text-[11px] text-error font-medium">
+                Cảnh báo: Bạn hiện không có chuyến xe nào đang chạy. SOS chỉ được gửi khi đang trong chuyến xe.
+              </p>
+            )}
+
+            <ExpressiveButton 
+              type="submit" 
+              variant="error" 
+              disabled={reporting || !description.trim() || !contact.activeTripId} 
+              className="w-full justify-center gap-1.5 rounded-full"
+            >
+              <AlertTriangle className="size-4" />
+              {reporting ? "Đang gửi báo cáo..." : "GỬI BÁO CÁO KHẨN CẤP"}
+            </ExpressiveButton>
+          </form>
+        </ExpressiveCard>
       </div>
     </PageTransition>
   );
 }
-
 // =============================================================================
 function FallbackScreen({ activeId }: { activeId: string }) {
   return (

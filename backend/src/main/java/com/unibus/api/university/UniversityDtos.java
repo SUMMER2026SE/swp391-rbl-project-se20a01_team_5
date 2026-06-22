@@ -211,28 +211,7 @@ public final class UniversityDtos {
 
 
 
-    public record PaymentTransactionView(
-            Long orderId,
-            Long transactionId,
-            Long sepayTransactionId,
-            String studentCode,
-            String studentName,
-            Integer universityId,
-            String universityName,
-            String ticketType,
-            Integer routeId,
-            String routeName,
-            BigDecimal orderTotal,
-            String paymentStatus,
-            String gateway,
-            BigDecimal amountIn,
-            BigDecimal amountOut,
-            String transactionContent,
-            String referenceNumber,
-            OffsetDateTime transactionDate,
-            OffsetDateTime paidAt,
-            OffsetDateTime createdAt) {
-    }
+
 
     public record ReconciliationView(
             Integer universityId,
