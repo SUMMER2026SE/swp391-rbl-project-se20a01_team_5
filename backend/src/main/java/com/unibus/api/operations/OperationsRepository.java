@@ -17,6 +17,7 @@ import org.springframework.stereotype.Repository;
 
 import com.unibus.api.operations.OperationsDtos.BusOption;
 import com.unibus.api.operations.OperationsDtos.DriverTripView;
+import com.unibus.api.operations.OperationsDtos.DriverContactView;
 import com.unibus.api.operations.OperationsDtos.ContactPersonView;
 import com.unibus.api.operations.OperationsDtos.ConductorContactView;
 import com.unibus.api.operations.OperationsDtos.ConductorTicketView;
@@ -436,6 +437,21 @@ public class OperationsRepository {
                 LIMIT 1
                 """, Integer.class);
         return ids.stream().findFirst();
+    }
+
+    public List<DriverContactView> findDriverDispatcherContacts() {
+        return jdbcTemplate.query("""
+                SELECT full_name, phone_number, email
+                FROM users
+                WHERE role = 'DISPATCHER'
+                  AND status = 'ACTIVE'
+                ORDER BY full_name
+                """, (rs, rowNum) -> new DriverContactView(
+                        "COORDINATOR",
+                        rs.getString("full_name"),
+                        "Điều phối viên",
+                        rs.getString("phone_number"),
+                        rs.getString("email")));
     }
 
     public InternalMessageView createInternalMessage(Integer senderUserId, Integer recipientUserId, Integer tripId, String content) {

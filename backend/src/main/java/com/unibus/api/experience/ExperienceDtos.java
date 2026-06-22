@@ -77,6 +77,7 @@ public final class ExperienceDtos {
             LocalDate validFrom,
             LocalDate expiresOn,
             OffsetDateTime expiresAt,
+            OffsetDateTime purchasedAt,
             String status) {
     }
 
@@ -220,10 +221,34 @@ public final class ExperienceDtos {
             List<RouteMetric> routeMetrics,
             List<ComplaintCard> complaints,
             List<ViolationCard> violations,
-            List<FareCard> fares) {
+            List<FareCard> fares,
+            List<RevenueSeriesPoint> revenueSeries,
+            List<TripsSeriesPoint> tripsSeries,
+            List<RoleDistributionPoint> roleDistribution) {
     }
 
     public record RouteMetric(String routeCode, String routeName, String colorHex, int trips, BigDecimal revenue) {
+    }
+
+    public record RevenueSeriesPoint(String day, LocalDate date, BigDecimal revenue) {
+    }
+
+    public record TripsSeriesPoint(String day, LocalDate date, int trips) {
+    }
+
+    public record RoleDistributionPoint(String role, int value) {
+    }
+
+    public record UniversityOperationsMetric(
+            Integer universityId,
+            String universityName,
+            String shortName,
+            String colorHex,
+            int routeCount,
+            int fleetCount,
+            int driverCount,
+            int studentCount,
+            int tripsToday) {
     }
 
     public record ComplaintCard(Integer complaintId, String title, String content, String status, OffsetDateTime createdAt) {

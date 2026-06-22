@@ -10,7 +10,7 @@
 // Data: real backend via /admin/* endpoints.
 // =============================================================================
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard,
@@ -46,7 +46,27 @@ import {
   BadgeCheck,
   Banknote,
   Search,
+  CalendarClock,
+  Wallet,
+  Clock,
+  Bus,
+  UserPlus,
+  ChevronRight,
 } from "lucide-react";
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RTooltip,
+} from "recharts";
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
@@ -123,6 +143,7 @@ import {
   type RouteUniversityView,
   type SubsidyPolicyView,
   type ExperienceDashboardStat,
+  type AdminStatsView,
 } from "@/lib/api/client";
 
 type AdminModuleProps = {
@@ -251,8 +272,88 @@ function ErrorScreen({ message, onRetry }: { message: string; onRetry?: () => vo
 // Screen 1: Dashboard
 // =============================================================================
 function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
-  const firstName = (ctx.user.name || "bạn").split(" ").slice(-1)[0];
-  const statCards = ctx.stats.slice(0, 4);
+  const statsRaw = ctx.raw.statsRaw?.raw as AdminStatsView | null;
+  const statValue = (label: string) => {
+    const value = ctx.stats.find((item) => item.label?.toLowerCase().includes(label))?.value;
+    return typeof value === "number" ? value : Number(value) || 0;
+  };
+  const totalUsers = statValue("người dùng");
+  const totalUniversities = statValue("trường đối tác");
+  const pendingVerifications = statValue("chờ xác thực");
+
+  const revenueData = statsRaw?.revenueSeries || [];
+  const tripsData = (statsRaw?.tripsSeries || []).map((point, index) => ({
+    ...point,
+    color: ["#144fcc", "#0f9d76", "#eaa21a", "#d84c7f"][index % 4],
+  }));
+
+  const roleDist = useMemo(() => {
+    const palette: Record<string, string> = {
+      STUDENT: "#beff50",
+      DRIVER: "#ff8c5f",
+      CONDUCTOR: "#144fcc",
+      DISPATCHER: "#c8a0ff",
+      ADMIN: "#dc2626",
+      UNIVERSITY_ADMIN: "#f59e0b",
+      OTHER: "#94a3b8",
+    };
+    const labels: Record<string, string> = {
+      STUDENT: "Sinh viên",
+      DRIVER: "Tài xế",
+      CONDUCTOR: "Phụ xe",
+      DISPATCHER: "Điều phối",
+      ADMIN: "Quản trị",
+      UNIVERSITY_ADMIN: "Admin trường",
+      OTHER: "Khác",
+    };
+    return (statsRaw?.roleDistribution || []).map((item) => ({
+      name: labels[item.role] || item.role,
+      value: item.value,
+      color: palette[item.role] || "#94a3b8",
+    }));
+  }, [statsRaw]);
+
+  const totalRevenue = revenueData.reduce((s, d) => s + d.revenue, 0);
+  const tripsToday = statsRaw?.tripsSeries.at(-1)?.trips || 0;
+
+  // Activities (derive from recent audit logs)
+  const activities = useMemo(() => {
+    return ctx.audits.slice(0, 8).map((a) => {
+      const action = (a.action || "").toLowerCase();
+      let icon = Info, tint = "bg-surface-container-high text-on-surface-variant";
+      if (action.includes("create") || action.includes("register")) {
+        icon = UserPlus; tint = "bg-primary-container text-on-primary-container";
+      } else if (action.includes("lock") || action.includes("reject")) {
+        icon = Lock; tint = "bg-error-container text-error-container";
+      } else if (action.includes("payment") || action.includes("invoice")) {
+        icon = Wallet; tint = "bg-secondary-container text-on-secondary-container";
+      } else if (action.includes("verify") || action.includes("approve")) {
+        icon = BadgeCheck; tint = "bg-tertiary-container text-on-tertiary-container";
+      } else if (action.includes("alert") || action.includes("incident")) {
+        icon = AlertTriangle; tint = "bg-warning-container text-on-surface";
+      }
+      return {
+        id: a.auditLogId,
+        icon,
+        tint,
+        title: a.action?.replace(/_/g, " ") || "Thao tác",
+        desc: `${a.performerName || "Hệ thống"} · ${a.affectedTable || ""}`.trim(),
+        time: a.performedAt ? formatDateTime(a.performedAt) : "",
+      };
+    });
+  }, [ctx.audits]);
+
+  // Warnings panel
+  const warnings = [
+    { id: 1, label: "Khiếu nại chờ xử lý", count: ctx.complaints.filter((c: any) => c.status === "new" || c.status === "processing").length, severity: "high" as const, hint: "Cần xử lý trong 24h" },
+    { id: 2, label: "Vi phạm đang mở", count: ctx.violations.filter((v: any) => v.status !== "RESOLVED").length, severity: "high" as const, hint: `${ctx.violations.length} báo cáo` },
+    { id: 3, label: "Xác thực chờ duyệt", count: pendingVerifications, severity: "low" as const, hint: "Sinh viên chờ xác thực" },
+  ];
+  const warnTone: Record<string, "error" | "warning" | "neutral"> = {
+    high: "error",
+    medium: "warning",
+    low: "neutral",
+  };
 
   const quickActions = [
     { id: "adm-users", label: "Người dùng", icon: Users, accent: "primary" as const },
@@ -263,6 +364,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
 
   return (
     <PageTransition className="space-y-6 sm:space-y-8 min-w-0">
+      {/* Headline */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -271,24 +373,30 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
       >
         <SplitText
           as="h1"
-          text={`Xin chào, ${firstName}!`}
-          className="text-4xl sm:text-5xl font-bold tracking-tight text-on-surface text-balance"
+          text="Thống kê hệ thống"
+          className="text-4xl sm:text-5xl font-bold tracking-tight text-on-surface text-balance leading-[1.05]"
           stagger={0.06}
         />
-        <div className="flex flex-wrap items-center gap-2 min-w-0">
+        <ScrollReveal>
+          <p className="text-base text-on-surface-variant text-pretty">
+            Tổng quan hoạt động UniBus theo thời gian thực — {totalUniversities} trường đối tác, {ctx.routeMetrics.length} tuyến xe, {totalUsers.toLocaleString("vi-VN")} người dùng đang hoạt động.
+          </p>
+        </ScrollReveal>
+        <div className="flex flex-wrap items-center gap-2 pt-1">
           <span className="inline-flex items-center gap-1.5 h-7 px-3 rounded-full bg-[#dc2626] text-white text-xs font-bold shrink-0">
             <ShieldAlert className="size-3.5" />
             Quản trị viên
           </span>
-          <span className="inline-flex items-center gap-1.5 h-7 px-3 rounded-full bg-[#14140f] text-white text-xs font-bold shrink-0">
-            {ctx.users.length} người dùng
-          </span>
-          <span className="inline-flex items-center gap-1.5 h-7 px-3 rounded-full bg-[#144fcc] text-white text-xs font-bold shrink-0">
-            {ctx.universities.length} trường
-          </span>
+          <ExpressiveButton variant="outlined" size="sm">
+            <CalendarClock className="size-4" /> Tháng {new Date().getMonth() + 1}, {new Date().getFullYear()}
+          </ExpressiveButton>
+          <ExpressiveButton variant="text" size="sm" onClick={() => toast.info("Xuất báo cáo đang được phát triển")}>
+            <BarChart3 className="size-4" /> Xuất báo cáo
+          </ExpressiveButton>
         </div>
       </motion.div>
 
+      {/* Quick actions */}
       <ScrollReveal>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 min-w-0">
           {quickActions.map((action) => {
@@ -312,118 +420,222 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
               >
                 <action.icon className="size-6 mb-3" />
                 <p className="text-sm font-bold leading-tight">{action.label}</p>
+                <ChevronRight className="size-4 mt-2 opacity-70 group-hover:translate-x-1 transition-transform" />
               </motion.button>
             );
           })}
         </div>
       </ScrollReveal>
 
-      {statCards.length > 0 && (
-        <ScrollReveal delay={0.1}>
-          <Section title="Thống kê hệ thống">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 min-w-0">
-              {statCards.map((s, i) => (
-                <StatCard
-                  key={i}
-                  label={s.label}
-                  value={
-                    <Counter
-                      to={typeof s.value === "number" ? s.value : 0}
-                      format={(n) =>
-                        typeof s.value === "string"
-                          ? s.value
-                          : Math.round(n).toLocaleString("vi-VN")
-                      }
-                    />
-                  }
-                  icon={<TrendingUp className="size-5" />}
-                  hint={s.unit}
-                  accent={(s.tone as any) || "primary"}
-                />
-              ))}
+      {/* StatCards */}
+      <StaggerGroup className="grid grid-cols-2 lg:grid-cols-4 gap-3 min-w-0">
+        <StaggerItem>
+          <StatCard
+            label="Tổng người dùng"
+            value={<Counter to={totalUsers} />}
+            icon={<Users className="size-6" />}
+            hint={`${pendingVerifications} chờ xác thực`}
+            trend="up"
+            accent="primary"
+          />
+        </StaggerItem>
+        <StaggerItem>
+          <StatCard
+            label="Chuyến hôm nay"
+            value={<Counter to={tripsToday} />}
+            icon={<Bus className="size-6" />}
+            hint={`${ctx.routeMetrics.length} tuyến hoạt động`}
+            trend="up"
+            accent="tertiary"
+          />
+        </StaggerItem>
+        <StaggerItem>
+          <StatCard
+            label="Doanh thu 7 ngày"
+            value={
+              <Counter
+                to={totalRevenue}
+                format={(n) => formatVND(Math.round(n))}
+              />
+            }
+            icon={<Wallet className="size-6" />}
+            hint="Dữ liệu thanh toán thực"
+            trend="up"
+            accent="success"
+          />
+        </StaggerItem>
+        <StaggerItem>
+          <StatCard
+            label="Trường đối tác"
+            value={<Counter to={totalUniversities} />}
+            icon={<School className="size-6" />}
+            hint={`${statValue("sinh viên").toLocaleString("vi-VN")} sinh viên`}
+            trend="up"
+            accent="secondary"
+          />
+        </StaggerItem>
+      </StaggerGroup>
+
+      {/* Charts row 1: Revenue (Area) + Role dist (Pie) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 min-w-0">
+        <ScrollReveal className="lg:col-span-2 min-w-0">
+          <ExpressiveCard variant="filled" className="p-6 min-w-0">
+            <div className="flex items-end justify-between mb-4 min-w-0">
+              <div className="min-w-0">
+                <h2 className="text-lg font-semibold text-on-surface">Doanh thu 7 ngày qua</h2>
+                <p className="text-sm text-on-surface-variant">Tổng {formatVND(totalRevenue)}</p>
+              </div>
+              <M3StatusPill label="Tuần này" tone="primary" />
             </div>
-          </Section>
+            <ResponsiveContainer width="100%" height={260}>
+              <AreaChart data={revenueData} margin={{ left: -16, right: 8, top: 8 }}>
+                <defs>
+                  <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#144fcc" stopOpacity={0.32} />
+                    <stop offset="100%" stopColor="#144fcc" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-outline-variant)" opacity={0.5} vertical={false} />
+                <XAxis dataKey="day" stroke="var(--color-on-surface-variant)" fontSize={12} tickLine={false} axisLine={false} />
+                <YAxis stroke="var(--color-on-surface-variant)" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `${(v / 1000000).toFixed(1)}tr`} />
+                <RTooltip
+                  contentStyle={{ background: "#14140f", border: "1px solid #14140f", borderRadius: 16, color: "#beff50" }}
+                  formatter={(v: any) => [formatVND(v), "Doanh thu"]}
+                />
+                <Area type="monotone" dataKey="revenue" stroke="#144fcc" strokeWidth={2.5} fill="url(#revGrad)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </ExpressiveCard>
         </ScrollReveal>
-      )}
 
-      {ctx.routeMetrics.length > 0 && (
-        <ScrollReveal delay={0.15}>
-          <Section title="Hiệu suất theo tuyến">
-            <ExpressiveCard variant="elevated" className="overflow-hidden min-w-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Tuyến</TableHead>
-                    <TableHead className="text-right">Số chuyến</TableHead>
-                    <TableHead className="text-right">Doanh thu</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {ctx.routeMetrics.slice(0, 10).map((r, i) => (
-                    <TableRow key={i}>
-                      <TableCell>
-                        <div className="flex items-center gap-2 min-w-0">
-                          <div className="size-3 rounded-full" style={{ backgroundColor: r.colorHex || "#14b8a6" }} />
-                          <span className="font-bold truncate">{r.routeName}</span>
-                          {r.routeCode && <Badge variant="outline" className="text-[10px]">{r.routeCode}</Badge>}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right font-bold tabular-nums">{r.trips}</TableCell>
-                      <TableCell className="text-right font-bold tabular-nums text-primary">{formatVND(r.revenue)}</TableCell>
-                    </TableRow>
+        <ScrollReveal delay={0.08} className="min-w-0">
+          <ExpressiveCard variant="filled" className="p-6 h-full min-w-0">
+            <h2 className="text-lg font-semibold text-on-surface mb-1">Phân bố vai trò</h2>
+            <p className="text-sm text-on-surface-variant mb-2">Tổng {totalUsers.toLocaleString("vi-VN")} tài khoản</p>
+            {roleDist.length === 0 ? (
+              <EmptyState icon={<Users className="size-7" />} title="Chưa có dữ liệu" />
+            ) : (
+              <>
+                <ResponsiveContainer width="100%" height={220}>
+                  <PieChart>
+                    <Pie data={roleDist} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3}>
+                      {roleDist.map((entry, i) => (
+                        <Cell key={i} fill={entry.color} stroke="transparent" />
+                      ))}
+                    </Pie>
+                    <RTooltip
+                      contentStyle={{ background: "#14140f", border: "1px solid #14140f", borderRadius: 16, color: "#beff50" }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="mt-3 grid grid-cols-1 gap-1.5">
+                  {roleDist.map((r, i) => (
+                    <div key={i} className="flex items-center justify-between text-sm gap-2 min-w-0">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="size-2.5 rounded-full shrink-0" style={{ background: r.color }} />
+                        <span className="text-on-surface-variant truncate">{r.name}</span>
+                      </div>
+                      <span className="font-medium text-on-surface tabular-nums shrink-0">{r.value.toLocaleString("vi-VN")}</span>
+                    </div>
                   ))}
-                </TableBody>
-              </Table>
-            </ExpressiveCard>
-          </Section>
-        </ScrollReveal>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
-        <ScrollReveal delay={0.2}>
-          <Section title="Khiếu nại mới" actions={<button onClick={() => onNavigate("adm-complaints")} className="text-xs font-bold text-primary">Xem tất cả</button>}>
-            {ctx.complaints.length === 0 ? (
-              <EmptyState icon={<ShieldAlert className="size-7" />} title="Không có khiếu nại" />
-            ) : (
-              <div className="space-y-2">
-                {ctx.complaints.slice(0, 3).map((c: any) => (
-                  <ExpressiveCard key={c.id} variant="filled" className="p-3 min-w-0">
-                    <div className="flex items-start justify-between gap-2 min-w-0">
-                      <div className="min-w-0">
-                        <p className="font-bold text-sm truncate">{c.subject}</p>
-                        <p className="text-xs text-on-surface-variant line-clamp-2">{c.description}</p>
-                      </div>
-                      <M3StatusPill label={c.status} tone={c.status === "resolved" ? "success" : c.status === "rejected" ? "error" : "warning"} />
-                    </div>
-                  </ExpressiveCard>
-                ))}
-              </div>
+                </div>
+              </>
             )}
-          </Section>
-        </ScrollReveal>
-
-        <ScrollReveal delay={0.25}>
-          <Section title="Vi phạm mới" actions={<button onClick={() => onNavigate("adm-violations")} className="text-xs font-bold text-primary">Xem tất cả</button>}>
-            {ctx.violations.length === 0 ? (
-              <EmptyState icon={<AlertOctagon className="size-7" />} title="Không có vi phạm" />
-            ) : (
-              <div className="space-y-2">
-                {ctx.violations.slice(0, 3).map((v: any, i: number) => (
-                  <ExpressiveCard key={i} variant="filled" className="p-3 min-w-0">
-                    <div className="flex items-start justify-between gap-2 min-w-0">
-                      <div className="min-w-0">
-                        <p className="font-bold text-sm truncate">{v.reporterName || "—"}</p>
-                        <p className="text-xs text-on-surface-variant line-clamp-2">{v.content}</p>
-                      </div>
-                      <M3StatusPill label={v.status} tone={v.status === "RESOLVED" ? "success" : "warning"} />
-                    </div>
-                  </ExpressiveCard>
-                ))}
-              </div>
-            )}
-          </Section>
+          </ExpressiveCard>
         </ScrollReveal>
       </div>
+
+      {/* Charts row 2: Trips BarChart + Warnings */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 min-w-0">
+        <ScrollReveal className="lg:col-span-2 min-w-0">
+          <ExpressiveCard variant="filled" className="p-6 min-w-0">
+            <div className="flex items-end justify-between mb-4 min-w-0">
+              <div className="min-w-0">
+                <h2 className="text-lg font-semibold text-on-surface">Số chuyến 7 ngày qua</h2>
+                <p className="text-sm text-on-surface-variant">Dữ liệu vận hành thực</p>
+              </div>
+              <M3StatusPill label="7 ngày" tone="tertiary" />
+            </div>
+            {tripsData.length === 0 ? (
+              <EmptyState icon={<BarChart3 className="size-7" />} title="Chưa có dữ liệu" />
+            ) : (
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={tripsData} margin={{ left: -16, right: 8, top: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-outline-variant)" opacity={0.5} vertical={false} />
+                  <XAxis dataKey="day" stroke="var(--color-on-surface-variant)" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis stroke="var(--color-on-surface-variant)" fontSize={12} tickLine={false} axisLine={false} />
+                  <RTooltip
+                    contentStyle={{ background: "#14140f", border: "1px solid #14140f", borderRadius: 16, color: "#beff50" }}
+                    formatter={(v: any) => [`${v} chuyến`, "Số chuyến"]}
+                  />
+                  <Bar dataKey="trips" radius={[8, 8, 0, 0]} maxBarSize={64}>
+                    {tripsData.map((entry, i) => (
+                      <Cell key={i} fill={entry.color} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </ExpressiveCard>
+        </ScrollReveal>
+
+        <ScrollReveal delay={0.08} className="min-w-0">
+          <ExpressiveCard variant="filled" className="p-6 h-full min-w-0">
+            <div className="flex items-center gap-2 mb-4">
+              <AlertTriangle className="size-5 text-warning" />
+              <h2 className="text-lg font-semibold text-on-surface">Cảnh báo hệ thống</h2>
+            </div>
+            <div className="space-y-3">
+              {warnings.map((w) => (
+                <div
+                  key={w.id}
+                  className="flex items-center justify-between rounded-xl bg-surface-container-lowest p-3 border border-outline-variant/40 gap-2 min-w-0"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-on-surface truncate">{w.label}</p>
+                    <p className="text-xs text-on-surface-variant mt-0.5 truncate">{w.hint}</p>
+                  </div>
+                  <M3StatusPill label={String(w.count)} tone={warnTone[w.severity]} />
+                </div>
+              ))}
+            </div>
+          </ExpressiveCard>
+        </ScrollReveal>
+      </div>
+
+      {/* Activity feed */}
+      <ScrollReveal>
+        <ExpressiveCard variant="filled" className="p-6 min-w-0">
+          <div className="flex items-center justify-between mb-4 min-w-0">
+            <h2 className="text-lg font-semibold text-on-surface">Hoạt động gần đây</h2>
+            <ExpressiveButton variant="text" size="sm" onClick={() => onNavigate("adm-audit")}>
+              Xem tất cả <ChevronRight className="size-4" />
+            </ExpressiveButton>
+          </div>
+          {activities.length === 0 ? (
+            <EmptyState icon={<Info className="size-7" />} title="Chưa có hoạt động" />
+          ) : (
+            <div className="max-h-96 overflow-y-auto scrollbar-soft pr-1 min-w-0">
+              <StaggerGroup className="space-y-2 min-w-0">
+                {activities.map((a) => (
+                  <StaggerItem key={a.id}>
+                    <div className="flex items-center gap-3 rounded-xl p-3 hover:bg-surface-container-lowest transition-colors min-w-0">
+                      <div className={cn("flex size-10 shrink-0 items-center justify-center rounded-2xl", a.tint)}>
+                        <a.icon className="size-5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-on-surface truncate">{a.title}</p>
+                        <p className="text-xs text-on-surface-variant truncate mt-0.5">{a.desc}</p>
+                      </div>
+                      <span className="text-xs text-on-surface-variant shrink-0">{a.time}</span>
+                    </div>
+                  </StaggerItem>
+                ))}
+              </StaggerGroup>
+            </div>
+          )}
+        </ExpressiveCard>
+      </ScrollReveal>
     </PageTransition>
   );
 }

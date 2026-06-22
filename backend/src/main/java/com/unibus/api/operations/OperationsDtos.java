@@ -147,6 +147,14 @@ public final class OperationsDtos {
             boolean primary) {
     }
 
+    public record DriverContactView(
+            String type,
+            String name,
+            String role,
+            String phone,
+            String email) {
+    }
+
     public record InternalMessageView(
             Long messageId,
             Integer senderUserId,

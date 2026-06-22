@@ -21,6 +21,7 @@ import com.unibus.api.operations.OperationsDtos.ConductorTicketView;
 import com.unibus.api.operations.OperationsDtos.ConductorTripView;
 import com.unibus.api.operations.OperationsDtos.DriverTripOverview;
 import com.unibus.api.operations.OperationsDtos.DriverTripView;
+import com.unibus.api.operations.OperationsDtos.DriverContactView;
 import com.unibus.api.operations.OperationsDtos.InternalMessageView;
 import com.unibus.api.operations.OperationsDtos.LiveFleetVehicle;
 import com.unibus.api.operations.OperationsDtos.SaveSchedulesRequest;
@@ -93,6 +94,19 @@ public class OperationsService {
     public List<DriverTripView> getDriverTrips(CurrentUser currentUser, LocalDate date) {
         Integer driverStaffId = requireDriverStaffId(currentUser);
         return operationsRepository.findDriverTrips(driverStaffId, date == null ? LocalDate.now() : date);
+    }
+
+    @Transactional(readOnly = true)
+    public List<DriverContactView> getDriverContacts(CurrentUser currentUser) {
+        requireDriverStaffId(currentUser);
+        List<DriverContactView> contacts = new ArrayList<>(operationsRepository.findDriverDispatcherContacts());
+        contacts.add(new DriverContactView(
+                "EMERGENCY",
+                "Tổng đài khẩn cấp",
+                "Hỗ trợ 24/7",
+                "1900 1234",
+                null));
+        return contacts;
     }
 
     @Transactional(readOnly = true)

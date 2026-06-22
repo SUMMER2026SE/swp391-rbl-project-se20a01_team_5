@@ -11,7 +11,9 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -131,17 +133,24 @@ public class ExperienceRepository {
                         stat("Feedback mở", feedback.stream().filter(f -> !"RESOLVED".equalsIgnoreCase(f.status())).count(), "mục", "warning")));
     }
 
-    public AdminStatsView adminStats() {
+    public AdminStatsView adminStats(int days) {
+        LocalDate to = LocalDate.now();
+        LocalDate from = to.minusDays(days - 1L);
         return new AdminStatsView(
                 List.of(
                         stat("Người dùng", count("users"), "tài khoản", "primary"),
                         stat("Sinh viên", count("students"), "hồ sơ", "secondary"),
+                        stat("Trường đối tác", countWhere("universities", "status = 'ACTIVE'"), "trường", "tertiary"),
+                        stat("Chờ xác thực", countWhere("student_verifications", "status = 'PENDING_REVIEW'"), "hồ sơ", "warning"),
                         stat("Tuyến", countWhere("routes", "status = 'ACTIVE'"), "tuyến", "tertiary"),
                         stat("Doanh thu", revenue(), "VND", "success")),
                 routeMetrics(),
                 complaints(null, 8),
                 violations(null, 8),
-                fares());
+                fares(),
+                revenueSeries(from, to),
+                tripsSeries(from, to),
+                roleDistribution());
     }
 
     public List<RouteCard> routeSuggestions(Integer universityId) {
@@ -432,7 +441,7 @@ public class ExperienceRepository {
                        r.route_code, r.route_name, r.color_hex, bs.stop_name AS boarding_stop_name,
                        als.stop_name AS alighting_stop_name, mp.original_fare_amount, mp.subsidy_amount,
                        mp.final_fare_amount, mp.qr_code, mp.valid_from, mp.expires_on, NULL::timestamptz AS expires_at,
-                       mp.status
+                       mp.purchased_at, mp.status
                 FROM monthly_passes mp
                 JOIN routes r ON r.route_id = mp.route_id
                 LEFT JOIN route_registrations rr ON rr.student_code = mp.student_code AND rr.route_id = mp.route_id
@@ -661,7 +670,7 @@ public class ExperienceRepository {
                 SELECT mp.monthly_pass_id AS ticket_id, 'MONTHLY' AS ticket_type, mp.route_id,
                        r.route_code, r.route_name, r.color_hex, NULL AS boarding_stop_name, NULL AS alighting_stop_name,
                        mp.original_fare_amount, mp.subsidy_amount, mp.final_fare_amount, mp.qr_code,
-                       mp.valid_from, mp.expires_on, NULL::timestamptz AS expires_at, mp.status
+                       mp.valid_from, mp.expires_on, NULL::timestamptz AS expires_at, mp.purchased_at, mp.status
                 FROM monthly_passes mp
                 JOIN trips t ON t.route_id = mp.route_id
                 JOIN routes r ON r.route_id = mp.route_id
@@ -688,6 +697,94 @@ public class ExperienceRepository {
                         rs.getString("color_hex"),
                         rs.getInt("trips"),
                         rs.getBigDecimal("revenue")));
+    }
+
+    public List<UniversityOperationsMetric> coordinatorByUniversity() {
+        return jdbcTemplate.query("""
+                SELECT u.university_id, u.name AS university_name, u.short_name,
+                       MIN(r.color_hex) AS color_hex,
+                       COUNT(DISTINCT ru.route_id) FILTER (WHERE ru.status = 'ACTIVE') AS route_count,
+                       COUNT(DISTINCT t.bus_id) AS fleet_count,
+                       COUNT(DISTINCT t.driver_id) AS driver_count,
+                       COUNT(DISTINCT s.student_code) AS student_count,
+                       COUNT(DISTINCT t.trip_id) AS trips_today
+                FROM universities u
+                LEFT JOIN route_universities ru ON ru.university_id = u.university_id
+                    AND ru.status = 'ACTIVE'
+                LEFT JOIN routes r ON r.route_id = ru.route_id
+                LEFT JOIN trips t ON t.route_id = ru.route_id
+                    AND t.service_date = CURRENT_DATE
+                LEFT JOIN students s ON s.university_id = u.university_id
+                WHERE u.status = 'ACTIVE'
+                GROUP BY u.university_id, u.name, u.short_name
+                ORDER BY u.name
+                """, (rs, rowNum) -> new UniversityOperationsMetric(
+                        rs.getInt("university_id"),
+                        rs.getString("university_name"),
+                        rs.getString("short_name"),
+                        rs.getString("color_hex"),
+                        rs.getInt("route_count"),
+                        rs.getInt("fleet_count"),
+                        rs.getInt("driver_count"),
+                        rs.getInt("student_count"),
+                        rs.getInt("trips_today")));
+    }
+
+    private List<RevenueSeriesPoint> revenueSeries(LocalDate from, LocalDate to) {
+        Map<LocalDate, BigDecimal> values = new HashMap<>();
+        jdbcTemplate.query("""
+                SELECT CAST(created_at AS date) AS series_date, COALESCE(SUM(amount), 0) AS revenue
+                FROM payments
+                WHERE status = 'PAID'
+                  AND CAST(created_at AS date) BETWEEN ? AND ?
+                GROUP BY CAST(created_at AS date)
+                ORDER BY series_date
+                """, rs -> {
+                    values.put(rs.getObject("series_date", LocalDate.class), rs.getBigDecimal("revenue"));
+                }, from, to);
+        return from.datesUntil(to.plusDays(1))
+                .map(date -> new RevenueSeriesPoint(dayLabel(date), date, values.getOrDefault(date, BigDecimal.ZERO)))
+                .toList();
+    }
+
+    private List<TripsSeriesPoint> tripsSeries(LocalDate from, LocalDate to) {
+        Map<LocalDate, Integer> values = new HashMap<>();
+        jdbcTemplate.query("""
+                SELECT service_date AS series_date, COUNT(*) AS trips
+                FROM trips
+                WHERE service_date BETWEEN ? AND ?
+                GROUP BY service_date
+                ORDER BY service_date
+                """, rs -> {
+                    values.put(rs.getObject("series_date", LocalDate.class), rs.getInt("trips"));
+                }, from, to);
+        return from.datesUntil(to.plusDays(1))
+                .map(date -> new TripsSeriesPoint(dayLabel(date), date, values.getOrDefault(date, 0)))
+                .toList();
+    }
+
+    private List<RoleDistributionPoint> roleDistribution() {
+        return jdbcTemplate.query("""
+                SELECT role, COUNT(*) AS user_count
+                FROM users
+                WHERE status = 'ACTIVE'
+                GROUP BY role
+                ORDER BY role
+                """, (rs, rowNum) -> new RoleDistributionPoint(
+                        rs.getString("role"),
+                        rs.getInt("user_count")));
+    }
+
+    private String dayLabel(LocalDate date) {
+        return switch (date.getDayOfWeek()) {
+            case MONDAY -> "T2";
+            case TUESDAY -> "T3";
+            case WEDNESDAY -> "T4";
+            case THURSDAY -> "T5";
+            case FRIDAY -> "T6";
+            case SATURDAY -> "T7";
+            case SUNDAY -> "CN";
+        };
     }
 
     private TripCard mapTrip(ResultSet rs) throws SQLException {
@@ -730,6 +827,7 @@ public class ExperienceRepository {
                 rs.getObject("valid_from", LocalDate.class),
                 rs.getObject("expires_on", LocalDate.class),
                 toOffset(rs.getTimestamp("expires_at")),
+                toOffset(rs.getTimestamp("purchased_at")),
                 rs.getString("status"));
     }
 

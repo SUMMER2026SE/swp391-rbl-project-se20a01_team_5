@@ -131,13 +131,19 @@ public class ExperienceController {
         return ApiResponse.ok("Coordinator dashboard retrieved", service.coordinatorDashboard());
     }
 
+    @GetMapping("/coordinator/by-university")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'ADMIN')")
+    ApiResponse<List<UniversityOperationsMetric>> coordinatorByUniversity() {
+        return ApiResponse.ok("University operations metrics retrieved", service.coordinatorByUniversity());
+    }
+
     // Note: /coordinator/feedback is handled by CoordinatorFeedbackController (team module).
     // The coordinatorFeedback() service method is still available for the dashboard aggregate.
 
     @GetMapping("/admin/stats")
     @PreAuthorize("hasRole('ADMIN')")
-    ApiResponse<AdminStatsView> adminStats() {
-        return ApiResponse.ok("Admin stats retrieved", service.adminStats());
+    ApiResponse<AdminStatsView> adminStats(@RequestParam(defaultValue = "7") int days) {
+        return ApiResponse.ok("Admin stats retrieved", service.adminStats(days));
     }
 
     @GetMapping("/admin/fares")

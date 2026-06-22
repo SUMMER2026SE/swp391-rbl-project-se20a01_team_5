@@ -88,6 +88,7 @@ import { PageHeader, StatCard, Section, EmptyState } from "../primitives";
 // Real backend
 import {
   useDriverPrototypeData,
+  useApi,
   formatVND,
   formatDateTime,
   formatDate,
@@ -100,6 +101,7 @@ import {
   type ExperienceTripCard,
   type ExperienceFeedbackCard,
   type ExperienceDashboardStat,
+  type DriverContactView,
 } from "@/lib/api/client";
 
 type DriverModuleProps = {
@@ -143,7 +145,7 @@ export function DriverModule({ activeId, onNavigate }: DriverModuleProps) {
     case "drv-history":
       return <DriverHistory ctx={ctx} />;
     case "drv-contact":
-      return <DriverContact ctx={ctx} />;
+      return <DriverContact />;
     default:
       return <FallbackScreen activeId={activeId} />;
   }
@@ -1012,7 +1014,8 @@ function DriverHistory({ ctx }: { ctx: Ctx }) {
 // =============================================================================
 // Screen 6: Driver Contact — coordinator + dispatcher
 // =============================================================================
-function DriverContact({ ctx }: { ctx: Ctx }) {
+function DriverContact() {
+  const contacts = useApi<DriverContactView[]>(() => operationsApi.driverContacts(), undefined, []);
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState<{ role: "user" | "dispatch"; text: string; time: string }[]>([]);
@@ -1041,20 +1044,33 @@ function DriverContact({ ctx }: { ctx: Ctx }) {
         <ScrollReveal>
           <Section title="Danh bạ">
             <div className="space-y-3">
-              <ContactPersonCard
-                name="Điều phối viên"
-                role="Phạm Quốc Bảo"
-                phone="0933 444 555"
-                avatar="BQ"
-                accent="#beff50"
-              />
-              <ContactPersonCard
-                name="Khẩn cấp"
-                role="Tổng đài hỗ trợ"
-                phone="1900 1234"
-                avatar="EM"
-                accent="#dc2626"
-              />
+              {contacts.loading ? (
+                <div className="flex items-center gap-2 py-6 text-sm text-on-surface-variant">
+                  <RefreshCw className="size-4 animate-spin" />
+                  Đang tải danh bạ...
+                </div>
+              ) : contacts.error ? (
+                <EmptyState
+                  icon={<Phone className="size-7" />}
+                  title="Không tải được danh bạ"
+                  description={contacts.error}
+                />
+              ) : !contacts.raw?.length ? (
+                <EmptyState icon={<Phone className="size-7" />} title="Chưa có liên hệ" />
+              ) : (
+                contacts.raw.map((contact, index) => (
+                  <ContactPersonCard
+                    key={`${contact.type}-${contact.phone}-${index}`}
+                    name={contact.role}
+                    role={contact.name}
+                    phone={contact.phone}
+                    avatar={contact.type === "EMERGENCY"
+                      ? "EM"
+                      : contact.name.trim().split(/\s+/).slice(-2).map((part) => part[0]).join("").toUpperCase()}
+                    accent={contact.type === "EMERGENCY" ? "#dc2626" : "#beff50"}
+                  />
+                ))
+              )}
             </div>
           </Section>
         </ScrollReveal>

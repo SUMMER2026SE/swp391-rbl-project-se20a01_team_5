@@ -514,6 +514,7 @@ export interface ExperienceTicketCard {
   validFrom?: string;
   expiresOn?: string;
   expiresAt?: string;
+  purchasedAt?: string;
   status: string;
 }
 
@@ -662,6 +663,21 @@ export interface AdminStatsView {
   complaints: { complaintId: number; title: string; content: string; status: string; createdAt?: string }[];
   violations: { violationReportId: number; reporterName?: string; reportedName?: string; content: string; status: string; submittedAt?: string }[];
   fares: { fareId: number; routeId: number; routeCode?: string; routeName: string; fareType: string; amount: number; effectiveFrom?: string; effectiveUntil?: string; notes?: string }[];
+  revenueSeries: { day: string; date: string; revenue: number }[];
+  tripsSeries: { day: string; date: string; trips: number }[];
+  roleDistribution: { role: string; value: number }[];
+}
+
+export interface CoordinatorUniversityMetric {
+  universityId: number;
+  universityName: string;
+  shortName?: string;
+  colorHex?: string;
+  routeCount: number;
+  fleetCount: number;
+  driverCount: number;
+  studentCount: number;
+  tripsToday: number;
 }
 
 export const experienceApi = {
@@ -684,8 +700,9 @@ export const experienceApi = {
   updateAssistantLostItem: (lostItemId: number, data: { status: string; notes?: string }) =>
     apiFetch.put<ExperienceLostItemCard>(`/conductor/lost-items/${lostItemId}`, data),
   coordinatorDashboard: () => apiFetch.get<CoordinatorDashboardView>("/coordinator/dashboard"),
+  coordinatorByUniversity: () => apiFetch.get<CoordinatorUniversityMetric[]>("/coordinator/by-university"),
   coordinatorFeedback: (status?: string) => apiFetch.get<ExperienceFeedbackCard[]>("/coordinator/experience-feedback", { status }),
-  adminStats: () => apiFetch.get<AdminStatsView>("/admin/stats"),
+  adminStats: (days = 7) => apiFetch.get<AdminStatsView>("/admin/stats", { days }),
   fares: () => apiFetch.get<AdminStatsView["fares"]>("/admin/fares"),
   updateFare: (fareId: number, data: { amount: number; notes?: string }) =>
     apiFetch.put<AdminStatsView["fares"][number]>(`/admin/fares/${fareId}`, data),
@@ -790,8 +807,17 @@ export interface LiveFleetVehicle {
   locationUpdatedAt?: string;
 }
 
+export interface DriverContactView {
+  type: "COORDINATOR" | "EMERGENCY";
+  name: string;
+  role: string;
+  phone: string;
+  email?: string;
+}
+
 export const operationsApi = {
   driverTrips: (date?: string) => apiFetch.get<DriverTripView[]>("/driver/trips", { date }),
+  driverContacts: () => apiFetch.get<DriverContactView[]>("/driver/contacts"),
   startTrip: (tripId: number) => apiFetch.post<DriverTripView>(`/driver/trips/${tripId}/start`),
   endTrip: (tripId: number) => apiFetch.post<DriverTripView>(`/driver/trips/${tripId}/end`),
   updateLocation: (tripId: number, data: { longitude: number; latitude: number; speedKmh?: number; occupancy?: number }) =>
@@ -970,6 +996,20 @@ export interface UniversityStatsView {
   activeSubsidyPolicies: number;
   totalSubsidyAmount: number;
   monthlyPasses: number;
+  passesByRoute: {
+    routeId: number;
+    routeCode?: string;
+    routeName: string;
+    colorHex?: string;
+    passes: number;
+  }[];
+  tripsSeries: { day: string; date: string; trips: number }[];
+  subsidyDistribution: {
+    policyName: string;
+    subsidyType: string;
+    value: number;
+    colorHex: string;
+  }[];
 }
 
 export interface ReconciliationView {

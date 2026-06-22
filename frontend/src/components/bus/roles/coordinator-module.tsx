@@ -42,7 +42,21 @@ import {
   ChevronLeft,
   Filter,
   BarChart3,
+  Activity,
+  MessageSquare,
 } from "lucide-react";
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RTooltip,
+} from "recharts";
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
@@ -95,6 +109,7 @@ import { PageHeader, StatCard, Section, EmptyState } from "../primitives";
 
 import {
   useCoordinatorPrototypeData,
+  useApi,
   formatVND,
   formatDateTime,
   formatDate,
@@ -111,6 +126,7 @@ import {
   type LiveFleetVehicle,
   type ExperienceFeedbackCard,
   type ExperienceDashboardStat,
+  type CoordinatorUniversityMetric,
 } from "@/lib/api/client";
 
 type CoordinatorModuleProps = {
@@ -161,7 +177,7 @@ export function CoordinatorModule({ activeId, onNavigate }: CoordinatorModulePro
     case "crd-stops":
       return <StopsScreen ctx={ctx} />;
     case "crd-by-university":
-      return <ByUniversityScreen ctx={ctx} />;
+      return <ByUniversityScreen />;
     case "crd-feedback":
       return <FeedbackScreen ctx={ctx} />;
     case "crd-notify":
@@ -217,9 +233,27 @@ function ErrorScreen({ message, onRetry }: { message: string; onRetry?: () => vo
 // Screen 1: Dashboard
 // =============================================================================
 function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
-  const firstName = (ctx.user.name || "bạn").split(" ").slice(-1)[0];
   const runningFleet = ctx.fleet.filter((v: any) => v.status === "RUNNING");
   const statCards = ctx.stats.slice(0, 4);
+  const pendingFeedback = ctx.feedback.filter((f: any) => f.status !== "resolved").length;
+
+  // Trips per route — derive from fleet
+  const tripsPerRoute = useMemo(() => {
+    const counts: Record<string, { name: string; trips: number; color: string }> = {};
+    ctx.fleet.forEach((v: any) => {
+      const id = String(v.routeId);
+      if (!counts[id]) {
+        const route = ctx.routes.find((r) => r.id === id);
+        counts[id] = {
+          name: route?.code || v.routeName?.slice(0, 6) || `R${id}`,
+          trips: 0,
+          color: route?.color || "#14b8a6",
+        };
+      }
+      counts[id].trips += 1;
+    });
+    return Object.values(counts);
+  }, [ctx.fleet, ctx.routes]);
 
   const quickActions = [
     { id: "crd-live-map", label: "Bản đồ trực tiếp", icon: Navigation, accent: "primary" as const },
@@ -230,18 +264,26 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
 
   return (
     <PageTransition className="space-y-6 sm:space-y-8 min-w-0">
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ type: "spring", stiffness: 240, damping: 24 }}
-        className="space-y-3 min-w-0"
-      >
+      {/* Hero */}
+      <div className="space-y-4 min-w-0">
         <SplitText
           as="h1"
-          text={`Xin chào, ${firstName}!`}
-          className="text-4xl sm:text-5xl font-bold tracking-tight text-on-surface text-balance"
+          text="Tổng quan điều phối"
+          className="text-4xl sm:text-5xl font-bold tracking-tight text-on-surface text-balance leading-[1.05]"
           stagger={0.06}
         />
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between min-w-0">
+          <p className="text-base text-on-surface-variant text-pretty">
+            Trung tâm điều hành hoạt động xe bus sinh viên · Đà Nẵng
+          </p>
+          <ExpressiveButton
+            variant="tonal"
+            size="sm"
+            onClick={() => { ctx.reload(); toast.success("Đã làm mới dữ liệu"); }}
+          >
+            <Activity className="size-4" /> Làm mới
+          </ExpressiveButton>
+        </div>
         <div className="flex flex-wrap items-center gap-2 min-w-0">
           <span className="inline-flex items-center gap-1.5 h-7 px-3 rounded-full bg-[#7c3aed] text-white text-xs font-bold shrink-0">
             <UserCog className="size-3.5" />
@@ -256,8 +298,9 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
             {runningFleet.length} xe đang chạy
           </span>
         </div>
-      </motion.div>
+      </div>
 
+      {/* Quick actions */}
       <ScrollReveal>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 min-w-0">
           {quickActions.map((action) => {
@@ -287,69 +330,128 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
         </div>
       </ScrollReveal>
 
-      {statCards.length > 0 && (
-        <ScrollReveal delay={0.1}>
-          <Section title="Tổng quan">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 min-w-0">
-              {statCards.map((s, i) => (
-                <StatCard
-                  key={i}
-                  label={s.label}
-                  value={
-                    <Counter
-                      to={typeof s.value === "number" ? s.value : 0}
-                      format={(n) =>
-                        typeof s.value === "string"
-                          ? s.value
-                          : Math.round(n).toLocaleString("vi-VN")
-                      }
-                    />
-                  }
-                  icon={<TrendingUp className="size-5" />}
-                  hint={s.unit}
-                  accent={(s.tone as any) || "primary"}
-                />
-              ))}
-            </div>
+      {/* StatCards */}
+      <StaggerGroup className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 min-w-0">
+        <StaggerItem>
+          <StatCard
+            label="Xe đang chạy"
+            value={<Counter to={runningFleet.length} format={(n) => `${Math.round(n)}/${ctx.fleet.length}`} />}
+            icon={<BusIcon className="size-5" />}
+            hint={`${ctx.fleet.length} xe tổng`}
+            trend="up"
+            accent="primary"
+          />
+        </StaggerItem>
+        <StaggerItem>
+          <StatCard
+            label="Tuyến hoạt động"
+            value={<Counter to={ctx.routes.length} />}
+            icon={<RouteIcon className="size-5" />}
+            hint="Tất cả tuyến ổn định"
+            accent="tertiary"
+          />
+        </StaggerItem>
+        <StaggerItem>
+          <StatCard
+            label="Trạm dừng"
+            value={<Counter to={ctx.stops.length} />}
+            icon={<MapPin className="size-5" />}
+            hint="Trên toàn mạng lưới"
+            accent="secondary"
+          />
+        </StaggerItem>
+        <StaggerItem>
+          <StatCard
+            label="Phản hồi chờ xử lý"
+            value={<Counter to={pendingFeedback} />}
+            icon={<MessageSquare className="size-5" />}
+            hint="Cần xử lý trong 24h"
+            accent="error"
+          />
+        </StaggerItem>
+      </StaggerGroup>
+
+      {/* Live fleet + Trips per route chart */}
+      <div className="grid gap-4 lg:grid-cols-3 min-w-0">
+        {/* Live bus status */}
+        <ScrollReveal className="lg:col-span-2 min-w-0">
+          <Section
+            title="Fleet trực tiếp"
+            actions={<button onClick={() => onNavigate("crd-live-map")} className="text-xs font-bold text-primary">Xem bản đồ</button>}
+          >
+            {runningFleet.length === 0 ? (
+              <EmptyState
+                icon={<Navigation className="size-7" />}
+                title="Không có xe chạy"
+                description="Hiện không có chuyến nào đang chạy."
+              />
+            ) : (
+              <div className="space-y-2">
+                {runningFleet.slice(0, 5).map((v: any) => (
+                  <ExpressiveCard key={v.tripId} variant="elevated" className="p-3 min-w-0">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="size-10 shrink-0 rounded-xl bg-[#beff50] text-[#14140f] flex items-center justify-center">
+                        <BusIcon className="size-5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold truncate">{v.routeName}</p>
+                        <p className="text-xs text-on-surface-variant truncate">
+                          {v.licensePlate || "—"} • {v.driverName || "—"}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-xs font-bold text-primary">{v.speedKmh || 0} km/h</p>
+                        {v.occupancy != null && (
+                          <p className="text-[10px] text-on-surface-variant">{v.occupancy} khách</p>
+                        )}
+                      </div>
+                    </div>
+                  </ExpressiveCard>
+                ))}
+              </div>
+            )}
           </Section>
         </ScrollReveal>
-      )}
 
-      <ScrollReveal delay={0.15}>
-        <Section title="Fleet trực tiếp" actions={<button onClick={() => onNavigate("crd-live-map")} className="text-xs font-bold text-primary">Xem bản đồ</button>}>
-          {runningFleet.length === 0 ? (
-            <EmptyState
-              icon={<Navigation className="size-7" />}
-              title="Không có xe chạy"
-              description="Hiện không có chuyến nào đang chạy."
-            />
-          ) : (
-            <div className="space-y-2">
-              {runningFleet.slice(0, 5).map((v: any) => (
-                <ExpressiveCard key={v.tripId} variant="elevated" className="p-3 min-w-0">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="size-10 shrink-0 rounded-xl bg-[#beff50] text-[#14140f] flex items-center justify-center">
-                      <BusIcon className="size-5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold truncate">{v.routeName}</p>
-                      <p className="text-xs text-on-surface-variant truncate">
-                        {v.licensePlate || "—"} • {v.driverName || "—"}
-                      </p>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-xs font-bold text-primary">{v.speedKmh || 0} km/h</p>
-                      {v.occupancy != null && (
-                        <p className="text-[10px] text-on-surface-variant">{v.occupancy} khách</p>
-                      )}
-                    </div>
-                  </div>
-                </ExpressiveCard>
-              ))}
+        {/* Trips per route BarChart */}
+        <ScrollReveal delay={0.08} className="min-w-0">
+          <ExpressiveCard variant="filled" className="p-5 h-full min-w-0">
+            <div className="flex items-center justify-between gap-2 mb-4 min-w-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="flex size-9 items-center justify-center rounded-xl bg-secondary-container text-on-secondary-container shrink-0">
+                  <TrendingUp className="size-4" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold text-on-surface truncate">Chuyến theo tuyến</h3>
+                  <p className="text-xs text-on-surface-variant">Đang chạy</p>
+                </div>
+              </div>
+              <M3StatusPill label={`${tripsPerRoute.length}`} tone="tertiary" />
             </div>
-          )}
-        </Section>
-      </ScrollReveal>
+            {tripsPerRoute.length === 0 ? (
+              <EmptyState icon={<BarChart3 className="size-7" />} title="Chưa có dữ liệu" />
+            ) : (
+              <ResponsiveContainer width="100%" height={256}>
+                <BarChart data={tripsPerRoute} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-outline-variant)" vertical={false} opacity={0.5} />
+                  <XAxis dataKey="name" stroke="var(--color-on-surface-variant)" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis stroke="var(--color-on-surface-variant)" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
+                  <RTooltip
+                    contentStyle={{ background: "#14140f", border: "1px solid #14140f", borderRadius: 16, color: "#beff50" }}
+                    formatter={(v: any) => [`${v} chuyến`, "Số chuyến"]}
+                    cursor={{ fill: "var(--color-surface-container-highest)" }}
+                  />
+                  <Bar dataKey="trips" radius={[8, 8, 0, 0]}>
+                    {tripsPerRoute.map((entry, idx) => (
+                      <Cell key={idx} fill={entry.color} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </ExpressiveCard>
+        </ScrollReveal>
+      </div>
     </PageTransition>
   );
 }
@@ -1128,21 +1230,75 @@ function StopAddDialog({ routeId, onClose, onAdded }: { routeId: number; onClose
 }
 
 // =============================================================================
-// Screen 8: By University (placeholder — backend chưa hỗ trợ full)
+// Screen 8: By University
 // =============================================================================
-function ByUniversityScreen({ ctx }: { ctx: Ctx }) {
+function ByUniversityScreen() {
+  const metrics = useApi<CoordinatorUniversityMetric[]>(
+    () => experienceApi.coordinatorByUniversity(),
+    undefined,
+    []
+  );
+
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Tuyến theo trường"
         description="Thống kê tuyến theo từng trường đại học."
         icon={<School className="size-7" />}
+        actions={
+          <ExpressiveButton variant="outlined" size="sm" onClick={metrics.reload}>
+            <RefreshCw className={cn("size-4", metrics.loading && "animate-spin")} />
+            Làm mới
+          </ExpressiveButton>
+        }
       />
-      <EmptyState
-        icon={<School className="size-7" />}
-        title="Đang phát triển"
-        description="Tính năng thống kê theo trường sẽ được bổ sung. Hiện dùng màn Admin → Trường ĐH."
-      />
+      {metrics.error ? (
+        <ErrorScreen message={metrics.error} onRetry={metrics.reload} />
+      ) : metrics.loading ? (
+        <LoadingScreen label="Đang tải thống kê theo trường..." />
+      ) : !metrics.raw?.length ? (
+        <EmptyState icon={<School className="size-7" />} title="Chưa có trường liên kết" />
+      ) : (
+        <StaggerGroup className="grid grid-cols-1 xl:grid-cols-2 gap-4 min-w-0">
+          {metrics.raw.map((item) => (
+            <StaggerItem key={item.universityId}>
+              <ExpressiveCard variant="elevated" className="p-5 min-w-0">
+                <div className="flex items-start justify-between gap-4 min-w-0">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className="flex size-12 shrink-0 items-center justify-center rounded-2xl"
+                      style={{ backgroundColor: item.colorHex || "#144fcc", color: "#fff" }}
+                    >
+                      <School className="size-6" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-bold text-on-surface truncate">{item.universityName}</p>
+                      <p className="text-sm text-on-surface-variant">{item.shortName || "Trường đối tác"}</p>
+                    </div>
+                  </div>
+                  <M3StatusPill label={`${item.tripsToday} chuyến hôm nay`} tone="success" />
+                </div>
+                <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {[
+                    { label: "Tuyến", value: item.routeCount, icon: RouteIcon },
+                    { label: "Xe", value: item.fleetCount, icon: BusIcon },
+                    { label: "Tài xế", value: item.driverCount, icon: Users },
+                    { label: "Sinh viên", value: item.studentCount, icon: School },
+                  ].map((metric) => (
+                    <div key={metric.label} className="rounded-xl bg-surface-container-high p-3 min-w-0">
+                      <metric.icon className="size-4 text-on-surface-variant" />
+                      <p className="mt-2 text-xl font-bold tabular-nums text-on-surface">
+                        {metric.value.toLocaleString("vi-VN")}
+                      </p>
+                      <p className="text-xs text-on-surface-variant">{metric.label}</p>
+                    </div>
+                  ))}
+                </div>
+              </ExpressiveCard>
+            </StaggerItem>
+          ))}
+        </StaggerGroup>
+      )}
     </PageTransition>
   );
 }

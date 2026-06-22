@@ -10,7 +10,7 @@
 // Data: real backend via /university-admin/* endpoints.
 // =============================================================================
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard,
@@ -40,7 +40,26 @@ import {
   Banknote,
   BadgeCheck,
   GraduationCap,
+  MapPin,
+  Wallet,
+  ShieldCheck,
 } from "lucide-react";
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  LineChart,
+  Line,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RTooltip,
+} from "recharts";
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
@@ -223,13 +242,21 @@ function ErrorScreen({ message, onRetry }: { message: string; onRetry?: () => vo
 // =============================================================================
 function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
   const firstName = (ctx.user.name || "bạn").split(" ").slice(-1)[0];
+  const ua = ctx.universityAdmin;
   const s = ctx.stats;
-  const statCards: { label: string; value: number; unit?: string; tone?: string }[] = s ? [
-    { label: "Sinh viên hoạt động", value: s.activeRosterStudents, tone: "primary" },
-    { label: "Sinh viên đã match", value: s.matchedStudents, tone: "success" },
-    { label: "Vé tháng đã bán", value: s.monthlyPasses, tone: "tertiary" },
-    { label: "Tổng trợ giá", value: s.totalSubsidyAmount, unit: "VND", tone: "secondary" },
-  ] : [];
+
+  const passesByRoute = (s?.passesByRoute || []).map((point) => ({
+    name: point.routeCode || point.routeName,
+    passes: point.passes,
+    fill: point.colorHex || "#144fcc",
+  }));
+  const tripsLast7 = s?.tripsSeries || [];
+  const subsidyDist = (s?.subsidyDistribution || []).map((point) => ({
+    name: point.policyName,
+    value: point.subsidyType === "PERCENT" ? point.value : Math.round(point.value / 1000),
+    color: point.colorHex,
+    unit: point.subsidyType === "PERCENT" ? "%" : "k",
+  }));
 
   const quickActions = [
     { id: "uniadm-roster", label: "Danh sách SV", icon: Users, accent: "primary" as const },
@@ -240,32 +267,70 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
 
   return (
     <PageTransition className="space-y-6 sm:space-y-8 min-w-0">
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ type: "spring", stiffness: 240, damping: 24 }}
-        className="space-y-3 min-w-0"
-      >
-        <SplitText
-          as="h1"
-          text={`Xin chào, ${firstName}!`}
-          className="text-4xl sm:text-5xl font-bold tracking-tight text-on-surface text-balance"
-          stagger={0.06}
-        />
-        <div className="flex flex-wrap items-center gap-2 min-w-0">
-          <span className="inline-flex items-center gap-1.5 h-7 px-3 rounded-full bg-[#144fcc] text-white text-xs font-bold shrink-0">
-            <School className="size-3.5" />
-            Admin trường
-          </span>
-          {ctx.universityAdmin?.universityName && (
-            <span className="inline-flex items-center gap-1.5 h-7 px-3 rounded-full bg-[#beff50] text-[#14140f] text-xs font-bold shrink-0">
-              <Building2 className="size-3.5" />
-              {ctx.universityAdmin.universityName}
-            </span>
-          )}
-        </div>
-      </motion.div>
+      <SplitText
+        as="h1"
+        text={`Quản lý trường ${ua?.universityName || ""}`}
+        className="text-4xl sm:text-5xl font-bold tracking-tight text-on-surface block text-balance"
+        stagger={0.06}
+      />
 
+      {/* Hero card — gradient với logo trường */}
+      <ScrollReveal>
+        <ExpressiveCard variant="elevated" className="overflow-hidden min-w-0">
+          <div
+            className="p-6 sm:p-8 relative"
+            style={{
+              background: "linear-gradient(135deg, #144fcc, #144fcccc 70%, #144fcc99)",
+            }}
+          >
+            <div className="absolute inset-0 opacity-20 pointer-events-none">
+              <div className="absolute -right-10 -top-10 size-48 rounded-full bg-white/30 blur-3xl" />
+              <div className="absolute -left-10 bottom-0 size-40 rounded-full bg-black/10 blur-3xl" />
+            </div>
+            <div className="relative z-10 flex flex-col sm:flex-row sm:items-center gap-5 min-w-0">
+              <div className="size-20 rounded-2xl bg-white p-2 flex items-center justify-center shrink-0 ring-1 ring-white/30">
+                <span className="text-2xl font-black text-[#144fcc]">
+                  {(ua?.universityName || "U").slice(0, 2).toUpperCase()}
+                </span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-white/80 text-xs font-medium uppercase tracking-wide">
+                    {ua?.title || "Admin trường"} · Đà Nẵng
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 h-6 px-3 rounded-full bg-white/20 text-white text-xs font-medium backdrop-blur">
+                    <BadgeCheck className="size-3.5" />
+                    Đối tác chính thức
+                  </span>
+                </div>
+                <h2 className="mt-1 text-white text-2xl sm:text-3xl font-bold leading-tight truncate">
+                  {ua?.universityName || "Trường đại học"}
+                </h2>
+                <div className="mt-3 flex flex-wrap gap-4 text-white/95 text-sm">
+                  <span className="inline-flex items-center gap-1.5">
+                    <GraduationCap className="size-4" />
+                    {s?.activeRosterStudents?.toLocaleString("vi-VN") || 0} sinh viên
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <MapPin className="size-4" />
+                    {s?.activeCampuses || 0} cơ sở
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <FileBarChart className="size-4" />
+                    {s?.activeRoutes || 0} tuyến bus
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <ShieldCheck className="size-4" />
+                    {ctx.subsidyPolicies.filter((p) => p.status === "ACTIVE").length > 0 ? "Đang trợ giá" : "Chưa trợ giá"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </ExpressiveCard>
+      </ScrollReveal>
+
+      {/* Quick actions */}
       <ScrollReveal>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 min-w-0">
           {quickActions.map((action) => {
@@ -294,56 +359,188 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
         </div>
       </ScrollReveal>
 
-      {statCards.length > 0 && (
-        <ScrollReveal delay={0.1}>
-          <Section title="Tổng quan">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 min-w-0">
-              {statCards.map((s, i) => (
-                <StatCard
-                  key={i}
-                  label={s.label}
-                  value={
-                    <Counter
-                      to={s.value}
-                      format={(n) =>
-                        s.unit === "VND"
-                          ? formatVND(Math.round(n))
-                          : Math.round(n).toLocaleString("vi-VN")
-                      }
-                    />
-                  }
-                  icon={<TrendingUp className="size-5" />}
-                  hint={s.unit && s.unit !== "VND" ? s.unit : undefined}
-                  accent={(s.tone as any) || "primary"}
-                />
-              ))}
-            </div>
-          </Section>
-        </ScrollReveal>
-      )}
+      {/* StatCards */}
+      <StaggerGroup className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 min-w-0">
+        <StaggerItem>
+          <StatCard
+            label="Sinh viên đang hoạt động"
+            value={<Counter to={s?.activeRosterStudents || 0} />}
+            icon={<Users className="size-6" />}
+            hint={`${s?.matchedStudents || 0} đã liên kết`}
+            trend="up"
+            accent="primary"
+          />
+        </StaggerItem>
+        <StaggerItem>
+          <StatCard
+            label="Vé tháng tháng này"
+            value={<Counter to={s?.monthlyPasses || 0} />}
+            icon={<FileSpreadsheet className="size-6" />}
+            hint={`${s?.activeRosterStudents ? Math.round((s.monthlyPasses / s.activeRosterStudents) * 100) : 0}% sinh viên`}
+            trend="up"
+            accent="tertiary"
+          />
+        </StaggerItem>
+        <StaggerItem>
+          <StatCard
+            label="Tuyến đang hoạt động"
+            value={<Counter to={s?.activeRoutes || 0} />}
+            icon={<FileBarChart className="size-6" />}
+            hint={`${s?.activeSubsidyPolicies || 0} chính sách trợ giá`}
+            accent="secondary"
+          />
+        </StaggerItem>
+        <StaggerItem>
+          <StatCard
+            label="Tổng trợ giá tháng"
+            value={
+              <Counter
+                to={s?.totalSubsidyAmount || 0}
+                format={(n) => formatVND(Math.round(n))}
+              />
+            }
+            icon={<Wallet className="size-6" />}
+            hint="Trợ giá vé tháng"
+            trend="up"
+            accent="success"
+          />
+        </StaggerItem>
+      </StaggerGroup>
 
-      {ctx.payments.length > 0 && (
-        <ScrollReveal delay={0.15}>
-          <Section title="Giao dịch gần đây" actions={<button onClick={() => onNavigate("uniadm-recon")} className="text-xs font-bold text-primary">Đối soát</button>}>
-            <div className="space-y-2">
-              {ctx.payments.slice(0, 5).map((p) => (
-              <ExpressiveCard key={p.orderId} variant="filled" className="p-3 min-w-0">
-                <div className="flex items-center justify-between gap-2 min-w-0">
-                  <div className="min-w-0">
-                    <p className="font-bold text-sm truncate">{p.studentName || p.studentCode || "—"}</p>
-                    <p className="text-xs text-on-surface-variant truncate">{p.routeName || p.ticketType}</p>
+      {/* Charts row 1: passes by route (Bar) + trips 7 days (Line) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 min-w-0">
+        <ScrollReveal className="lg:col-span-2 min-w-0">
+          <ExpressiveCard variant="outlined" className="p-5 min-w-0">
+            <div className="flex items-center justify-between mb-4 min-w-0">
+              <div className="min-w-0">
+                <h3 className="text-lg font-semibold text-on-surface">Vé tháng theo tuyến</h3>
+                <p className="text-xs text-on-surface-variant mt-0.5">
+                  Tháng {new Date().getMonth() + 1}/{new Date().getFullYear()} · Tổng {passesByRoute.reduce((s, d) => s + d.passes, 0)} vé
+                </p>
+              </div>
+              <FileBarChart className="size-5 text-on-surface-variant shrink-0" />
+            </div>
+            <div className="h-56 min-w-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={passesByRoute} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-outline-variant)" vertical={false} opacity={0.5} />
+                  <XAxis dataKey="name" stroke="var(--color-on-surface-variant)" fontSize={12} axisLine={false} tickLine={false} />
+                  <YAxis stroke="var(--color-on-surface-variant)" fontSize={12} axisLine={false} tickLine={false} />
+                  <RTooltip
+                    cursor={{ fill: "var(--color-surface-container-highest)" }}
+                    contentStyle={{
+                      background: "#14140f",
+                      border: "1px solid #14140f",
+                      borderRadius: 12,
+                      color: "#beff50",
+                      fontSize: 12,
+                    }}
+                    formatter={(v: any) => [`${v} vé`, "Vé tháng"]}
+                  />
+                  <Bar dataKey="passes" radius={[8, 8, 0, 0]}>
+                    {passesByRoute.map((d, i) => (
+                      <Cell key={i} fill={d.fill} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </ExpressiveCard>
+        </ScrollReveal>
+
+        <ScrollReveal delay={0.1} className="min-w-0">
+          <ExpressiveCard variant="outlined" className="p-5 h-full min-w-0">
+            <div className="flex items-center justify-between mb-4 min-w-0">
+              <h3 className="text-lg font-semibold text-on-surface">Lượt dùng xe 7 ngày</h3>
+              <TrendingUp className="size-5 text-success shrink-0" />
+            </div>
+            <div className="h-56 min-w-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={tripsLast7} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-outline-variant)" vertical={false} opacity={0.5} />
+                  <XAxis dataKey="day" stroke="var(--color-on-surface-variant)" fontSize={12} axisLine={false} tickLine={false} />
+                  <YAxis stroke="var(--color-on-surface-variant)" fontSize={12} axisLine={false} tickLine={false} />
+                  <RTooltip
+                    contentStyle={{
+                      background: "#14140f",
+                      border: "1px solid #14140f",
+                      borderRadius: 12,
+                      color: "#beff50",
+                      fontSize: 12,
+                    }}
+                    formatter={(v: any) => [`${v} lượt`, "Lượt xe"]}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="trips"
+                    stroke="#144fcc"
+                    strokeWidth={3}
+                    dot={{ fill: "#144fcc", r: 4 }}
+                    activeDot={{ r: 6 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </ExpressiveCard>
+        </ScrollReveal>
+      </div>
+
+      {/* Charts row 2: subsidy pie + recent payments */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 min-w-0">
+        <ScrollReveal className="min-w-0">
+          <ExpressiveCard variant="outlined" className="p-5 h-full min-w-0">
+            <h3 className="text-lg font-semibold text-on-surface mb-2">Chính sách trợ giá</h3>
+            <ResponsiveContainer width="100%" height={180}>
+              <PieChart>
+                <Pie data={subsidyDist} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={3}>
+                  {subsidyDist.map((entry, i) => (
+                    <Cell key={i} fill={entry.color} stroke="transparent" />
+                  ))}
+                </Pie>
+                <RTooltip
+                  contentStyle={{ background: "#14140f", border: "1px solid #14140f", borderRadius: 16, color: "#beff50" }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="mt-3 space-y-1.5 min-w-0">
+              {subsidyDist.slice(0, 5).map((s, i) => (
+                <div key={i} className="flex items-center justify-between text-xs gap-2 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="size-2.5 rounded-full shrink-0" style={{ background: s.color }} />
+                    <span className="text-on-surface-variant truncate">{s.name}</span>
                   </div>
-                  <div className="text-right shrink-0">
-                    <p className="font-bold text-primary">{p.orderTotal ? formatVND(p.orderTotal) : "—"}</p>
-                    <M3StatusPill label={p.paymentStatus || "—"} tone={p.paymentStatus === "PAID" ? "success" : "warning"} />
-                  </div>
+                  <span className="font-bold text-on-surface shrink-0">{s.value}{s.unit}</span>
                 </div>
-              </ExpressiveCard>
               ))}
             </div>
+          </ExpressiveCard>
+        </ScrollReveal>
+
+        <ScrollReveal delay={0.1} className="lg:col-span-2 min-w-0">
+          <Section title="Giao dịch gần đây" actions={<button onClick={() => onNavigate("uniadm-recon")} className="text-xs font-bold text-primary">Đối soát</button>}>
+            {ctx.payments.length === 0 ? (
+              <EmptyState icon={<Banknote className="size-7" />} title="Chưa có giao dịch" />
+            ) : (
+              <div className="space-y-2">
+                {ctx.payments.slice(0, 5).map((p) => (
+                  <ExpressiveCard key={p.orderId} variant="filled" className="p-3 min-w-0">
+                    <div className="flex items-center justify-between gap-2 min-w-0">
+                      <div className="min-w-0">
+                        <p className="font-bold text-sm truncate">{p.studentName || p.studentCode || "—"}</p>
+                        <p className="text-xs text-on-surface-variant truncate">{p.routeName || p.ticketType}</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="font-bold text-primary">{p.orderTotal ? formatVND(p.orderTotal) : "—"}</p>
+                        <M3StatusPill label={p.paymentStatus || "—"} tone={p.paymentStatus === "PAID" ? "success" : "warning"} />
+                      </div>
+                    </div>
+                  </ExpressiveCard>
+                ))}
+              </div>
+            )}
           </Section>
         </ScrollReveal>
-      )}
+      </div>
     </PageTransition>
   );
 }

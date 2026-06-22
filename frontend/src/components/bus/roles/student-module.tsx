@@ -448,15 +448,28 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
     ? ctx.routes.find((r) => r.id === String(nextTrip.routeId))
     : ctx.routes[0];
   const unread = ctx.notifications.filter((n: any) => !n.read).length;
+  const tripsThisMonth = ctx.tripsHistory.length;
 
-  const quickActions = [
-    { id: "stu-find", label: "Tìm tuyến xe", icon: RouteIcon, accent: "primary" as const },
-    { id: "stu-tracking", label: "Theo dõi xe", icon: Navigation, accent: "tertiary" as const },
-    { id: "stu-payment", label: "Mua vé tháng", icon: CreditCard, accent: "secondary" as const },
-    { id: "stu-ai", label: "AI gợi ý", icon: Sparkles, accent: "primary" as const },
+  // Stat cards — perk-style: each card has its own bold color (from prototype)
+  const monthlyFare = activeTicket?.finalFareAmount ?? 0;
+  const subsidyAmount = activeTicket?.subsidyAmount ?? 0;
+  const statCards = [
+    { label: "Tuyến đã đăng ký", value: ctx.registration ? 1 : 0, hint: "Đang hoạt động", icon: RouteIcon, bg: "#14140f", fg: "#ffffff", iconBg: "#beff50", iconFg: "#14140f", hintColor: "#beff50" },
+    { label: "Chuyến tháng này", value: tripsThisMonth, hint: tripsThisMonth > 0 ? `+${Math.min(2, tripsThisMonth)} so với tháng trước` : "Chưa có chuyến", icon: Bus, bg: "#ff8c5f", fg: "#14140f", iconBg: "#14140f", iconFg: "#ff8c5f", hintColor: "#14140f" },
+    { label: "Chi phí tháng", value: monthlyFare, hint: subsidyAmount > 0 ? `Trợ giá ${formatVND(subsidyAmount)}` : "Chưa mua vé", icon: CreditCard, bg: "#144fcc", fg: "#ffffff", iconBg: "#beff50", iconFg: "#14140f", hintColor: "#beff50", isMoney: true },
+    { label: "Thông báo mới", value: unread, hint: unread > 0 ? "Chưa đọc" : "Đã đọc hết", icon: Sparkles, bg: "#c8a0ff", fg: "#14140f", iconBg: "#14140f", iconFg: "#c8a0ff", hintColor: "#14140f" },
   ];
 
-  const statCards = (ctx.stats || []).slice(0, 4);
+  const quickActions = [
+    { id: "stu-find", label: "Tìm tuyến xe", icon: RouteIcon, bg: "#144fcc", fg: "#fff", iconBg: "#beff50", iconFg: "#14140f" },
+    { id: "stu-tracking", label: "Theo dõi xe", icon: Navigation, bg: "#ff8c5f", fg: "#14140f", iconBg: "#14140f", iconFg: "#ff8c5f" },
+    { id: "stu-payment", label: "Mua vé tháng", icon: CreditCard, bg: "#14140f", fg: "#fff", iconBg: "#beff50", iconFg: "#14140f" },
+    { id: "stu-ai", label: "AI gợi ý", icon: Sparkles, bg: "#c8a0ff", fg: "#14140f", iconBg: "#14140f", iconFg: "#c8a0ff" },
+  ];
+
+  const myRoutes = ctx.registration
+    ? ctx.routes.filter((r: any) => r.id === String(ctx.registration?.routeId))
+    : [];
 
   return (
     <PageTransition className="space-y-6 sm:space-y-8 min-w-0">
@@ -493,7 +506,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
         </div>
       </motion.div>
 
-      {/* Upcoming trip HERO — perk-style: bold lime card, dark text, no pale aurora */}
+      {/* Upcoming trip HERO — perk-style: bold lime card, dark text, QR round button */}
       {(activeRoute || nextTrip) && (
         <ScrollReveal>
           <motion.div
@@ -505,13 +518,15 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
           >
             <div className="absolute -top-12 -right-12 size-48 rounded-full bg-[#14140f]/8 blur-3xl pointer-events-none" />
             <div className="absolute -bottom-16 -left-8 size-40 rounded-full bg-[#144fcc]/10 blur-3xl pointer-events-none" />
-            <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center min-w-0">
+
+            <div className="relative flex flex-col lg:flex-row lg:items-center gap-5 min-w-0">
+              {/* Left: trip info */}
               <div className="flex-1 min-w-0 space-y-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="inline-flex h-7 px-3 rounded-full bg-[#14140f] text-white text-xs font-bold items-center">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="inline-flex items-center h-6 px-2.5 rounded-full bg-[#14140f] text-white text-[11px] font-bold">
                     {activeRoute?.code || "UNIBUS"}
                   </span>
-                  <span className="inline-flex items-center gap-1 h-7 px-3 rounded-full bg-[#14140f]/10 text-xs font-bold">
+                  <span className="inline-flex items-center gap-1 h-6 px-2.5 rounded-full bg-[#14140f]/10 text-[11px] font-bold">
                     <motion.span
                       className="size-1.5 rounded-full bg-[#14140f]"
                       animate={{ opacity: [1, 0.3, 1] }}
@@ -520,240 +535,301 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
                     {nextTrip?.status === "RUNNING" ? "Đang chạy" : "Sắp khởi hành"}
                   </span>
                 </div>
-                <h2 className="text-2xl sm:text-3xl font-bold leading-tight">Chuyến sắp tới</h2>
-                <p className="text-sm font-semibold opacity-80 sm:text-base truncate">
-                  {activeRoute?.from || ctx.registration?.boardingStopName || "Điểm lên"} {"→"}{" "}
-                  {activeRoute?.to || ctx.registration?.alightingStopName || "Điểm xuống"}
+                <h3 className="text-2xl sm:text-3xl font-bold text-balance leading-tight">
+                  Chuyến sắp tới
+                </h3>
+                <p className="text-sm sm:text-base font-medium opacity-80 truncate">
+                  {activeRoute?.from || ctx.registration?.boardingStopName || "Điểm lên"} → {activeRoute?.to || ctx.registration?.alightingStopName || "Điểm xuống"}
                 </p>
-                <div className="flex flex-wrap items-center gap-4 pt-1">
-                  <HeroMetric
-                    label="Khởi hành"
-                    value={nextTrip?.departTime || activeRoute?.firstTrip || "Hôm nay"}
-                  />
-                  <HeroMetric
-                    label="Biển số"
-                    value={nextTrip?.busPlate || "Đang gán"}
-                  />
+                <div className="flex items-center gap-3 sm:gap-4 pt-1 flex-wrap">
+                  <HeroMetric label="Khởi hành" value={nextTrip?.departTime || activeRoute?.firstTrip || "Hôm nay"} />
+                  <div className="w-px h-8 bg-[#14140f]/20 shrink-0" />
+                  <HeroMetric label="Biển số" value={(nextTrip as any)?.licensePlate || "Đang gán"} />
+                  <div className="w-px h-8 bg-[#14140f]/20 shrink-0" />
                   <HeroMetric
                     label="Mật độ"
                     value={
-                      nextTrip?.occupancy != null
-                        ? `${nextTrip.occupancy}/${nextTrip.seatCount || "?"}`
+                      (nextTrip as any)?.occupancy != null
+                        ? `${(nextTrip as any).occupancy}/${(nextTrip as any).seatCount || "?"}`
                         : "Đang cập nhật"
                     }
                   />
                 </div>
               </div>
-              <div className="flex shrink-0 flex-col items-center gap-3">
-                {activeTicket?.qrCode ? (
+
+              {/* Right: QR round button + 2 action buttons */}
+              <div className="flex flex-col items-center gap-3 shrink-0">
+                <motion.button
+                  onClick={() => setQrExpanded(true)}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 22 }}
+                  className="relative flex size-24 items-center justify-center rounded-full bg-[#14140f] elev-3 cursor-pointer"
+                >
+                  <motion.div
+                    className="absolute inset-0 rounded-full bg-[#beff50]/40"
+                    animate={{ scale: [1, 1.8], opacity: [0.6, 0] }}
+                    transition={{ duration: 1.8, repeat: Infinity, ease: "easeOut" }}
+                  />
+                  <QrCode className="size-10 text-[#beff50]" />
+                </motion.button>
+                <p className="text-[10px] font-bold text-[#14140f]/60 uppercase tracking-wide">Nhấn xem vé</p>
+                <div className="flex gap-2">
                   <motion.button
-                    onClick={() => setQrExpanded((v) => !v)}
-                    className="relative bg-white p-3 rounded-2xl shadow-lg"
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
+                    whileHover={{ y: -2 }}
+                    whileTap={{ scale: 0.97 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 22 }}
+                    onClick={() => onNavigate("stu-tracking")}
+                    className="state-layer inline-flex items-center gap-1.5 h-10 px-4 rounded-full bg-[#14140f] text-white text-sm font-bold"
                   >
-                    <QRCodeCanvas
-                      value={activeTicket.qrCode}
-                      size={qrExpanded ? 200 : 110}
-                      level="H"
-                      includeMargin={false}
-                    />
-                    <div className="absolute -top-1.5 -right-1.5 size-6 rounded-full bg-[#14140f] text-[#beff50] flex items-center justify-center">
-                      <Maximize2 className="size-3" />
-                    </div>
+                    <Navigation className="size-4" />
+                    Theo dõi
                   </motion.button>
-                ) : (
-                  <div className="bg-white/30 p-6 rounded-2xl text-center">
-                    <QrCode className="size-12 opacity-50" />
-                    <p className="text-[10px] font-bold mt-1 opacity-70">Chưa có vé</p>
-                  </div>
-                )}
-                <p className="text-[10px] font-bold opacity-70 text-center">
-                  {qrExpanded ? "Chạm để thu nhỏ" : "Chạm để phóng to"}
-                </p>
+                  <motion.button
+                    whileHover={{ y: -2 }}
+                    whileTap={{ scale: 0.97 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 22 }}
+                    onClick={() => onNavigate("stu-payment")}
+                    className="state-layer inline-flex items-center gap-1 h-10 px-4 rounded-full bg-white text-[#14140f] text-sm font-bold border-2 border-[#14140f]"
+                  >
+                    Mua vé
+                    <ArrowRight className="size-4" />
+                  </motion.button>
+                </div>
               </div>
             </div>
           </motion.div>
         </ScrollReveal>
       )}
 
-      {/* Quick actions — perk-style */}
-      <ScrollReveal delay={0.1}>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 min-w-0">
-          {quickActions.map((action) => {
-            const accentMap: Record<string, { bg: string; fg: string }> = {
-              primary: { bg: "#14140f", fg: "#beff50" },
-              tertiary: { bg: "#ff8c5f", fg: "#14140f" },
-              secondary: { bg: "#144fcc", fg: "#beff50" },
-            };
-            const a = accentMap[action.accent];
-            return (
-              <motion.button
-                key={action.id}
-                onClick={() => onNavigate(action.id)}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                whileHover={{ y: -3, scale: 1.02 }}
-                whileTap={{ scale: 0.96 }}
-                className="group relative overflow-hidden rounded-2xl p-4 elev-1 hover:elev-2 transition-shadow text-left min-w-0"
-                style={{ backgroundColor: a.bg, color: a.fg }}
+      {/* Stat cards — perk-style: dark cards with lime/coral/sky/purple accents (like prototype) */}
+      <StaggerGroup className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 min-w-0">
+        {statCards.map((s, i) => (
+          <StaggerItem key={i}>
+            <motion.div
+              whileHover={{ y: -1 }}
+              transition={{ type: "spring", stiffness: 300, damping: 20 }}
+              className="rounded-2xl p-4 sm:p-5 elev-2 h-full min-w-0"
+              style={{ backgroundColor: s.bg, color: s.fg }}
+            >
+              <div
+                className="flex size-10 items-center justify-center rounded-xl mb-3 shrink-0"
+                style={{ backgroundColor: s.iconBg, color: s.iconFg }}
               >
-                <action.icon className="size-6 mb-3" />
-                <p className="text-sm font-bold leading-tight">{action.label}</p>
-                <ArrowRight className="size-4 mt-2 opacity-70 group-hover:translate-x-1 transition-transform" />
-              </motion.button>
-            );
-          })}
-        </div>
-      </ScrollReveal>
+                <s.icon className="size-5" />
+              </div>
+              <p className="text-[11px] font-medium opacity-70 uppercase tracking-wide truncate">{s.label}</p>
+              <p className="text-2xl sm:text-3xl font-bold mt-1 tabular-nums">
+                {s.isMoney ? (
+                  <Counter to={s.value} format={(n) => formatVND(Math.round(n))} />
+                ) : (
+                  <Counter to={s.value} />
+                )}
+              </p>
+              <p className="text-[11px] font-bold mt-1 truncate" style={{ color: s.hintColor }}>{s.hint}</p>
+            </motion.div>
+          </StaggerItem>
+        ))}
+      </StaggerGroup>
 
-      {/* Stats */}
-      {statCards.length > 0 && (
-        <ScrollReveal delay={0.15}>
-          <Section title="Tổng quan" className="min-w-0">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 min-w-0">
-              {statCards.map((s, i) => (
-                <StatCard
-                  key={i}
-                  label={s.label}
-                  value={
-                    <Counter
-                      to={typeof s.value === "number" ? s.value : 0}
-                      format={(n) =>
-                        typeof s.value === "string"
-                          ? s.value
-                          : Math.round(n).toLocaleString("vi-VN")
-                      }
-                    />
-                  }
-                  icon={<TrendingUp className="size-5" />}
-                  hint={s.unit}
-                  accent={(s.tone as any) || "primary"}
-                />
+      {/* My routes + Quick actions — 2-column layout like prototype */}
+      <div className="grid lg:grid-cols-2 gap-6 min-w-0">
+        <ScrollReveal>
+          <Section title="Tuyến của tôi" description="Đang sử dụng tháng này">
+            <ExpressiveCard variant="filled" className="p-2 min-w-0">
+              {myRoutes.length === 0 ? (
+                <div className="p-6 text-center text-sm text-on-surface-variant min-w-0">
+                  Chưa có tuyến nào.{" "}
+                  <button className="text-[#144fcc] font-bold underline" onClick={() => onNavigate("stu-find")}>
+                    Đăng ký ngay
+                  </button>
+                </div>
+              ) : (
+                myRoutes.map((r: any) => (
+                  <div
+                    key={r.id}
+                    className="state-layer flex items-center gap-3 p-3 rounded-xl cursor-pointer min-w-0"
+                    onClick={() => onNavigate("stu-my-ticket")}
+                  >
+                    <div
+                      className="flex size-11 shrink-0 items-center justify-center rounded-xl"
+                      style={{ backgroundColor: r.color, color: "#14140f" }}
+                    >
+                      <Bus className="size-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-on-surface truncate">{r.name}</p>
+                      <p className="text-xs text-on-surface-variant truncate">{r.from} → {r.to}</p>
+                    </div>
+                    <ChevronRight className="size-4 text-on-surface-variant shrink-0" />
+                  </div>
+                ))
+              )}
+            </ExpressiveCard>
+          </Section>
+        </ScrollReveal>
+
+        <ScrollReveal delay={0.1}>
+          <Section title="Truy cập nhanh" description="Lối tắt các tác vụ phổ biến">
+            <div className="grid grid-cols-2 gap-2 sm:gap-4 items-stretch min-w-0">
+              {quickActions.map((qa) => (
+                <motion.button
+                  key={qa.id}
+                  onClick={() => onNavigate(qa.id)}
+                  whileHover={{ y: -3 }}
+                  whileTap={{ scale: 0.97 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                  className="state-layer flex flex-col w-full text-left rounded-2xl p-3 sm:p-5 min-w-0 min-h-[100px] sm:min-h-[120px]"
+                  style={{ backgroundColor: qa.bg, color: qa.fg }}
+                >
+                  <div
+                    className="flex size-9 sm:size-10 items-center justify-center rounded-xl mb-2 sm:mb-3 shrink-0"
+                    style={{ backgroundColor: qa.iconBg, color: qa.iconFg }}
+                  >
+                    <qa.icon className="size-4 sm:size-5" />
+                  </div>
+                  <p className="text-xs sm:text-sm font-bold truncate">{qa.label}</p>
+                  <p className="text-[10px] sm:text-[11px] opacity-60 mt-0.5 font-medium truncate">Nhấn để mở →</p>
+                </motion.button>
               ))}
             </div>
           </Section>
         </ScrollReveal>
-      )}
+      </div>
 
-      {/* Active ticket + registration */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
-        {ctx.registration && (
-          <ScrollReveal delay={0.2}>
-            <ExpressiveCard variant="elevated" className="p-5 h-full min-w-0">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-base font-bold">Tuyến đã đăng ký</h3>
-                <RouteCodeBadge route={ctx.routes.find((r) => r.id === String(ctx.registration?.routeId)) || { code: "", color: "" }} />
+      {/* Recent notifications */}
+      <ScrollReveal>
+        <Section
+          title="Thông báo gần đây"
+          description="Cập nhật mới nhất từ hệ thống"
+          actions={
+            <button
+              className="state-layer inline-flex items-center gap-1 h-8 px-3 rounded-full text-sm font-bold text-[#14140f] hover:bg-[#14140f]/8"
+              onClick={() => onNavigate("stu-stops")}
+            >
+              Xem tất cả
+              <ArrowRight className="size-4" />
+            </button>
+          }
+        >
+          <ExpressiveCard variant="filled" className="p-2 max-h-72 overflow-y-auto scrollbar-soft min-w-0">
+            {ctx.notifications.length === 0 ? (
+              <div className="p-6 text-center text-sm text-on-surface-variant min-w-0">
+                Chưa có thông báo nào.
               </div>
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-sm">
-                  <MapPin className="size-4 text-primary" />
-                  <span className="font-medium truncate">{ctx.registration.routeName}</span>
-                </div>
-                <div className="flex items-start gap-2 text-xs text-on-surface-variant">
-                  <CornerDownRight className="size-3 mt-0.5 shrink-0" />
-                  <div className="min-w-0">
-                    <p>Lên: <span className="font-medium text-on-surface truncate">{ctx.registration.boardingStopName}</span></p>
-                    <p>Xuống: <span className="font-medium text-on-surface truncate">{ctx.registration.alightingStopName}</span></p>
+            ) : (
+              ctx.notifications.slice(0, 6).map((n: any) => {
+                const Icon = n.type === "success" ? CheckCircle2 : n.type === "warning" ? AlertTriangle : n.type === "danger" ? XCircle : Info;
+                const iconColor =
+                  n.type === "success" ? "#16a34a" :
+                  n.type === "warning" ? "#f59e0b" :
+                  n.type === "danger" ? "#dc2626" : "#144fcc";
+                return (
+                  <div key={n.id} className="state-layer flex items-start gap-3 p-3 rounded-xl min-w-0">
+                    <div
+                      className="flex size-9 shrink-0 items-center justify-center rounded-full mt-0.5"
+                      style={{ backgroundColor: iconColor + "20", color: iconColor }}
+                    >
+                      <Icon className="size-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium text-on-surface truncate">{n.title}</p>
+                        {!n.read && <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: "#144fcc" }} />}
+                      </div>
+                      <p className="text-xs text-on-surface-variant line-clamp-2 mt-0.5">{n.body}</p>
+                      <p className="text-[10px] text-on-surface-variant/70 mt-1">{n.createdAt ? formatDateTime(n.createdAt) : ""}</p>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-2 text-xs">
-                  <Calendar className="size-3.5" />
-                  <span>Hiệu lực: {formatDate(ctx.registration.effectiveDate)}</span>
-                  <M3StatusPill label={ctx.registration.status} tone={ctx.registration.status === "ACTIVE" ? "success" : "neutral"} />
-                </div>
-              </div>
-              <ExpressiveButton
-                variant="text"
-                className="mt-3 -ml-2"
-                onClick={() => onNavigate("stu-my-routes")}
-              >
-                Quản lý tuyến <ArrowRight className="size-4" />
-              </ExpressiveButton>
-            </ExpressiveCard>
-          </ScrollReveal>
-        )}
+                );
+              })
+            )}
+          </ExpressiveCard>
+        </Section>
+      </ScrollReveal>
 
-        {activeTicket && (
-          <ScrollReveal delay={0.25}>
-            <ExpressiveCard variant="elevated" className="p-5 h-full min-w-0">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-base font-bold">Vé tháng đang dùng</h3>
-                <M3StatusPill label={activeTicket.status} tone={activeTicket.status === "ACTIVE" ? "success" : "warning"} />
-              </div>
-              <div className="space-y-2 text-sm">
+      {/* QR expand overlay — framer-motion animation (matches prototype) */}
+      <AnimatePresence>
+        {qrExpanded && activeTicket?.qrCode && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ backgroundColor: "rgba(20, 20, 15, 0.75)" }}
+            onClick={() => setQrExpanded(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.5, opacity: 0, borderRadius: "50%" }}
+              animate={{ scale: 1, opacity: 1, borderRadius: "24px" }}
+              exit={{ scale: 0.5, opacity: 0, borderRadius: "50%" }}
+              transition={{ type: "spring", stiffness: 300, damping: 25 }}
+              className="relative bg-[#14140f] text-white rounded-3xl p-5 sm:p-8 max-w-sm w-full min-w-0"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
-                  <QrCode className="size-4 text-primary" />
-                  <span className="font-medium">{activeTicket.routeName}</span>
+                  <div className="flex size-9 items-center justify-center rounded-xl bg-[#beff50] text-[#14140f]">
+                    <QrCode className="size-5" />
+                  </div>
+                  <p className="text-sm font-bold">Vé của tôi</p>
                 </div>
-                <div className="flex items-center gap-2 text-xs text-on-surface-variant">
-                  <Calendar className="size-3.5" />
-                  <span>
-                    Hiệu lực: {formatDate(activeTicket.validFrom)} → {formatDate(activeTicket.expiresAt || activeTicket.expiresOn)}
+                <button
+                  onClick={() => setQrExpanded(false)}
+                  className="state-layer size-8 rounded-full flex items-center justify-center text-white/60 hover:text-white"
+                >
+                  <XCircle className="size-5" />
+                </button>
+              </div>
+
+              <div className="flex justify-center mb-4">
+                <motion.div
+                  initial={{ scale: 0, rotate: -90 }}
+                  animate={{ scale: 1, rotate: 0 }}
+                  transition={{ delay: 0.15, type: "spring", stiffness: 200, damping: 18 }}
+                  className="bg-white rounded-2xl p-4"
+                >
+                  <QRCodeCanvas value={activeTicket.qrCode} size={200} level="H" />
+                </motion.div>
+              </div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+                className="space-y-2 mb-4"
+              >
+                <div className="flex justify-between text-sm">
+                  <span className="text-white/60">Mã vé</span>
+                  <span className="font-bold tabular-nums">#{activeTicket.ticketId}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-white/60">Tuyến</span>
+                  <span className="font-bold truncate ml-2">{activeTicket.routeCode || activeTicket.routeName}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-white/60">Hiệu lực</span>
+                  <span className="font-bold text-[#beff50]">
+                    Đến {formatDate(activeTicket.expiresAt || activeTicket.expiresOn)}
                   </span>
                 </div>
-                {activeTicket.finalFareAmount != null && (
-                  <div className="flex items-center gap-2 text-xs">
-                    <Wallet className="size-3.5" />
-                    <span className="font-bold text-primary">{formatVND(activeTicket.finalFareAmount)}</span>
-                    {activeTicket.subsidyAmount != null && activeTicket.subsidyAmount > 0 && (
-                      <span className="text-xs text-success">
-                        (trợ giá {formatVND(activeTicket.subsidyAmount)})
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-              <ExpressiveButton
-                variant="text"
-                className="mt-3 -ml-2"
-                onClick={() => onNavigate("stu-my-ticket")}
+              </motion.div>
+
+              <motion.button
+                whileHover={{ y: -2 }}
+                whileTap={{ scale: 0.97 }}
+                transition={{ type: "spring", stiffness: 400, damping: 22 }}
+                onClick={() => { setQrExpanded(false); onNavigate("stu-my-ticket"); }}
+                className="w-full h-11 rounded-full bg-[#beff50] text-[#14140f] text-sm font-bold flex items-center justify-center gap-2"
               >
-                Xem vé của tôi <ArrowRight className="size-4" />
-              </ExpressiveButton>
-            </ExpressiveCard>
-          </ScrollReveal>
+                Xem chi tiết vé
+                <ArrowRight className="size-4" />
+              </motion.button>
+            </motion.div>
+          </motion.div>
         )}
-      </div>
-
-      {/* Recent notifications + history */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
-        <ScrollReveal delay={0.3}>
-          <Section title="Thông báo mới" actions={<button onClick={() => onNavigate("stu-stops")} className="text-xs font-bold text-primary">Xem tất cả</button>}>
-            {ctx.notifications.length === 0 ? (
-              <EmptyState
-                icon={<Bell className="size-7" />}
-                title="Chưa có thông báo"
-                description="Các thông báo về chuyến xe, thanh toán sẽ xuất hiện tại đây."
-              />
-            ) : (
-              <div className="space-y-2">
-                {ctx.notifications.slice(0, 4).map((n: any) => (
-                  <NotificationRow key={n.id} notification={n} />
-                ))}
-              </div>
-            )}
-          </Section>
-        </ScrollReveal>
-
-        <ScrollReveal delay={0.35}>
-          <Section title="Lịch sử chuyến đi" actions={<button onClick={() => onNavigate("stu-history")} className="text-xs font-bold text-primary">Xem tất cả</button>}>
-            {ctx.tripsHistory.length === 0 ? (
-              <EmptyState
-                icon={<History className="size-7" />}
-                title="Chưa có chuyến nào"
-                description="Lịch sử các chuyến đi sẽ hiển thị tại đây sau khi bạn dùng vé."
-              />
-            ) : (
-              <div className="space-y-2">
-                {ctx.tripsHistory.slice(0, 4).map((h: any) => (
-                  <HistoryRow key={h.id} history={h} routes={ctx.routes} />
-                ))}
-              </div>
-            )}
-          </Section>
-        </ScrollReveal>
-      </div>
+      </AnimatePresence>
     </PageTransition>
   );
 }
@@ -890,80 +966,115 @@ function UniversityScreen({ ctx }: { ctx: Ctx }) {
 }
 
 // =============================================================================
-// Screen 3: Stops — list of bus stops with route info
+// Screen 3: Stops — list of bus stops with route info (prototype-aligned)
 // =============================================================================
 function StopsScreen({ ctx }: { ctx: Ctx }) {
-  const [search, setSearch] = useState("");
+  const [query, setQuery] = useState("");
   const filtered = ctx.stops.filter(
     (s: any) =>
-      s.name.toLowerCase().includes(search.toLowerCase()) ||
-      s.code.toLowerCase().includes(search.toLowerCase()) ||
-      s.address.toLowerCase().includes(search.toLowerCase())
+      s.name.toLowerCase().includes(query.toLowerCase()) ||
+      s.code.toLowerCase().includes(query.toLowerCase()) ||
+      s.address.toLowerCase().includes(query.toLowerCase())
   );
 
+  const stopsWithShelter = ctx.stops.filter((s: any) => s.hasShelter).length;
+
   return (
-    <PageTransition className="space-y-6 min-w-0">
+    <PageTransition className="space-y-5 min-w-0">
       <PageHeader
         title="Trạm dừng"
-        description={`${ctx.stops.length} trạm trên toàn mạng lưới Đà Nẵng`}
-        icon={<MapPin className="size-7" />}
-        actions={
-          <div className="relative w-full sm:w-72">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant" />
-            <Input
-              placeholder="Tìm trạm..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9"
-            />
-          </div>
-        }
+        description="Tra cứu trạm dừng trên toàn tuyến UniBus."
+        icon={<MapPin className="size-6 sm:size-7" />}
       />
 
-      {filtered.length === 0 ? (
-        <EmptyState
-          icon={<MapPin className="size-7" />}
-          title="Không tìm thấy trạm"
-          description="Thử từ khóa khác hoặc xóa bộ lọc."
+      {/* Search bar — large, prototype style */}
+      <div className="relative min-w-0">
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-5 text-[#144fcc] pointer-events-none" />
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Tìm trạm theo tên, mã, địa chỉ…"
+          className="w-full h-12 sm:h-14 pl-12 pr-4 rounded-2xl bg-white border-2 border-[#14140f]/15 text-sm font-semibold text-[#14140f] placeholder:text-[#14140f]/40 placeholder:font-normal focus:border-[#144fcc] focus:outline-none transition-colors dark:bg-surface-container-lowest dark:text-on-surface dark:border-outline-variant"
         />
-      ) : (
-        <StaggerGroup className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 min-w-0">
-          {filtered.map((s: any) => (
-            <StaggerItem key={s.id}>
-              <ExpressiveCard variant="elevated" interactive className="p-4 h-full min-w-0">
-                <div className="flex items-start gap-3 min-w-0">
-                  <div className={cn("size-10 shrink-0 rounded-xl flex items-center justify-center", s.hasShelter ? "bg-primary-container text-on-primary-container" : "bg-surface-container-high text-on-surface-variant")}>
-                    <MapPin className="size-5" />
+      </div>
+
+      {/* Stats bar — 3 bold mini-cards (prototype) */}
+      <div className="grid grid-cols-3 gap-2 sm:gap-3 min-w-0">
+        <div className="rounded-2xl bg-[#14140f] text-[#beff50] p-3 sm:p-4 text-center min-w-0">
+          <p className="text-xl sm:text-2xl font-bold tabular-nums">{ctx.stops.length}</p>
+          <p className="text-[10px] sm:text-xs font-bold opacity-70 uppercase truncate">Tổng trạm</p>
+        </div>
+        <div className="rounded-2xl bg-[#144fcc] text-white p-3 sm:p-4 text-center min-w-0">
+          <p className="text-xl sm:text-2xl font-bold tabular-nums">{ctx.routes.length}</p>
+          <p className="text-[10px] sm:text-xs font-bold opacity-70 uppercase truncate">Tuyến</p>
+        </div>
+        <div className="rounded-2xl bg-[#ff8c5f] text-[#14140f] p-3 sm:p-4 text-center min-w-0">
+          <p className="text-xl sm:text-2xl font-bold tabular-nums">{stopsWithShelter}</p>
+          <p className="text-[10px] sm:text-xs font-bold opacity-70 uppercase truncate">Mái che</p>
+        </div>
+      </div>
+
+      {/* List of stops — clean list, not grid (better mobile, matches prototype) */}
+      <div className="space-y-2 min-w-0">
+        {filtered.length === 0 ? (
+          <EmptyState
+            icon={<MapPin className="size-7" />}
+            title="Không tìm thấy trạm"
+            description="Thử từ khóa khác."
+          />
+        ) : (
+          filtered.map((s: any, i: number) => {
+            const stopRoutes = (s.routes || [])
+              .map((rId: string) => ctx.routes.find((r: any) => r.id === rId))
+              .filter(Boolean);
+            const palette = ["#14140f", "#144fcc", "#ff8c5f", "#c8a0ff"];
+            const accent = palette[i % palette.length];
+            return (
+              <div
+                key={s.id}
+                className="state-layer w-full text-left rounded-2xl bg-white border-2 border-[#14140f]/10 hover:border-[#144fcc] p-4 transition-colors min-w-0 dark:bg-surface-container-lowest dark:border-outline-variant"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  {/* Number badge */}
+                  <div
+                    className="flex size-10 shrink-0 items-center justify-center rounded-xl text-xs font-bold"
+                    style={{ backgroundColor: accent, color: accent === "#14140f" ? "#beff50" : "#fff" }}
+                  >
+                    {s.code?.substring(0, 2) || "?"}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Badge variant="outline" className="text-[10px] font-bold">{s.code}</Badge>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <p className="text-sm font-bold text-[#14140f] truncate dark:text-on-surface">{s.name}</p>
                       {s.hasShelter && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-success">
-                          <ShieldCheck className="size-3" /> Có mái che
+                        <ShieldCheck className="size-3.5 text-[#16a34a] shrink-0" />
+                      )}
+                    </div>
+                    <p className="text-xs text-[#14140f]/50 truncate dark:text-on-surface-variant">{s.address}</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <div className="flex gap-1">
+                      {stopRoutes.slice(0, 2).map((r: any) => (
+                        <span
+                          key={r.id}
+                          className="inline-flex items-center h-5 px-2 rounded-full text-[9px] font-bold text-white"
+                          style={{ backgroundColor: r.color }}
+                        >
+                          {r.code}
+                        </span>
+                      ))}
+                      {stopRoutes.length > 2 && (
+                        <span className="inline-flex items-center h-5 px-1.5 rounded-full bg-[#14140f]/10 text-[#14140f] text-[9px] font-bold dark:bg-surface-container-high dark:text-on-surface">
+                          +{stopRoutes.length - 2}
                         </span>
                       )}
                     </div>
-                    <p className="text-sm font-bold leading-tight truncate">{s.name}</p>
-                    {s.address && <p className="text-xs text-on-surface-variant mt-1 line-clamp-2">{s.address}</p>}
-                    {s.routes?.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {s.routes.slice(0, 3).map((rId: string) => {
-                          const r = ctx.routes.find((x) => x.id === rId);
-                          return r ? <RouteCodeBadge key={rId} route={r} /> : null;
-                        })}
-                        {s.routes.length > 3 && (
-                          <span className="text-[10px] font-bold text-on-surface-variant">+{s.routes.length - 3}</span>
-                        )}
-                      </div>
-                    )}
                   </div>
                 </div>
-              </ExpressiveCard>
-            </StaggerItem>
-          ))}
-        </StaggerGroup>
-      )}
+              </div>
+            );
+          })
+        )}
+      </div>
     </PageTransition>
   );
 }
@@ -1864,18 +1975,48 @@ function ChatbotScreen({ ctx }: { ctx: Ctx }) {
 // =============================================================================
 function PaymentScreen({ ctx }: { ctx: Ctx }) {
   const [purchasing, setPurchasing] = useState(false);
-  const [sepayOrder, setSepayOrder] = useState<{ orderId: number; qrUrl: string; amount: number; description: string } | null>(null);
+  const [sepayOrder, setSepayOrder] = useState<{
+    orderId: number;
+    qrUrl: string;
+    amount: number;
+    description: string;
+    bankCode?: string;
+    accountNo?: string;
+    accountName?: string;
+  } | null>(null);
   const [paidStatus, setPaidStatus] = useState<"idle" | "checking" | "paid" | "expired">("idle");
+  const [copying, setCopying] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
 
   const passes = ctx.raw.passes?.data;
   const quote = passes?.monthlyPassQuote;
+
+  // Step state: 1 = review, 2 = pay, 3 = done
+  const step = !sepayOrder ? 1 : paidStatus === "paid" ? 3 : 2;
+
+  // Countdown timer
+  useEffect(() => {
+    if (!sepayOrder || paidStatus === "paid" || paidStatus === "expired") return;
+    setSecondsLeft(300); // 5 minutes
+    const id = setInterval(() => {
+      setSecondsLeft((s) => {
+        if (s == null) return null;
+        if (s <= 1) {
+          setPaidStatus("expired");
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [sepayOrder, paidStatus]);
 
   const buy = async () => {
     setPurchasing(true);
     try {
       const order = await studentApi.createSePayOrder("MONTHLY");
       setSepayOrder(order);
-      setPaidStatus("idle");
+      setPaidStatus("checking");
       toast.success("Đã tạo đơn hàng. Vui lòng quét mã QR để thanh toán.");
       // Poll for payment status
       const poll = async () => {
@@ -1891,7 +2032,7 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
           } catch { /* ignore */ }
           await new Promise((r) => setTimeout(r, 5000));
         }
-        setPaidStatus("expired");
+        if (paidStatus !== "paid") setPaidStatus("expired");
       };
       poll();
     } catch (e) {
@@ -1901,18 +2042,75 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
     }
   };
 
+  const copyAccount = async () => {
+    if (!sepayOrder?.accountNo) return;
+    setCopying(true);
+    try {
+      await navigator.clipboard.writeText(sepayOrder.accountNo);
+      toast.success("Đã sao chép số tài khoản");
+    } catch {
+      toast.error("Không thể sao chép");
+    } finally {
+      setTimeout(() => setCopying(false), 1500);
+    }
+  };
+
+  const reset = () => {
+    setSepayOrder(null);
+    setPaidStatus("idle");
+    setSecondsLeft(null);
+  };
+
+  const fmtCountdown = (s: number | null) => {
+    if (s == null) return "--:--";
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+  };
+
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Mua vé tháng"
-        description="Thanh toán qua SePay để nhận vé tháng không giới hạn chuyến."
+        description="Thanh toán qua SePay bằng mã QR VietQR — nhanh, an toàn."
         icon={<CreditCard className="size-7" />}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
+      {/* Step indicator */}
+      <ScrollReveal>
+        <div className="flex items-center justify-center gap-2 sm:gap-4">
+          {[
+            { n: 1, label: "Xem đơn", icon: Info },
+            { n: 2, label: "Thanh toán", icon: CreditCard },
+            { n: 3, label: "Hoàn tất", icon: CheckCircle2 },
+          ].map((s, i) => (
+            <React.Fragment key={s.n}>
+              <div className={cn(
+                "flex items-center gap-2 px-3 py-2 rounded-full transition-colors shrink-0",
+                step >= s.n ? "bg-[#beff50] text-[#14140f]" : "bg-surface-container-high text-on-surface-variant"
+              )}>
+                <div className={cn(
+                  "size-6 rounded-full flex items-center justify-center text-xs font-black",
+                  step >= s.n ? "bg-[#14140f] text-[#beff50]" : "bg-surface-container-lowest"
+                )}>
+                  {step > s.n ? <CheckCircle2 className="size-4" /> : s.n}
+                </div>
+                <span className="text-xs font-bold hidden sm:inline">{s.label}</span>
+              </div>
+              {i < 2 && <div className={cn("h-0.5 w-4 sm:w-8", step > s.n ? "bg-[#beff50]" : "bg-outline-variant")} />}
+            </React.Fragment>
+          ))}
+        </div>
+      </ScrollReveal>
+
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.2fr] gap-4 min-w-0">
+        {/* Order details */}
         <ScrollReveal>
           <ExpressiveCard variant="elevated" className="p-6 h-full min-w-0">
-            <h3 className="text-lg font-bold mb-4">Chi tiết vé tháng</h3>
+            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+              <TicketCheck className="size-5 text-primary" />
+              Đơn vé tháng
+            </h3>
             {ctx.registration ? (
               <div className="space-y-3 text-sm">
                 <Row label="Tuyến" value={ctx.registration.routeName} icon={<RouteIcon className="size-4" />} />
@@ -1926,13 +2124,34 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
                     {quote.subsidyAmount != null && quote.subsidyAmount > 0 && (
                       <Row label="Trợ giá trường" value={`-${formatVND(quote.subsidyAmount)}`} accent="success" />
                     )}
-                    <div className="flex items-center justify-between pt-2 border-t-2 border-outline-variant">
-                      <span className="text-sm font-bold">Tổng thanh toán</span>
-                      <span className="text-2xl font-black text-primary">
+                    <motion.div
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="relative overflow-hidden rounded-2xl p-4 mt-2"
+                      style={{ backgroundColor: "#14140f", color: "#beff50" }}
+                    >
+                      <p className="text-[10px] font-bold opacity-70 uppercase tracking-wide">Tổng thanh toán</p>
+                      <p className="text-3xl font-black mt-1 tabular-nums">
                         {formatVND(quote.payableAmount || quote.finalFareAmount || 0)}
-                      </span>
-                    </div>
+                      </p>
+                    </motion.div>
                   </>
+                )}
+                {step === 1 && (
+                  <ExpressiveButton
+                    variant="filled"
+                    className="w-full mt-5"
+                    onClick={buy}
+                    disabled={purchasing}
+                  >
+                    {purchasing ? <RefreshCw className="size-4 animate-spin" /> : <CreditCard className="size-4" />}
+                    Tạo mã QR thanh toán
+                  </ExpressiveButton>
+                )}
+                {step === 3 && (
+                  <ExpressiveButton variant="text" className="w-full mt-5" onClick={reset}>
+                    Mua vé khác
+                  </ExpressiveButton>
                 )}
               </div>
             ) : (
@@ -1942,51 +2161,134 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
                 description="Vui lòng đăng ký tuyến trước khi mua vé tháng."
               />
             )}
-            {ctx.registration && (
-              <ExpressiveButton
-                variant="filled"
-                className="w-full mt-5"
-                onClick={buy}
-                disabled={purchasing || paidStatus === "paid"}
-              >
-                {purchasing ? <RefreshCw className="size-4 animate-spin" /> : <CreditCard className="size-4" />}
-                {paidStatus === "paid" ? "Đã thanh toán" : "Thanh toán qua SePay"}
-              </ExpressiveButton>
-            )}
           </ExpressiveCard>
         </ScrollReveal>
 
-        {sepayOrder && (
-          <ScrollReveal delay={0.1}>
-            <ExpressiveCard variant="elevated" className="p-6 h-full min-w-0">
-              <h3 className="text-lg font-bold mb-4">Quét mã QR để thanh toán</h3>
-              <div className="flex flex-col items-center gap-3">
-                <div className="bg-white p-4 rounded-2xl shadow-lg">
-                  <QRCodeCanvas value={sepayOrder.qrUrl} size={200} level="M" />
-                </div>
-                <p className="text-sm font-bold">{formatVND(sepayOrder.amount)}</p>
-                <p className="text-xs text-on-surface-variant text-center break-all">{sepayOrder.description}</p>
-                {paidStatus === "checking" && (
-                  <p className="text-xs text-primary flex items-center gap-2">
-                    <RefreshCw className="size-3 animate-spin" />
-                    Đang chờ xác nhận thanh toán...
-                  </p>
-                )}
-                {paidStatus === "paid" && (
-                  <div className="flex items-center gap-2 text-success font-bold">
-                    <CheckCircle2 className="size-5" /> Đã thanh toán thành công!
-                  </div>
-                )}
-                {paidStatus === "expired" && (
-                  <div className="text-error font-bold text-sm">
-                    <AlertTriangle className="size-4 inline mr-1" />
-                    Đơn hàng hết hạn. Vui lòng tạo lại.
-                  </div>
-                )}
+        {/* QR / status panel */}
+        <ScrollReveal delay={0.1}>
+          {!sepayOrder ? (
+            <ExpressiveCard variant="filled" className="p-6 h-full flex flex-col items-center justify-center text-center min-w-0">
+              <div className="size-16 rounded-3xl bg-primary-container flex items-center justify-center mb-4">
+                <QrCode className="size-8 text-on-primary-container" />
               </div>
+              <p className="text-base font-bold">Sẵn sàng thanh toán</p>
+              <p className="text-sm text-on-surface-variant mt-1 max-w-xs">
+                Nhấn “Tạo mã QR thanh toán” bên trái để nhận mã QR VietQR qua SePay.
+                Hỗ trợ mọi app ngân hàng: MBBank, Vietcombank, BIDV, TC Bank, v.v.
+              </p>
             </ExpressiveCard>
-          </ScrollReveal>
-        )}
+          ) : step === 3 ? (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ type: "spring", stiffness: 240, damping: 22 }}
+            >
+              <ExpressiveCard variant="elevated" className="p-8 h-full flex flex-col items-center justify-center text-center min-w-0"
+                style={{ backgroundColor: "#beff50", color: "#14140f" }}
+              >
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: "spring", stiffness: 260, damping: 18, delay: 0.1 }}
+                  className="size-24 rounded-full bg-[#14140f] flex items-center justify-center mb-4"
+                >
+                  <CheckCircle2 className="size-12 text-[#beff50]" />
+                </motion.div>
+                <h2 className="text-2xl font-black">Thanh toán thành công!</h2>
+                <p className="text-sm font-semibold opacity-80 mt-2">
+                  Vé tháng đã được kích hoạt. Bạn có thể xem vé trong mục “Vé của tôi”.
+                </p>
+                <div className="bg-[#14140f]/10 rounded-2xl p-4 mt-4 w-full max-w-xs">
+                  <p className="text-xs font-bold opacity-70 uppercase">Mã giao dịch</p>
+                  <p className="font-mono font-black text-lg">#{sepayOrder.orderId}</p>
+                  <p className="text-xs font-bold opacity-70 uppercase mt-2">Số tiền</p>
+                  <p className="font-black text-lg">{formatVND(sepayOrder.amount)}</p>
+                </div>
+              </ExpressiveCard>
+            </motion.div>
+          ) : (
+            <ExpressiveCard variant="elevated" className="p-6 h-full min-w-0">
+              {/* Header with countdown */}
+              <div className="flex items-center justify-between mb-4 min-w-0">
+                <div className="min-w-0">
+                  <h3 className="text-lg font-bold flex items-center gap-2">
+                    <QrCode className="size-5 text-primary" />
+                    Quét QR để thanh toán
+                  </h3>
+                  <p className="text-xs text-on-surface-variant mt-0.5">Mở app ngân hàng bất kỳ → quét QR</p>
+                </div>
+                <div className={cn(
+                  "shrink-0 px-3 py-1.5 rounded-full text-xs font-black tabular-nums",
+                  secondsLeft != null && secondsLeft < 60
+                    ? "bg-error text-white animate-pulse"
+                    : "bg-warning-container text-on-surface"
+                )}>
+                  {fmtCountdown(secondsLeft)}
+                </div>
+              </div>
+
+              {/* QR */}
+              <div className="flex flex-col items-center gap-3">
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="bg-white p-4 rounded-2xl shadow-lg ring-2 ring-[#beff50]/40"
+                >
+                  <QRCodeCanvas value={sepayOrder.qrUrl} size={240} level="M" includeMargin={false} />
+                </motion.div>
+                <div className="flex items-center gap-2 text-2xl font-black text-primary">
+                  {formatVND(sepayOrder.amount)}
+                </div>
+                <p className="text-xs text-on-surface-variant text-center break-all max-w-xs font-mono">
+                  {sepayOrder.description}
+                </p>
+              </div>
+
+              {/* Bank info */}
+              {sepayOrder.bankCode && sepayOrder.accountNo && (
+                <div className="mt-5 p-4 rounded-2xl bg-surface-container-low space-y-2 min-w-0">
+                  <div className="flex items-center justify-between gap-2 min-w-0">
+                    <span className="text-xs text-on-surface-variant">Ngân hàng</span>
+                    <span className="font-bold text-sm">{sepayOrder.bankCode}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 min-w-0">
+                    <span className="text-xs text-on-surface-variant">Số tài khoản</span>
+                    <button
+                      onClick={copyAccount}
+                      className={cn(
+                        "font-mono font-bold text-sm flex items-center gap-1.5 transition-colors",
+                        copying ? "text-success" : "text-primary hover:underline"
+                      )}
+                    >
+                      {sepayOrder.accountNo}
+                      {copying ? <CheckCircle2 className="size-3.5" /> : <Banknote className="size-3.5" />}
+                    </button>
+                  </div>
+                  {sepayOrder.accountName && (
+                    <div className="flex items-center justify-between gap-2 min-w-0">
+                      <span className="text-xs text-on-surface-variant">Chủ TK</span>
+                      <span className="font-bold text-sm truncate">{sepayOrder.accountName}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Status */}
+              <div className="mt-4 p-3 rounded-xl bg-primary-container/30 text-primary text-sm flex items-center gap-2 min-w-0">
+                <RefreshCw className="size-4 animate-spin shrink-0" />
+                <span className="font-medium truncate">Đang chờ xác nhận thanh toán từ SePay...</span>
+              </div>
+
+              {paidStatus === "expired" && (
+                <div className="mt-3 p-3 rounded-xl bg-error-container/40 text-error text-sm flex items-center gap-2 min-w-0">
+                  <AlertTriangle className="size-4 shrink-0" />
+                  <span className="font-medium">Đơn hàng hết hạn. Vui lòng tạo lại.</span>
+                  <ExpressiveButton variant="text" size="sm" className="ml-auto" onClick={reset}>Tạo lại</ExpressiveButton>
+                </div>
+              )}
+            </ExpressiveCard>
+          )}
+        </ScrollReveal>
       </div>
     </PageTransition>
   );

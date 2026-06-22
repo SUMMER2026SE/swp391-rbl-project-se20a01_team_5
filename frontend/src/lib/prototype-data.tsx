@@ -324,23 +324,25 @@ export function mapVerification(v: VerificationView): User {
    Composite hooks — pull all data a module needs.
    ========================================================================= */
 
-/** Student module: full prototype data set from /students/me/dashboard + others */
+/**
+ * Student module: PERFORMANCE-OPTIMIZED data layer
+ *
+ * Strategy:
+ * - /students/me/dashboard is the AGGREGATE endpoint — it already returns:
+ *   registration, activeTicket, nextTrip, routes[], stops[], notifications[],
+ *   history[], stats[], fullName, studentCode, universityName, verificationStatus.
+ *   So we only need 1 main call (was 11 before optimization).
+ * - Additional endpoints are LAZY-LOADED per-screen via useStudentLazyData().
+ * - profile is loaded once (small, shared with app-shell).
+ */
 export function useStudentPrototypeData() {
-  const dashboard = useApi(
-    () => experienceApi.studentDashboard(),
-    undefined,
-    []
-  );
-  const registration = useApi(() => studentApi.currentRegistration(), undefined, []);
-  const passes = useApi(() => studentApi.tickets(), undefined, []);
-  const history = useApi(() => studentApi.travelHistory(0, 50), undefined, []);
-  const feedback = useApi(() => feedbackApi.mine(), undefined, []);
-  const lostItems = useApi(() => experienceApi.studentLostItems(), undefined, []);
-  const suggestions = useApi(() => experienceApi.studentRouteSuggestions(), undefined, []);
-  const notifications = useApi(() => notificationApi.mine(), undefined, []);
+  // Primary: aggregate dashboard endpoint (1 call instead of 11)
+  const dashboard = useApi(() => experienceApi.studentDashboard(), undefined, []);
+  // Profile is small and shared with app-shell — keep it
   const profile = useApi(() => profileApi.me(), undefined, []);
-  const university = useApi(() => studentApi.university(), undefined, []);
-  const stops = useApi(() => transportApi.stops(), undefined, []);
+  // Passes (tickets+payments) — needed for PaymentScreen + InvoicesScreen
+  // Dashboard doesn't return full payments list, so we need this
+  const passes = useApi(() => studentApi.tickets(), undefined, []);
 
   const mapped = (() => {
     if (!dashboard.raw) return null;
@@ -376,15 +378,16 @@ export function useStudentPrototypeData() {
               status: "active" as const,
               type: "monthly" as const,
               fare: num(d.activeTicket!.finalFareAmount ?? d.activeTicket!.originalFareAmount),
-              createdAt: (d.activeTicket as any).purchasedAt || "",
+              createdAt: d.activeTicket.purchasedAt || "",
             },
           ]
         : []),
       invoices: (passes.raw?.payments || []).map((p: any) => mapInvoice(p as PaymentTransactionView)),
-      notifications: (notifications.raw || []).map(mapNotification),
-      feedback: (feedback.raw || []).map(mapFeedback),
-      lostItems: (lostItems.raw || []).map(mapLostItem),
-      tripsHistory: (history.raw || []).map((h: any) => ({
+      // Use dashboard's notifications/history (already aggregated) — no separate API needed
+      notifications: (d.notifications || []).map(mapNotification),
+      feedback: [],
+      lostItems: [],
+      tripsHistory: (d.history || []).map((h: any) => ({
         id: String(h.travelHistoryId),
         routeId: String(h.routeId),
         busId: "0",
@@ -399,41 +402,51 @@ export function useStudentPrototypeData() {
       stats: d.stats,
       nextTrip: d.nextTrip ? mapTrip(d.nextTrip) : null,
       activeTicket: d.activeTicket,
-      registration: registration.raw,
-      suggestions: (suggestions.raw || []).map(mapRoute),
-      university: university.raw,
+      registration: d.registration,
+      suggestions: [],
+      university: {
+        universityName: d.universityName,
+        studentCode: d.studentCode,
+        studentVerificationStatus: d.verificationStatus,
+      } as any,
       dashboard,
       passes,
-      history,
-      feedbackRaw: feedback,
-      lostItemsRaw: lostItems,
-      notificationsRaw: notifications,
+      history: { raw: null } as any,
+      feedbackRaw: { raw: null } as any,
+      lostItemsRaw: { raw: null } as any,
+      notificationsRaw: { raw: null } as any,
       profileRaw: profile,
-      registrationRaw: registration,
-      suggestionsRaw: suggestions,
-      universityRaw: university,
-      stopsRaw: stops,
+      registrationRaw: { raw: d.registration } as any,
+      suggestionsRaw: { raw: null } as any,
+      universityRaw: { raw: null } as any,
+      stopsRaw: { raw: null } as any,
     };
   })();
 
   return {
     data: mapped,
-    loading: dashboard.loading || registration.loading || !mapped,
-    error: dashboard.error || registration.error,
+    loading: dashboard.loading,
+    error: dashboard.error,
     reload: () => {
       dashboard.reload();
-      registration.reload();
-      passes.reload();
-      history.reload();
-      feedback.reload();
-      lostItems.reload();
-      suggestions.reload();
-      notifications.reload();
       profile.reload();
-      university.reload();
-      stops.reload();
+      passes.reload();
     },
   };
+}
+
+/**
+ * Student LAZY data hooks — call these INSIDE specific screens, not on module mount.
+ * This prevents 11 API calls on dashboard load.
+ */
+export function useStudentFeedback() {
+  return useApi(() => feedbackApi.mine(), undefined, []);
+}
+export function useStudentLostItems() {
+  return useApi(() => experienceApi.studentLostItems(), undefined, []);
+}
+export function useStudentSuggestions() {
+  return useApi(() => experienceApi.studentRouteSuggestions(), undefined, []);
 }
 
 /** Driver module: dashboard + trips + feedback */
@@ -491,7 +504,7 @@ export function useDriverPrototypeData() {
 
   return {
     data: mapped,
-    loading: dashboard.loading || !mapped,
+    loading: dashboard.loading,
     error: dashboard.error,
     reload: () => {
       dashboard.reload();
@@ -542,7 +555,7 @@ export function useAssistantPrototypeData() {
 
   return {
     data: mapped,
-    loading: dashboard.loading || !mapped,
+    loading: dashboard.loading,
     error: dashboard.error,
     reload: () => {
       dashboard.reload();
@@ -602,7 +615,7 @@ export function useCoordinatorPrototypeData() {
 
   return {
     data: mapped,
-    loading: dashboard.loading || !mapped,
+    loading: dashboard.loading,
     error: dashboard.error,
     reload: () => {
       dashboard.reload();
@@ -615,22 +628,22 @@ export function useCoordinatorPrototypeData() {
   };
 }
 
-/** Admin module: stats + users + verifications + universities + complaints + violations + fares */
+/**
+ * Admin module: PERFORMANCE-OPTIMIZED data layer
+ *
+ * Strategy:
+ * - /admin/stats is the AGGREGATE endpoint — it already returns:
+ *   stats[], routeMetrics[], complaints[], violations[], fares[].
+ *   So DashboardScreen only needs 1 main call + profile + audits (for activity feed).
+ * - Other endpoints (users, verifications, universities, etc.) are LAZY-LOADED
+ *   per-screen via useAdminLazy* hooks below.
+ */
 export function useAdminPrototypeData() {
+  // Primary: aggregate admin stats endpoint (returns stats+routeMetrics+complaints+violations+fares)
   const stats = useApi(() => experienceApi.adminStats(), undefined, []);
-  const users = useApi(() => adminApi.users(), undefined, []);
-  const verifications = useApi(() => adminApi.verifications(), undefined, []);
-  const universities = useApi(() => adminApi.universities(), undefined, []);
-  const complaints = useApi(() => experienceApi.complaints(), undefined, []);
-  const violations = useApi(() => experienceApi.violations(), undefined, []);
-  const fares = useApi(() => experienceApi.fares(), undefined, []);
-  const notifications = useApi(() => notificationApi.mine(), undefined, []);
   const profile = useApi(() => profileApi.me(), undefined, []);
+  // Audits are needed for the activity feed on Dashboard
   const audits = useApi(() => adminApi.auditLogs(), undefined, []);
-  const payments = useApi(() => adminApi.paymentTransactions(), undefined, []);
-  const routeUnis = useApi(() => adminApi.routeUniversities(), undefined, []);
-  const subsidies = useApi(() => adminApi.subsidyPolicies(), undefined, []);
-  const uniAdmins = useApi(() => adminApi.universityAdmins(), undefined, []);
 
   const mapped = (() => {
     if (!stats.raw) return null;
@@ -652,74 +665,94 @@ export function useAdminPrototypeData() {
       complaints: (s.complaints || []).map(mapComplaint),
       violations: s.violations,
       fares: s.fares,
-      users: users.raw || [],
-      verifications: verifications.raw || [],
-      universities: universities.raw || [],
-      notifications: (notifications.raw || []).map(mapNotification),
+      users: [],
+      verifications: [],
+      universities: [],
+      notifications: [],
       audits: audits.raw || [],
-      payments: payments.raw || [],
-      routeUnis: routeUnis.raw || [],
-      subsidies: subsidies.raw || [],
-      uniAdmins: uniAdmins.raw || [],
+      payments: [],
+      routeUnis: [],
+      subsidies: [],
+      uniAdmins: [],
       statsRaw: stats,
-      usersRaw: users,
-      verificationsRaw: verifications,
-      universitiesRaw: universities,
-      complaintsRaw: complaints,
-      violationsRaw: violations,
-      faresRaw: fares,
-      notificationsRaw: notifications,
+      usersRaw: { raw: null } as any,
+      verificationsRaw: { raw: null } as any,
+      universitiesRaw: { raw: null } as any,
+      complaintsRaw: { raw: null } as any,
+      violationsRaw: { raw: null } as any,
+      faresRaw: { raw: null } as any,
+      notificationsRaw: { raw: null } as any,
       profileRaw: profile,
       auditsRaw: audits,
-      paymentsRaw: payments,
-      routeUnisRaw: routeUnis,
-      subsidiesRaw: subsidies,
-      uniAdminsRaw: uniAdmins,
+      paymentsRaw: { raw: null } as any,
+      routeUnisRaw: { raw: null } as any,
+      subsidiesRaw: { raw: null } as any,
+      uniAdminsRaw: { raw: null } as any,
     };
   })();
 
   return {
     data: mapped,
-    loading: stats.loading || !mapped,
+    loading: stats.loading,
     error: stats.error,
     reload: () => {
       stats.reload();
-      users.reload();
-      verifications.reload();
-      universities.reload();
-      complaints.reload();
-      violations.reload();
-      fares.reload();
-      notifications.reload();
       profile.reload();
       audits.reload();
-      payments.reload();
-      routeUnis.reload();
-      subsidies.reload();
-      uniAdmins.reload();
     },
   };
 }
 
-/** University Admin module: profile + campuses + domains + roster + subsidy + stats + reconciliation */
+/**
+ * Admin LAZY data hooks — call these INSIDE specific screens.
+ * Prevents 14 API calls on dashboard load.
+ */
+export function useAdminUsers(params?: { role?: string; status?: string; search?: string }) {
+  return useApi(() => adminApi.users(params), undefined, [params?.role, params?.status, params?.search]);
+}
+export function useAdminVerifications(status?: string) {
+  return useApi(() => adminApi.verifications(status), undefined, [status]);
+}
+export function useAdminUniversities(params?: { keyword?: string; status?: string }) {
+  return useApi(() => adminApi.universities(params), undefined, [params?.keyword, params?.status]);
+}
+export function useAdminNotifications() {
+  return useApi(() => notificationApi.mine(), undefined, []);
+}
+export function useAdminPayments(params?: { universityId?: number }) {
+  return useApi(() => adminApi.paymentTransactions(params), undefined, [params?.universityId]);
+}
+export function useAdminRouteUnis(universityId?: number) {
+  return useApi(() => adminApi.routeUniversities(universityId), undefined, [universityId]);
+}
+export function useAdminSubsidies(universityId?: number) {
+  return useApi(() => adminApi.subsidyPolicies(universityId), undefined, [universityId]);
+}
+export function useAdminUniAdmins(universityId?: number) {
+  return useApi(() => adminApi.universityAdmins(universityId), undefined, [universityId]);
+}
+
+/**
+ * University Admin module: PERFORMANCE-OPTIMIZED data layer
+ *
+ * Strategy:
+ * - Dashboard only needs: profile (university info), stats, payments, subsidyPolicies.
+ *   That's 4 calls (was 11).
+ * - Other endpoints (campuses, domains, roster, importBatches, reconciliation)
+ *   are LAZY-LOADED per-screen via useUniAdminLazy* hooks below.
+ */
 export function useUniversityAdminPrototypeData() {
+  // Primary: profile (university info), stats (dashboard charts), payments (recent), subsidies (chart)
   const profile = useApi(() => universityApi.profile(), undefined, []);
-  const campuses = useApi(() => universityApi.campuses(), undefined, []);
-  const domains = useApi(() => universityApi.domains(), undefined, []);
-  const roster = useApi(() => universityApi.roster(), undefined, []);
-  const importBatches = useApi(() => universityApi.importBatches(), undefined, []);
-  const subsidyPolicies = useApi(() => universityApi.subsidyPolicies(), undefined, []);
   const stats = useApi(() => universityApi.stats(), undefined, []);
-  const reconciliation = useApi(() => universityApi.reconciliation(), undefined, []);
   const payments = useApi(() => universityApi.paymentTransactions(), undefined, []);
-  const notifications = useApi(() => notificationApi.mine(), undefined, []);
-  const userProfile = useApi(() => profileApi.me(), undefined, []);
+  const subsidyPolicies = useApi(() => universityApi.subsidyPolicies(), undefined, []);
 
   const mapped = (() => {
     if (!profile.raw) return null;
     return {
       user: {
-        id: String(userProfile.raw?.userId ?? 0),
+        id: String(0),
         name: profile.raw.fullName,
         email: profile.raw.email,
         phone: profile.raw.phoneNumber || "",
@@ -731,47 +764,62 @@ export function useUniversityAdminPrototypeData() {
         universityId: String(profile.raw.universityId),
       } as User,
       universityAdmin: profile.raw,
-      campuses: campuses.raw || [],
-      domains: domains.raw || [],
-      roster: roster.raw || [],
-      importBatches: importBatches.raw || [],
+      campuses: [],
+      domains: [],
+      roster: [],
+      importBatches: [],
       subsidyPolicies: subsidyPolicies.raw || [],
       stats: stats.raw,
-      reconciliation: reconciliation.raw,
+      reconciliation: null,
       payments: payments.raw || [],
-      notifications: (notifications.raw || []).map(mapNotification),
+      notifications: [],
       profileRaw: profile,
-      campusesRaw: campuses,
-      domainsRaw: domains,
-      rosterRaw: roster,
-      importBatchesRaw: importBatches,
+      campusesRaw: { raw: null } as any,
+      domainsRaw: { raw: null } as any,
+      rosterRaw: { raw: null } as any,
+      importBatchesRaw: { raw: null } as any,
       subsidyPoliciesRaw: subsidyPolicies,
       statsRaw: stats,
-      reconciliationRaw: reconciliation,
+      reconciliationRaw: { raw: null } as any,
       paymentsRaw: payments,
-      notificationsRaw: notifications,
-      userProfileRaw: userProfile,
+      notificationsRaw: { raw: null } as any,
+      userProfileRaw: { raw: null } as any,
     };
   })();
 
   return {
     data: mapped,
-    loading: profile.loading || !mapped,
+    loading: profile.loading,
     error: profile.error,
     reload: () => {
       profile.reload();
-      campuses.reload();
-      domains.reload();
-      roster.reload();
-      importBatches.reload();
-      subsidyPolicies.reload();
       stats.reload();
-      reconciliation.reload();
       payments.reload();
-      notifications.reload();
-      userProfile.reload();
+      subsidyPolicies.reload();
     },
   };
+}
+
+/**
+ * University Admin LAZY data hooks — call these INSIDE specific screens.
+ */
+export function useUniAdminCampuses() {
+  return useApi(() => universityApi.campuses(), undefined, []);
+}
+export function useUniAdminDomains() {
+  return useApi(() => universityApi.domains(), undefined, []);
+}
+export function useUniAdminRoster(params?: { keyword?: string; status?: string }) {
+  return useApi(() => universityApi.roster(params), undefined, [params?.keyword, params?.status]);
+}
+export function useUniAdminImportBatches() {
+  return useApi(() => universityApi.importBatches(), undefined, []);
+}
+export function useUniAdminReconciliation(params?: { from?: string; to?: string }) {
+  return useApi(() => universityApi.reconciliation(params), undefined, [params?.from, params?.to]);
+}
+export function useUniAdminNotifications() {
+  return useApi(() => notificationApi.mine(), undefined, []);
 }
 
 /* =========================================================================

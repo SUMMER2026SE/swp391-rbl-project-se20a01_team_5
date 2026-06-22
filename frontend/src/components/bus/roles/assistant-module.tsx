@@ -75,6 +75,7 @@ import {
   PageTransition,
 } from "@/components/m3/motion";
 import { PageHeader, StatCard, Section, EmptyState } from "../primitives";
+import { QrScannerModal } from "@/components/bus/qr-scanner-modal";
 
 import {
   useAssistantPrototypeData,
@@ -420,6 +421,7 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
   const [tripId, setTripId] = useState<number | null>(null);
   const [qrInput, setQrInput] = useState("");
   const [scanning, setScanning] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
   const [lastResult, setLastResult] = useState<TicketScanResult | null>(null);
   const [tickets, setTickets] = useState<ConductorTicketView[] | null>(null);
   const [loadingTickets, setLoadingTickets] = useState(false);
@@ -451,6 +453,7 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
       toast.error("Vui lòng nhập mã QR và chọn chuyến");
       return;
     }
+    if (scanning) return;
     setScanning(true);
     try {
       const r = await operationsApi.scanTicket(tripId, code);
@@ -497,6 +500,21 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
               <QrCode className="size-32 text-[#beff50]/40" />
             </div>
             <div className="mt-5 space-y-3">
+              <ExpressiveButton
+                variant="filled"
+                className="w-full h-14 bg-[#beff50] text-[#14140f] hover:bg-[#a6e639]"
+                onClick={() => {
+                  if (!tripId) {
+                    toast.error("Vui lòng chọn chuyến trước khi quét");
+                    return;
+                  }
+                  setScannerOpen(true);
+                }}
+                disabled={scanning}
+              >
+                <ScanLine className="size-5" />
+                Bật camera quét vé
+              </ExpressiveButton>
               <div>
                 <Label className="text-xs font-bold">Nhập mã QR thủ công</Label>
                 <Input
@@ -558,6 +576,13 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
           )}
         </ScrollReveal>
       </div>
+
+      <QrScannerModal
+        open={scannerOpen}
+        onOpenChange={setScannerOpen}
+        onScan={(code) => scan(code)}
+        isLoading={scanning}
+      />
 
       <Section title={`Vé đã quét chuyến này (${tickets?.length || 0})`}>
         {loadingTickets ? (

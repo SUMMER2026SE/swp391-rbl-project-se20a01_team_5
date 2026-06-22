@@ -109,13 +109,18 @@ public class ExperienceService {
     }
 
     @Transactional(readOnly = true)
+    public List<UniversityOperationsMetric> coordinatorByUniversity() {
+        return repository.coordinatorByUniversity();
+    }
+
+    @Transactional(readOnly = true)
     public List<FeedbackCard> coordinatorFeedback(String status) {
         return repository.allFeedback(status, 50);
     }
 
     @Transactional(readOnly = true)
-    public AdminStatsView adminStats() {
-        return repository.adminStats();
+    public AdminStatsView adminStats(int days) {
+        return repository.adminStats(Math.max(1, Math.min(days, 90)));
     }
 
     @Transactional(readOnly = true)
