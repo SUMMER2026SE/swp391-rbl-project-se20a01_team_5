@@ -144,6 +144,9 @@ import { PageHeader, StatCard, Section, EmptyState } from "../primitives";
 // Real backend data adapter
 import {
   useStudentPrototypeData,
+  useStudentFeedback,
+  useStudentLostItems,
+  mapLostItem,
   useApi,
   formatVND,
   formatDateTime,
@@ -876,18 +879,22 @@ function NotificationRow({ notification }: { notification: any }) {
 
 function HistoryRow({ history, routes }: { history: any; routes: any[] }) {
   const route = routes.find((r) => r.id === String(history.routeId));
+  const routeCode = history.routeCode || route?.code || "BX";
+  const routeName = history.routeName || route?.name || "Chuyến xe";
+  const boarding = history.boardingStopName || route?.from || "Điểm lên";
+  const alighting = history.alightingStopName || route?.to || "Điểm xuống";
   return (
     <div className="flex items-center gap-3 p-3 rounded-xl bg-surface-container-low min-w-0">
       <div
         className="size-9 shrink-0 rounded-xl flex items-center justify-center font-bold text-xs"
         style={{ backgroundColor: route?.color || "#14b8a6", color: "#14140f" }}
       >
-        {route?.code?.slice(0, 2) || "?"}
+        {routeCode.slice(0, 2)}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-bold truncate">{history.routeName || route?.name}</p>
+        <p className="text-sm font-bold truncate">{routeName}</p>
         <p className="text-xs text-on-surface-variant truncate">
-          {history.boardingStopName || "?"} → {history.alightingStopName || "?"}
+          {boarding} → {alighting}
         </p>
       </div>
       <div className="text-right shrink-0">
@@ -1170,7 +1177,6 @@ function UniversityScreen({ ctx, onProfileRefresh }: { ctx: Ctx; onProfileRefres
       toast.error("Vui lòng chọn ảnh thẻ sinh viên");
       return;
     }
-
     setSubmitting(true);
     try {
       const result = await studentApi.submitVerification({
@@ -3157,18 +3163,26 @@ function FeedbackScreen({ ctx }: { ctx: Ctx }) {
   const [rating, setRating] = useState(5);
   const [category, setCategory] = useState("service");
   const [content, setContent] = useState("");
-  const [routeId, setRouteId] = useState<string>("");
+  const [tripId, setTripId] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
+  const feedbackResource = useStudentFeedback();
+  const feedbackItems = feedbackResource.raw || ctx.feedback;
+  const selectedTrip = ctx.tripsHistory.find((h: any) => String(h.tripId) === tripId);
 
   const submit = async () => {
     if (!content.trim()) {
       toast.error("Vui lòng nhập nội dung phản hồi");
       return;
     }
+    if (!tripId) {
+      toast.error("Vui long chon chuyen da di de gui phan hoi");
+      return;
+    }
     setSubmitting(true);
     try {
       await feedbackApi.create({
-        routeId: routeId ? Number(routeId) : undefined,
+        tripId: Number(tripId),
+        routeId: selectedTrip?.routeId ? Number(selectedTrip.routeId) : undefined,
         rating,
         category,
         content: content.trim(),
@@ -3176,7 +3190,8 @@ function FeedbackScreen({ ctx }: { ctx: Ctx }) {
       toast.success("Đã gửi phản hồi. Cảm ơn bạn!");
       setRating(5);
       setContent("");
-      setRouteId("");
+      setTripId("");
+      feedbackResource.reload();
       ctx.reload();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Không thể gửi phản hồi");
@@ -3218,15 +3233,20 @@ function FeedbackScreen({ ctx }: { ctx: Ctx }) {
                 </Select>
               </div>
               <div>
-                <Label className="text-xs font-bold">Tuyến (tùy chọn)</Label>
-                <Select value={routeId} onValueChange={setRouteId}>
-                  <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn tuyến" /></SelectTrigger>
+                <Label className="text-xs font-bold">Chuyến đã đi</Label>
+                <Select value={tripId} onValueChange={setTripId} disabled={ctx.tripsHistory.length === 0}>
+                  <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn chuyến để đánh giá" /></SelectTrigger>
                   <SelectContent>
-                    {ctx.routes.map((r: any) => (
-                      <SelectItem key={r.id} value={r.id}>{r.code} — {r.name}</SelectItem>
+                    {ctx.tripsHistory.map((h: any) => (
+                      <SelectItem key={h.id} value={String(h.tripId)}>{h.routeCode || h.routeName || "Chuyến xe"} — {formatDate(h.boardedAt || h.serviceDate)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {ctx.tripsHistory.length === 0 && (
+                  <p className="mt-1.5 text-xs text-on-surface-variant">
+                    Bạn cần đi ít nhất một chuyến hoặc được phụ xe quét QR trước khi gửi phản hồi.
+                  </p>
+                )}
               </div>
               <div>
                 <Label className="text-xs font-bold">Nội dung</Label>
@@ -3247,8 +3267,8 @@ function FeedbackScreen({ ctx }: { ctx: Ctx }) {
         </ScrollReveal>
 
         <ScrollReveal delay={0.1}>
-          <Section title={`Phản hồi đã gửi (${ctx.feedback.length})`}>
-            {ctx.feedback.length === 0 ? (
+          <Section title={`Phản hồi đã gửi (${feedbackItems.length})`}>
+            {feedbackItems.length === 0 ? (
               <EmptyState
                 icon={<Star className="size-7" />}
                 title="Chưa có phản hồi"
@@ -3256,14 +3276,14 @@ function FeedbackScreen({ ctx }: { ctx: Ctx }) {
               />
             ) : (
               <div className="space-y-3">
-                {ctx.feedback.map((f: any) => (
-                  <ExpressiveCard key={f.id} variant="filled" className="p-4 min-w-0">
+                {feedbackItems.map((f: any) => (
+                  <ExpressiveCard key={f.id || f.feedbackId} variant="filled" className="p-4 min-w-0">
                     <div className="flex items-start justify-between gap-2 mb-2 min-w-0">
                       <div className="min-w-0">
-                        <p className="text-sm font-bold truncate">{f.category || "Phản hồi"}</p>
+                        <p className="text-sm font-bold truncate">{f.routeName || f.category || "Phản hồi"}</p>
                         <p className="text-xs text-on-surface-variant">{formatDate(f.createdAt)}</p>
                       </div>
-                      <M3StarRating value={f.rating} size="size-3" readOnly />
+                      <M3StarRating value={f.rating || 0} size="size-3" readOnly />
                     </div>
                     <p className="text-sm text-on-surface line-clamp-3">{f.content}</p>
                     {f.response && (
@@ -3290,6 +3310,11 @@ function LostItemsScreen({ ctx }: { ctx: Ctx }) {
   const [description, setDescription] = useState("");
   const [tripId, setTripId] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
+  const lostItemsResource = useStudentLostItems();
+  const lostItems = useMemo(
+    () => (lostItemsResource.raw ? lostItemsResource.raw.map(mapLostItem) : ctx.lostItems),
+    [lostItemsResource.raw, ctx.lostItems]
+  );
 
   const submit = async () => {
     if (!description.trim()) {
@@ -3305,6 +3330,7 @@ function LostItemsScreen({ ctx }: { ctx: Ctx }) {
       toast.success("Đã báo mất vật dụng. Chúng tôi sẽ liên hệ khi tìm thấy.");
       setDescription("");
       setTripId("");
+      lostItemsResource.reload();
       ctx.reload();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Không thể báo mất");
@@ -3332,7 +3358,7 @@ function LostItemsScreen({ ctx }: { ctx: Ctx }) {
                   <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn chuyến" /></SelectTrigger>
                   <SelectContent>
                     {ctx.tripsHistory.map((h: any) => (
-                      <SelectItem key={h.id} value={h.id}>{h.routeName} — {formatDate(h.boardedAt)}</SelectItem>
+                      <SelectItem key={h.id} value={String(h.tripId)}>{h.routeCode || h.routeName || "Chuyến xe"} — {formatDate(h.boardedAt || h.serviceDate)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -3356,8 +3382,13 @@ function LostItemsScreen({ ctx }: { ctx: Ctx }) {
         </ScrollReveal>
 
         <ScrollReveal delay={0.1}>
-          <Section title={`Đã báo (${ctx.lostItems.length})`}>
-            {ctx.lostItems.length === 0 ? (
+          <Section title={`Đã báo (${lostItems.length})`}>
+            {lostItemsResource.loading ? (
+              <div className="flex items-center justify-center py-10 text-sm font-medium text-on-surface-variant">
+                <RefreshCw className="mr-2 size-4 animate-spin" />
+                Đang tải danh sách báo mất...
+              </div>
+            ) : lostItems.length === 0 ? (
               <EmptyState
                 icon={<PackageSearch className="size-7" />}
                 title="Chưa báo mất"
@@ -3365,7 +3396,7 @@ function LostItemsScreen({ ctx }: { ctx: Ctx }) {
               />
             ) : (
               <div className="space-y-3">
-                {ctx.lostItems.map((l: any) => (
+                {lostItems.map((l: any) => (
                   <ExpressiveCard key={l.id} variant="filled" className="p-4 min-w-0">
                     <div className="flex items-start justify-between gap-2 mb-2 min-w-0">
                       <p className="text-sm font-bold truncate">{l.item}</p>
