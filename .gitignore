@@ -12,6 +12,11 @@ backend/backend-run*.log
 backend/uploads/
 frontend/frontend-run*.log
 .codex-tmp/
+*.rej
+*.orig
+patch6.patch
+patch8.patch
+v5_67.patch
 frontend/UIPrototype_v1.1.tar
 .understand-anything/intermediate/
 .understand-anything/tmp/

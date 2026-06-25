@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useMotionValueEvent, useScroll } from "framer-motion";
-import { ArrowLeft, Bell, ChevronDown, LogOut, Menu, QrCode, Search, School, UserCircle } from "lucide-react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Input } from "@/components/ui/input";
+import { ArrowLeft, BadgeCheck, Bell, ChevronDown, Clock3, LogOut, Menu, PanelLeftClose, PanelLeftOpen, QrCode, School, UserCircle } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -45,14 +44,8 @@ export function AppShell({
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [unread, setUnread] = useState<number | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const nav = NAV_CONFIG[role] ?? NAV_CONFIG.student;
-  const filteredSuggestions = useMemo(() => {
-    if (!searchQuery.trim()) return [];
-    const query = searchQuery.toLowerCase().trim();
-    return nav.filter((item) => item.label.toLowerCase().includes(query));
-  }, [searchQuery, nav]);
   const groups = useMemo(() => {
     const map = new Map<string, NavItem[]>();
     nav.forEach((item) => {
@@ -79,6 +72,13 @@ export function AppShell({
     : "uniadm-profile";
 
   const isFirstNav = nav.length > 0 && activeId === nav[0].id;
+  const verificationStatus = profile?.studentVerificationStatus || "NOT_SUBMITTED";
+  const verificationMenu = verificationStatus === "VERIFIED"
+    ? { label: "Trường của tôi", icon: School }
+    : verificationStatus === "PENDING_REVIEW"
+      ? { label: "Hồ sơ đang chờ duyệt", icon: Clock3 }
+      : { label: "Xác minh sinh viên", icon: BadgeCheck };
+  const VerificationMenuIcon = verificationMenu.icon;
   const [scrolled, setScrolled] = useState(false);
   const { scrollY } = useScroll();
   useMotionValueEvent(scrollY, "change", (y) => setScrolled(y > 20));
@@ -97,26 +97,38 @@ export function AppShell({
     };
   }, [activeId]);
 
+  // Listen for real-time notification read events from NotificationsScreen
   useEffect(() => {
-    if (!showSuggestions) return;
-    const handleOutsideClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest(".search-container")) {
-        setShowSuggestions(false);
-      }
+    const handleNotificationRead = () => {
+      setUnread((prev) => (prev == null ? null : Math.max(0, prev - 1)));
     };
-    document.addEventListener("click", handleOutsideClick);
-    return () => document.removeEventListener("click", handleOutsideClick);
-  }, [showSuggestions]);
+    window.addEventListener("notification-read", handleNotificationRead as EventListener);
+    return () => window.removeEventListener("notification-read", handleNotificationRead as EventListener);
+  }, []);
 
+  // Debounce navigation to prevent lag when user clicks rapidly.
+  // Each new click cancels the previous pending navigation.
+  const navTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const goTo = (id: string) => {
     setMobileOpen(false);
-    // Defer heavy rendering to unblock the sidebar's closing animation (300ms)
-    setTimeout(() => {
+    // Cancel any pending navigation from previous click
+    if (navTimerRef.current) {
+      clearTimeout(navTimerRef.current);
+    }
+    // Defer heavy rendering to unblock the sidebar's closing animation
+    navTimerRef.current = setTimeout(() => {
       onNavigate(id);
       window.scrollTo({ top: 0, behavior: "instant" });
-    }, 150);
+      navTimerRef.current = null;
+    }, 120);
   };
+
+  // Cleanup pending navigation on unmount
+  useEffect(() => {
+    return () => {
+      if (navTimerRef.current) clearTimeout(navTimerRef.current);
+    };
+  }, []);
 
   const SidebarContent = (
     <div className="flex h-full flex-col bg-surface-container-low">
@@ -182,11 +194,21 @@ export function AppShell({
 
   return (
     <div className="flex min-h-screen w-full flex-col overflow-x-hidden bg-background" data-role-theme={role}>
-      <aside className="fixed left-0 top-0 z-40 hidden h-screen w-72 shrink-0 flex-col border-r border-outline-variant/40 bg-surface-container-low lg:flex">
+      <motion.aside
+        animate={{ width: sidebarCollapsed ? 0 : 288 }}
+        transition={{ type: "spring", stiffness: 400, damping: 32 }}
+        className="fixed left-0 top-0 z-40 hidden h-screen shrink-0 flex-col border-r border-outline-variant/40 bg-surface-container-low overflow-hidden lg:flex"
+        style={{ width: 288 }}
+      >
         {SidebarContent}
-      </aside>
+      </motion.aside>
 
-      <div className="flex min-h-screen min-w-0 flex-1 flex-col lg:ml-72">
+      <div
+        className={cn(
+          "flex min-h-screen min-w-0 flex-1 flex-col transition-[margin] duration-300",
+          sidebarCollapsed ? "lg:ml-0" : "lg:ml-72",
+        )}
+      >
         <motion.header
           animate={{
             height: scrolled ? 52 : 64,
@@ -216,6 +238,16 @@ export function AppShell({
             </button>
           )}
 
+          {/* Toggle sidebar button (desktop only) */}
+          <button
+            className="state-layer flex size-10 shrink-0 items-center justify-center rounded-full text-on-surface hidden lg:flex"
+            onClick={() => setSidebarCollapsed((v) => !v)}
+            aria-label={sidebarCollapsed ? "Mở sidebar" : "Đóng sidebar"}
+            title={sidebarCollapsed ? "Mở sidebar" : "Đóng sidebar"}
+          >
+            {sidebarCollapsed ? <PanelLeftOpen className="size-5" /> : <PanelLeftClose className="size-5" />}
+          </button>
+
           <div className="hidden min-w-0 items-center gap-2 text-sm sm:flex">
             <span className="font-medium text-on-surface-variant">{ROLE_LABELS[role]}</span>
             <span className="text-on-surface-variant/40">/</span>
@@ -226,50 +258,7 @@ export function AppShell({
             <span className="truncate text-base font-semibold text-on-surface">{currentNav?.label}</span>
           </div>
 
-          <div className="hidden flex-1 sm:block" />
-
-          <div className="relative hidden w-64 md:flex flex-col search-container">
-            <div className="relative flex w-full items-center">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-on-surface-variant" />
-              <Input
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  setShowSuggestions(true);
-                }}
-                onFocus={() => setShowSuggestions(true)}
-                placeholder="Tìm chức năng..."
-                className="h-9 w-full rounded-full border-transparent bg-surface-container-high pl-9 focus-visible:bg-surface-container-lowest text-sm transition-all focus-visible:ring-1 focus-visible:ring-primary/20"
-              />
-            </div>
-            
-            {showSuggestions && searchQuery.trim() !== "" && (
-              <div className="absolute top-[40px] left-0 z-50 w-full rounded-2xl border border-outline-variant/50 bg-surface-container-lowest p-1.5 shadow-xl max-h-60 overflow-y-auto scrollbar-soft animate-in fade-in slide-in-from-top-1 duration-150">
-                {filteredSuggestions.length > 0 ? (
-                  <div className="space-y-0.5">
-                    {filteredSuggestions.map((item) => (
-                      <button
-                        key={item.id}
-                        onClick={() => {
-                          goTo(item.id);
-                          setSearchQuery("");
-                          setShowSuggestions(false);
-                        }}
-                        className="group flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-on-surface hover:bg-primary/10 hover:text-primary transition-all duration-100"
-                      >
-                        <item.icon className="size-4 shrink-0 text-on-surface-variant group-hover:text-primary transition-colors" />
-                        <span className="truncate font-medium">{item.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="px-3 py-3 text-xs text-on-surface-variant/80 text-center font-medium">
-                    Không tìm thấy kết quả
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          <div className="flex-1" />
 
           <button
             className="state-layer relative flex size-10 shrink-0 items-center justify-center rounded-full text-on-surface"
@@ -284,6 +273,7 @@ export function AppShell({
             <DropdownMenuTrigger asChild>
               <button className="state-layer flex shrink-0 items-center gap-2 rounded-full py-1 pl-1 pr-1 sm:pr-3">
                 <Avatar className="size-9">
+                  <AvatarImage src={profile?.avatarUrl} alt={profile?.fullName || "Avatar"} />
                   <AvatarFallback className={cn("text-xs font-bold text-white", ROLE_COLORS[role])}>
                     {initials(profile, role)}
                   </AvatarFallback>
@@ -295,23 +285,34 @@ export function AppShell({
                 <ChevronDown className="hidden size-4 text-on-surface-variant sm:block" />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64 rounded-xl">
-              <DropdownMenuLabel className="flex flex-col gap-0.5">
-                <span className="truncate">{profile?.fullName || "Tài khoản UniBus"}</span>
-                <span className="truncate text-xs font-normal text-on-surface-variant">{profile?.email || ROLE_LABELS[role]}</span>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => goTo(profileNavId)} className="rounded-lg">
-                <UserCircle className="mr-2 size-4" /> Hồ sơ cá nhân
+            <DropdownMenuContent align="end" className="w-72 p-2">
+              <div className="flex items-center gap-3 px-2 py-3 mb-1 rounded-xl bg-surface-container-low">
+                <Avatar className="size-11 shrink-0">
+                  <AvatarImage src={profile?.avatarUrl} alt={profile?.fullName || "Avatar"} />
+                  <AvatarFallback className={cn("text-sm font-bold text-white", ROLE_COLORS[role])}>
+                    {initials(profile, role)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold text-on-surface">{profile?.fullName || "Tài khoản UniBus"}</p>
+                  <p className="truncate text-xs text-on-surface-variant">{profile?.email || ROLE_LABELS[role]}</p>
+                  <span className="inline-flex mt-1 items-center gap-1 h-5 px-2 rounded-full bg-[#beff50] text-[#14140f] text-[10px] font-bold">
+                    <School className="size-2.5" />
+                    {ROLE_LABELS[role]}
+                  </span>
+                </div>
+              </div>
+              <DropdownMenuItem onClick={() => goTo(profileNavId)}>
+                <UserCircle className="size-4" /> Hồ sơ cá nhân
               </DropdownMenuItem>
               {role === "student" && (
-                <DropdownMenuItem onClick={() => goTo("stu-university")} className="rounded-lg">
-                  <School className="mr-2 size-4" /> Trường của tôi
+                <DropdownMenuItem onClick={() => goTo("stu-university")}>
+                  <VerificationMenuIcon className="size-4" /> {verificationMenu.label}
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="rounded-lg text-error focus:text-error" onClick={onLogout}>
-                <LogOut className="mr-2 size-4" /> Đăng xuất
+              <DropdownMenuItem variant="destructive" onClick={onLogout}>
+                <LogOut className="size-4" /> Đăng xuất
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

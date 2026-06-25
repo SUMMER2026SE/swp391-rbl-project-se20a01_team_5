@@ -15,6 +15,33 @@ public final class TicketingDtos {
             @Pattern(regexp = "CASH|BANK_TRANSFER|E_WALLET|CARD") String method) {
     }
 
+    public record PurchaseSingleTripTicketRequest(
+            @jakarta.validation.constraints.NotNull Integer routeId,
+            @jakarta.validation.constraints.NotNull Integer boardingStopId,
+            @jakarta.validation.constraints.NotNull Integer alightingStopId,
+            @Pattern(regexp = "CASH|BANK_TRANSFER|E_WALLET|CARD") String method) {
+    }
+
+    public record SingleTripTicketView(
+            Integer ticketId,
+            Integer routeId,
+            String routeName,
+            Integer boardingStopId,
+            String boardingStopName,
+            Integer alightingStopId,
+            String alightingStopName,
+            BigDecimal originalFareAmount,
+            BigDecimal subsidyAmount,
+            BigDecimal finalFareAmount,
+            String qrCode,
+            String status,
+            OffsetDateTime purchasedAt,
+            OffsetDateTime expiresAt) {
+    }
+
+    public record CheckoutUrlResponse(String checkoutUrl, String orderRef, String token) {
+    }
+
     public record TicketView(
             Integer ticketId,
             String ticketType,

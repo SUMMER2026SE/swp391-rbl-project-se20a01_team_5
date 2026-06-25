@@ -133,7 +133,13 @@ export default function Page() {
 
     switch (role) {
       case "student":
-        return <StudentModule activeId={activeId} onNavigate={setActiveId} />;
+        return (
+          <StudentModule
+            activeId={activeId}
+            onNavigate={setActiveId}
+            onProfileRefresh={() => loadProfile("student")}
+          />
+        );
       case "driver":
         return <DriverModule activeId={activeId} onNavigate={setActiveId} />;
       case "assistant":

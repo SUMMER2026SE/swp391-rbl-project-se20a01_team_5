@@ -310,7 +310,7 @@ campus_data AS (
 route_data AS (
     SELECT route_id
     FROM routes
-    WHERE description LIKE 'ITER1 seed route:%'
+    WHERE description LIKE 'Tuyến nội khu (Seed):%'
 )
 UPDATE route_universities ru
 SET campus_id = c.campus_id,
@@ -336,7 +336,7 @@ campus_data AS (
 route_data AS (
     SELECT route_id
     FROM routes
-    WHERE description LIKE 'ITER1 seed route:%'
+    WHERE description LIKE 'Tuyến nội khu (Seed):%'
 )
 INSERT INTO route_universities (route_id, university_id, campus_id, active_from, active_until, status)
 SELECT r.route_id, u.university_id, c.campus_id, CURRENT_DATE - INTERVAL '1 day', NULL, 'ACTIVE'
@@ -413,9 +413,9 @@ notification_rows(email, title, content, notification_type, is_read) AS (
     VALUES
         ('student.verified@unibus.local', 'UI QA: Vé tháng sẵn sàng', 'Vé tháng có trợ giá đã sẵn sàng để kiểm tra QR.', 'PAYMENT', FALSE),
         ('student.verified@unibus.local', 'UI QA: Tuyến trường đang hoạt động', 'Tuyến Campus Loop đang hoạt động và có xe gần điểm đón.', 'TRIP', FALSE),
-        ('driver.iter1@unibus.local', 'UI QA: Ca lái hôm nay', 'Bạn có chuyến Campus Loop đang chạy để kiểm tra màn tài xế.', 'TRIP', FALSE),
-        ('conductor.iter1@unibus.local', 'UI QA: Kiểm vé QR', 'Danh sách vé thật đã sẵn sàng cho màn phụ xe.', 'TRIP', FALSE),
-        ('dispatcher.iter1@unibus.local', 'UI QA: Đội xe live', 'Dữ liệu vị trí xe seed sẵn sàng cho điều phối.', 'ALERT', FALSE),
+        ('driver.demo@unibus.local', 'UI QA: Ca lái hôm nay', 'Bạn có chuyến Campus Loop đang chạy để kiểm tra màn tài xế.', 'TRIP', FALSE),
+        ('conductor.demo@unibus.local', 'UI QA: Kiểm vé QR', 'Danh sách vé thật đã sẵn sàng cho màn phụ xe.', 'TRIP', FALSE),
+        ('dispatcher.demo@unibus.local', 'UI QA: Đội xe live', 'Dữ liệu vị trí xe seed sẵn sàng cho điều phối.', 'ALERT', FALSE),
         ('admin.verify@unibus.local', 'UI QA: Hồ sơ xác minh', 'Có hồ sơ sinh viên chờ duyệt trong dữ liệu seed.', 'SYSTEM', FALSE),
         ('uni.admin@unibus.local', 'UI QA: Roster import', 'Batch ui-v11-roster-demo.csv có 4 dòng thành công và 1 lỗi.', 'SYSTEM', FALSE)
 )
@@ -452,14 +452,14 @@ trip_data AS (
     SELECT t.trip_id
     FROM trips t
     JOIN routes r ON r.route_id = t.route_id
-    WHERE r.description LIKE 'ITER1 seed route:%'
+    WHERE r.description LIKE 'Tuyến nội khu (Seed):%'
     ORDER BY t.service_date DESC, t.trip_id DESC
     LIMIT 1
 ),
 handler_user AS (
     SELECT user_id
     FROM users
-    WHERE email = 'dispatcher.iter1@unibus.local'
+    WHERE email = 'dispatcher.demo@unibus.local'
 )
 INSERT INTO feedback (
     student_code,

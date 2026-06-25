@@ -1,4 +1,4 @@
-﻿const fs = require('fs');
+const fs = require('fs');
 let code = fs.readFileSync('src/components/bus/roles/coordinator-module.tsx', 'utf8');
 
 // Add imports

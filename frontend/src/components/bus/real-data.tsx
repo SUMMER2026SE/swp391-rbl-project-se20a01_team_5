@@ -72,7 +72,7 @@ export function getErrorMessage(error: unknown, fallback = "Thao tác thất b�
   return fallback;
 }
 
-export function LoadingPanel({ label = "Đang tải dữ liệu thật..." }: { label?: string }) {
+export function LoadingPanel({ label = "Đang tải dữ liệu..." }: { label?: string }) {
   return (
     <ExpressiveCard variant="elevated" className="p-6">
       <div className="flex items-center gap-3 text-on-surface-variant">

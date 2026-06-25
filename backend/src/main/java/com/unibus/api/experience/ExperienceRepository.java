@@ -11,7 +11,9 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -131,17 +133,24 @@ public class ExperienceRepository {
                         stat("Feedback mở", feedback.stream().filter(f -> !"RESOLVED".equalsIgnoreCase(f.status())).count(), "mục", "warning")));
     }
 
-    public AdminStatsView adminStats() {
+    public AdminStatsView adminStats(int days) {
+        LocalDate to = LocalDate.now();
+        LocalDate from = to.minusDays(days - 1L);
         return new AdminStatsView(
                 List.of(
                         stat("Người dùng", count("users"), "tài khoản", "primary"),
                         stat("Sinh viên", count("students"), "hồ sơ", "secondary"),
+                        stat("Trường đối tác", countWhere("universities", "status = 'ACTIVE'"), "trường", "tertiary"),
+                        stat("Chờ xác thực", countWhere("student_verifications", "status = 'PENDING_REVIEW'"), "hồ sơ", "warning"),
                         stat("Tuyến", countWhere("routes", "status = 'ACTIVE'"), "tuyến", "tertiary"),
                         stat("Doanh thu", revenue(), "VND", "success")),
                 routeMetrics(),
                 complaints(null, 8),
                 violations(null, 8),
-                fares());
+                fares(),
+                revenueSeries(from, to),
+                tripsSeries(from, to),
+                roleDistribution());
     }
 
     public List<RouteCard> routeSuggestions(Integer universityId) {
@@ -432,7 +441,7 @@ public class ExperienceRepository {
                        r.route_code, r.route_name, r.color_hex, bs.stop_name AS boarding_stop_name,
                        als.stop_name AS alighting_stop_name, mp.original_fare_amount, mp.subsidy_amount,
                        mp.final_fare_amount, mp.qr_code, mp.valid_from, mp.expires_on, NULL::timestamptz AS expires_at,
-                       mp.status
+                       mp.purchased_at, mp.status
                 FROM monthly_passes mp
                 JOIN routes r ON r.route_id = mp.route_id
                 LEFT JOIN route_registrations rr ON rr.student_code = mp.student_code AND rr.route_id = mp.route_id
@@ -661,7 +670,7 @@ public class ExperienceRepository {
                 SELECT mp.monthly_pass_id AS ticket_id, 'MONTHLY' AS ticket_type, mp.route_id,
                        r.route_code, r.route_name, r.color_hex, NULL AS boarding_stop_name, NULL AS alighting_stop_name,
                        mp.original_fare_amount, mp.subsidy_amount, mp.final_fare_amount, mp.qr_code,
-                       mp.valid_from, mp.expires_on, NULL::timestamptz AS expires_at, mp.status
+                       mp.valid_from, mp.expires_on, NULL::timestamptz AS expires_at, mp.purchased_at, mp.status
                 FROM monthly_passes mp
                 JOIN trips t ON t.route_id = mp.route_id
                 JOIN routes r ON r.route_id = mp.route_id
@@ -688,6 +697,137 @@ public class ExperienceRepository {
                         rs.getString("color_hex"),
                         rs.getInt("trips"),
                         rs.getBigDecimal("revenue")));
+    }
+
+    public List<UniversityOperationsMetric> coordinatorByUniversity() {
+        return jdbcTemplate.query("""
+                SELECT u.university_id, u.name AS university_name, u.short_name,
+                       MIN(r.color_hex) AS color_hex,
+                       COUNT(DISTINCT ru.route_id) FILTER (WHERE ru.status = 'ACTIVE') AS route_count,
+                       COUNT(DISTINCT t.bus_id) AS fleet_count,
+                       COUNT(DISTINCT t.driver_id) AS driver_count,
+                       COUNT(DISTINCT s.student_code) AS student_count,
+                       COUNT(DISTINCT t.trip_id) AS trips_today
+                FROM universities u
+                LEFT JOIN route_universities ru ON ru.university_id = u.university_id
+                    AND ru.status = 'ACTIVE'
+                LEFT JOIN routes r ON r.route_id = ru.route_id
+                LEFT JOIN trips t ON t.route_id = ru.route_id
+                    AND t.service_date = CURRENT_DATE
+                LEFT JOIN students s ON s.university_id = u.university_id
+                WHERE u.status = 'ACTIVE'
+                GROUP BY u.university_id, u.name, u.short_name
+                ORDER BY u.name
+                """, (rs, rowNum) -> new UniversityOperationsMetric(
+                        rs.getInt("university_id"),
+                        rs.getString("university_name"),
+                        rs.getString("short_name"),
+                        rs.getString("color_hex"),
+                        rs.getInt("route_count"),
+                        rs.getInt("fleet_count"),
+                        rs.getInt("driver_count"),
+                        rs.getInt("student_count"),
+                        rs.getInt("trips_today")));
+    }
+
+    public List<UniversityRouteOperationsMetric> coordinatorUniversityRoutes(Integer universityId) {
+        return jdbcTemplate.query("""
+                SELECT r.route_id, r.route_code, r.route_name, r.color_hex,
+                       COUNT(DISTINCT rr.student_code) AS registered_students,
+                       COUNT(DISTINCT mp.monthly_pass_id) AS active_monthly_passes,
+                       COUNT(DISTINCT t.trip_id) AS trips_today,
+                       COUNT(DISTINCT t.trip_id) FILTER (WHERE t.status = 'RUNNING') AS running_trips,
+                       COUNT(DISTINCT t.bus_id) FILTER (WHERE t.bus_id IS NOT NULL) AS assigned_buses,
+                       COUNT(DISTINCT t.driver_id) FILTER (WHERE t.driver_id IS NOT NULL) AS assigned_drivers,
+                       COUNT(DISTINCT t.conductor_id) FILTER (WHERE t.conductor_id IS NOT NULL) AS assigned_conductors
+                FROM route_universities ru
+                JOIN routes r ON r.route_id = ru.route_id
+                LEFT JOIN students s ON s.university_id = ru.university_id
+                LEFT JOIN route_registrations rr ON rr.student_code = s.student_code
+                    AND rr.route_id = ru.route_id
+                    AND rr.status = 'APPROVED'
+                LEFT JOIN monthly_passes mp ON mp.student_code = s.student_code
+                    AND mp.route_id = ru.route_id
+                    AND mp.status = 'ACTIVE'
+                    AND mp.expires_on >= CURRENT_DATE
+                LEFT JOIN trips t ON t.route_id = ru.route_id
+                    AND t.service_date = CURRENT_DATE
+                WHERE ru.university_id = ?
+                  AND ru.status = 'ACTIVE'
+                  AND ru.active_from <= CURRENT_DATE
+                  AND (ru.active_until IS NULL OR ru.active_until >= CURRENT_DATE)
+                GROUP BY r.route_id, r.route_code, r.route_name, r.color_hex
+                ORDER BY active_monthly_passes DESC, registered_students DESC, r.route_name
+                """, (rs, rowNum) -> new UniversityRouteOperationsMetric(
+                        rs.getInt("route_id"),
+                        rs.getString("route_code"),
+                        rs.getString("route_name"),
+                        rs.getString("color_hex"),
+                        rs.getInt("registered_students"),
+                        rs.getInt("active_monthly_passes"),
+                        rs.getInt("trips_today"),
+                        rs.getInt("running_trips"),
+                        rs.getInt("assigned_buses"),
+                        rs.getInt("assigned_drivers"),
+                        rs.getInt("assigned_conductors")),
+                universityId);
+    }
+
+    private List<RevenueSeriesPoint> revenueSeries(LocalDate from, LocalDate to) {
+        Map<LocalDate, BigDecimal> values = new HashMap<>();
+        jdbcTemplate.query("""
+                SELECT CAST(created_at AS date) AS series_date, COALESCE(SUM(amount), 0) AS revenue
+                FROM payments
+                WHERE status = 'PAID'
+                  AND CAST(created_at AS date) BETWEEN ? AND ?
+                GROUP BY CAST(created_at AS date)
+                ORDER BY series_date
+                """, rs -> {
+                    values.put(rs.getObject("series_date", LocalDate.class), rs.getBigDecimal("revenue"));
+                }, from, to);
+        return from.datesUntil(to.plusDays(1))
+                .map(date -> new RevenueSeriesPoint(dayLabel(date), date, values.getOrDefault(date, BigDecimal.ZERO)))
+                .toList();
+    }
+
+    private List<TripsSeriesPoint> tripsSeries(LocalDate from, LocalDate to) {
+        Map<LocalDate, Integer> values = new HashMap<>();
+        jdbcTemplate.query("""
+                SELECT service_date AS series_date, COUNT(*) AS trips
+                FROM trips
+                WHERE service_date BETWEEN ? AND ?
+                GROUP BY service_date
+                ORDER BY service_date
+                """, rs -> {
+                    values.put(rs.getObject("series_date", LocalDate.class), rs.getInt("trips"));
+                }, from, to);
+        return from.datesUntil(to.plusDays(1))
+                .map(date -> new TripsSeriesPoint(dayLabel(date), date, values.getOrDefault(date, 0)))
+                .toList();
+    }
+
+    private List<RoleDistributionPoint> roleDistribution() {
+        return jdbcTemplate.query("""
+                SELECT role, COUNT(*) AS user_count
+                FROM users
+                WHERE status = 'ACTIVE'
+                GROUP BY role
+                ORDER BY role
+                """, (rs, rowNum) -> new RoleDistributionPoint(
+                        rs.getString("role"),
+                        rs.getInt("user_count")));
+    }
+
+    private String dayLabel(LocalDate date) {
+        return switch (date.getDayOfWeek()) {
+            case MONDAY -> "T2";
+            case TUESDAY -> "T3";
+            case WEDNESDAY -> "T4";
+            case THURSDAY -> "T5";
+            case FRIDAY -> "T6";
+            case SATURDAY -> "T7";
+            case SUNDAY -> "CN";
+        };
     }
 
     private TripCard mapTrip(ResultSet rs) throws SQLException {
@@ -730,6 +870,7 @@ public class ExperienceRepository {
                 rs.getObject("valid_from", LocalDate.class),
                 rs.getObject("expires_on", LocalDate.class),
                 toOffset(rs.getTimestamp("expires_at")),
+                toOffset(rs.getTimestamp("purchased_at")),
                 rs.getString("status"));
     }
 
@@ -925,5 +1066,174 @@ public class ExperienceRepository {
 
     private record ProfileRow(String fullName, String verificationStatus, String studentCode, Integer universityId,
             String universityName) {
+    }
+
+    // =========================================================================
+    // Driver ratings (REQ-STU-011)
+    // =========================================================================
+
+    public void createDriverRating(Integer studentUserId, Integer tripId, Integer driverId,
+            Integer starRating, String comment) {
+        jdbcTemplate.update("""
+                INSERT INTO driver_ratings (driver_id, student_user_id, trip_id, star_rating, comment)
+                VALUES (?, ?, ?, ?, ?)
+                """, driverId, studentUserId, tripId, starRating, comment);
+    }
+
+    public boolean existsDriverRating(Integer studentUserId, Integer tripId) {
+        Long c = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM driver_ratings WHERE student_user_id = ? AND trip_id = ?",
+                Long.class, studentUserId, tripId);
+        return c != null && c > 0;
+    }
+
+    public Optional<Integer> driverIdForTrip(Integer tripId) {
+        return jdbcTemplate.query("SELECT driver_id FROM trips WHERE trip_id = ?",
+                rs -> rs.next() ? Optional.of(rs.getInt("driver_id")) : Optional.empty(), tripId);
+    }
+
+    public List<DriverRatingCard> driverRatings(Integer driverId, int limit) {
+        return jdbcTemplate.query("""
+                SELECT dr.rating_id, dr.driver_id, dr.student_user_id, dr.trip_id,
+                       dr.star_rating, dr.comment, dr.created_at,
+                       u.full_name AS student_name
+                FROM driver_ratings dr
+                LEFT JOIN users u ON u.user_id = dr.student_user_id
+                WHERE dr.driver_id = ?
+                ORDER BY dr.created_at DESC
+                LIMIT ?
+                """, (rs, rowNum) -> new DriverRatingCard(
+                        rs.getLong("rating_id"),
+                        rs.getInt("driver_id"),
+                        rs.getString("student_name"),
+                        (Integer) rs.getObject("trip_id"),
+                        rs.getInt("star_rating"),
+                        rs.getString("comment"),
+                        toOffset(rs.getTimestamp("created_at"))),
+                driverId, limit);
+    }
+
+    public Optional<DriverRatingSummary> driverRatingSummary(Integer driverId) {
+        return jdbcTemplate.query("""
+                SELECT AVG(star_rating) AS avg_rating, COUNT(*) AS total
+                FROM driver_ratings
+                WHERE driver_id = ?
+                """, rs -> {
+            if (!rs.next() || rs.getObject("total") == null) {
+                return Optional.<DriverRatingSummary>empty();
+            }
+            int total = rs.getInt("total");
+            if (total == 0) {
+                return Optional.of(new DriverRatingSummary(driverId, fullNameByDriver(driverId), null, 0));
+            }
+            Double avg = rs.getDouble("avg_rating");
+            return Optional.of(new DriverRatingSummary(driverId, fullNameByDriver(driverId), avg, total));
+        }, driverId);
+    }
+
+    private String fullNameByDriver(Integer driverId) {
+        return jdbcTemplate.query("""
+                SELECT u.full_name FROM drivers d
+                JOIN users u ON u.user_id = d.user_id
+                WHERE d.driver_id = ?
+                """, rs -> rs.next() ? rs.getString("full_name") : null, driverId);
+    }
+
+    // =========================================================================
+    // Complaints workflow (REQ-ADM-002)
+    // =========================================================================
+
+    public Long createComplaint(Integer submittedByUserId, String subject, String description, String category) {
+        return jdbcTemplate.queryForObject("""
+                INSERT INTO complaints (submitted_by_user_id, subject, description, category, status, created_at)
+                VALUES (?, ?, ?, ?, 'OPEN', CURRENT_TIMESTAMP)
+                RETURNING complaint_id
+                """, Long.class, submittedByUserId, subject, description, category);
+    }
+
+    public List<ComplaintCard> complaintsByStatus(String status, int limit) {
+        String sql = """
+                SELECT c.complaint_id, c.subject, c.description, c.status, c.created_at,
+                       c.submitted_by_user_id, u.full_name AS submitter_name
+                FROM complaints c
+                LEFT JOIN users u ON u.user_id = c.submitted_by_user_id
+                """ + (status == null || status.isBlank() ? "" : " WHERE c.status = ?")
+                + " ORDER BY c.created_at DESC LIMIT ?";
+        if (status == null || status.isBlank()) {
+            return jdbcTemplate.query(sql,
+                    (rs, rowNum) -> new ComplaintCard(
+                            rs.getInt("complaint_id"),
+                            rs.getString("subject"),
+                            rs.getString("description"),
+                            rs.getString("status"),
+                            toOffset(rs.getTimestamp("created_at"))),
+                    limit);
+        }
+        return jdbcTemplate.query(sql,
+                (rs, rowNum) -> new ComplaintCard(
+                        rs.getInt("complaint_id"),
+                        rs.getString("subject"),
+                        rs.getString("description"),
+                        rs.getString("status"),
+                        toOffset(rs.getTimestamp("created_at"))),
+                status, limit);
+    }
+
+    public boolean resolveComplaint(Integer complaintId, Integer resolverUserId, String status, String resolution) {
+        int rows = jdbcTemplate.update("""
+                UPDATE complaints
+                SET status = ?, resolution = ?, resolved_by_user_id = ?, resolved_at = CURRENT_TIMESTAMP
+                WHERE complaint_id = ?
+                """, status, resolution, resolverUserId, complaintId);
+        return rows > 0;
+    }
+
+    // =========================================================================
+    // Violations workflow (REQ-ADM-003)
+    // =========================================================================
+
+    public Long createViolation(Integer reportedByUserId, Integer reportedUserId, String category, String description) {
+        return jdbcTemplate.queryForObject("""
+                INSERT INTO violation_reports (reported_by_user_id, reported_user_id, category, description, status, created_at)
+                VALUES (?, ?, ?, ?, 'REPORTED', CURRENT_TIMESTAMP)
+                RETURNING violation_report_id
+                """, Long.class, reportedByUserId, reportedUserId, category, description);
+    }
+
+    public boolean reviewViolation(Integer violationId, Integer reviewerUserId, String status, String actionTaken) {
+        int rows = jdbcTemplate.update("""
+                UPDATE violation_reports
+                SET status = ?, action_taken = ?, reviewed_by_user_id = ?, reviewed_at = CURRENT_TIMESTAMP
+                WHERE violation_report_id = ?
+                """, status, actionTaken, reviewerUserId, violationId);
+        return rows > 0;
+    }
+
+
+
+    // =========================================================================
+    // Fare change history (REQ-ADM-007)
+    // =========================================================================
+
+    public void recordFareChange(Integer fareId, Integer routeId, BigDecimal oldAmount, BigDecimal newAmount,
+            LocalDate effectiveFrom, Integer adjustedByUserId, String reason) {
+        jdbcTemplate.update("""
+                INSERT INTO fare_changes (fare_id, route_id, old_amount, new_amount, effective_from,
+                                          adjusted_by_user_id, reason)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, fareId, routeId, oldAmount, newAmount, effectiveFrom, adjustedByUserId, reason);
+    }
+
+    public List<java.util.Map<String, Object>> fareChangeHistory(Integer routeId) {
+        return jdbcTemplate.queryForList("""
+                SELECT fc.fare_change_id, fc.fare_id, fc.route_id, fc.old_amount, fc.new_amount,
+                       fc.effective_from, fc.adjusted_by_user_id, u.full_name AS adjusted_by_name,
+                       fc.reason, fc.created_at
+                FROM fare_changes fc
+                LEFT JOIN users u ON u.user_id = fc.adjusted_by_user_id
+                WHERE fc.route_id = ?
+                ORDER BY fc.created_at DESC
+                LIMIT 50
+                """, routeId);
     }
 }

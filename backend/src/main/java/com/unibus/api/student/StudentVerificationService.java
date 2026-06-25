@@ -28,6 +28,13 @@ import com.unibus.api.user.model.UserRole;
 @Service
 public class StudentVerificationService {
 
+    private static final long MAX_CARD_IMAGE_BYTES = 10L * 1024L * 1024L;
+    private static final List<String> ALLOWED_CARD_IMAGE_TYPES = List.of(
+            "image/jpeg",
+            "image/jpg",
+            "image/png",
+            "image/webp");
+
     private final StudentVerificationRepository verificationRepository;
     private final UserRepository userRepository;
     private final StudentRepository studentRepository;
@@ -69,6 +76,7 @@ public class StudentVerificationService {
         if (cardImage == null || cardImage.isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Student card image is required");
         }
+        validateCardImage(cardImage);
         String allowedUniversity = universityCatalog.requireAllowed(university);
         String normalizedStudentCode = studentCode.trim().toUpperCase();
 
@@ -223,6 +231,16 @@ public class StudentVerificationService {
                 .ifPresent(existing -> {
                     throw new ApiException(HttpStatus.CONFLICT, "Student code is already used by another verification request");
                 });
+    }
+
+    private void validateCardImage(MultipartFile cardImage) {
+        if (cardImage.getSize() > MAX_CARD_IMAGE_BYTES) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Student card image must be 10MB or smaller");
+        }
+        String contentType = cardImage.getContentType();
+        if (contentType == null || !ALLOWED_CARD_IMAGE_TYPES.contains(contentType.toLowerCase())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Student card image must be JPEG, PNG, or WebP");
+        }
     }
 
     private StudentVerification requireVerification(Long verificationId) {
