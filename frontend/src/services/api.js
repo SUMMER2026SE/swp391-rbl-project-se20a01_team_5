@@ -41,6 +41,22 @@ function unwrap(response) {
   return response.data?.data ?? null;
 }
 
+export function normalizeTravelHistory(items = []) {
+  return (Array.isArray(items) ? items : []).map((trip) => ({
+    ...trip,
+    id: trip.travelHistoryId || trip.tripId,
+    tripId: trip.tripId,
+    routeId: trip.routeId,
+    routeName: trip.routeName || trip.routeCode || 'Chuyến xe',
+    routeCode: trip.routeCode || '',
+    boardingStopName: trip.boardingStopName || trip.fromStopName || 'Điểm lên',
+    alightingStopName: trip.alightingStopName || trip.toStopName || 'Điểm xuống',
+    boardedAt: trip.boardedAt || trip.createdAt || trip.serviceDate,
+    alightedAt: trip.alightedAt,
+    serviceDate: trip.serviceDate || trip.boardedAt || trip.createdAt,
+  }));
+}
+
 function toApiError(error) {
   let message = error.response?.data?.message || error.message || 'Không thể kết nối máy chủ';
   
@@ -303,7 +319,7 @@ export const travelApi = {
     const response = await apiClient.get('/students/me/travel-history', {
       params: { page, size },
     });
-    return unwrap(response);
+    return normalizeTravelHistory(unwrap(response));
   },
 };
 

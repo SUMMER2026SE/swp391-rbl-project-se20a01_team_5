@@ -58,13 +58,13 @@ export default function TripHistoryPage() {
           ) : trips.length ? (
             <div className="flex flex-col gap-4">
               {trips.map((trip) => (
-                <div key={trip.travelHistoryId} className="border border-black/5 rounded-2xl p-6 flex flex-col lg:flex-row gap-6 justify-between hover:border-brand-primary/50 transition-colors">
+                <div key={trip.id || trip.travelHistoryId || trip.tripId} className="border border-black/5 rounded-2xl p-6 flex flex-col lg:flex-row gap-6 justify-between hover:border-brand-primary/50 transition-colors">
                   <div className="flex items-start gap-4">
                     <div className="w-12 h-12 bg-brand-surface rounded-xl flex items-center justify-center shrink-0">
                       <BusFront className="w-6 h-6 text-brand-text/50" />
                     </div>
                     <div>
-                      <h3 className="font-bold text-lg">{trip.routeName}</h3>
+                      <h3 className="font-bold text-lg">{trip.routeName || 'Chuyến xe'}</h3>
                       <div className="flex flex-wrap items-center gap-4 text-sm font-medium text-brand-text/60 mt-2">
                         <span className="flex items-center gap-1">
                           <Clock className="w-4 h-4" /> {formatDate(trip.serviceDate)}

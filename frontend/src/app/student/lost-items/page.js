@@ -63,6 +63,7 @@ export default function StudentLostItemsPage() {
       setReports((items) => [submitted, ...items]);
       setForm((current) => ({ ...current, itemDescription: '', notes: '' }));
       setNotice('Đã gửi báo cáo mất đồ. Nhà xe sẽ tiếp nhận và cập nhật trạng thái.');
+      loadData();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -105,7 +106,7 @@ export default function StudentLostItemsPage() {
               className="w-full bg-brand-surface border border-black/5 rounded-2xl p-4 text-sm font-bold focus:outline-none focus:border-brand-primary"
             >
               {trips.map((trip) => (
-                <option key={`${trip.travelHistoryId || trip.tripId}-${trip.tripId}`} value={trip.tripId}>
+                <option key={`${trip.id || trip.travelHistoryId || trip.tripId}-${trip.tripId}`} value={trip.tripId}>
                   #{trip.tripId} - {trip.routeName || 'Tuyến xe'} - {formatDate(trip.serviceDate)}
                 </option>
               ))}
