@@ -3152,6 +3152,108 @@ function AIScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => v
 // =============================================================================
 // Screen 10: Chatbot
 // =============================================================================
+const AI_ACTIVITY_STEPS = [
+  {
+    label: "Nhận câu hỏi",
+    detail: "Chuẩn bị ngữ cảnh hội thoại",
+    icon: Bot,
+  },
+  {
+    label: "Đọc dữ liệu sinh viên",
+    detail: "Kiểm tra hồ sơ, vé và đăng ký hiện tại",
+    icon: Search,
+  },
+  {
+    label: "Tra cứu UniBus",
+    detail: "Lấy tuyến, trạm, lịch xe và giá vé khi cần",
+    icon: RouteIcon,
+  },
+  {
+    label: "Tổng hợp bằng AI",
+    detail: "Gửi context an toàn tới LLM hoặc fallback",
+    icon: Sparkles,
+  },
+  {
+    label: "Đóng gói câu trả lời",
+    detail: "Chuẩn bị thẻ tuyến, CTA và nguồn dữ liệu",
+    icon: CheckCircle2,
+  },
+] as const;
+
+function AiWorkingIndicator({ activeIndex }: { activeIndex: number }) {
+  const safeActiveIndex = Math.min(activeIndex, AI_ACTIVITY_STEPS.length - 1);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -6, scale: 0.98 }}
+      className="flex gap-2 max-w-[92%] min-w-0"
+    >
+      <div className="relative size-8 shrink-0 rounded-full bg-[#beff50] text-[#14140f] flex items-center justify-center overflow-hidden">
+        <motion.span
+          className="absolute inset-0 bg-white/35"
+          animate={{ x: ["-120%", "120%"] }}
+          transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+        />
+        <Bot className="relative size-4" />
+      </div>
+      <div className="relative overflow-hidden rounded-2xl rounded-tl-sm border border-outline-variant/70 bg-surface-container-high px-4 py-3 shadow-sm min-w-0">
+        <motion.div
+          className="absolute inset-x-0 top-0 h-0.5 bg-[#beff50]"
+          initial={{ scaleX: 0, transformOrigin: "left" }}
+          animate={{ scaleX: (safeActiveIndex + 1) / AI_ACTIVITY_STEPS.length }}
+          transition={{ duration: 0.35, ease: "easeOut" }}
+        />
+        <div className="flex items-center gap-2 text-sm font-bold text-on-surface">
+          <motion.span
+            className="inline-flex size-2 rounded-full bg-[#beff50]"
+            animate={{ scale: [0.9, 1.35, 0.9], opacity: [0.65, 1, 0.65] }}
+            transition={{ duration: 1.1, repeat: Infinity, ease: "easeInOut" }}
+          />
+          AI đang làm việc
+        </div>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {AI_ACTIVITY_STEPS.map((step, index) => {
+            const Icon = step.icon;
+            const state = index < safeActiveIndex ? "done" : index === safeActiveIndex ? "active" : "idle";
+
+            return (
+              <motion.div
+                key={step.label}
+                layout
+                className={cn(
+                  "rounded-xl border px-3 py-2 transition-colors",
+                  state === "active" && "border-[#beff50] bg-[#beff50]/18 text-on-surface",
+                  state === "done" && "border-[#beff50]/50 bg-[#beff50]/10 text-on-surface",
+                  state === "idle" && "border-outline-variant/60 bg-surface/60 text-on-surface-variant"
+                )}
+                animate={state === "active" ? { y: [0, -2, 0] } : { y: 0 }}
+                transition={{ duration: 0.8, repeat: state === "active" ? Infinity : 0, ease: "easeInOut" }}
+              >
+                <div className="flex items-center gap-2">
+                  <span
+                    className={cn(
+                      "inline-flex size-7 shrink-0 items-center justify-center rounded-full",
+                      state === "idle" ? "bg-surface-container-high" : "bg-[#14140f] text-[#beff50]"
+                    )}
+                  >
+                    <Icon className="size-3.5" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-black">{step.label}</p>
+                    <p className="line-clamp-2 text-[11px] leading-snug opacity-80">{step.detail}</p>
+                  </div>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
 function ChatbotScreen({ ctx }: { ctx: Ctx }) {
   const [messages, setMessages] = useState<{
     role: "user" | "bot";
@@ -3168,17 +3270,38 @@ function ChatbotScreen({ ctx }: { ctx: Ctx }) {
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [activityIndex, setActivityIndex] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
+  useEffect(() => {
+    if (!loading) {
+      setActivityIndex(0);
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      setActivityIndex((current) => Math.min(current + 1, AI_ACTIVITY_STEPS.length - 1));
+    }, 850);
+
+    return () => window.clearInterval(interval);
+  }, [loading]);
+
+  useEffect(() => {
+    if (loading) {
+      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    }
+  }, [activityIndex, loading]);
+
   const send = async () => {
     if (!input.trim() || loading) return;
     const userMsg = { role: "user" as const, text: input.trim(), time: new Date().toISOString() };
     setMessages((m) => [...m, userMsg]);
     setInput("");
+    setActivityIndex(0);
     setLoading(true);
     try {
       const res = await experienceApi.sendAssistantChat({
@@ -3275,21 +3398,7 @@ function ChatbotScreen({ ctx }: { ctx: Ctx }) {
             </motion.div>
           ))}
           {loading && (
-            <div className="flex gap-2">
-              <div className="size-8 shrink-0 rounded-full bg-[#beff50] text-[#14140f] flex items-center justify-center">
-                <Bot className="size-4" />
-              </div>
-              <div className="bg-surface-container-high px-4 py-3 rounded-2xl rounded-tl-sm flex items-center gap-1">
-                {[0, 1, 2].map((i) => (
-                  <motion.span
-                    key={i}
-                    className="size-2 rounded-full bg-on-surface-variant"
-                    animate={{ opacity: [0.3, 1, 0.3] }}
-                    transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
-                  />
-                ))}
-              </div>
-            </div>
+            <AiWorkingIndicator activeIndex={activityIndex} />
           )}
         </div>
         <div className="p-4 border-t-2 border-outline-variant flex gap-2 min-w-0">
