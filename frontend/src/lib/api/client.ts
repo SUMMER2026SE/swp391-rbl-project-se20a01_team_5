@@ -279,6 +279,13 @@ export interface EtaDTO {
   estimatedArrivalAt?: string;
   actualArrivalAt?: string;
   updatedAt?: string;
+  // UX refactor extensions — backend may return these for richer journey UX.
+  // Marked optional so existing callers don't break if backend omits them.
+  busPlate?: string;
+  driverName?: string;
+  occupancy?: number;
+  capacity?: number;
+  speedKmh?: number;
 }
 
 export const transportApi = {
@@ -419,6 +426,7 @@ export const studentApi = {
     return apiFetch.form<VerificationView>("/students/me/verification", form);
   },
   currentRegistration: () => apiFetch.get<RegistrationDTO>("/students/me/route-registrations/current"),
+  registrations: () => apiFetch.get<RegistrationDTO[]>("/students/me/route-registrations"),
   registerRoute: (data: { routeId: number; boardingStopId: number; alightingStopId: number; effectiveDate?: string }) =>
     apiFetch.post<RegistrationDTO>("/students/me/route-registrations", data),
   updateRegistration: (registrationId: number, data: { routeId: number; boardingStopId: number; alightingStopId: number; effectiveDate?: string }) =>
@@ -426,11 +434,12 @@ export const studentApi = {
   cancelRegistration: (registrationId: number, reason?: string) =>
     apiFetch.delete<void>(`/students/me/route-registrations/${registrationId}`, reason ? { reason } : undefined),
   tickets: () => apiFetch.get<PassesDashboard>("/students/me/tickets"),
-  purchaseMonthlyPass: (method = "E_WALLET") =>
-    apiFetch.post<TicketView>("/students/me/tickets/monthly-pass", { method }),
+  purchaseMonthlyPass: (method = "E_WALLET", routeId?: number) =>
+    apiFetch.post<TicketView>("/students/me/tickets/monthly-pass", { method, routeId }),
   payments: () => apiFetch.get<PaymentView[]>("/students/me/payments"),
-  createSePayOrder: (ticketType: string) => apiFetch.post<{ orderId: number; qrUrl: string; amount: number; description: string; bankCode: string; accountNo: string; accountName: string }>("/students/me/payments/sepay/order", { ticketType }),
-  getSePayOrderStatus: (orderId: number) => apiFetch.get<{ orderId: number; ticketType: string; total: number; amount?: number; description?: string; qrUrl?: string; bankCode?: string; accountNo?: string; accountName?: string; status: string; paid: boolean; paidAt?: string }>(`/students/me/payments/sepay/order/${orderId}/status`),
+  createSePayOrder: (ticketType: string, routeId?: number) =>
+    apiFetch.post<{ orderId: number; routeId?: number; routeName?: string; qrUrl: string; amount: number; description: string; bankCode: string; accountNo: string; accountName: string }>("/students/me/payments/sepay/order", { ticketType, routeId }),
+  getSePayOrderStatus: (orderId: number) => apiFetch.get<{ orderId: number; ticketType: string; routeId?: number; total: number; amount?: number; description?: string; qrUrl?: string; bankCode?: string; accountNo?: string; accountName?: string; status: string; paid: boolean; paidAt?: string }>(`/students/me/payments/sepay/order/${orderId}/status`),
   travelHistory: (page = 0, size = 20) => apiFetch.get<TravelHistoryView[]>("/students/me/travel-history", { page, size }),
 };
 

@@ -51,7 +51,8 @@ public class TicketingService {
     @Transactional
     public TicketView purchaseMonthlyPass(CurrentUser currentUser, PurchaseMonthlyPassRequest request) {
         String studentCode = requireStudentCode(currentUser);
-        ApprovedRegistration registration = ticketingRepository.approvedRegistration(studentCode)
+        Integer routeId = request == null ? null : request.routeId();
+        ApprovedRegistration registration = ticketingRepository.approvedRegistration(studentCode, routeId)
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Student must have an approved route registration"));
         LocalDate now = LocalDate.now();
         int year = now.getYear();

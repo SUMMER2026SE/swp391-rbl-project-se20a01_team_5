@@ -6,7 +6,6 @@ import { AppShell } from "@/components/bus/app-shell";
 import {
   NotificationsScreen,
   ProfileScreen,
-  SettingsScreen,
   SupportScreen,
 } from "@/components/bus/common-screens";
 import { StudentModule } from "@/components/bus/roles/student-module";
@@ -117,7 +116,7 @@ export default function Page() {
     if (activeId.endsWith("-profile")) return <ProfileScreen />;
     if (activeId.endsWith("-notifications")) return <NotificationsScreen />;
     if (activeId === "stu-support") return <SupportScreen />;
-    if (activeId === "stu-settings") return <SettingsScreen />;
+    if (activeId === "stu-settings") return <ProfileScreen />;
 
     switch (role) {
       case "student":

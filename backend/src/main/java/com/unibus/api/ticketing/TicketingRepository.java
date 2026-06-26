@@ -37,6 +37,10 @@ public class TicketingRepository {
     }
 
     public Optional<ApprovedRegistration> approvedRegistration(String studentCode) {
+        return approvedRegistration(studentCode, null);
+    }
+
+    public Optional<ApprovedRegistration> approvedRegistration(String studentCode, Integer routeId) {
         List<ApprovedRegistration> rows = jdbcTemplate.query("""
                 SELECT rr.registration_id, rr.route_id, r.route_name,
                        rr.boarding_stop_id, bs.stop_name AS boarding_stop_name,
@@ -47,6 +51,7 @@ public class TicketingRepository {
                 LEFT JOIN stops als ON als.stop_id = rr.alighting_stop_id
                 WHERE rr.student_code = ?
                   AND rr.status = 'APPROVED'
+                  AND (? IS NULL OR rr.route_id = ?)
                 ORDER BY rr.approved_at DESC NULLS LAST, rr.registered_at DESC
                 LIMIT 1
                 """, (rs, rowNum) -> new ApprovedRegistration(
@@ -56,7 +61,7 @@ public class TicketingRepository {
                         (Integer) rs.getObject("boarding_stop_id"),
                         rs.getString("boarding_stop_name"),
                         (Integer) rs.getObject("alighting_stop_id"),
-                        rs.getString("alighting_stop_name")), studentCode);
+                        rs.getString("alighting_stop_name")), studentCode, routeId, routeId);
         return rows.stream().findFirst();
     }
 

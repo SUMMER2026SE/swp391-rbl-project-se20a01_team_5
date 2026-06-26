@@ -1,12 +1,19 @@
 package com.unibus.api.ai;
 
 import java.time.OffsetDateTime;
+import java.text.Normalizer;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,6 +33,8 @@ import com.unibus.api.ai.AiLlmService.AiPrompt;
 
 @Service
 public class ChatbotService {
+
+    private static final Logger log = LoggerFactory.getLogger(ChatbotService.class);
 
     private static final String SYSTEM_PROMPT = """
             Bạn là UniBus AI Copilot cho sinh viên.
@@ -100,6 +109,21 @@ public class ChatbotService {
         Map<String, Object> context = request.context();
         Integer boardingStopId = intValue(context == null ? null : context.get("boardingStopId"));
         Integer alightingStopId = intValue(context == null ? null : context.get("alightingStopId"));
+        if (boardingStopId == null || alightingStopId == null) {
+            List<StopMention> mentions = stopMentions(request.message());
+            if (!mentions.isEmpty()) {
+                StopMention firstMention = mentions.get(0);
+                StopMention secondMention = mentions.size() > 1 ? mentions.get(1) : null;
+                if (boardingStopId == null && shouldTreatSingleMentionAsDestination(request.message(), firstMention)) {
+                    alightingStopId = alightingStopId == null ? firstMention.stopId() : alightingStopId;
+                } else if (boardingStopId == null) {
+                    boardingStopId = firstMention.stopId();
+                }
+                if (alightingStopId == null && secondMention != null) {
+                    alightingStopId = secondMention.stopId();
+                }
+            }
+        }
         String preferredDepartureTime = stringValue(context == null ? null : context.get("preferredDepartureTime"));
         @SuppressWarnings("unchecked")
         List<String> preferences = context != null && context.get("preferences") instanceof List<?>
@@ -112,6 +136,93 @@ public class ChatbotService {
                 preferences,
                 request.message(),
                 advisoryType == AdvisoryType.FARE_LOOKUP ? "cheap" : null);
+    }
+
+    private List<StopMention> stopMentions(String message) {
+        String normalizedMessage = normalizeSearchText(message);
+        if (normalizedMessage.isBlank()) {
+            return List.of();
+        }
+        List<StopMention> mentions = jdbcTemplate.query("""
+                SELECT stop_id, stop_code, stop_name
+                FROM stops
+                WHERE status = 'ACTIVE'
+                """, (rs, rowNum) -> {
+            Integer stopId = rs.getInt("stop_id");
+            String stopCode = rs.getString("stop_code");
+            String stopName = rs.getString("stop_name");
+            int index = stopMentionIndex(normalizedMessage, stopCode, stopName);
+            return index < 0 ? null : new StopMention(stopId, stopName, index);
+        }).stream()
+                .filter(mention -> mention != null)
+                .sorted(Comparator.comparingInt(StopMention::index))
+                .toList();
+        List<StopMention> unique = new ArrayList<>();
+        for (StopMention mention : mentions) {
+            if (unique.stream().noneMatch(existing -> existing.stopId().equals(mention.stopId()))) {
+                unique.add(mention);
+            }
+        }
+        return unique;
+    }
+
+    private int stopMentionIndex(String normalizedMessage, String stopCode, String stopName) {
+        int best = -1;
+        for (String alias : stopAliases(stopCode, stopName)) {
+            int index = normalizedMessage.indexOf(alias);
+            if (index >= 0 && (best < 0 || index < best)) {
+                best = index;
+            }
+        }
+        return best;
+    }
+
+    private List<String> stopAliases(String stopCode, String stopName) {
+        List<String> aliases = new ArrayList<>();
+        String name = normalizeSearchText(stopName);
+        String code = normalizeSearchText(stopCode);
+        addAlias(aliases, name);
+        addAlias(aliases, code);
+        addAlias(aliases, name.replace("dai hoc ", "").replace(" da nang", "").trim());
+        addCampusAlias(aliases, name, "bach khoa");
+        addCampusAlias(aliases, name, "fpt");
+        addCampusAlias(aliases, name, "vku");
+        addCampusAlias(aliases, name, "viet han");
+        addCampusAlias(aliases, name, "kinh te");
+        addCampusAlias(aliases, name, "duy tan");
+        addCampusAlias(aliases, name, "su pham");
+        addCampusAlias(aliases, name, "ben xe");
+        addCampusAlias(aliases, name, "cho han");
+        addCampusAlias(aliases, name, "cau rong");
+        return aliases;
+    }
+
+    private void addCampusAlias(List<String> aliases, String name, String alias) {
+        if (name.contains(alias)) {
+            addAlias(aliases, alias);
+        }
+    }
+
+    private void addAlias(List<String> aliases, String alias) {
+        if (alias != null && alias.length() >= 3 && !aliases.contains(alias)) {
+            aliases.add(alias);
+        }
+    }
+
+    private boolean shouldTreatSingleMentionAsDestination(String message, StopMention mention) {
+        String normalizedMessage = normalizeSearchText(message);
+        int destinationWord = (" " + normalizedMessage + " ").indexOf(" den ");
+        return destinationWord >= 0 && destinationWord < mention.index();
+    }
+
+    private String normalizeSearchText(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        String lower = value.toLowerCase(Locale.ROOT).replace('đ', 'd');
+        String withoutAccent = Normalizer.normalize(lower, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "");
+        return withoutAccent.replaceAll("[^a-z0-9]+", " ").trim();
     }
 
     private boolean shouldLoadRoutes(AdvisoryType advisoryType) {
@@ -243,8 +354,32 @@ public class ChatbotService {
     }
 
     private String persist(Integer userId, String role, String advisoryType, String content) {
-        // Tạm thời tắt tính năng lưu lịch sử chat vào DB để tránh lỗi thiếu bảng ai_chat_history
-        return UUID.randomUUID().toString();
+        String fallbackSessionId = UUID.randomUUID().toString();
+        try {
+            String sessionId = jdbcTemplate.query("""
+                    SELECT chat_session_id FROM ai_chat_history
+                    WHERE user_id = ?
+                    ORDER BY sent_at DESC, chat_history_id DESC LIMIT 1
+                    """, (rs, rowNum) -> rs.getString("chat_session_id"), userId).stream()
+                    .findFirst()
+                    .orElse(fallbackSessionId);
+            jdbcTemplate.update("""
+                    INSERT INTO ai_chat_history (user_id, chat_session_id, message_role, content, advisory_type, sent_at)
+                    VALUES (?, CAST(? AS UUID), ?, ?, ?, CURRENT_TIMESTAMP)
+                    """, userId, sessionId, role, content, storableAdvisoryType(advisoryType));
+            return sessionId;
+        } catch (DataAccessException exception) {
+            log.warn("Unable to persist AI chat history; continuing response without history: {}",
+                    exception.getMostSpecificCause().getMessage());
+            return fallbackSessionId;
+        }
+    }
+
+    private String storableAdvisoryType(String advisoryType) {
+        return switch (advisoryType) {
+            case "ROUTE_SUGGESTION", "FARE_LOOKUP", "SCHEDULE_LOOKUP", "OTHER" -> advisoryType;
+            default -> "OTHER";
+        };
     }
 
     private Integer intValue(Object value) {
@@ -273,5 +408,8 @@ public class ChatbotService {
     }
 
     private record LlmMessage(String message, AdvisoryType advisoryType) {
+    }
+
+    private record StopMention(Integer stopId, String stopName, int index) {
     }
 }

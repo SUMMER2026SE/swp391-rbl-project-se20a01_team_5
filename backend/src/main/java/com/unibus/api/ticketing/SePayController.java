@@ -35,7 +35,8 @@ public class SePayController {
         if (ticketType == null || ticketType.isBlank()) {
             ticketType = "monthly";
         }
-        Map<String, Object> orderDetails = sePayService.createOrder(currentUser, ticketType);
+        Integer routeId = parseRouteId(request.get("routeId"));
+        Map<String, Object> orderDetails = sePayService.createOrder(currentUser, ticketType, routeId);
         return ApiResponse.ok("Payment order created", orderDetails);
     }
 
@@ -57,6 +58,17 @@ public class SePayController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("success", false, "message", "Error processing webhook: " + e.getMessage()));
+        }
+    }
+
+    private Integer parseRouteId(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return Integer.valueOf(raw);
+        } catch (NumberFormatException exception) {
+            throw new com.unibus.api.common.ApiException(HttpStatus.BAD_REQUEST, "routeId must be a number");
         }
     }
 }

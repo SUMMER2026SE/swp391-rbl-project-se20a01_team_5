@@ -4,10 +4,12 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,9 +50,9 @@ public class ZaiAiLlmService implements AiLlmService {
                 .build();
         this.enabled = enabled;
         this.provider = provider == null ? "bedrock" : provider.trim();
-        this.apiKey = apiKey == null ? "" : apiKey.trim();
-        this.baseUrl = normalizeBaseUrl(baseUrl);
-        this.modelId = modelId == null || modelId.isBlank() ? "glm-4.7-flash" : modelId.trim();
+        this.apiKey = firstNonBlank(apiKey, System.getenv("ZAI_API_KEY"), windowsUserEnv("ZAI_API_KEY"));
+        this.baseUrl = normalizeBaseUrl(firstNonBlank(baseUrl, System.getenv("ZAI_BASE_URL"), windowsUserEnv("ZAI_BASE_URL")));
+        this.modelId = firstNonBlank(modelId, System.getenv("ZAI_MODEL_ID"), windowsUserEnv("ZAI_MODEL_ID"), "glm-4.7-flash");
         this.maxOutputTokens = Math.max(128, maxOutputTokens);
         this.temperature = Math.max(0, Math.min(1, temperature));
     }
@@ -126,6 +128,49 @@ public class ZaiAiLlmService implements AiLlmService {
                 ? "https://api.z.ai/api/paas/v4/"
                 : candidate.trim();
         return value.endsWith("/") ? value : value + "/";
+    }
+
+    private String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value.trim();
+            }
+        }
+        return "";
+    }
+
+    private String windowsUserEnv(String name) {
+        if (name == null || name.isBlank()) {
+            return "";
+        }
+        String osName = System.getProperty("os.name", "").toLowerCase();
+        if (!osName.contains("win")) {
+            return "";
+        }
+        try {
+            Process process = new ProcessBuilder("reg", "query", "HKCU\\Environment", "/v", name)
+                    .redirectErrorStream(true)
+                    .start();
+            boolean finished = process.waitFor(3, TimeUnit.SECONDS);
+            if (!finished) {
+                process.destroyForcibly();
+                return "";
+            }
+            String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            for (String line : output.split("\\R")) {
+                String trimmed = line.trim();
+                if (!trimmed.startsWith(name)) {
+                    continue;
+                }
+                String[] parts = trimmed.split("\\s+", 3);
+                if (parts.length == 3) {
+                    return parts[2].trim();
+                }
+            }
+        } catch (Exception ignored) {
+            return "";
+        }
+        return "";
     }
 
     private String write(Object value) {

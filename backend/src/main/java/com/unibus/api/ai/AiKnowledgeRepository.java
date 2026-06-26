@@ -79,12 +79,13 @@ public class AiKnowledgeRepository {
         return jdbcTemplate.query("""
                         SELECT mp.monthly_pass_id AS ticket_id, 'MONTHLY' AS ticket_type,
                                       mp.route_id, r.route_code, r.route_name, mp.status,
-                                      COALESCE(mp.final_fare_amount, mp.fare_amount) AS amount, mp.expires_on
+                                      COALESCE(mp.final_fare_amount, mp.fare_amount) AS amount,
+                                      mp.expires_on AS expires_at
                                FROM monthly_passes mp
                                JOIN routes r ON r.route_id = mp.route_id
                                WHERE mp.student_code = ?
                                  AND mp.status = 'ACTIVE'
-                                 AND mp.expires_on >= CURRENT_TIMESTAMP
+                                 AND mp.expires_on >= CURRENT_DATE
                                ORDER BY mp.expires_on DESC, mp.monthly_pass_id DESC
                                LIMIT 1
                 """, (rs, rowNum) -> new TicketSnapshot(

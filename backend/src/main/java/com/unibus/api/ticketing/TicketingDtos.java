@@ -12,6 +12,7 @@ public final class TicketingDtos {
     }
 
     public record PurchaseMonthlyPassRequest(
+            Integer routeId,
             @Pattern(regexp = "CASH|BANK_TRANSFER|E_WALLET|CARD") String method) {
     }
 
