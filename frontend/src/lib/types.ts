@@ -231,6 +231,9 @@ export interface Feedback {
   category: "service" | "driver" | "vehicle" | "punctuality" | "other";
   content: string;
   status: "new" | "processing" | "resolved";
+  response?: string;
+  routeName?: string;
+  tripId?: number;
   createdAt: string;
 }
 

@@ -246,6 +246,9 @@ export function mapFeedback(f: FeedbackView | ExperienceFeedbackCard): Feedback 
     category: ((f as any).category || "other") as Feedback["category"],
     content: f.content,
     status: f.status === "RESOLVED" ? "resolved" : f.status === "IN_PROGRESS" || f.status === "PROCESSING" ? "processing" : "new",
+    response: (f as any).response,
+    routeName: (f as any).routeName,
+    tripId: (f as any).tripId,
     createdAt: (f as any).createdAt || "",
   };
 }
@@ -569,22 +572,17 @@ export function useAssistantPrototypeData() {
 /** Coordinator module: dashboard + fleet + feedback + schedule */
 export function useCoordinatorPrototypeData() {
   const dashboard = useApi(() => experienceApi.coordinatorDashboard(), undefined, []);
-  const fleet = useApi(() => operationsApi.liveFleet(), undefined, []);
-  const schedule = useApi(() => operationsApi.scheduleDashboard(), undefined, []);
-  const feedback = useApi(() => experienceApi.coordinatorFeedback(), undefined, []);
-  const notifications = useApi(() => notificationApi.mine(), undefined, []);
-  const profile = useApi(() => profileApi.me(), undefined, []);
 
   const mapped = (() => {
     if (!dashboard.raw) return null;
     const d = dashboard.raw;
     return {
       user: {
-        id: String(profile.raw?.userId ?? 0),
-        name: profile.raw?.fullName || "Điều phối viên",
-        email: profile.raw?.email || "",
-        phone: profile.raw?.phoneNumber || "",
-        avatar: (profile.raw?.fullName || "").trim().slice(0, 2).toUpperCase() || "ĐP",
+        id: "0",
+        name: "Điều phối viên",
+        email: "",
+        phone: "",
+        avatar: "ĐP",
         role: "coordinator" as const,
         employeeId: "",
         status: "active" as const,
@@ -592,24 +590,23 @@ export function useCoordinatorPrototypeData() {
       } as User,
       routes: (d.routes || []).map(mapRoute),
       stops: (d.stops || []).map(mapStop),
-      fleet: (fleet.raw || []).map((v) => ({
+      fleet: (d.liveFleet || []).map((v) => ({
         ...mapBus(v as any),
         tripId: String(v.tripId),
         routeCode: "",
         driverName: v.driverName,
         conductorName: v.conductorName,
-        locationUpdatedAt: v.locationUpdatedAt,
       })),
-      feedback: (feedback.raw || []).map(mapFeedback),
+      feedback: (d.feedback || []).map(mapFeedback),
       stats: d.stats,
-      schedule: schedule.raw,
-      notifications: (notifications.raw || []).map(mapNotification),
+      schedule: null,
+      notifications: [],
       dashboard,
-      fleetRaw: fleet,
-      scheduleRaw: schedule,
-      feedbackRaw: feedback,
-      notificationsRaw: notifications,
-      profileRaw: profile,
+      fleetRaw: { raw: d.liveFleet || [], loading: false, error: null, reload: dashboard.reload },
+      scheduleRaw: { raw: null, loading: false, error: null, reload: dashboard.reload },
+      feedbackRaw: { raw: d.feedback || [], loading: false, error: null, reload: dashboard.reload },
+      notificationsRaw: { raw: [], loading: false, error: null, reload: dashboard.reload },
+      profileRaw: { raw: null, loading: false, error: null, reload: dashboard.reload },
     };
   })();
 
@@ -617,14 +614,7 @@ export function useCoordinatorPrototypeData() {
     data: mapped,
     loading: dashboard.loading,
     error: dashboard.error,
-    reload: () => {
-      dashboard.reload();
-      fleet.reload();
-      schedule.reload();
-      feedback.reload();
-      notifications.reload();
-      profile.reload();
-    },
+    reload: dashboard.reload,
   };
 }
 

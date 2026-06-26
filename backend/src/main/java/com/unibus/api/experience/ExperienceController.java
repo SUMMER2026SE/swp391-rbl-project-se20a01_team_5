@@ -137,6 +137,12 @@ public class ExperienceController {
         return ApiResponse.ok("University operations metrics retrieved", service.coordinatorByUniversity());
     }
 
+    @GetMapping("/coordinator/by-university/{universityId}/routes")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'ADMIN')")
+    ApiResponse<List<UniversityRouteOperationsMetric>> coordinatorUniversityRoutes(@PathVariable Integer universityId) {
+        return ApiResponse.ok("University route operations metrics retrieved", service.coordinatorUniversityRoutes(universityId));
+    }
+
     // Note: /coordinator/feedback is handled by CoordinatorFeedbackController (team module).
     // The coordinatorFeedback() service method is still available for the dashboard aggregate.
 
@@ -244,7 +250,6 @@ public class ExperienceController {
     ApiResponse<DriverRatingSummary> driverRatingSummary(@AuthenticationPrincipal CurrentUser currentUser) {
         return ApiResponse.ok("Driver rating summary retrieved", service.driverRatingSummary(currentUser));
     }
-
     // ===== Internal messaging (REQ-DRV-006, REQ-AST-007) =====
 
     @PostMapping("/me/messages")
