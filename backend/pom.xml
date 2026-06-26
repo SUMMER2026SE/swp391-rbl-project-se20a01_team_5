@@ -91,6 +91,10 @@
                         <artifactId>s3</artifactId>
                 </dependency>
                 <dependency>
+                        <groupId>software.amazon.awssdk</groupId>
+                        <artifactId>bedrockruntime</artifactId>
+                </dependency>
+                <dependency>
                         <groupId>org.apache.poi</groupId>
                         <artifactId>poi-ooxml</artifactId>
                         <version>5.4.1</version>

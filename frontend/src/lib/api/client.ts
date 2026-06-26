@@ -516,6 +516,52 @@ export interface ExperienceRouteCard {
   stops?: ExperienceStopCard[];
 }
 
+export interface AiAction {
+  type: string;
+  label: string;
+  routeId?: number;
+  boardingStopId?: number;
+  alightingStopId?: number;
+}
+
+export interface AiSource {
+  type: string;
+  label: string;
+  detail?: string;
+}
+
+export interface AiRouteSuggestionCard {
+  routeId: number;
+  routeCode?: string;
+  routeName: string;
+  score?: number;
+  confidence?: number;
+  reasons?: string[];
+  stops?: {
+    stopId: number;
+    stopCode?: string;
+    stopName: string;
+    stopOrder: number;
+    minutesFromPreviousStop?: number;
+  }[];
+  nextDepartures?: string[];
+  singleFare?: number;
+  monthlyFare?: number;
+  subsidyAmount?: number;
+  finalFare?: number;
+  actions?: AiAction[];
+}
+
+export interface AiChatResponse {
+  message: string;
+  mode: "BEDROCK" | "FALLBACK" | string;
+  advisoryType: string;
+  routeSuggestions?: AiRouteSuggestionCard[];
+  actions?: AiAction[];
+  sources?: AiSource[];
+  sessionId?: string;
+}
+
 export interface ExperienceRegistrationCard {
   registrationId: number;
   routeId: number;
@@ -713,6 +759,13 @@ export interface CoordinatorUniversityMetric {
 export const experienceApi = {
   studentDashboard: () => apiFetch.get<StudentDashboardView>("/students/me/dashboard"),
   studentRouteSuggestions: () => apiFetch.get<ExperienceRouteCard[]>("/students/me/route-suggestions"),
+  postRouteSuggestions: (data: {
+    boardingStopId?: number;
+    alightingStopId?: number;
+    preferredDepartureTime?: string;
+    preferences?: string[];
+    naturalLanguageQuery?: string;
+  }) => apiFetch.post<AiRouteSuggestionCard[]>("/students/me/route-suggestions", data),
   studentLostItems: () => apiFetch.get<ExperienceLostItemCard[]>("/students/me/lost-items"),
   createStudentLostItem: (data: { itemDescription: string; tripId?: number }) =>
     apiFetch.post<ExperienceLostItemCard>("/students/me/lost-items", data),
@@ -720,6 +773,15 @@ export const experienceApi = {
   createStudentSupportTicket: (data: { title: string; content: string; supportType?: string }) =>
     apiFetch.post<ExperienceSupportTicketCard>("/students/me/support-tickets", data),
   studentAssistantChat: () => apiFetch.get<{ chatHistoryId: number; role: string; content: string; sentAt?: string }[]>("/students/me/assistant-chat"),
+  sendAssistantChat: (data: {
+    message: string;
+    context?: {
+      boardingStopId?: number;
+      alightingStopId?: number;
+      preferredDepartureTime?: string;
+      preferences?: string[];
+    };
+  }) => apiFetch.post<AiChatResponse>("/students/me/assistant-chat", data),
   driverDashboard: () => apiFetch.get<DriverDashboardView>("/driver/dashboard"),
   driverFeedback: () => apiFetch.get<ExperienceFeedbackCard[]>("/driver/feedback"),
   assistantDashboard: () => apiFetch.get<AssistantDashboardView>("/conductor/dashboard"),

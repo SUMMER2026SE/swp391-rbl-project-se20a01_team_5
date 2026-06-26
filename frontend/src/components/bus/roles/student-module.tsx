@@ -173,6 +173,7 @@ import {
   type PaymentView,
   type TicketView,
   type EtaDTO,
+  type AiRouteSuggestionCard,
   ApiError,
 } from "@/lib/api/client";
 import { ProtectedImage } from "@/components/bus/protected-image";
@@ -2319,10 +2320,11 @@ function HistoryScreen({ ctx }: { ctx: Ctx }) {
 function AIScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
   // Form state
   const [freeTime, setFreeTime] = useState("07:00");
+  const [boarding, setBoarding] = useState("");
   const [destination, setDestination] = useState("");
   const [prefs, setPrefs] = useState<string[]>(["fast", "cheap"]);
   const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState<any[] | null>(null);
+  const [results, setResults] = useState<AiRouteSuggestionCard[] | null>(null);
 
   const togglePref = (p: string) =>
     setPrefs((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
@@ -2335,29 +2337,26 @@ function AIScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => v
   ];
 
   const analyze = async () => {
+    if (!boarding || !destination) {
+      toast.error("Bạn hãy chọn đủ trạm lên và trạm xuống để AI lọc tuyến chính xác.");
+      return;
+    }
+    if (boarding === destination) {
+      toast.error("Trạm lên và trạm xuống phải khác nhau.");
+      return;
+    }
     setLoading(true);
     setResults(null);
     try {
-      const list = await experienceApi.studentRouteSuggestions();
-      const destinationStop = ctx.stops.find((stop: any) => String(stop.id) === destination);
-      const sorted = [...list].sort((a: any, b: any) => {
-        const destinationBonusA = destinationStop && a.stops?.some(
-          (stop: any) => String(stop.stopId ?? stop.id) === destination
-        ) ? 20 : 0;
-        const destinationBonusB = destinationStop && b.stops?.some(
-          (stop: any) => String(stop.stopId ?? stop.id) === destination
-        ) ? 20 : 0;
-        const score = (route: any, bonus: number) => {
-          let value = bonus + (route.universityLinked ? 30 : 0);
-          if (prefs.includes("fast")) value -= route.estimatedMinutes || 60;
-          if (prefs.includes("cheap")) value -= (route.monthlyFare || 0) / 10000;
-          if (prefs.includes("fewer-stops")) value -= route.stops?.length || 0;
-          return value;
-        };
-        return score(b, destinationBonusB) - score(a, destinationBonusA);
+      const list = await experienceApi.postRouteSuggestions({
+        boardingStopId: Number(boarding),
+        alightingStopId: Number(destination),
+        preferredDepartureTime: freeTime,
+        preferences: prefs,
+        naturalLanguageQuery: `Gợi ý tuyến ${prefs.join(", ")} lúc ${freeTime}`,
       });
       await new Promise((resolve) => setTimeout(resolve, 600));
-      setResults(sorted);
+      setResults(list);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Không thể tải gợi ý tuyến");
       setResults([]);
@@ -2377,15 +2376,20 @@ function AIScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => v
   // Tính "Điểm phù hợp" (matchScore 1-5) — dựa trên prefs + route data
   const getMatchScore = (r: any, idx: number) => {
     let score = 5 - idx; // top = 5, second = 4, third = 3
-    if (prefs.includes("cheap") && (r.monthlyFare ?? 999999) < 200000) score = Math.min(5, score + 1);
-    if (prefs.includes("fast") && (r.estimatedMinutes ?? 60) < 30) score = Math.min(5, score + 1);
+    if (prefs.includes("cheap") && (r.finalFare ?? r.monthlyFare ?? 999999) < 200000) score = Math.min(5, score + 1);
     if (prefs.includes("fewer-stops") && (r.stops?.length ?? 99) < 5) score = Math.min(5, score + 1);
-    if (r.universityLinked) score = Math.min(5, score + 1);
+    if ((r.reasons || []).some((reason: string) => reason.toLowerCase().includes("trường"))) score = Math.min(5, score + 1);
     return Math.max(1, Math.min(5, score - 1));
   };
 
   // Tạo "Lý do" gợi ý tự động dựa trên prefs + route data
   const getReason = (r: any) => {
+    if (Array.isArray(r.reasons) && r.reasons.length > 0) {
+      const next = Array.isArray(r.nextDepartures) && r.nextDepartures.length
+        ? `Chuyến gần nhất: ${r.nextDepartures.join(", ")}`
+        : "";
+      return [...r.reasons, next].filter(Boolean).join(" · ");
+    }
     const reasons: string[] = [];
     if (r.universityLinked) reasons.push("Tuyến liên kết trực tiếp với trường bạn");
     if (prefs.includes("fast") && (r.estimatedMinutes ?? 0) > 0) reasons.push(`Chỉ ${r.estimatedMinutes} phút đi xe`);
@@ -2435,7 +2439,7 @@ function AIScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => v
           </div>
 
           <div className="relative mt-6 space-y-4 min-w-0">
-            <div className="grid sm:grid-cols-2 gap-4 min-w-0">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 min-w-0">
               <div className="space-y-2 min-w-0">
                 <Label className="text-xs font-bold opacity-70 uppercase tracking-wide">Giờ rảnh</Label>
                 <input
@@ -2446,10 +2450,23 @@ function AIScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => v
                 />
               </div>
               <div className="space-y-2 min-w-0">
-                <Label className="text-xs font-bold opacity-70 uppercase tracking-wide">Điểm đến</Label>
+                <Label className="text-xs font-bold opacity-70 uppercase tracking-wide">Trạm lên</Label>
+                <Select value={boarding} onValueChange={setBoarding}>
+                  <SelectTrigger className="h-12 rounded-xl bg-white border-2 border-[#14140f]/20 text-[#14140f] font-bold">
+                    <SelectValue placeholder="Chọn trạm lên" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ctx.stops.map((s: any) => (
+                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2 min-w-0">
+                <Label className="text-xs font-bold opacity-70 uppercase tracking-wide">Trạm xuống</Label>
                 <Select value={destination} onValueChange={setDestination}>
                   <SelectTrigger className="h-12 rounded-xl bg-white border-2 border-[#14140f]/20 text-[#14140f] font-bold">
-                    <SelectValue placeholder="Chọn điểm đến" />
+                    <SelectValue placeholder="Chọn trạm xuống" />
                   </SelectTrigger>
                   <SelectContent>
                     {ctx.stops.map((s: any) => (
@@ -2513,7 +2530,7 @@ function AIScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => v
         <EmptyState
           icon={<Sparkles className="size-7" />}
           title="Sẵn sàng phân tích"
-          description="Nhập giờ rảnh, điểm đến và sở thích bên trên, rồi nhấn 'Phân tích' để AI gợi ý 3 tuyến phù hợp nhất."
+          description="Nhập giờ rảnh, trạm lên, trạm xuống và sở thích bên trên, rồi nhấn 'Phân tích' để AI gợi ý 3 tuyến phù hợp nhất."
         />
       )}
 
@@ -2525,17 +2542,17 @@ function AIScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => v
           </p>
           {results.slice(0, 3).map((r: any, idx: number) => {
             const route = ctx.routes.find((x: any) => x.id === String(r.routeId)) || r;
-            const isUni = !!r.universityLinked;
+            const isUni = (r.reasons || []).some((reason: string) => reason.toLowerCase().includes("trường"));
             const rankColors = [
               { bg: "#14140f", fg: "#beff50", label: "#1 TỐT NHẤT" },
               { bg: "#144fcc", fg: "#ffffff", label: "#2 PHÙ HỢP" },
               { bg: "#ff8c5f", fg: "#14140f", label: "#3 THAM KHẢO" },
             ];
             const rank = rankColors[idx] ?? { bg: "#14140f", fg: "#beff50", label: `#${idx + 1}` };
-            const confidence = getConfidence(idx, results.length);
+            const confidence = r.confidence ?? getConfidence(idx, results.length);
             const matchScore = getMatchScore(r, idx);
             const reason = getReason(r);
-            const fare = r.singleFare ?? r.monthlyFare ?? route.fare ?? 0;
+            const fare = r.finalFare ?? r.monthlyFare ?? r.singleFare ?? route.fare ?? 0;
 
             return (
               <StaggerItem key={r.routeId || idx}>
@@ -2554,8 +2571,8 @@ function AIScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => v
                         <p className="text-base font-bold truncate">{r.routeName || route.name}</p>
                         <p className="text-xs opacity-70">
                           {r.routeCode || route.code}
-                          {(r.estimatedMinutes || route.durationMin) ? ` · ${r.estimatedMinutes || route.durationMin} phút` : ""}
-                          {r.distanceKm ? ` · ${r.distanceKm}km` : ""}
+                          {route.durationMin ? ` · ${route.durationMin} phút` : ""}
+                          {r.score ? ` · điểm ${r.score}` : ""}
                         </p>
                       </div>
                     </div>
@@ -2636,7 +2653,13 @@ function AIScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => v
 // Screen 10: Chatbot
 // =============================================================================
 function ChatbotScreen({ ctx }: { ctx: Ctx }) {
-  const [messages, setMessages] = useState<{ role: "user" | "bot"; text: string; time: string }[]>([
+  const [messages, setMessages] = useState<{
+    role: "user" | "bot";
+    text: string;
+    time: string;
+    mode?: string;
+    routeSuggestions?: AiRouteSuggestionCard[];
+  }[]>([
     {
       role: "bot",
       text: `Xin chào ${ctx.user.name?.split(" ").slice(-1)[0] || "bạn"}! Mình là trợ lý ảo UniBus. Mình có thể giúp bạn tra cứu tuyến, giá vé, lịch xe... Hôm nay bạn cần hỗ trợ gì?`,
@@ -2658,18 +2681,19 @@ function ChatbotScreen({ ctx }: { ctx: Ctx }) {
     setInput("");
     setLoading(true);
     try {
-      const res = await fetch("/api/v1/students/me/assistant-chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMsg.text }),
+      const res = await experienceApi.sendAssistantChat({
+        message: userMsg.text,
+        context: {
+          preferences: ["fast", "cheap"],
+        },
       });
-      let botReply = "Mình đã ghi nhận câu hỏi của bạn. Vui lòng đợi nhân viên hỗ trợ phản hồi.";
-      if (res.ok) {
-        const data = await res.json();
-        if (data?.reply) botReply = data.reply;
-        else if (data?.data?.reply) botReply = data.data.reply;
-      }
-      setMessages((m) => [...m, { role: "bot", text: botReply, time: new Date().toISOString() }]);
+      setMessages((m) => [...m, {
+        role: "bot",
+        text: res.message || "Mình đã phân tích dữ liệu UniBus hiện có cho bạn.",
+        time: new Date().toISOString(),
+        mode: res.mode,
+        routeSuggestions: res.routeSuggestions || [],
+      }]);
     } catch {
       setMessages((m) => [...m, { role: "bot", text: "Xin lỗi, mình không thể trả lời lúc này. Vui lòng thử lại sau.", time: new Date().toISOString() }]);
     } finally {
@@ -2703,13 +2727,50 @@ function ChatbotScreen({ ctx }: { ctx: Ctx }) {
               </div>
               <div
                 className={cn(
-                  "px-4 py-2.5 rounded-2xl text-sm break-words min-w-0",
+                  "px-4 py-2.5 rounded-2xl text-sm break-words min-w-0 space-y-3",
                   m.role === "user"
                     ? "bg-primary text-on-primary rounded-tr-sm"
                     : "bg-surface-container-high text-on-surface rounded-tl-sm"
                 )}
               >
-                {m.text}
+                <p>{m.text}</p>
+                {m.mode && (
+                  <span className={cn(
+                    "inline-flex h-6 items-center rounded-full px-2 text-[10px] font-bold",
+                    m.mode === "BEDROCK" ? "bg-[#beff50] text-[#14140f]" : "bg-warning-container text-on-warning-container"
+                  )}>
+                    {m.mode === "BEDROCK" ? "AWS Bedrock" : "Fallback"}
+                  </span>
+                )}
+                {!!m.routeSuggestions?.length && (
+                  <div className="space-y-2">
+                    {m.routeSuggestions.slice(0, 3).map((route) => (
+                      <div key={route.routeId} className="rounded-xl border border-outline-variant bg-surface p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="font-bold truncate">{route.routeCode || `T-${route.routeId}`} · {route.routeName}</p>
+                            <p className="text-xs text-on-surface-variant mt-1">
+                              {(route.reasons || []).slice(0, 2).join(" · ") || "Gợi ý từ dữ liệu tuyến hiện tại"}
+                            </p>
+                          </div>
+                          <span className="shrink-0 rounded-full bg-[#beff50] px-2 py-1 text-[10px] font-black text-[#14140f]">
+                            {route.confidence ?? 70}%
+                          </span>
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                          <span className="rounded-full bg-surface-container-high px-2 py-1">
+                            Vé tháng: {route.finalFare ? formatVND(route.finalFare) : "—"}
+                          </span>
+                          {!!route.nextDepartures?.length && (
+                            <span className="rounded-full bg-surface-container-high px-2 py-1">
+                              Chuyến: {route.nextDepartures.join(", ")}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </motion.div>
           ))}
