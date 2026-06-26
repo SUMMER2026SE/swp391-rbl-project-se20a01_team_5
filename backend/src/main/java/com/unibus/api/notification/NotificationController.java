@@ -52,7 +52,7 @@ public class NotificationController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('DISPATCHER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     ApiResponse<NotificationView> create(
             @AuthenticationPrincipal CurrentUser currentUser,
             @Valid @RequestBody CreateNotificationRequest request) {

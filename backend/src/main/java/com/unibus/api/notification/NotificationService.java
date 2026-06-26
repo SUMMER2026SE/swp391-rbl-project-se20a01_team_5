@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.unibus.api.common.ApiException;
 import com.unibus.api.notification.NotificationDtos.CreateNotificationRequest;
 import com.unibus.api.notification.NotificationDtos.NotificationView;
+import com.unibus.api.realtime.RealtimePublisher;
 import com.unibus.api.security.CurrentUser;
 import com.unibus.api.user.model.UserRole;
 
@@ -20,9 +21,12 @@ public class NotificationService {
     private static final Pattern ROUTE_TARGET = Pattern.compile("route_(\\d+)");
 
     private final NotificationRepository notificationRepository;
+    private final RealtimePublisher realtimePublisher;
 
-    public NotificationService(NotificationRepository notificationRepository) {
+    public NotificationService(NotificationRepository notificationRepository,
+            RealtimePublisher realtimePublisher) {
         this.notificationRepository = notificationRepository;
+        this.realtimePublisher = realtimePublisher;
     }
 
     @Transactional(readOnly = true)
@@ -47,9 +51,7 @@ public class NotificationService {
     @Transactional
     public NotificationView create(CurrentUser currentUser, CreateNotificationRequest request) {
         Audience audience = parseAudience(request.target());
-        List<Integer> recipients = audience.staffOnly()
-                ? notificationRepository.findStaffRecipientUserIds()
-                : notificationRepository.findRecipientUserIds(audience.targetRole(), audience.routeId());
+        List<Integer> recipients = notificationRepository.findRecipientUserIds(request.target(), audience.targetRole(), audience.routeId());
         if (recipients.isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "No notification recipients found");
         }
@@ -63,6 +65,9 @@ public class NotificationService {
                     type,
                     recipientUserId,
                     currentUser.userId());
+            // Push to recipient via WebSocket for instant notification
+            realtimePublisher.pushNotification(recipientUserId.longValue(),
+                    request.title().trim(), request.content().trim(), type);
             if (first == null) {
                 first = created;
             }
@@ -74,12 +79,9 @@ public class NotificationService {
         String normalized = target == null ? "" : target.trim().toLowerCase();
         Matcher matcher = ROUTE_TARGET.matcher(normalized);
         if (matcher.matches()) {
-            return new Audience(UserRole.STUDENT, Integer.parseInt(matcher.group(1)), false);
+            return new Audience(UserRole.STUDENT, Integer.parseInt(matcher.group(1)));
         }
-        if ("all_staffs".equals(normalized)) {
-            return new Audience(null, null, true);
-        }
-        return new Audience(notificationRepository.targetRoleFrom(normalized).orElse(null), null, false);
+        return new Audience(notificationRepository.targetRoleFrom(normalized).orElse(null), null);
     }
 
     private void validatePage(int page, int size) {
@@ -88,6 +90,6 @@ public class NotificationService {
         }
     }
 
-    private record Audience(UserRole targetRole, Integer routeId, boolean staffOnly) {
+    private record Audience(UserRole targetRole, Integer routeId) {
     }
 }

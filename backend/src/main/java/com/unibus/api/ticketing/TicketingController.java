@@ -17,6 +17,8 @@ import com.unibus.api.ticketing.TicketingDtos.CreateVnpayPaymentRequest;
 import com.unibus.api.ticketing.TicketingDtos.PassesDashboard;
 import com.unibus.api.ticketing.TicketingDtos.PaymentView;
 import com.unibus.api.ticketing.TicketingDtos.PurchaseMonthlyPassRequest;
+import com.unibus.api.ticketing.TicketingDtos.PurchaseSingleTripTicketRequest;
+import com.unibus.api.ticketing.TicketingDtos.SingleTripTicketView;
 import com.unibus.api.ticketing.TicketingDtos.TicketView;
 import com.unibus.api.ticketing.TicketingDtos.VnpayPaymentUrlView;
 
@@ -44,6 +46,21 @@ public class TicketingController {
             @AuthenticationPrincipal CurrentUser currentUser,
             @Valid @RequestBody(required = false) PurchaseMonthlyPassRequest request) {
         return ApiResponse.ok("Monthly pass purchased", ticketingService.purchaseMonthlyPass(currentUser, request));
+    }
+
+    @PostMapping("/tickets/single-trip")
+    ApiResponse<SingleTripTicketView> purchaseSingleTripTicket(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @Valid @RequestBody PurchaseSingleTripTicketRequest request) {
+        return ApiResponse.ok("Single-trip ticket purchased",
+                ticketingService.purchaseSingleTripTicket(currentUser, request));
+    }
+
+    @GetMapping("/tickets/single-trip")
+    ApiResponse<List<SingleTripTicketView>> listSingleTripTickets(
+            @AuthenticationPrincipal CurrentUser currentUser) {
+        return ApiResponse.ok("Single-trip tickets retrieved",
+                ticketingService.listSingleTripTickets(currentUser));
     }
 
     @GetMapping("/payments")

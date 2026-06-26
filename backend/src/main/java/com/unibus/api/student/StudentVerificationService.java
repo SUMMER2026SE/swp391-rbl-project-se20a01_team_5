@@ -18,6 +18,7 @@ import com.unibus.api.storage.StoredFile;
 import com.unibus.api.student.dto.StudentVerificationDtos.VerificationView;
 import com.unibus.api.student.model.StudentVerification;
 import com.unibus.api.student.model.StudentVerificationStatus;
+import com.unibus.api.university.SubsidyService;
 import com.unibus.api.user.StudentRepository;
 import com.unibus.api.user.UserRepository;
 import com.unibus.api.user.model.Student;
@@ -27,10 +28,18 @@ import com.unibus.api.user.model.UserRole;
 @Service
 public class StudentVerificationService {
 
+    private static final long MAX_CARD_IMAGE_BYTES = 10L * 1024L * 1024L;
+    private static final List<String> ALLOWED_CARD_IMAGE_TYPES = List.of(
+            "image/jpeg",
+            "image/jpg",
+            "image/png",
+            "image/webp");
+
     private final StudentVerificationRepository verificationRepository;
     private final UserRepository userRepository;
     private final StudentRepository studentRepository;
     private final UniversityCatalog universityCatalog;
+    private final SubsidyService subsidyService;
     private final StudentCardOcrService studentCardOcrService;
     private final FileStorageService fileStorageService;
 
@@ -39,12 +48,14 @@ public class StudentVerificationService {
             UserRepository userRepository,
             StudentRepository studentRepository,
             UniversityCatalog universityCatalog,
+            SubsidyService subsidyService,
             StudentCardOcrService studentCardOcrService,
             FileStorageService fileStorageService) {
         this.verificationRepository = verificationRepository;
         this.userRepository = userRepository;
         this.studentRepository = studentRepository;
         this.universityCatalog = universityCatalog;
+        this.subsidyService = subsidyService;
         this.studentCardOcrService = studentCardOcrService;
         this.fileStorageService = fileStorageService;
     }
@@ -65,6 +76,7 @@ public class StudentVerificationService {
         if (cardImage == null || cardImage.isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Student card image is required");
         }
+        validateCardImage(cardImage);
         String allowedUniversity = universityCatalog.requireAllowed(university);
         String normalizedStudentCode = studentCode.trim().toUpperCase();
 
@@ -89,6 +101,7 @@ public class StudentVerificationService {
         StudentVerification verification = new StudentVerification();
         verification.setUser(user);
         verification.setUniversity(allowedUniversity);
+        verification.setUniversityId(subsidyService.universityIdForName(allowedUniversity));
         verification.setStudentCode(normalizedStudentCode);
         verification.setCardImageUrl(storeCardImage(user.getId(), cardImage));
         verification.setOcrFullName(blankToNull(ocrResult.fullName()));
@@ -136,6 +149,9 @@ public class StudentVerificationService {
         student.setStudentCode(verification.getStudentCode());
         student.setUser(user);
         student.setUniversity(verification.getUniversity());
+        student.setUniversityId(verification.getUniversityId() == null
+                ? subsidyService.universityIdForName(verification.getUniversity())
+                : verification.getUniversityId());
         studentRepository.save(student);
 
         OffsetDateTime timestamp = now();
@@ -217,6 +233,16 @@ public class StudentVerificationService {
                 });
     }
 
+    private void validateCardImage(MultipartFile cardImage) {
+        if (cardImage.getSize() > MAX_CARD_IMAGE_BYTES) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Student card image must be 10MB or smaller");
+        }
+        String contentType = cardImage.getContentType();
+        if (contentType == null || !ALLOWED_CARD_IMAGE_TYPES.contains(contentType.toLowerCase())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Student card image must be JPEG, PNG, or WebP");
+        }
+    }
+
     private StudentVerification requireVerification(Long verificationId) {
         return verificationRepository.findById(verificationId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Student verification not found"));
@@ -260,6 +286,7 @@ public class StudentVerificationService {
                 null,
                 null,
                 null,
+                null,
                 null);
     }
 
@@ -276,6 +303,7 @@ public class StudentVerificationService {
                 user.getFullName(),
                 verification.getStatus(),
                 verification.getUniversity(),
+                verification.getUniversityId(),
                 verification.getStudentCode(),
                 cardImageUrl,
                 verification.getOcrFullName(),

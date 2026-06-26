@@ -5,5 +5,6 @@ public enum UserRole {
     DRIVER,
     CONDUCTOR,
     DISPATCHER,
+    UNIVERSITY_ADMIN,
     ADMIN
 }

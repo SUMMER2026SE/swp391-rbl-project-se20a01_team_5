@@ -39,6 +39,9 @@ public class StudentVerification {
     @Column(nullable = false, length = 150)
     private String university;
 
+    @Column(name = "university_id")
+    private Integer universityId;
+
     @Column(name = "student_code", nullable = false, length = 20)
     private String studentCode;
 

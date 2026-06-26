@@ -64,7 +64,7 @@ public class RouteRegistrationService {
             throw new ApiException(HttpStatus.CONFLICT, "Student already has an active route registration");
         }
         RouteSelection selection = transportService.requireValidSelection(
-                request.routeId(), request.boardingStopId(), request.alightingStopId());
+                currentUser, request.routeId(), request.boardingStopId(), request.alightingStopId());
         return toResponse(saveRegistration(student, selection, request.effectiveDate(), null));
     }
 
@@ -75,7 +75,21 @@ public class RouteRegistrationService {
         RouteRegistration existing = ownedRegistration(student, registrationId);
         requireActive(existing);
         RouteSelection selection = transportService.requireValidSelection(
-                request.routeId(), request.boardingStopId(), request.alightingStopId());
+                currentUser, request.routeId(), request.boardingStopId(), request.alightingStopId());
+
+        if (existing.getRoute().getId().equals(selection.route().getId())) {
+            existing.setBoardingStop(selection.boardingStop());
+            existing.setAlightingStop(selection.alightingStop());
+            existing.setEffectiveDate(request.effectiveDate() == null ? existing.getEffectiveDate() : request.effectiveDate());
+            return toResponse(routeRegistrationRepository.save(existing));
+        }
+
+        if (routeRegistrationRepository.countActiveMonthlyPassesOnDifferentRoute(
+                student.getStudentCode(), selection.route().getId()) > 0) {
+            throw new ApiException(HttpStatus.CONFLICT,
+                    "Active monthly pass locks the current route until the pass expires");
+        }
+
         existing.setStatus(RegistrationStatus.CANCELLED);
         existing.setCancellationReason("Changed to a new route registration");
         routeRegistrationRepository.save(existing);
@@ -87,6 +101,10 @@ public class RouteRegistrationService {
         Student student = findStudent(currentUser);
         RouteRegistration registration = ownedRegistration(student, registrationId);
         requireActive(registration);
+        if (routeRegistrationRepository.countActiveMonthlyPasses(student.getStudentCode()) > 0) {
+            throw new ApiException(HttpStatus.CONFLICT,
+                    "Active monthly pass locks the current route registration until the pass expires");
+        }
         registration.setStatus(RegistrationStatus.CANCELLED);
         registration.setCancellationReason(reason == null || reason.isBlank() ? "Cancelled by student" : reason.trim());
         routeRegistrationRepository.save(registration);

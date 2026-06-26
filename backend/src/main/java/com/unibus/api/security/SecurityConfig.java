@@ -58,6 +58,10 @@ public class SecurityConfig {
                                 "/api/v1/auth/forgot-password/**",
                                 "/api/v1/payments/vnpay-return",
                                 "/api/v1/users/*/avatar",
+                                "/api/v1/payments/sepay/webhook",
+                                "/sepay_webhook.php",
+                                // WebSocket handshake endpoints - JWT is verified via query param in the WebSocketConfig
+                                "/ws/**",
                                 "/error").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(exceptions -> exceptions
