@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from 'react';
+import { Suspense, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { CheckCircle2, CreditCard, Loader2, ShieldCheck, XCircle } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
@@ -9,6 +9,14 @@ import { ticketingApi } from '@/services/api';
 const money = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' });
 
 export default function MockVnpayPaymentPage() {
+  return (
+    <Suspense fallback={<MockPaymentShell />}>
+      <MockVnpayPaymentContent />
+    </Suspense>
+  );
+}
+
+function MockVnpayPaymentContent() {
   const searchParams = useSearchParams();
   const paymentId = searchParams.get('paymentId');
   const txnRef = searchParams.get('txnRef');
@@ -18,12 +26,12 @@ export default function MockVnpayPaymentPage() {
 
   const formattedAmount = useMemo(() => {
     const value = Number(amount || 0);
-    return value > 0 ? money.format(value) : 'Chưa có';
+    return value > 0 ? money.format(value) : 'Chua co';
   }, [amount]);
 
   const finishPayment = async (status) => {
     if (!paymentId) {
-      setError('Không tìm thấy mã thanh toán demo.');
+      setError('Khong tim thay ma thanh toan demo.');
       return;
     }
 
@@ -51,9 +59,9 @@ export default function MockVnpayPaymentPage() {
             <div className="inline-flex items-center gap-2 rounded-2xl bg-brand-primary/20 px-4 py-2 text-sm font-black text-brand-text mb-4">
               <ShieldCheck className="w-4 h-4" /> VNPay Demo Mode
             </div>
-            <h1 className="text-3xl font-black text-brand-text mb-2">Giả lập thanh toán VNPay</h1>
+            <h1 className="text-3xl font-black text-brand-text mb-2">Gia lap thanh toan VNPay</h1>
             <p className="text-brand-text/60 font-medium max-w-xl">
-              Dùng màn hình này để demo luồng callback VNPay khi chưa có merchant sandbox credentials.
+              Dung man hinh nay de demo luong callback VNPay khi chua co merchant sandbox credentials.
             </p>
           </div>
           <div className="w-14 h-14 rounded-2xl bg-brand-surface flex items-center justify-center">
@@ -68,9 +76,9 @@ export default function MockVnpayPaymentPage() {
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-          <Info label="Mã thanh toán" value={paymentId || 'Chưa có'} />
-          <Info label="Mã giao dịch" value={txnRef || 'Chưa có'} />
-          <Info label="Số tiền" value={formattedAmount} />
+          <Info label="Ma thanh toan" value={paymentId || 'Chua co'} />
+          <Info label="Ma giao dich" value={txnRef || 'Chua co'} />
+          <Info label="So tien" value={formattedAmount} />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -80,7 +88,7 @@ export default function MockVnpayPaymentPage() {
             className="rounded-2xl bg-brand-success text-white py-4 font-black hover:brightness-95 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
           >
             {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle2 className="w-5 h-5" />}
-            Thanh toán thành công
+            Thanh toan thanh cong
           </button>
           <button
             onClick={() => finishPayment('failed')}
@@ -88,14 +96,26 @@ export default function MockVnpayPaymentPage() {
             className="rounded-2xl bg-brand-danger text-white py-4 font-black hover:brightness-95 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
           >
             {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <XCircle className="w-5 h-5" />}
-            Thanh toán thất bại
+            Thanh toan that bai
           </button>
         </div>
 
         <div className="mt-6 flex justify-center">
           <Link href="/student/payment" className="rounded-2xl bg-brand-surface px-5 py-3 font-bold text-brand-text hover:bg-brand-text hover:text-white transition-colors">
-            Quay lại thanh toán
+            Quay lai thanh toan
           </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MockPaymentShell() {
+  return (
+    <div className="h-full flex items-center justify-center font-sans p-6">
+      <div className="w-full max-w-3xl bg-white rounded-3xl border border-black/5 shadow-sm p-8">
+        <div className="flex items-center justify-center py-20 text-brand-text/60 font-bold">
+          <Loader2 className="w-5 h-5 animate-spin mr-2" /> Dang tai thong tin thanh toan...
         </div>
       </div>
     </div>
