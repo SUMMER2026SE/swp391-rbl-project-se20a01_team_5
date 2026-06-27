@@ -432,7 +432,7 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
     if (!tripId && ctx.conductorTrips.length > 0) {
       setTripId(ctx.conductorTrips[0].tripId);
     }
-  }, [ctx.conductorTrips]);
+  }, [ctx.conductorTrips, tripId]);
 
   const loadTickets = useCallback(async () => {
     if (!tripId) return;
@@ -772,7 +772,7 @@ function AssistantIncident({ ctx }: { ctx: Ctx }) {
 
   useEffect(() => {
     if (!tripId && ctx.conductorTrips.length > 0) setTripId(ctx.conductorTrips[0].tripId);
-  }, [ctx.conductorTrips]);
+  }, [ctx.conductorTrips, tripId]);
 
   const submit = async () => {
     if (!tripId || !description.trim()) {

@@ -62,7 +62,7 @@ public class ExperienceRepository {
         List<HistoryCard> history = studentCode == null ? List.of() : history(studentCode, 5);
         List<DashboardStat> stats = List.of(
                 stat("Tuyến khả dụng", routes.size(), "tuyến", "primary"),
-                stat("Tr?m ph?c v?", stops.size(), "tr?m", "secondary"),
+                stat("Trạm phục vụ", stops.size(), "trạm", "secondary"),
                 stat("Lịch sử chuyến", historyCount(studentCode), "chuyến", "tertiary"),
                 stat("Thông báo chưa đọc", unreadCount(userId), "tin", "success"));
         return new StudentDashboardView(
