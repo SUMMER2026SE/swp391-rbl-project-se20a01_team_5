@@ -2766,6 +2766,7 @@ function PaymentScreen({ ctx, title }: { ctx: Ctx; title: string }) {
   const [buying, setBuying] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [countdown, setCountdown] = useState(10);
+  const canUseTestPayment = ["OKNIGGA"].includes(String(ctx.user?.studentId || ctx.university?.studentCode || "").toUpperCase());
 
   const reloadTickets = useCallback(async () => {
     setLoading(true);
@@ -2783,13 +2784,17 @@ function PaymentScreen({ ctx, title }: { ctx: Ctx; title: string }) {
     if (!ctx.raw.passes?.data) reloadTickets();
   }, [ctx.raw.passes?.data, reloadTickets]);
 
-  const handleBuy = async (type: "monthly" | "single") => {
+  const openPaymentPopup = (order: any) => {
+    setActiveOrder(order);
+    setPaymentSuccess(false);
+    setCountdown(10);
+  };
+
+  const handleBuy = async (type: "monthly" | "single" | "test") => {
     try {
       setBuying(true);
       const order = await studentApi.createSePayOrder(type);
-      setActiveOrder(order);
-      setPaymentSuccess(false);
-      setCountdown(10);
+      openPaymentPopup(order);
       toast.success("Đã tạo đơn hàng thanh toán SePay!");
     } catch (error: any) {
       toast.error(error.message || "Tạo đơn hàng thất bại");
@@ -2851,6 +2856,10 @@ function PaymentScreen({ ctx, title }: { ctx: Ctx; title: string }) {
               <ExpressiveButton variant="tonal" onClick={() => handleBuy("single")} disabled={buying} className="w-full">
                 {buying ? <RefreshCw className="size-4 animate-spin" /> : <TicketCheck className="size-4" />}
                 Mua vé thường qua SePay
+              </ExpressiveButton>
+              <ExpressiveButton variant="outlined" onClick={() => handleBuy("test")} disabled={buying} className="w-full">
+                {buying ? <RefreshCw className="size-4 animate-spin" /> : <CreditCard className="size-4" />}
+                Test thanh toán 3.000 VND
               </ExpressiveButton>
               <p className="text-xs font-semibold text-on-surface-variant">Thanh toán an toàn qua cổng SePay tự động.</p>
             </div>
