@@ -179,6 +179,7 @@ import {
   type PaymentView,
   type TicketView,
   type EtaDTO,
+  type AiSource,
   type AiRouteSuggestionCard,
   ApiError,
 } from "@/lib/api/client";
@@ -250,7 +251,7 @@ export function StudentModule({ activeId, onNavigate, onProfileRefresh }: Studen
     case "stu-ai":
       return <AIScreen ctx={ctx} onNavigate={onNavigate} />;
     case "stu-chatbot":
-      return <ChatbotScreen ctx={ctx} />;
+      return <ChatbotScreen ctx={ctx} onNavigate={onNavigate} />;
     case "stu-payment":
       return <PaymentScreen ctx={ctx} />;
     case "stu-invoices":
@@ -1764,6 +1765,14 @@ function FindRoutesScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
   }, [journeyOptions]);
 
   useEffect(() => {
+    const routeId = window.sessionStorage.getItem("unibus:assistant:route-preview");
+    if (!routeId || !routeRows.some((row: any) => String(row.route.id) === routeId)) return;
+    setSelectedJourneyId("");
+    setSelectedRoutePreviewId(routeId);
+    window.sessionStorage.removeItem("unibus:assistant:route-preview");
+  }, [routeRows]);
+
+  useEffect(() => {
     if (!selectedJourneyId && !selectedRoutePreviewId) return;
     window.setTimeout(() => {
       mapSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -3152,162 +3161,314 @@ function AIScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => v
 // =============================================================================
 // Screen 10: Chatbot
 // =============================================================================
-const AI_ACTIVITY_STEPS = [
-  {
-    label: "Nhận câu hỏi",
-    detail: "Chuẩn bị ngữ cảnh hội thoại",
-    icon: Bot,
-  },
-  {
-    label: "Đọc dữ liệu sinh viên",
-    detail: "Kiểm tra hồ sơ, vé và đăng ký hiện tại",
-    icon: Search,
-  },
-  {
-    label: "Tra cứu UniBus",
-    detail: "Lấy tuyến, trạm, lịch xe và giá vé khi cần",
-    icon: RouteIcon,
-  },
-  {
-    label: "Tổng hợp bằng AI",
-    detail: "Gửi context an toàn tới LLM hoặc fallback",
-    icon: Sparkles,
-  },
-  {
-    label: "Đóng gói câu trả lời",
-    detail: "Chuẩn bị thẻ tuyến, CTA và nguồn dữ liệu",
-    icon: CheckCircle2,
-  },
-] as const;
-
-function AiWorkingIndicator({ activeIndex }: { activeIndex: number }) {
-  const safeActiveIndex = Math.min(activeIndex, AI_ACTIVITY_STEPS.length - 1);
-
+function AiWorkingIndicator() {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: -6, scale: 0.98 }}
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2, ease: "easeOut" }}
       className="flex gap-2 max-w-[92%] min-w-0"
+      role="status"
+      aria-live="polite"
     >
-      <div className="relative size-8 shrink-0 rounded-full bg-[#beff50] text-[#14140f] flex items-center justify-center overflow-hidden">
-        <motion.span
-          className="absolute inset-0 bg-white/35"
-          animate={{ x: ["-120%", "120%"] }}
-          transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
-        />
-        <Bot className="relative size-4" />
+      <div className="size-8 shrink-0 rounded-full bg-[#beff50] text-[#14140f] flex items-center justify-center">
+        <Bot className="size-4" />
       </div>
-      <div className="relative overflow-hidden rounded-2xl rounded-tl-sm border border-outline-variant/70 bg-surface-container-high px-4 py-3 shadow-sm min-w-0">
-        <motion.div
-          className="absolute inset-x-0 top-0 h-0.5 bg-[#beff50]"
-          initial={{ scaleX: 0, transformOrigin: "left" }}
-          animate={{ scaleX: (safeActiveIndex + 1) / AI_ACTIVITY_STEPS.length }}
-          transition={{ duration: 0.35, ease: "easeOut" }}
-        />
-        <div className="flex items-center gap-2 text-sm font-bold text-on-surface">
-          <motion.span
-            className="inline-flex size-2 rounded-full bg-[#beff50]"
-            animate={{ scale: [0.9, 1.35, 0.9], opacity: [0.65, 1, 0.65] }}
-            transition={{ duration: 1.1, repeat: Infinity, ease: "easeInOut" }}
-          />
-          AI đang làm việc
+      <div className="rounded-2xl rounded-tl-sm border border-outline-variant/60 bg-surface px-4 py-3 min-w-0">
+        <div className="flex items-center gap-2 text-sm font-semibold text-on-surface">
+          <RefreshCw className="size-3.5 shrink-0 text-on-surface-variant motion-safe:animate-spin" />
+          <span>Đang xử lý yêu cầu</span>
         </div>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {AI_ACTIVITY_STEPS.map((step, index) => {
-            const Icon = step.icon;
-            const state = index < safeActiveIndex ? "done" : index === safeActiveIndex ? "active" : "idle";
-
-            return (
-              <motion.div
-                key={step.label}
-                layout
-                className={cn(
-                  "rounded-xl border px-3 py-2 transition-colors",
-                  state === "active" && "border-[#beff50] bg-[#beff50]/18 text-on-surface",
-                  state === "done" && "border-[#beff50]/50 bg-[#beff50]/10 text-on-surface",
-                  state === "idle" && "border-outline-variant/60 bg-surface/60 text-on-surface-variant"
-                )}
-                animate={state === "active" ? { y: [0, -2, 0] } : { y: 0 }}
-                transition={{ duration: 0.8, repeat: state === "active" ? Infinity : 0, ease: "easeInOut" }}
-              >
-                <div className="flex items-center gap-2">
-                  <span
-                    className={cn(
-                      "inline-flex size-7 shrink-0 items-center justify-center rounded-full",
-                      state === "idle" ? "bg-surface-container-high" : "bg-[#14140f] text-[#beff50]"
-                    )}
-                  >
-                    <Icon className="size-3.5" />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="truncate text-xs font-black">{step.label}</p>
-                    <p className="line-clamp-2 text-[11px] leading-snug opacity-80">{step.detail}</p>
-                  </div>
-                </div>
-              </motion.div>
-            );
-          })}
-        </div>
+        <p className="mt-1.5 border-l-2 border-[#beff50] pl-3 text-xs leading-5 text-on-surface-variant">
+          Truy xuất ngữ cảnh sinh viên và dữ liệu UniBus liên quan
+        </p>
       </div>
     </motion.div>
   );
 }
 
-function ChatbotScreen({ ctx }: { ctx: Ctx }) {
-  const [messages, setMessages] = useState<{
-    role: "user" | "bot";
-    text: string;
-    time: string;
-    mode?: string;
-    routeSuggestions?: AiRouteSuggestionCard[];
-  }[]>([
-    {
+function AgentExecutionSummary({ sources, mode }: { sources?: AiSource[]; mode?: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const sourceCount = sources?.length || 0;
+  if (!sourceCount && !mode) return null;
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-outline-variant/70 bg-surface">
+      <button
+        type="button"
+        onClick={() => setExpanded((value) => !value)}
+        aria-expanded={expanded}
+        className="flex min-h-11 w-full items-center gap-2 px-3 text-left text-xs font-semibold text-on-surface transition-colors hover:bg-surface-container-high"
+      >
+        <CheckCircle2 className="size-4 shrink-0 text-success" />
+        <span className="flex-1">
+          {sourceCount ? `Đã tra cứu ${sourceCount} nguồn dữ liệu` : "Đã hoàn tất xử lý"}
+        </span>
+        <ChevronRight className={cn("size-4 text-on-surface-variant transition-transform", expanded && "rotate-90")} />
+      </button>
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
+            className="border-t border-outline-variant/70 px-3 py-2.5"
+          >
+            <div className="space-y-2">
+              {(sources || []).map((source, index) => (
+                <div key={`${source.type}-${index}`} className="flex items-start gap-2 text-xs">
+                  <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-success" />
+                  <span>
+                    <span className="font-semibold text-on-surface">{source.label}</span>
+                    {source.detail && <span className="text-on-surface-variant"> · {source.detail}</span>}
+                  </span>
+                </div>
+              ))}
+              {mode && (
+                <div className="flex items-start gap-2 text-xs">
+                  <Sparkles className="mt-0.5 size-3.5 shrink-0 text-primary" />
+                  <span className="text-on-surface-variant">
+                    {mode === "ZAI"
+                      ? "Tổng hợp phản hồi bằng Z.AI"
+                      : mode === "BEDROCK"
+                        ? "Tổng hợp phản hồi bằng AWS Bedrock"
+                        : "Hoàn tất bằng chế độ dự phòng"}
+                  </span>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function AiRouteResultCard({
+  route,
+  index,
+  onNavigate,
+}: {
+  route: AiRouteSuggestionCard;
+  index: number;
+  onNavigate: (id: string) => void;
+}) {
+  const [showStops, setShowStops] = useState(false);
+  const stops = route.stops || [];
+  const registerAction = route.actions?.find((action) => action.type === "REGISTER_ROUTE");
+  const boardingStopId = registerAction?.boardingStopId || stops[0]?.stopId;
+  const alightingStopId = registerAction?.alightingStopId || stops[stops.length - 1]?.stopId;
+  const monthlyFare = route.finalFare ?? route.monthlyFare;
+  const departure = route.nextDepartures?.[0];
+
+  const viewOnMap = () => {
+    window.sessionStorage.setItem("unibus:assistant:route-preview", String(route.routeId));
+    onNavigate("stu-find");
+  };
+
+  const registerRoute = () => {
+    if (boardingStopId && alightingStopId) {
+      window.localStorage.setItem("unibus.pendingRegistration", JSON.stringify({
+        routeId: String(route.routeId),
+        boardingStopId: String(boardingStopId),
+        alightingStopId: String(alightingStopId),
+      }));
+    }
+    onNavigate("stu-my-routes");
+  };
+
+  return (
+    <motion.article
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.22, delay: Math.min(index * 0.04, 0.12), ease: "easeOut" }}
+      className="overflow-hidden rounded-2xl border border-outline-variant bg-surface text-on-surface"
+    >
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex h-7 items-center rounded-lg bg-[#14140f] px-2.5 text-xs font-bold text-[#beff50]">
+                {route.routeCode || `T-${route.routeId}`}
+              </span>
+              {route.confidence != null && (
+                <span className="text-xs font-medium text-on-surface-variant">{route.confidence}% phù hợp</span>
+              )}
+            </div>
+            <h3 className="mt-2 text-sm font-bold leading-5">{route.routeName}</h3>
+          </div>
+          <Bus className="size-5 shrink-0 text-primary" />
+        </div>
+
+        {!!route.reasons?.length && (
+          <p className="mt-2 text-xs leading-5 text-on-surface-variant">
+            {route.reasons.slice(0, 2).join(" · ")}
+          </p>
+        )}
+
+        <div className="mt-4 grid grid-cols-3 divide-x divide-outline-variant rounded-xl border border-outline-variant">
+          <div className="min-w-0 px-2.5 py-3">
+            <p className="text-[10px] text-on-surface-variant">Chuyến gần nhất</p>
+            <p className="mt-1 truncate text-xs font-bold">{departure || "Chưa có"}</p>
+          </div>
+          <div className="min-w-0 px-2.5 py-3">
+            <p className="text-[10px] text-on-surface-variant">Số trạm</p>
+            <p className="mt-1 text-xs font-bold">{stops.length || "Chưa rõ"}</p>
+          </div>
+          <div className="min-w-0 px-2.5 py-3">
+            <p className="text-[10px] text-on-surface-variant">Vé tháng</p>
+            <p className="mt-1 truncate text-xs font-bold">{monthlyFare != null ? formatVND(monthlyFare) : "Chưa có"}</p>
+          </div>
+        </div>
+
+        {route.subsidyAmount != null && route.subsidyAmount > 0 && (
+          <div className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-[#beff50]/15 px-3 py-2 text-xs">
+            <span className="text-on-surface-variant">Trợ giá sinh viên</span>
+            <span className="font-bold text-on-surface">-{formatVND(route.subsidyAmount)}</span>
+          </div>
+        )}
+
+        {stops.length > 0 && (
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={() => setShowStops((value) => !value)}
+              aria-expanded={showStops}
+              className="flex min-h-11 w-full items-center gap-3 text-left"
+            >
+              <span className="relative flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-container text-on-primary-container">
+                <MapPin className="size-4" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-xs font-semibold">{stops[0]?.stopName}</span>
+                <span className="block truncate text-[11px] text-on-surface-variant">
+                  đến {stops[stops.length - 1]?.stopName}
+                </span>
+              </span>
+              <span className="text-[11px] font-medium text-on-surface-variant">
+                {showStops ? "Thu gọn" : "Xem trạm"}
+              </span>
+              <ChevronRight className={cn("size-4 text-on-surface-variant transition-transform", showStops && "rotate-90")} />
+            </button>
+            <AnimatePresence initial={false}>
+              {showStops && (
+                <motion.ol
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.18, ease: "easeOut" }}
+                  className="ml-4 border-l border-outline-variant py-1 pl-5"
+                >
+                  {stops.map((stop, stopIndex) => (
+                    <li key={`${route.routeId}-${stop.stopId}`} className="relative py-1.5 text-xs">
+                      <span className="absolute -left-[23px] top-3 size-1.5 rounded-full bg-primary" />
+                      <span className="font-medium">{stop.stopName}</span>
+                      {stopIndex > 0 && stop.minutesFromPreviousStop != null && (
+                        <span className="ml-2 text-on-surface-variant">+{stop.minutesFromPreviousStop} phút</span>
+                      )}
+                    </li>
+                  ))}
+                </motion.ol>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-wrap gap-2 border-t border-outline-variant bg-surface-container-low px-4 py-3">
+        <button
+          type="button"
+          onClick={viewOnMap}
+          className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-outline-variant bg-surface px-3 text-xs font-semibold transition-colors hover:bg-surface-container-high"
+        >
+          <MapPinned className="size-4" />
+          Xem bản đồ
+        </button>
+        <button
+          type="button"
+          onClick={registerRoute}
+          className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-primary px-3 text-xs font-semibold text-on-primary transition-opacity hover:opacity-90"
+        >
+          Đăng ký tuyến
+          <ArrowRight className="size-4" />
+        </button>
+      </div>
+    </motion.article>
+  );
+}
+
+type AssistantMessage = {
+  role: "user" | "bot";
+  text: string;
+  time: string;
+  mode?: string;
+  sources?: AiSource[];
+  routeSuggestions?: AiRouteSuggestionCard[];
+};
+
+function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
+  const welcomeMessage = useMemo<AssistantMessage>(() => ({
       role: "bot",
       text: `Xin chào ${ctx.user.name?.split(" ").slice(-1)[0] || "bạn"}! Mình là trợ lý ảo UniBus. Mình có thể giúp bạn tra cứu tuyến, giá vé, lịch xe... Hôm nay bạn cần hỗ trợ gì?`,
       time: new Date().toISOString(),
-    },
-  ]);
+  }), [ctx.user.name]);
+  const sessionKey = useMemo(
+    () => `unibus:assistant:${String(ctx.user.email || ctx.user.id || "student").toLowerCase()}`,
+    [ctx.user.email, ctx.user.id]
+  );
+  const [messages, setMessages] = useState<AssistantMessage[]>([]);
+  const [sessionReady, setSessionReady] = useState(false);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [activityIndex, setActivityIndex] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    try {
+      const saved = window.sessionStorage.getItem(sessionKey);
+      const parsed = saved ? JSON.parse(saved) : null;
+      if (Array.isArray(parsed) && parsed.length > 0 && parsed.every((item) =>
+        (item?.role === "user" || item?.role === "bot") && typeof item?.text === "string"
+      )) {
+        setMessages(parsed.slice(-40));
+      } else {
+        setMessages([welcomeMessage]);
+      }
+    } catch {
+      setMessages([welcomeMessage]);
+    }
+    setSessionReady(true);
+  }, [sessionKey, welcomeMessage]);
+
+  useEffect(() => {
+    if (!sessionReady) return;
+    try {
+      window.sessionStorage.setItem(sessionKey, JSON.stringify(messages.slice(-40)));
+    } catch {
+      // The active chat still works when browser storage is unavailable.
+    }
+  }, [messages, sessionKey, sessionReady]);
+
+  useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages]);
-
-  useEffect(() => {
-    if (!loading) {
-      setActivityIndex(0);
-      return;
-    }
-
-    const interval = window.setInterval(() => {
-      setActivityIndex((current) => Math.min(current + 1, AI_ACTIVITY_STEPS.length - 1));
-    }, 850);
-
-    return () => window.clearInterval(interval);
-  }, [loading]);
-
-  useEffect(() => {
-    if (loading) {
-      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-    }
-  }, [activityIndex, loading]);
+  }, [messages, loading]);
 
   const send = async () => {
-    if (!input.trim() || loading) return;
+    if (!input.trim() || loading || !sessionReady) return;
     const userMsg = { role: "user" as const, text: input.trim(), time: new Date().toISOString() };
     setMessages((m) => [...m, userMsg]);
     setInput("");
-    setActivityIndex(0);
     setLoading(true);
     try {
       const res = await experienceApi.sendAssistantChat({
         message: userMsg.text,
         context: {
           preferences: ["fast", "cheap"],
+          conversationHistory: [...messages, userMsg].slice(-8).map((message) => ({
+            role: message.role === "bot" ? "assistant" : "user",
+            content: message.text,
+          })),
         },
       });
       setMessages((m) => [...m, {
@@ -3315,6 +3476,7 @@ function ChatbotScreen({ ctx }: { ctx: Ctx }) {
         text: res.message || "Mình đã phân tích dữ liệu UniBus hiện có cho bạn.",
         time: new Date().toISOString(),
         mode: res.mode,
+        sources: res.sources || [],
         routeSuggestions: res.routeSuggestions || [],
       }]);
     } catch {
@@ -3338,7 +3500,7 @@ function ChatbotScreen({ ctx }: { ctx: Ctx }) {
               key={i}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className={cn("flex gap-2 max-w-[85%] min-w-0", m.role === "user" && "ml-auto flex-row-reverse")}
+              className={cn("flex gap-2 max-w-[94%] sm:max-w-[88%] min-w-0", m.role === "user" && "ml-auto flex-row-reverse")}
             >
               <div
                 className={cn(
@@ -3357,40 +3519,16 @@ function ChatbotScreen({ ctx }: { ctx: Ctx }) {
                 )}
               >
                 <p>{m.text}</p>
-                {m.mode && (
-                  <span className={cn(
-                    "inline-flex h-6 items-center rounded-full px-2 text-[10px] font-bold",
-                    m.mode === "FALLBACK" ? "bg-warning-container text-on-warning-container" : "bg-[#beff50] text-[#14140f]"
-                  )}>
-                    {m.mode === "BEDROCK" ? "AWS Bedrock" : m.mode === "ZAI" ? "Z.AI" : "Fallback"}
-                  </span>
-                )}
+                <AgentExecutionSummary sources={m.sources} mode={m.mode} />
                 {!!m.routeSuggestions?.length && (
-                  <div className="space-y-2">
-                    {m.routeSuggestions.slice(0, 3).map((route) => (
-                      <div key={route.routeId} className="rounded-xl border border-outline-variant bg-surface p-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="font-bold truncate">{route.routeCode || `T-${route.routeId}`} · {route.routeName}</p>
-                            <p className="text-xs text-on-surface-variant mt-1">
-                              {(route.reasons || []).slice(0, 2).join(" · ") || "Gợi ý từ dữ liệu tuyến hiện tại"}
-                            </p>
-                          </div>
-                          <span className="shrink-0 rounded-full bg-[#beff50] px-2 py-1 text-[10px] font-black text-[#14140f]">
-                            {route.confidence ?? 70}%
-                          </span>
-                        </div>
-                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                          <span className="rounded-full bg-surface-container-high px-2 py-1">
-                            Vé tháng: {route.finalFare ? formatVND(route.finalFare) : "—"}
-                          </span>
-                          {!!route.nextDepartures?.length && (
-                            <span className="rounded-full bg-surface-container-high px-2 py-1">
-                              Chuyến: {route.nextDepartures.join(", ")}
-                            </span>
-                          )}
-                        </div>
-                      </div>
+                  <div className="space-y-3">
+                    {m.routeSuggestions.slice(0, 3).map((route, routeIndex) => (
+                      <AiRouteResultCard
+                        key={route.routeId}
+                        route={route}
+                        index={routeIndex}
+                        onNavigate={onNavigate}
+                      />
                     ))}
                   </div>
                 )}
@@ -3398,7 +3536,7 @@ function ChatbotScreen({ ctx }: { ctx: Ctx }) {
             </motion.div>
           ))}
           {loading && (
-            <AiWorkingIndicator activeIndex={activityIndex} />
+            <AiWorkingIndicator />
           )}
         </div>
         <div className="p-4 border-t-2 border-outline-variant flex gap-2 min-w-0">
@@ -3407,10 +3545,10 @@ function ChatbotScreen({ ctx }: { ctx: Ctx }) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && send()}
-            disabled={loading}
+            disabled={loading || !sessionReady}
             className="flex-1 min-w-0"
           />
-          <ExpressiveButton variant="filled" size="icon" onClick={send} disabled={loading || !input.trim()}>
+          <ExpressiveButton variant="filled" size="icon" onClick={send} disabled={loading || !sessionReady || !input.trim()}>
             <Send className="size-4" />
           </ExpressiveButton>
         </div>

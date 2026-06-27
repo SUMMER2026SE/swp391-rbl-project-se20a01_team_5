@@ -1,6 +1,6 @@
 "use client";
 
-export const API_BASE = "/api/v1";
+export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "/api/v1";
 
 const ACCESS_TOKEN_KEY = "access_token";
 const REFRESH_TOKEN_KEY = "refresh_token";
@@ -789,6 +789,10 @@ export const experienceApi = {
       alightingStopId?: number;
       preferredDepartureTime?: string;
       preferences?: string[];
+      conversationHistory?: {
+        role: "user" | "assistant";
+        content: string;
+      }[];
     };
   }) => apiFetch.post<AiChatResponse>("/students/me/assistant-chat", data),
   driverDashboard: () => apiFetch.get<DriverDashboardView>("/driver/dashboard"),

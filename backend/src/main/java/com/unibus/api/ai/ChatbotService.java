@@ -71,7 +71,7 @@ public class ChatbotService {
         StudentContext student = knowledgeRepository.studentContext(userId);
         RegistrationSnapshot registration = knowledgeRepository.currentRegistration(student.studentCode()).orElse(null);
         TicketSnapshot activeTicket = knowledgeRepository.activeTicket(student.studentCode()).orElse(null);
-        RouteSuggestionRequest routeRequest = routeRequestFromChat(request, advisoryType);
+        RouteSuggestionRequest routeRequest = routeRequestFromChat(userId, request, advisoryType);
         List<RouteSuggestionCard> routeSuggestions = shouldLoadRoutes(advisoryType)
                 ? routeSuggestionService.suggest(userId, routeRequest).stream().limit(3).toList()
                 : List.of();
@@ -105,30 +105,39 @@ public class ChatbotService {
                 sessionId);
     }
 
-    private RouteSuggestionRequest routeRequestFromChat(ChatRequest request, AdvisoryType advisoryType) {
+    private RouteSuggestionRequest routeRequestFromChat(Integer userId, ChatRequest request, AdvisoryType advisoryType) {
         Map<String, Object> context = request.context();
         Integer boardingStopId = intValue(context == null ? null : context.get("boardingStopId"));
         Integer alightingStopId = intValue(context == null ? null : context.get("alightingStopId"));
-        if (boardingStopId == null || alightingStopId == null) {
-            List<StopMention> mentions = stopMentions(request.message());
-            if (!mentions.isEmpty()) {
-                StopMention firstMention = mentions.get(0);
-                StopMention secondMention = mentions.size() > 1 ? mentions.get(1) : null;
-                if (boardingStopId == null && shouldTreatSingleMentionAsDestination(request.message(), firstMention)) {
-                    alightingStopId = alightingStopId == null ? firstMention.stopId() : alightingStopId;
-                } else if (boardingStopId == null) {
-                    boardingStopId = firstMention.stopId();
-                }
-                if (alightingStopId == null && secondMention != null) {
-                    alightingStopId = secondMention.stopId();
-                }
-            }
-        }
         String preferredDepartureTime = stringValue(context == null ? null : context.get("preferredDepartureTime"));
         @SuppressWarnings("unchecked")
         List<String> preferences = context != null && context.get("preferences") instanceof List<?>
                 ? ((List<?>) context.get("preferences")).stream().map(String::valueOf).toList()
                 : List.of();
+        if (boardingStopId == null || alightingStopId == null) {
+            List<StopMention> mentions = stopMentions(request.message());
+            StopPair matchedPair = boardingStopId == null && alightingStopId == null
+                    ? firstRouteCompatiblePair(userId, mentions, preferredDepartureTime, preferences, request.message())
+                    : null;
+            if (matchedPair != null) {
+                boardingStopId = matchedPair.boardingStopId();
+                alightingStopId = matchedPair.alightingStopId();
+            }
+            if (!mentions.isEmpty()) {
+                StopMention firstMention = mentions.get(0);
+                StopMention secondMention = mentions.size() > 1 ? mentions.get(1) : null;
+                if (matchedPair == null) {
+                    if (boardingStopId == null && shouldTreatSingleMentionAsDestination(request.message(), firstMention)) {
+                        alightingStopId = alightingStopId == null ? firstMention.stopId() : alightingStopId;
+                    } else if (boardingStopId == null) {
+                        boardingStopId = firstMention.stopId();
+                    }
+                    if (alightingStopId == null && secondMention != null) {
+                        alightingStopId = secondMention.stopId();
+                    }
+                }
+            }
+        }
         return new RouteSuggestionRequest(
                 boardingStopId,
                 alightingStopId,
@@ -136,6 +145,38 @@ public class ChatbotService {
                 preferences,
                 request.message(),
                 advisoryType == AdvisoryType.FARE_LOOKUP ? "cheap" : null);
+    }
+
+    private StopPair firstRouteCompatiblePair(
+            Integer userId,
+            List<StopMention> mentions,
+            String preferredDepartureTime,
+            List<String> preferences,
+            String message) {
+        if (mentions.size() < 2) {
+            return null;
+        }
+        List<StopMention> limitedMentions = mentions.stream().limit(12).toList();
+        for (int originIndex = 0; originIndex < limitedMentions.size(); originIndex++) {
+            StopMention origin = limitedMentions.get(originIndex);
+            for (int destinationIndex = originIndex + 1; destinationIndex < limitedMentions.size(); destinationIndex++) {
+                StopMention destination = limitedMentions.get(destinationIndex);
+                if (origin.stopId().equals(destination.stopId())) {
+                    continue;
+                }
+                RouteSuggestionRequest request = new RouteSuggestionRequest(
+                        origin.stopId(),
+                        destination.stopId(),
+                        preferredDepartureTime,
+                        preferences,
+                        message,
+                        null);
+                if (!routeSuggestionService.suggest(userId, request).isEmpty()) {
+                    return new StopPair(origin.stopId(), destination.stopId());
+                }
+            }
+        }
+        return null;
     }
 
     private List<StopMention> stopMentions(String message) {
@@ -411,5 +452,8 @@ public class ChatbotService {
     }
 
     private record StopMention(Integer stopId, String stopName, int index) {
+    }
+
+    private record StopPair(Integer boardingStopId, Integer alightingStopId) {
     }
 }

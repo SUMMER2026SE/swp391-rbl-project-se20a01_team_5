@@ -112,7 +112,6 @@ public class AiKnowledgeRepository {
                    AND (ru.active_until IS NULL OR ru.active_until >= CURRENT_DATE)
                    AND (? IS NOT NULL AND ru.university_id = ?)
                 WHERE r.status = 'ACTIVE'
-                  AND (? IS NULL OR ru.route_university_id IS NOT NULL)
                 ORDER BY r.route_name
                 """, (rs, rowNum) -> new RouteCandidate(
                         rs.getInt("route_id"),
@@ -129,7 +128,7 @@ public class AiKnowledgeRepository {
                         BigDecimal.ZERO,
                         BigDecimal.ZERO,
                         List.of()),
-                student.universityId(), student.universityId(), student.universityId());
+                student.universityId(), student.universityId());
         return routes.stream()
                 .map(route -> enrichRoute(route, student.universityId()))
                 .toList();

@@ -63,6 +63,40 @@ class AiCopilotServiceTests {
     }
 
     @Test
+    void routeSuggestionsIncludeActiveDirectRouteOutsideStudentUniversityLink() {
+        var suggestions = routeSuggestionService.suggest(1, new RouteSuggestionRequest(
+                30,
+                20,
+                "07:00",
+                java.util.List.of("fast"),
+                "Đi từ Trung tâm đến Cổng trường",
+                null));
+
+        assertThat(suggestions).extracting("routeId").containsExactly(300);
+        assertThat(suggestions.getFirst().reasons()).contains("Đi qua đúng trạm lên và trạm xuống");
+    }
+
+    @Test
+    void chatResolvesNamedStopsOnRouteOutsideStudentUniversityLink() {
+        ChatResponse response = chatbotService.respond(1, new ChatRequest(
+                "Tôi muốn đi từ Trung tâm đến Cổng trường",
+                Map.of()));
+
+        assertThat(response.routeSuggestions()).extracting("routeId").containsExactly(300);
+        assertThat(response.sources()).extracting("type").contains("ROUTE_SUGGESTIONS");
+    }
+
+    @Test
+    void chatSelectsRouteCompatibleCampusStopsWhenAliasesAreAmbiguous() {
+        ChatResponse response = chatbotService.respond(1, new ChatRequest(
+                "Tôi đang ở Đại học Bách khoa Đà Nẵng và muốn đến Đại học FPT. Hãy tìm tuyến phù hợp, so sánh giá sau trợ giá, liệt kê các trạm dừng và cho biết chuyến gần nhất.",
+                Map.of()));
+
+        assertThat(response.routeSuggestions()).extracting("routeId").containsExactly(400);
+        assertThat(response.sources()).extracting("type").contains("ROUTE_SUGGESTIONS");
+    }
+
+    @Test
     void chatUsesLlmResponseAndPersistsBothTurns() {
         ChatResponse response = chatbotService.respond(1, new ChatRequest(
                 "Sáng nay tôi muốn tới trường, tuyến nào nhanh và rẻ nhất?",
@@ -226,21 +260,33 @@ class AiCopilotServiceTests {
         jdbcTemplate.update("INSERT INTO students VALUES ('SV001', 1, 'UniBus Demo University', 1)");
         jdbcTemplate.update("INSERT INTO routes VALUES (100, 'R1', 'Campus Express', '#144fcc', 8.5, 25, 10, 'ACTIVE')");
         jdbcTemplate.update("INSERT INTO routes VALUES (200, 'R2', 'City Loop', '#beff50', 15.0, 45, 25, 'ACTIVE')");
+        jdbcTemplate.update("INSERT INTO routes VALUES (300, 'R3', 'Cross Campus', '#ff8c5f', 10.0, 30, 15, 'ACTIVE')");
+        jdbcTemplate.update("INSERT INTO routes VALUES (400, 'UB-DN-01', 'UniBus 01: Bách khoa - FPT', '#1565C0', 28.4, 58, 15, 'ACTIVE')");
         jdbcTemplate.update("INSERT INTO route_universities VALUES (1, 100, 1, CURRENT_DATE - 1, NULL, 'ACTIVE')");
         jdbcTemplate.update("INSERT INTO route_universities VALUES (2, 200, 1, CURRENT_DATE - 1, NULL, 'ACTIVE')");
         jdbcTemplate.update("INSERT INTO stops VALUES (10, 'S10', 'Ký túc xá', 'ACTIVE')");
         jdbcTemplate.update("INSERT INTO stops VALUES (20, 'S20', 'Cổng trường', 'ACTIVE')");
         jdbcTemplate.update("INSERT INTO stops VALUES (30, 'S30', 'Trung tâm', 'ACTIVE')");
+        jdbcTemplate.update("INSERT INTO stops VALUES (40, 'DN-ST-BKDN', 'Đại học Bách khoa Đà Nẵng', 'ACTIVE')");
+        jdbcTemplate.update("INSERT INTO stops VALUES (41, 'DN-ST-FPT-GATE', 'Cổng khu đô thị FPT', 'ACTIVE')");
+        jdbcTemplate.update("INSERT INTO stops VALUES (42, 'DN-ST-FPT', 'Đại học FPT Đà Nẵng', 'ACTIVE')");
         jdbcTemplate.update("INSERT INTO route_stops VALUES (1, 100, 10, 1, 0)");
         jdbcTemplate.update("INSERT INTO route_stops VALUES (2, 100, 20, 2, 12)");
         jdbcTemplate.update("INSERT INTO route_stops VALUES (3, 200, 10, 1, 0)");
         jdbcTemplate.update("INSERT INTO route_stops VALUES (4, 200, 30, 2, 20)");
+        jdbcTemplate.update("INSERT INTO route_stops VALUES (5, 300, 30, 1, 0)");
+        jdbcTemplate.update("INSERT INTO route_stops VALUES (6, 300, 20, 2, 15)");
+        jdbcTemplate.update("INSERT INTO route_stops VALUES (7, 400, 40, 1, 0)");
+        jdbcTemplate.update("INSERT INTO route_stops VALUES (8, 400, 42, 2, 58)");
         jdbcTemplate.update("INSERT INTO fares VALUES (1, 100, 'SINGLE', 7000, CURRENT_DATE - 1, NULL)");
         jdbcTemplate.update("INSERT INTO fares VALUES (2, 100, 'MONTHLY', 120000, CURRENT_DATE - 1, NULL)");
         jdbcTemplate.update("INSERT INTO fares VALUES (3, 200, 'MONTHLY', 150000, CURRENT_DATE - 1, NULL)");
+        jdbcTemplate.update("INSERT INTO fares VALUES (4, 400, 'SINGLE', 7000, CURRENT_DATE - 1, NULL)");
+        jdbcTemplate.update("INSERT INTO fares VALUES (5, 400, 'MONTHLY', 120000, CURRENT_DATE - 1, NULL)");
         jdbcTemplate.update("INSERT INTO subsidy_policies VALUES (1, 1, 'PERCENTAGE', 25, 50000, CURRENT_DATE - 1, NULL, 'ACTIVE')");
         int weekday = java.time.LocalDate.now().getDayOfWeek().getValue();
         jdbcTemplate.update("INSERT INTO bus_schedules VALUES (1, 100, ?, '07:30:00', 'ACTIVE')", weekday);
         jdbcTemplate.update("INSERT INTO bus_schedules VALUES (2, 100, ?, '08:00:00', 'ACTIVE')", weekday);
+        jdbcTemplate.update("INSERT INTO bus_schedules VALUES (3, 400, ?, '07:30:00', 'ACTIVE')", weekday);
     }
 }
