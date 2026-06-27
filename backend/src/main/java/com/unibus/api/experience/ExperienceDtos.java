@@ -251,6 +251,20 @@ public final class ExperienceDtos {
             int tripsToday) {
     }
 
+    public record UniversityRouteOperationsMetric(
+            Integer routeId,
+            String routeCode,
+            String routeName,
+            String colorHex,
+            int registeredStudents,
+            int activeMonthlyPasses,
+            int tripsToday,
+            int runningTrips,
+            int assignedBuses,
+            int assignedDrivers,
+            int assignedConductors) {
+    }
+
     public record ComplaintCard(Integer complaintId, String title, String content, String status, OffsetDateTime createdAt) {
     }
 
