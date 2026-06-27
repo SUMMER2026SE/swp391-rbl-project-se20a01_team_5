@@ -3162,49 +3162,27 @@ function AIScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => v
 // Screen 10: Chatbot
 // =============================================================================
 function AiWorkingIndicator() {
-  const steps = [
-    "Đọc hồ sơ sinh viên",
-    "Tìm tuyến, trạm và lịch chạy",
-    "Tính giá vé và trợ giá",
-  ];
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2, ease: "easeOut" }}
-      className="flex max-w-[92%] gap-3 min-w-0"
+      className="flex gap-2 max-w-[92%] min-w-0"
       role="status"
       aria-live="polite"
     >
-      <div className="mt-1 flex size-8 shrink-0 items-center justify-center rounded-full border border-[#d9d5ca] bg-[#faf9f5] text-[#14140f] shadow-sm">
+      <div className="size-8 shrink-0 rounded-full bg-[#beff50] text-[#14140f] flex items-center justify-center">
         <Bot className="size-4" />
       </div>
-      <div className="min-w-0 rounded-[18px] rounded-tl-md border border-[#e7e3dc] bg-[#f7f6f0] px-5 py-4 text-sm text-on-surface shadow-[0_10px_28px_rgba(20,20,15,0.05)]">
-        <div className="flex items-center gap-2 font-semibold">
-          <span className="relative flex size-2.5">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#0f9f52] opacity-35" />
-            <span className="relative inline-flex size-2.5 rounded-full bg-[#0f9f52]" />
-          </span>
-          <span>Đang suy nghĩ với dữ liệu UniBus</span>
+      <div className="rounded-2xl rounded-tl-sm border border-outline-variant/60 bg-surface px-4 py-3 min-w-0">
+        <div className="flex items-center gap-2 text-sm font-semibold text-on-surface">
+          <RefreshCw className="size-3.5 shrink-0 text-on-surface-variant motion-safe:animate-spin" />
+          <span>Đang xử lý yêu cầu</span>
         </div>
-        <div className="mt-4 space-y-2.5">
-          {steps.map((step, index) => (
-            <motion.div
-              key={step}
-              initial={{ opacity: 0.45 }}
-              animate={{ opacity: [0.45, 1, 0.65] }}
-              transition={{ duration: 1.35, repeat: Infinity, delay: index * 0.18, ease: "easeInOut" }}
-              className="flex items-center gap-3 text-xs text-on-surface-variant"
-            >
-              <span className="grid size-4 place-items-center rounded-full border border-[#b9b4aa] bg-white">
-                <span className="size-1.5 rounded-full bg-[#0f9f52]" />
-              </span>
-              <span>{step}</span>
-            </motion.div>
-          ))}
-        </div>
+        <p className="mt-1.5 border-l-2 border-[#beff50] pl-3 text-xs leading-5 text-on-surface-variant">
+          Truy xuất ngữ cảnh sinh viên và dữ liệu UniBus liên quan
+        </p>
       </div>
     </motion.div>
   );
@@ -3214,84 +3192,52 @@ function AgentExecutionSummary({ sources, mode }: { sources?: AiSource[]; mode?:
   const [expanded, setExpanded] = useState(false);
   const sourceCount = sources?.length || 0;
   if (!sourceCount && !mode) return null;
-  const isFallback = mode === "FALLBACK";
-  const modelLabel = mode === "ZAI"
-    ? "Tổng hợp bằng Z.AI"
-    : mode === "BEDROCK"
-      ? "Tổng hợp bằng AWS Bedrock"
-      : isFallback
-        ? "Hoàn tất bằng chế độ dự phòng"
-        : "Tổng hợp phản hồi";
 
   return (
-    <div className="overflow-hidden rounded-[14px] border border-[#ded9cf] bg-[#fffefa]">
+    <div className="overflow-hidden rounded-xl border border-outline-variant/70 bg-surface">
       <button
         type="button"
         onClick={() => setExpanded((value) => !value)}
         aria-expanded={expanded}
-        className="group flex min-h-11 w-full items-center gap-2.5 px-3.5 text-left text-xs font-semibold text-on-surface transition-colors hover:bg-[#f7f6f0]"
+        className="flex min-h-11 w-full items-center gap-2 px-3 text-left text-xs font-semibold text-on-surface transition-colors hover:bg-surface-container-high"
       >
-        <span className="grid size-5 shrink-0 place-items-center rounded-full border border-[#0f9f52] bg-white text-[#0f9f52]">
-          <CheckCircle2 className="size-3.5" />
-        </span>
+        <CheckCircle2 className="size-4 shrink-0 text-success" />
         <span className="flex-1">
           {sourceCount ? `Đã tra cứu ${sourceCount} nguồn dữ liệu` : "Đã hoàn tất xử lý"}
         </span>
-        {isFallback && (
-          <span className="rounded-full bg-[#fff1c2] px-2 py-0.5 text-[10px] font-bold text-[#8a5a00]">
-            Fallback
-          </span>
-        )}
-        <ChevronRight className={cn("size-4 text-on-surface-variant transition-transform group-hover:text-on-surface", expanded && "rotate-90")} />
+        <ChevronRight className={cn("size-4 text-on-surface-variant transition-transform", expanded && "rotate-90")} />
       </button>
       <AnimatePresence initial={false}>
         {expanded && (
           <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.18, ease: "easeOut" }}
-            className="border-t border-[#e9e5dd]"
+            className="border-t border-outline-variant/70 px-3 py-2.5"
           >
-            <div className="px-3.5 py-3">
-              <div className="relative space-y-3 before:absolute before:bottom-2 before:left-[7px] before:top-2 before:w-px before:bg-[#c9c4ba]">
-                <div className="relative flex items-start gap-3 text-xs">
-                  <span className="relative z-10 grid size-4 shrink-0 place-items-center rounded-full border border-[#0f9f52] bg-white text-[#0f9f52]">
-                    <CheckCircle2 className="size-3" />
-                  </span>
-                  <span>
-                    <span className="font-semibold text-on-surface">Đã phân tích yêu cầu</span>
-                    <span className="block text-on-surface-variant">Xác định intent và ngữ cảnh cần truy xuất</span>
-                  </span>
-                </div>
+            <div className="space-y-2">
               {(sources || []).map((source, index) => (
-                <div key={`${source.type}-${index}`} className="relative flex items-start gap-3 text-xs">
-                  <span className="relative z-10 grid size-4 shrink-0 place-items-center rounded-full border border-[#0f9f52] bg-white text-[#0f9f52]">
-                    <CheckCircle2 className="size-3" />
-                  </span>
+                <div key={`${source.type}-${index}`} className="flex items-start gap-2 text-xs">
+                  <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-success" />
                   <span>
                     <span className="font-semibold text-on-surface">{source.label}</span>
-                    {source.detail && <span className="block text-on-surface-variant">{source.detail}</span>}
+                    {source.detail && <span className="text-on-surface-variant"> · {source.detail}</span>}
                   </span>
                 </div>
               ))}
               {mode && (
-                <div className="relative flex items-start gap-3 text-xs">
-                  <span className={cn(
-                    "relative z-10 grid size-4 shrink-0 place-items-center rounded-full border bg-white",
-                    isFallback ? "border-[#f59e0b] text-[#b45309]" : "border-[#0f9f52] text-[#0f9f52]"
-                  )}>
-                    {isFallback ? <Sparkles className="size-3" /> : <CheckCircle2 className="size-3" />}
-                  </span>
-                  <span>
-                    <span className="font-semibold text-on-surface">{modelLabel}</span>
-                    <span className="block text-on-surface-variant">
-                      {isFallback ? "Không gọi LLM, dùng rule-based để trả lời ổn định" : "Sinh câu trả lời từ dữ liệu vừa truy xuất"}
-                    </span>
+                <div className="flex items-start gap-2 text-xs">
+                  <Sparkles className="mt-0.5 size-3.5 shrink-0 text-primary" />
+                  <span className="text-on-surface-variant">
+                    {mode === "ZAI"
+                      ? "Tổng hợp phản hồi bằng Z.AI"
+                      : mode === "BEDROCK"
+                        ? "Tổng hợp phản hồi bằng AWS Bedrock"
+                        : "Hoàn tất bằng chế độ dự phòng"}
                   </span>
                 </div>
               )}
-              </div>
             </div>
           </motion.div>
         )}
@@ -3462,47 +3408,12 @@ type AssistantMessage = {
   routeSuggestions?: AiRouteSuggestionCard[];
 };
 
-function normalizeAssistantPrompt(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/đ/g, "d")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function instantAssistantReply(message: string, name: string) {
-  const text = normalizeAssistantPrompt(message);
-  if (!text || text.length > 70) return null;
-
-  const toolKeywords = [
-    "tuyen", "tram", "lich", "gia", "ve", "sepay", "qr", "eta", "xe", "bus",
-    "di den", "di toi", "tu dau", "den dau", "dang ky", "thanh toan", "fpt", "bach khoa",
-  ];
-  if (toolKeywords.some((keyword) => text.includes(keyword))) return null;
-
-  if (["xin chao", "chao", "hello", "hi", "hey", "alo"].includes(text) || text.startsWith("chao ban")) {
-    return `Chào ${name || "bạn"}! Mình ở đây rồi. Bạn cần mình tìm tuyến, tra giá vé hay xem lịch xe UniBus không?`;
-  }
-  if (text.includes("ban khoe khong") || text.includes("khoe khong") || text.includes("hom nay the nao")) {
-    return "Mình ổn, đang sẵn sàng tra cứu UniBus cho bạn. Cứ đưa điểm đi hoặc điểm đến, mình xử lý tiếp.";
-  }
-  if (text.includes("cam on") || text.includes("thanks") || text.includes("thank you")) {
-    return "Không có gì. Khi cần tìm tuyến, mua vé hoặc kiểm tra lịch xe thì nhắn mình tiếp nhé.";
-  }
-  return null;
-}
-
 function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
-  const displayName = ctx.user.name?.split(" ").slice(-1)[0] || "bạn";
-  const userInitial = (ctx.user.name || ctx.user.email || "U").trim().slice(0, 1).toUpperCase();
   const welcomeMessage = useMemo<AssistantMessage>(() => ({
       role: "bot",
-      text: `Xin chào ${displayName}! Mình là trợ lý ảo UniBus. Mình có thể giúp bạn tra cứu tuyến, giá vé, lịch xe... Hôm nay bạn cần hỗ trợ gì?`,
+      text: `Xin chào ${ctx.user.name?.split(" ").slice(-1)[0] || "bạn"}! Mình là trợ lý ảo UniBus. Mình có thể giúp bạn tra cứu tuyến, giá vé, lịch xe... Hôm nay bạn cần hỗ trợ gì?`,
       time: new Date().toISOString(),
-  }), [displayName]);
+  }), [ctx.user.name]);
   const sessionKey = useMemo(
     () => `unibus:assistant:${String(ctx.user.email || ctx.user.id || "student").toLowerCase()}`,
     [ctx.user.email, ctx.user.id]
@@ -3546,16 +3457,6 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
   const send = async () => {
     if (!input.trim() || loading || !sessionReady) return;
     const userMsg = { role: "user" as const, text: input.trim(), time: new Date().toISOString() };
-    const instantReply = instantAssistantReply(userMsg.text, displayName);
-    if (instantReply) {
-      setMessages((m) => [...m, userMsg, {
-        role: "bot",
-        text: instantReply,
-        time: new Date().toISOString(),
-      }]);
-      setInput("");
-      return;
-    }
     setMessages((m) => [...m, userMsg]);
     setInput("");
     setLoading(true);
@@ -3592,39 +3493,33 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
         description="Trò chuyện với trợ lý ảo để được hỗ trợ nhanh."
         icon={<Bot className="size-7" />}
       />
-      <ExpressiveCard variant="elevated" className="flex h-[68vh] min-h-[520px] min-w-0 flex-col overflow-hidden border border-[#e8e3da] bg-[#fbfaf6] shadow-none">
-        <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-5 py-6 min-w-0">
+      <ExpressiveCard variant="elevated" className="flex flex-col h-[60vh] min-h-[400px] min-w-0">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-3 min-w-0">
           {messages.map((m, i) => (
             <motion.div
               key={i}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.22, ease: "easeOut" }}
-              className={cn(
-                "flex min-w-0 gap-3",
-                m.role === "user" ? "ml-auto max-w-[86%] flex-row-reverse sm:max-w-[72%]" : "max-w-[94%] sm:max-w-[84%]"
-              )}
+              className={cn("flex gap-2 max-w-[94%] sm:max-w-[88%] min-w-0", m.role === "user" && "ml-auto flex-row-reverse")}
             >
               <div
                 className={cn(
-                  "mt-1 flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-bold shadow-sm",
-                  m.role === "user"
-                    ? "bg-[#beff50] text-[#14140f]"
-                    : "border border-[#d9d5ca] bg-[#faf9f5] text-[#14140f]"
+                  "size-8 shrink-0 rounded-full flex items-center justify-center text-xs font-bold",
+                  m.role === "user" ? "bg-primary text-on-primary" : "bg-[#beff50] text-[#14140f]"
                 )}
               >
-                {m.role === "user" ? userInitial : <Bot className="size-4" />}
+                {m.role === "user" ? "M" : <Bot className="size-4" />}
               </div>
               <div
                 className={cn(
-                  "min-w-0 break-words text-[15px] leading-6",
+                  "px-4 py-2.5 rounded-2xl text-sm break-words min-w-0 space-y-3",
                   m.role === "user"
-                    ? "rounded-[20px] rounded-tr-md bg-[#144fcc] px-4 py-3 font-medium text-white shadow-[0_8px_22px_rgba(20,79,204,0.16)]"
-                    : "space-y-4 rounded-[22px] rounded-tl-md border border-[#e7e3dc] bg-[#f7f6f0] px-5 py-4 text-on-surface shadow-[0_12px_30px_rgba(20,20,15,0.06)]"
+                    ? "bg-primary text-on-primary rounded-tr-sm"
+                    : "bg-surface-container-high text-on-surface rounded-tl-sm"
                 )}
               >
-                <p className="whitespace-pre-wrap">{m.text}</p>
-                {m.role === "bot" && <AgentExecutionSummary sources={m.sources} mode={m.mode} />}
+                <p>{m.text}</p>
+                <AgentExecutionSummary sources={m.sources} mode={m.mode} />
                 {!!m.routeSuggestions?.length && (
                   <div className="space-y-3">
                     {m.routeSuggestions.slice(0, 3).map((route, routeIndex) => (
@@ -3644,16 +3539,16 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
             <AiWorkingIndicator />
           )}
         </div>
-        <div className="flex min-w-0 gap-2 border-t border-[#e4dfd5] bg-[#fffefa] p-4">
+        <div className="p-4 border-t-2 border-outline-variant flex gap-2 min-w-0">
           <Input
             placeholder="Nhập câu hỏi..."
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && send()}
             disabled={loading || !sessionReady}
-            className="min-h-12 flex-1 rounded-2xl border-[#d8d2c8] bg-white px-4 shadow-sm focus-visible:ring-2 focus-visible:ring-[#144fcc]/20"
+            className="flex-1 min-w-0"
           />
-          <ExpressiveButton variant="filled" size="icon" onClick={send} disabled={loading || !sessionReady || !input.trim()} className="size-12 rounded-2xl bg-[#14140f] text-[#beff50] hover:bg-[#14140f]/90">
+          <ExpressiveButton variant="filled" size="icon" onClick={send} disabled={loading || !sessionReady || !input.trim()}>
             <Send className="size-4" />
           </ExpressiveButton>
         </div>
