@@ -1,10 +1,19 @@
 "use client";
 
+import { Suspense } from 'react';
 import Link from 'next/link';
-import { CheckCircle2, RotateCcw, XCircle } from 'lucide-react';
+import { CheckCircle2, Loader2, RotateCcw, XCircle } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 
 export default function StudentPaymentResultPage() {
+  return (
+    <Suspense fallback={<PaymentResultShell />}>
+      <StudentPaymentResultContent />
+    </Suspense>
+  );
+}
+
+function StudentPaymentResultContent() {
   const searchParams = useSearchParams();
   const status = searchParams.get('status');
   const txnRef = searchParams.get('txnRef');
@@ -50,6 +59,19 @@ export default function StudentPaymentResultPage() {
           >
             <RotateCcw className="w-5 h-5" /> Thanh toán lại
           </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PaymentResultShell() {
+  return (
+    <div className="h-full flex items-center justify-center font-sans p-6">
+      <div className="w-full max-w-xl bg-white rounded-3xl border border-black/5 shadow-sm p-8">
+        <div className="flex items-center justify-center gap-3 text-brand-text font-black">
+          <Loader2 className="w-5 h-5 animate-spin" />
+          Đang tải kết quả thanh toán
         </div>
       </div>
     </div>

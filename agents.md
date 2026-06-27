@@ -40,3 +40,83 @@ dừng phía điều phối viên (crd-stops) giữ nguyên.
   theo dõi xe/timeline, lịch sử chuyến (điểm lên/xuống).
 - Vai trò điều phối viên: màn hình quản lý "Trạm dừng" vẫn hoạt động.
 - Chạy build/lint frontend để bắt lỗi type/import tiềm ẩn.
+
+---
+
+# Changelog: Cập nhật chức năng "Tìm tuyến xe" phía sinh viên
+
+Ghi lại log thay đổi sau khi đã bỏ màn hình "Trạm dừng" độc lập. Dữ liệu trạm vẫn
+được dùng trong luồng tìm tuyến, nhưng sinh viên không tra cứu trạm qua màn hình riêng.
+
+## Tóm tắt
+Cập nhật màn hình `stu-find` để sinh viên tìm tuyến theo trạm/trường muốn đến.
+Màn hình ban đầu hiển thị tất cả tuyến có thể đi đến các trạm/trường. Khi sinh viên
+nhập tên trạm/trường, hệ thống hiện dropdown gợi ý và lọc danh sách tuyến phù hợp.
+
+## Thay đổi gì
+- Thay luồng tìm tuyến cũ chọn cả `trạm lên` và `trạm xuống` bằng ô nhập `Trạm đến`.
+- Ô nhập `Trạm đến` cho phép sinh viên tự gõ tên trạm/trường.
+- Khi focus hoặc nhập từ khóa, hiển thị dropdown gợi ý kiểu search map:
+  - ô nhập cố định phía trên;
+  - danh sách gợi ý bên dưới;
+  - mỗi gợi ý có icon, tên trạm, thông tin phụ (địa chỉ/mã trạm/số tuyến);
+  - click gợi ý sẽ điền tên trạm và lọc tuyến.
+- Dropdown được render dạng overlay để không làm giãn hero/card tìm kiếm.
+- Danh sách gợi ý giới hạn chiều cao (`max-height: 320px`) và chỉ scroll trong phần list,
+  tránh scrollbar tràn khỏi bo góc.
+- Card tìm kiếm giữ chiều rộng ổn định, không nở theo nội dung gợi ý dài.
+- Kết quả tuyến hiển thị:
+  - thời gian xuất phát;
+  - thời gian đến trạm lên;
+  - thời gian ước tính xuống;
+  - tổng số km;
+  - trạng thái chuyến (`Chưa đi` / `Đang đi`);
+  - tần suất, giá vé/vé tháng nếu có dữ liệu.
+- Thêm mục `Xem thêm thông tin trạm dừng` dạng dropdown trong từng card tuyến để xem
+  danh sách trạm trên tuyến.
+
+## Nguồn dữ liệu
+- Ưu tiên dữ liệu từ `experienceApi.studentRouteSuggestions()` (`/students/me/route-suggestions`).
+- Nếu API gợi ý chưa có dữ liệu thì fallback sang `ctx.routes` từ dashboard sinh viên.
+- Danh sách trạm lấy từ `ctx.stops`.
+- Trạng thái `Đang đi` / `Chưa đi` lấy từ `ctx.trips` nếu có trip gắn với tuyến.
+- Các thông tin tuyến như `distanceKm`, `estimatedMinutes`, `frequencyMin`, `singleFare`,
+  `monthlyFare`, `firstTrip` lấy từ dữ liệu route/suggestion hiện có.
+- Giờ đến từng trạm trong màn này được frontend ước lượng từ giờ xuất phát, tổng thời gian
+  tuyến và thứ tự trạm vì dữ liệu hiện có chưa có lịch đến từng trạm riêng cho màn `stu-find`.
+
+## Phạm vi không đụng tới
+- Không khôi phục màn hình `stu-stops`.
+- Không thay đổi API stop ở backend.
+- Không thay đổi chức năng quản lý trạm dừng phía điều phối viên.
+- Không thay đổi luồng đăng ký tuyến/vé, tracking, lịch sử chuyến ngoài việc dùng lại dữ liệu trạm.
+
+## Lưu ý khi test
+- Vào vai trò sinh viên, mở `Tìm tuyến xe`.
+- Khi chưa nhập gì, danh sách tuyến vẫn hiển thị.
+- Focus vào ô `Trạm đến`, dropdown gợi ý phải hiện bên dưới ô nhập.
+- Nhập từ khóa có dấu/không dấu đều lọc được trạm phù hợp.
+- Dropdown nhiều kết quả phải scroll bên trong list, không làm hero/card cao lên và không tràn bo góc.
+- Click một gợi ý phải điền tên trạm và lọc danh sách tuyến tương ứng.
+- Mỗi tuyến vẫn có thể bung `Xem thêm thông tin trạm dừng`.
+
+---
+
+# Changelog: Fix build Next.js cho trang kết quả thanh toán
+
+## Tóm tắt
+Fix lỗi Next.js 16 khi build trang `/student/payment/result` do page dùng
+`useSearchParams()` trực tiếp mà chưa nằm trong `Suspense`.
+
+## Thay đổi gì
+- Bọc nội dung trang kết quả thanh toán bằng `<Suspense>`.
+- Tách phần đọc `useSearchParams()` sang component con.
+- Thêm fallback loading đơn giản cho trang kết quả thanh toán.
+
+## Lý do
+- Next.js 16 yêu cầu usage `useSearchParams()` ở page prerender phải nằm trong Suspense boundary.
+- Nếu không sửa, `npm run build` fail ở `/student/payment/result`.
+
+## Kiểm tra
+- `npm run lint` chạy qua, còn các warning hook dependency cũ ở module khác.
+- `npm run build` chạy qua.
