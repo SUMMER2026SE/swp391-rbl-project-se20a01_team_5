@@ -3,7 +3,7 @@
 // =============================================================================
 // Student Module — UniBus (M3 Expressive, aligned to UIPrototype v1.1)
 // 14 role-specific screens driven by `activeId`:
-//   stu-dashboard, stu-university, stu-stops, stu-find, stu-tracking,
+//   stu-dashboard, stu-university, stu-find, stu-tracking,
 //   stu-my-routes, stu-my-ticket, stu-history, stu-ai, stu-chatbot,
 //   stu-payment, stu-invoices, stu-feedback, stu-lost
 //
@@ -231,8 +231,6 @@ export function StudentModule({ activeId, onNavigate, onProfileRefresh }: Studen
       return <DashboardScreen ctx={ctx} onNavigate={onNavigate} />;
     case "stu-university":
       return <UniversityScreen ctx={ctx} onProfileRefresh={onProfileRefresh} />;
-    case "stu-stops":
-      return <StopsScreen ctx={ctx} />;
     case "stu-find":
       return <FindRoutesScreen ctx={ctx} onNavigate={onNavigate} />;
     case "stu-tracking":
@@ -717,7 +715,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
           actions={
             <button
               className="state-layer inline-flex items-center gap-1 h-8 px-3 rounded-full text-sm font-bold text-[#14140f] hover:bg-[#14140f]/8"
-              onClick={() => onNavigate("stu-stops")}
+              onClick={() => onNavigate("stu-notifications")}
             >
               Xem tất cả
               <ArrowRight className="size-4" />
@@ -1405,120 +1403,6 @@ function UniversityScreen({ ctx, onProfileRefresh }: { ctx: Ctx; onProfileRefres
             </div>
           </ExpressiveCard>
         </div>
-      </div>
-    </PageTransition>
-  );
-}
-
-// =============================================================================
-// Screen 3: Stops — list of bus stops with route info (prototype-aligned)
-// =============================================================================
-function StopsScreen({ ctx }: { ctx: Ctx }) {
-  const [query, setQuery] = useState("");
-  const filtered = ctx.stops.filter(
-    (s: any) =>
-      s.name.toLowerCase().includes(query.toLowerCase()) ||
-      s.code.toLowerCase().includes(query.toLowerCase()) ||
-      s.address.toLowerCase().includes(query.toLowerCase())
-  );
-
-  const stopsWithShelter = ctx.stops.filter((s: any) => s.hasShelter).length;
-
-  return (
-    <PageTransition className="space-y-5 min-w-0">
-      <PageHeader
-        title="Trạm dừng"
-        description="Tra cứu trạm dừng trên toàn tuyến UniBus."
-        icon={<MapPin className="size-6 sm:size-7" />}
-      />
-
-      {/* Search bar — large, prototype style */}
-      <div className="relative min-w-0">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-5 text-[#144fcc] pointer-events-none" />
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Tìm trạm theo tên, mã, địa chỉ…"
-          className="w-full h-12 sm:h-14 pl-12 pr-4 rounded-2xl bg-white border-2 border-[#14140f]/15 text-sm font-semibold text-[#14140f] placeholder:text-[#14140f]/40 placeholder:font-normal focus:border-[#144fcc] focus:outline-none transition-colors dark:bg-surface-container-lowest dark:text-on-surface dark:border-outline-variant"
-        />
-      </div>
-
-      {/* Stats bar — 3 bold mini-cards (prototype) */}
-      <div className="grid grid-cols-3 gap-2 sm:gap-3 min-w-0">
-        <div className="rounded-2xl bg-[#14140f] text-[#beff50] p-3 sm:p-4 text-center min-w-0">
-          <p className="text-xl sm:text-2xl font-bold tabular-nums">{ctx.stops.length}</p>
-          <p className="text-[10px] sm:text-xs font-bold opacity-70 uppercase truncate">Tổng trạm</p>
-        </div>
-        <div className="rounded-2xl bg-[#144fcc] text-white p-3 sm:p-4 text-center min-w-0">
-          <p className="text-xl sm:text-2xl font-bold tabular-nums">{ctx.routes.length}</p>
-          <p className="text-[10px] sm:text-xs font-bold opacity-70 uppercase truncate">Tuyến</p>
-        </div>
-        <div className="rounded-2xl bg-[#ff8c5f] text-[#14140f] p-3 sm:p-4 text-center min-w-0">
-          <p className="text-xl sm:text-2xl font-bold tabular-nums">{stopsWithShelter}</p>
-          <p className="text-[10px] sm:text-xs font-bold opacity-70 uppercase truncate">Mái che</p>
-        </div>
-      </div>
-
-      {/* List of stops — clean list, not grid (better mobile, matches prototype) */}
-      <div className="space-y-2 min-w-0">
-        {filtered.length === 0 ? (
-          <EmptyState
-            icon={<MapPin className="size-7" />}
-            title="Không tìm thấy trạm"
-            description="Thử từ khóa khác."
-          />
-        ) : (
-          filtered.map((s: any, i: number) => {
-            const stopRoutes = (s.routes || [])
-              .map((rId: string) => ctx.routes.find((r: any) => r.id === rId))
-              .filter(Boolean);
-            const palette = ["#14140f", "#144fcc", "#ff8c5f", "#c8a0ff"];
-            const accent = palette[i % palette.length];
-            return (
-              <div
-                key={s.id}
-                className="state-layer w-full text-left rounded-2xl bg-white border-2 border-[#14140f]/10 hover:border-[#144fcc] p-4 transition-colors min-w-0 dark:bg-surface-container-lowest dark:border-outline-variant"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  {/* Number badge */}
-                  <div
-                    className="flex size-10 shrink-0 items-center justify-center rounded-xl text-xs font-bold"
-                    style={{ backgroundColor: accent, color: accent === "#14140f" ? "#beff50" : "#fff" }}
-                  >
-                    {s.code?.substring(0, 2) || "?"}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <p className="text-sm font-bold text-[#14140f] truncate dark:text-on-surface">{s.name}</p>
-                      {s.hasShelter && (
-                        <ShieldCheck className="size-3.5 text-[#16a34a] shrink-0" />
-                      )}
-                    </div>
-                    <p className="text-xs text-[#14140f]/50 truncate dark:text-on-surface-variant">{s.address}</p>
-                  </div>
-                  <div className="flex flex-col items-end gap-1 shrink-0">
-                    <div className="flex gap-1">
-                      {stopRoutes.slice(0, 2).map((r: any) => (
-                        <span
-                          key={r.id}
-                          className="inline-flex items-center h-5 px-2 rounded-full text-[9px] font-bold text-white"
-                          style={{ backgroundColor: r.color }}
-                        >
-                          {r.code}
-                        </span>
-                      ))}
-                      {stopRoutes.length > 2 && (
-                        <span className="inline-flex items-center h-5 px-1.5 rounded-full bg-[#14140f]/10 text-[#14140f] text-[9px] font-bold dark:bg-surface-container-high dark:text-on-surface">
-                          +{stopRoutes.length - 2}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })
-        )}
       </div>
     </PageTransition>
   );

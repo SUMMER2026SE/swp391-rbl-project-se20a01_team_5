@@ -90,7 +90,6 @@ export const NAV_CONFIG: Record<Role, NavItem[]> = {
   student: [
     { id: "stu-dashboard", label: "Trang chủ", icon: LayoutDashboard, group: "Tổng quan" },
     { id: "stu-university", label: "Trường của tôi", icon: School, group: "Tổng quan" },
-    { id: "stu-stops", label: "Trạm dừng", icon: MapPin, group: "Tuyến xe" },
     { id: "stu-find", label: "Tìm tuyến xe", icon: RouteIcon, group: "Tuyến xe" },
     { id: "stu-tracking", label: "Theo dõi xe", icon: Navigation, group: "Tuyến xe" },
     { id: "stu-my-routes", label: "Tuyến của tôi", icon: TicketCheck, group: "Tuyến xe" },
