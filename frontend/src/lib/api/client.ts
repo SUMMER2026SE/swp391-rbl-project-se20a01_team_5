@@ -288,8 +288,149 @@ export interface EtaDTO {
   speedKmh?: number;
 }
 
+export interface CoordinateDTO {
+  latitude?: number | string;
+  longitude?: number | string;
+}
+
+export interface PlaceSuggestionDTO {
+  id: string;
+  type: "STOP" | "ADDRESS" | string;
+  label: string;
+  address?: string;
+  latitude?: number | string;
+  longitude?: number | string;
+  stopId?: number;
+  distanceMeters?: number;
+  routes?: { routeId: number; routeName: string; routeCode?: string; colorHex?: string }[];
+}
+
+export interface JourneyPlacePointDTO {
+  placeId?: string;
+  stopId?: number;
+  label?: string;
+  latitude?: number | string;
+  longitude?: number | string;
+}
+
+export interface JourneySearchRequestDTO {
+  origin: JourneyPlacePointDTO;
+  destination: JourneyPlacePointDTO;
+  maxBusLegs?: number;
+  departAt?: string;
+}
+
+export interface JourneyStopDTO {
+  stopId: number;
+  stopName: string;
+  address?: string;
+  latitude?: number | string;
+  longitude?: number | string;
+  stopOrder?: number;
+  stationDirection?: number;
+  etaMinutes?: number;
+  transfer?: boolean;
+}
+
+export interface JourneyLegDTO {
+  legId: string;
+  mode: "WALK" | "BUS" | string;
+  routeId?: number;
+  routeCode?: string;
+  routeName?: string;
+  colorHex?: string;
+  fromStopId?: number;
+  fromStopName?: string;
+  toStopId?: number;
+  toStopName?: string;
+  stopCount?: number;
+  durationMinutes?: number;
+  waitMinutes?: number;
+  distanceKm?: number | string;
+  fare?: number | string;
+  nextDepartureAt?: string;
+  estimatedArrivalAt?: string;
+  stops?: JourneyStopDTO[];
+  shape?: CoordinateDTO[];
+  universityLinked?: boolean;
+}
+
+export interface JourneyOptionDTO {
+  optionId: string;
+  summary: {
+    totalMinutes: number;
+    walkMinutes?: number;
+    waitMinutes?: number;
+    walkMeters?: number | string;
+    busDistanceKm?: number | string;
+    transferCount: number;
+    singleFare?: number | string;
+    monthlyFare?: number | string;
+    firstEtaText?: string;
+    confidence?: string;
+  };
+  legs: JourneyLegDTO[];
+  routeBadges?: { routeId: number; routeName: string; routeCode?: string; colorHex?: string }[];
+  primaryAction?: {
+    type: string;
+    label: string;
+    enabled: boolean;
+    reason?: string;
+    routeId?: number;
+    boardingStopId?: number;
+    alightingStopId?: number;
+  };
+  secondaryActions?: {
+    type: string;
+    label: string;
+    enabled: boolean;
+    reason?: string;
+    routeId?: number;
+    boardingStopId?: number;
+    alightingStopId?: number;
+  }[];
+  polylines?: { legId: string; mode: string; colorHex?: string; points: CoordinateDTO[] }[];
+  stops?: JourneyStopDTO[];
+}
+
+export interface JourneyTrackingSnapshotDTO {
+  journeyId: string;
+  updatedAt?: string;
+  vehicles?: {
+    vehicleId: string;
+    plateNumber?: string;
+    routeId?: number;
+    routeCode?: string;
+    latitude?: number | string;
+    longitude?: number | string;
+    speedKmh?: number | string;
+    occupancy?: number;
+    capacity?: number;
+    nextStopId?: number;
+    nextStopName?: string;
+    etaMinutes?: number;
+  }[];
+  stopEtas?: {
+    stopId: number;
+    stopName: string;
+    routeId?: number;
+    routeCode?: string;
+    estimatedArrivalAt?: string;
+    minutesAway?: number;
+  }[];
+  polylines?: { legId: string; mode: string; colorHex?: string; points: CoordinateDTO[] }[];
+}
+
 export const transportApi = {
   stops: () => apiFetch.get<StopDTO[]>("/stops"),
+  searchPlaces: (q: string, lat?: number, lng?: number, limit = 8) =>
+    apiFetch.get<PlaceSuggestionDTO[]>("/places/search", { q, lat, lng, limit }),
+  reversePlace: (lat: number, lng: number) =>
+    apiFetch.get<{ label: string; address?: string; latitude?: number | string; longitude?: number | string; nearestStopId?: number; nearestStopName?: string; distanceMeters?: number }>("/places/reverse", { lat, lng }),
+  searchJourneys: (data: JourneySearchRequestDTO) =>
+    apiFetch.post<JourneyOptionDTO[]>("/journeys/search", data),
+  trackJourney: (journeyId: string) =>
+    apiFetch.get<JourneyTrackingSnapshotDTO>(`/tracking/journeys/${encodeURIComponent(journeyId)}`),
   searchRoutes: (boardingStopId: number | string, alightingStopId: number | string) =>
     apiFetch.get<RouteSuggestionDTO[]>("/routes/search", { boardingStopId, alightingStopId }),
   route: (routeId: number | string) => apiFetch.get<RouteSuggestionDTO>(`/routes/${routeId}`),
@@ -436,6 +577,37 @@ export const studentApi = {
   tickets: () => apiFetch.get<PassesDashboard>("/students/me/tickets"),
   purchaseMonthlyPass: (method = "E_WALLET", routeId?: number) =>
     apiFetch.post<TicketView>("/students/me/tickets/monthly-pass", { method, routeId }),
+  purchaseJourneyMonthlyPass: (data: {
+    originLabel: string;
+    destinationLabel: string;
+    method?: string;
+    legs: { routeId: number; boardingStopId?: number; alightingStopId?: number; legOrder?: number }[];
+  }) =>
+    apiFetch.post<{
+      journeyOrderId: number;
+      originLabel: string;
+      destinationLabel: string;
+      totalAmount: number | string;
+      subsidyAmount: number | string;
+      finalAmount: number | string;
+      qrCode: string;
+      status: string;
+      purchasedAt?: string;
+      items?: {
+        itemId: number;
+        monthlyPassId: number;
+        routeId: number;
+        routeName: string;
+        legOrder: number;
+        boardingStopId?: number;
+        boardingStopName?: string;
+        alightingStopId?: number;
+        alightingStopName?: string;
+        originalAmount?: number | string;
+        subsidyAmount?: number | string;
+        finalAmount?: number | string;
+      }[];
+    }>("/students/me/tickets/journey-monthly-pass", data),
   payments: () => apiFetch.get<PaymentView[]>("/students/me/payments"),
   createSePayOrder: (ticketType: string, routeId?: number) =>
     apiFetch.post<{ orderId: number; routeId?: number; routeName?: string; qrUrl: string; amount: number; description: string; bankCode: string; accountNo: string; accountName: string }>("/students/me/payments/sepay/order", { ticketType, routeId }),

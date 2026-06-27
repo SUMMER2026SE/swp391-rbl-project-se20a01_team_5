@@ -179,6 +179,11 @@ import {
   type PaymentView,
   type TicketView,
   type EtaDTO,
+  type CoordinateDTO,
+  type JourneyStopDTO,
+  type PlaceSuggestionDTO,
+  type JourneyOptionDTO,
+  type JourneyTrackingSnapshotDTO,
   type AiSource,
   type AiRouteSuggestionCard,
   ApiError,
@@ -239,7 +244,7 @@ export function StudentModule({ activeId, onNavigate, onProfileRefresh }: Studen
     case "stu-stops":
       return <StopsScreen ctx={ctx} />;
     case "stu-find":
-      return <FindRoutesScreen ctx={ctx} onNavigate={onNavigate} />;
+      return <JourneyPlannerDesktopScreen ctx={ctx} onNavigate={onNavigate} />;
     case "stu-tracking":
       return <TrackingScreen ctx={ctx} />;
     case "stu-my-routes":
@@ -329,7 +334,7 @@ function InfoCell({ label, value }: { label: string; value?: React.ReactNode }) 
   return (
     <div className="rounded-xl bg-[#14140f]/8 p-3 min-w-0">
       <p className="text-[10px] font-bold opacity-70 uppercase truncate">{label}</p>
-      <p className="text-sm font-bold truncate">{value || "—"}</p>
+      <p className="text-sm font-bold leading-snug break-words">{value || "—"}</p>
     </div>
   );
 }
@@ -1542,6 +1547,697 @@ function StopsScreen({ ctx }: { ctx: Ctx }) {
   );
 }
 
+function JourneyPlannerDesktopScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
+  const [originQuery, setOriginQuery] = useState("Đại học Việt Hàn");
+  const [destinationQuery, setDestinationQuery] = useState("Bến xe Trung tâm Đà Nẵng");
+  const [origin, setOrigin] = useState<PlaceSuggestionDTO | null>(null);
+  const [destination, setDestination] = useState<PlaceSuggestionDTO | null>(null);
+  const [originSuggestions, setOriginSuggestions] = useState<PlaceSuggestionDTO[]>([]);
+  const [destinationSuggestions, setDestinationSuggestions] = useState<PlaceSuggestionDTO[]>([]);
+  const [focus, setFocus] = useState<"origin" | "destination" | null>(null);
+  const [maxBusLegs, setMaxBusLegs] = useState("2");
+  const [journeys, setJourneys] = useState<JourneyOptionDTO[]>([]);
+  const [selectedId, setSelectedId] = useState("");
+  const [tracking, setTracking] = useState<JourneyTrackingSnapshotDTO | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [bootstrapped, setBootstrapped] = useState(false);
+
+  const selectedJourney = journeys.find((item) => item.optionId === selectedId) || journeys[0] || null;
+
+  const numberValue = (value: number | string | undefined | null) => Number(value ?? 0) || 0;
+  const moneyValue = (value: number | string | undefined | null) => numberValue(value);
+  const coordinate = (point: CoordinateDTO) => ({
+    lat: numberValue(point.latitude),
+    lng: numberValue(point.longitude),
+  });
+
+  const placePoint = (place: PlaceSuggestionDTO | null, label: string) => {
+    if (!place) return null;
+    if (place.stopId) {
+      return { stopId: place.stopId, label: place.label };
+    }
+    return {
+      placeId: place.id,
+      label: place.label || label,
+      latitude: place.latitude,
+      longitude: place.longitude,
+    };
+  };
+
+  const loadSuggestions = useCallback(async (kind: "origin" | "destination", query: string) => {
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      if (kind === "origin") setOriginSuggestions([]);
+      else setDestinationSuggestions([]);
+      return;
+    }
+    try {
+      const places = await transportApi.searchPlaces(trimmed, undefined, undefined, 8);
+      if (kind === "origin") setOriginSuggestions(places);
+      else setDestinationSuggestions(places);
+    } catch {
+      if (kind === "origin") setOriginSuggestions([]);
+      else setDestinationSuggestions([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => loadSuggestions("origin", originQuery), 220);
+    return () => window.clearTimeout(timer);
+  }, [loadSuggestions, originQuery]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => loadSuggestions("destination", destinationQuery), 220);
+    return () => window.clearTimeout(timer);
+  }, [destinationQuery, loadSuggestions]);
+
+  const runSearch = useCallback(async (nextOrigin = origin, nextDestination = destination) => {
+    const originPoint = placePoint(nextOrigin, originQuery);
+    const destinationPoint = placePoint(nextDestination, destinationQuery);
+    if (!originPoint || !destinationPoint) {
+      toast.error("Hãy chọn điểm xuất phát và điểm đến từ gợi ý.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const result = await transportApi.searchJourneys({
+        origin: originPoint,
+        destination: destinationPoint,
+        maxBusLegs: Number(maxBusLegs),
+      });
+      setJourneys(result);
+      setSelectedId(result[0]?.optionId || "");
+      if (result.length) {
+        toast.success(`Đã tìm thấy ${result.length} lộ trình phù hợp.`);
+      } else {
+        toast.info("Chưa tìm thấy lộ trình phù hợp trong mạng tuyến hiện tại.");
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể tìm lộ trình");
+      setJourneys([]);
+      setSelectedId("");
+    } finally {
+      setLoading(false);
+    }
+  }, [destination, destinationQuery, maxBusLegs, origin, originQuery]);
+
+  useEffect(() => {
+    if (bootstrapped) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [originList, destinationList] = await Promise.all([
+          transportApi.searchPlaces("Đại học Việt Hàn", undefined, undefined, 3),
+          transportApi.searchPlaces("Bến xe Trung tâm Đà Nẵng", undefined, undefined, 3),
+        ]);
+        if (cancelled) return;
+        const nextOrigin = originList[0] || null;
+        const nextDestination = destinationList[0] || null;
+        if (nextOrigin) {
+          setOrigin(nextOrigin);
+          setOriginQuery(nextOrigin.label);
+        }
+        if (nextDestination) {
+          setDestination(nextDestination);
+          setDestinationQuery(nextDestination.label);
+        }
+        setBootstrapped(true);
+        if (nextOrigin && nextDestination) {
+          window.setTimeout(() => void runSearch(nextOrigin, nextDestination), 120);
+        }
+      } catch {
+        if (!cancelled) setBootstrapped(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [bootstrapped, runSearch]);
+
+  useEffect(() => {
+    if (!selectedJourney?.optionId) {
+      setTracking(null);
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const snapshot = await transportApi.trackJourney(selectedJourney.optionId);
+        if (!cancelled) setTracking(snapshot);
+      } catch {
+        if (!cancelled) setTracking(null);
+      }
+    };
+    void load();
+    const timer = window.setInterval(load, 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [selectedJourney?.optionId]);
+
+  const useGps = () => {
+    if (!navigator.geolocation) {
+      toast.error("Trình duyệt không hỗ trợ GPS.");
+      return;
+    }
+    setGpsLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const resolved = await transportApi.reversePlace(pos.coords.latitude, pos.coords.longitude);
+          const place = {
+            id: "gps:current",
+            type: "ADDRESS",
+            label: resolved.label || "Vị trí hiện tại",
+            address: resolved.address,
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            stopId: resolved.nearestStopId,
+            distanceMeters: resolved.distanceMeters,
+          };
+          setOrigin(place);
+          setOriginQuery(place.label);
+          toast.success("Đã lấy vị trí hiện tại.");
+        } catch {
+          const place = {
+            id: "gps:current",
+            type: "ADDRESS",
+            label: "Vị trí hiện tại",
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+          };
+          setOrigin(place);
+          setOriginQuery(place.label);
+        } finally {
+          setGpsLoading(false);
+        }
+      },
+      () => {
+        setGpsLoading(false);
+        toast.error("Không lấy được vị trí hiện tại.");
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+    );
+  };
+
+  const pickPlace = (kind: "origin" | "destination", place: PlaceSuggestionDTO) => {
+    if (kind === "origin") {
+      setOrigin(place);
+      setOriginQuery(place.label);
+      setOriginSuggestions([]);
+    } else {
+      setDestination(place);
+      setDestinationQuery(place.label);
+      setDestinationSuggestions([]);
+    }
+    setFocus(null);
+  };
+
+  const swapPlaces = () => {
+    const oldOrigin = origin;
+    const oldOriginQuery = originQuery;
+    setOrigin(destination);
+    setOriginQuery(destinationQuery);
+    setDestination(oldOrigin);
+    setDestinationQuery(oldOriginQuery);
+  };
+
+  const busLegs = selectedJourney?.legs.filter((leg) => leg.mode === "BUS") || [];
+  const selectedStops = useMemo(() => {
+    const rawStops = selectedJourney?.stops?.length
+      ? selectedJourney.stops
+      : busLegs.flatMap((leg) => leg.stops || []);
+    const unique = new Map<number, JourneyStopDTO>();
+    rawStops.forEach((stop) => unique.set(stop.stopId, stop));
+    return Array.from(unique.values())
+      .filter((stop) => stop.latitude != null && stop.longitude != null)
+      .map((stop) => ({
+        id: String(stop.stopId),
+        name: stop.stopName,
+        address: stop.address || "Đà Nẵng",
+        code: String(stop.stopOrder ?? ""),
+        lat: numberValue(stop.latitude),
+        lng: numberValue(stop.longitude),
+        hasShelter: false,
+        routes: selectedJourney?.routeBadges?.map((route) => String(route.routeId)) || [],
+      }));
+  }, [busLegs, selectedJourney?.routeBadges, selectedJourney?.stops]);
+
+  const journeyPolylines: JourneyPolyline[] = useMemo(() => (
+    selectedJourney?.polylines || []
+  ).map((line) => ({
+    id: line.legId,
+    label: line.mode === "WALK" ? "Đi bộ" : "Tuyến xe",
+    color: line.colorHex || (line.mode === "WALK" ? "#14140f" : "#144fcc"),
+    dashed: line.mode === "WALK",
+    points: (line.points || []).map(coordinate).filter((p) => p.lat && p.lng),
+  })).filter((line) => line.points.length >= 2), [selectedJourney?.polylines]);
+
+  const journeyBuses = (tracking?.vehicles || []).map((vehicle) => ({
+    id: vehicle.vehicleId,
+    plate: vehicle.plateNumber || "43B-00000",
+    routeCode: vehicle.routeCode || "BUS",
+    routeColor: selectedJourney?.routeBadges?.find((route) => route.routeId === vehicle.routeId)?.colorHex || "#144fcc",
+    lat: numberValue(vehicle.latitude),
+    lng: numberValue(vehicle.longitude),
+    speedKmh: numberValue(vehicle.speedKmh),
+    occupancy: vehicle.occupancy,
+    capacity: vehicle.capacity,
+    etaMinutes: vehicle.etaMinutes,
+  })).filter((vehicle) => vehicle.lat && vehicle.lng);
+
+  const primaryColor = selectedJourney?.routeBadges?.[0]?.colorHex || "#144fcc";
+  const selectedEta = tracking?.stopEtas?.[0];
+
+  const registerSelected = async () => {
+    const action = selectedJourney?.primaryAction;
+    if (!action?.enabled || !action.routeId || !action.boardingStopId || !action.alightingStopId) {
+      toast.error(action?.reason || "Hành trình này chưa đủ điều kiện đăng ký.");
+      return;
+    }
+    try {
+      await studentApi.registerRoute({
+        routeId: action.routeId,
+        boardingStopId: action.boardingStopId,
+        alightingStopId: action.alightingStopId,
+      });
+      localStorage.setItem("unibus.paymentRouteId", String(action.routeId));
+      ctx.reload();
+      toast.success("Đã đăng ký tuyến. Chuyển sang mua vé tháng.");
+      onNavigate("stu-payment");
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        localStorage.setItem("unibus.paymentRouteId", String(action.routeId));
+        toast.info("Tuyến này đã được đăng ký. Chuyển sang mua vé.");
+        onNavigate("stu-payment");
+        return;
+      }
+      toast.error(error instanceof Error ? error.message : "Không thể đăng ký tuyến");
+    }
+  };
+
+  const buyJourneyPass = async () => {
+    if (!selectedJourney || !busLegs.length) return;
+    try {
+      const seen = new Set<number>();
+      const legs = busLegs
+        .filter((leg) => leg.routeId && !seen.has(leg.routeId) && seen.add(leg.routeId))
+        .map((leg, index) => ({
+          routeId: Number(leg.routeId),
+          boardingStopId: leg.fromStopId,
+          alightingStopId: leg.toStopId,
+          legOrder: index + 1,
+        }));
+      const order = await studentApi.purchaseJourneyMonthlyPass({
+        originLabel: origin?.label || originQuery,
+        destinationLabel: destination?.label || destinationQuery,
+        method: "BANK_TRANSFER",
+        legs,
+      });
+      ctx.reload();
+      toast.success(`Đã kích hoạt QR hành trình ${order.qrCode.slice(0, 18)}...`);
+      onNavigate("stu-my-ticket");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Cần đăng ký các tuyến trước khi mua vé hành trình");
+    }
+  };
+
+  const trackSelected = () => {
+    if (!selectedJourney?.optionId) return;
+    localStorage.setItem("unibus.trackingJourneyId", selectedJourney.optionId);
+    onNavigate("stu-tracking");
+  };
+
+  const renderSuggestions = (kind: "origin" | "destination", suggestions: PlaceSuggestionDTO[]) => (
+    focus === kind && suggestions.length > 0 && (
+      <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-40 overflow-hidden rounded-2xl border border-outline-variant bg-surface shadow-xl">
+        {suggestions.map((place) => (
+          <button
+            key={place.id}
+            type="button"
+            onMouseDown={(event) => {
+              event.preventDefault();
+              pickPlace(kind, place);
+            }}
+            className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-surface-container-high"
+          >
+            <span className={cn(
+              "flex size-9 shrink-0 items-center justify-center rounded-full",
+              kind === "origin" ? "bg-[#beff50] text-[#14140f]" : "bg-[#ff8c5f] text-[#14140f]",
+            )}>
+              <MapPin className="size-4" />
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-black">{place.label}</span>
+              <span className="block truncate text-xs text-on-surface-variant">
+                {place.address || (place.distanceMeters ? `Cách khoảng ${place.distanceMeters}m` : "Đà Nẵng")}
+              </span>
+            </span>
+          </button>
+        ))}
+      </div>
+    )
+  );
+
+  return (
+    <PageTransition className="space-y-5 min-w-0">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span className="flex size-10 items-center justify-center rounded-2xl bg-[#14140f] text-[#beff50]">
+            <RouteIcon className="size-5" />
+          </span>
+          <div>
+            <h1 className="text-2xl font-black text-on-surface">Tìm tuyến</h1>
+            <p className="text-sm text-on-surface-variant">Lập hành trình, đăng ký tuyến và theo dõi xe trên bản đồ.</p>
+          </div>
+        </div>
+        <div className="hidden items-center gap-2 rounded-full bg-surface-container px-4 py-2 text-sm font-bold text-on-surface-variant lg:flex">
+          <Calendar className="size-4" />
+          {new Date().toLocaleDateString("vi-VN", { weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" })}
+        </div>
+      </div>
+
+      <ExpressiveCard variant="elevated" className="p-5 lg:p-6 min-w-0">
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_48px_minmax(0,1fr)_220px_190px] xl:items-end">
+          <div className="relative min-w-0">
+            <Label className="mb-2 block text-xs font-black uppercase text-on-surface-variant">Điểm xuất phát</Label>
+            <div className="relative">
+              <CircleDot className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#16a34a]" />
+              <Input
+                value={originQuery}
+                onFocus={() => setFocus("origin")}
+                onBlur={() => window.setTimeout(() => setFocus(null), 140)}
+                onChange={(event) => {
+                  setOriginQuery(event.target.value);
+                  setOrigin(null);
+                }}
+                className="h-12 rounded-2xl pl-11 text-sm font-bold"
+                placeholder="Nhập điểm xuất phát"
+              />
+            </div>
+            {renderSuggestions("origin", originSuggestions)}
+          </div>
+
+          <button
+            type="button"
+            onClick={swapPlaces}
+            className="hidden size-12 items-center justify-center rounded-full border border-outline-variant bg-surface-container hover:bg-surface-container-high xl:flex"
+            title="Đổi chiều"
+          >
+            <ArrowLeftRight className="size-5" />
+          </button>
+
+          <div className="relative min-w-0">
+            <Label className="mb-2 block text-xs font-black uppercase text-on-surface-variant">Điểm đến</Label>
+            <div className="relative">
+              <MapPin className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#ef4444]" />
+              <Input
+                value={destinationQuery}
+                onFocus={() => setFocus("destination")}
+                onBlur={() => window.setTimeout(() => setFocus(null), 140)}
+                onChange={(event) => {
+                  setDestinationQuery(event.target.value);
+                  setDestination(null);
+                }}
+                className="h-12 rounded-2xl pl-11 text-sm font-bold"
+                placeholder="Nhập điểm đến"
+              />
+            </div>
+            {renderSuggestions("destination", destinationSuggestions)}
+          </div>
+
+          <div>
+            <Label className="mb-2 block text-xs font-black uppercase text-on-surface-variant">Tùy chọn</Label>
+            <Select value={maxBusLegs} onValueChange={setMaxBusLegs}>
+              <SelectTrigger className="h-12 rounded-2xl">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1">Tối đa 1 tuyến</SelectItem>
+                <SelectItem value="2">Tối đa 2 tuyến</SelectItem>
+                <SelectItem value="3">Tối đa 3 tuyến</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="grid grid-cols-[48px_1fr] gap-2">
+            <button
+              type="button"
+              onClick={useGps}
+              disabled={gpsLoading}
+              className="flex h-12 items-center justify-center rounded-2xl border border-outline-variant bg-surface-container hover:bg-surface-container-high disabled:opacity-60"
+              title="Dùng GPS"
+            >
+              {gpsLoading ? <RefreshCw className="size-4 animate-spin" /> : <Crosshair className="size-4" />}
+            </button>
+            <button
+              type="button"
+              onClick={() => runSearch()}
+              disabled={loading}
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-primary px-5 text-sm font-black text-on-primary disabled:opacity-60"
+            >
+              {loading ? <RefreshCw className="size-4 animate-spin" /> : <Search className="size-4" />}
+              Tìm tuyến
+            </button>
+          </div>
+        </div>
+      </ExpressiveCard>
+
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_460px]">
+        <div className="min-w-0 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              {["Tuyến đề xuất", "Ít chuyển tuyến", "Ít đi bộ", "Nhanh nhất"].map((label, index) => (
+                <span
+                  key={label}
+                  className={cn(
+                    "rounded-full px-4 py-2 text-xs font-black",
+                    index === 0 ? "bg-[#14140f] text-[#beff50]" : "bg-surface-container text-on-surface-variant",
+                  )}
+                >
+                  {label}
+                </span>
+              ))}
+            </div>
+            <p className="text-xs font-bold text-on-surface-variant">
+              {journeys.length ? `Đã tìm thấy ${journeys.length} lộ trình` : "Sẵn sàng tìm lộ trình"}
+            </p>
+          </div>
+
+          <StaggerGroup className="space-y-3">
+            {journeys.map((option, index) => {
+              const selected = selectedJourney?.optionId === option.optionId;
+              const badges = option.routeBadges?.length
+                ? option.routeBadges
+                : option.legs.filter((leg) => leg.mode === "BUS").map((leg) => ({
+                    routeId: Number(leg.routeId),
+                    routeCode: leg.routeCode,
+                    routeName: leg.routeName || "",
+                    colorHex: leg.colorHex,
+                  }));
+              return (
+                <StaggerItem key={option.optionId}>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedId(option.optionId)}
+                    className={cn(
+                      "w-full rounded-2xl border bg-surface p-4 text-left transition-all hover:border-primary/60 hover:bg-surface-container-low",
+                      selected ? "border-primary ring-4 ring-primary/15" : "border-outline-variant",
+                    )}
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                          <span className="flex size-9 items-center justify-center rounded-xl bg-[#beff50] text-sm font-black text-[#14140f]">
+                            {String(index + 1).padStart(2, "0")}
+                          </span>
+                          {badges.map((badge) => (
+                            <span
+                              key={`${option.optionId}-${badge.routeId}`}
+                              className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-black text-white"
+                              style={{ backgroundColor: badge.colorHex || "#144fcc" }}
+                            >
+                              <Bus className="size-3.5" />
+                              {badge.routeCode || badge.routeId}
+                            </span>
+                          ))}
+                          {option.primaryAction?.enabled && (
+                            <span className="rounded-full bg-[#beff50]/25 px-3 py-1 text-xs font-black text-[#166534]">
+                              Đăng ký được
+                            </span>
+                          )}
+                        </div>
+                        <p className="truncate text-base font-black text-on-surface">
+                          {option.legs.find((leg) => leg.mode === "BUS")?.fromStopName || origin?.label}
+                          {" -> "}
+                          {[...option.legs].reverse().find((leg) => leg.mode === "BUS")?.toStopName || destination?.label}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-black text-primary">
+                          {option.summary.singleFare ? formatVND(moneyValue(option.summary.singleFare)) : "Theo tuyến"}
+                        </p>
+                        <p className="text-[10px] font-bold uppercase text-on-surface-variant">vé lượt</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-5">
+                      <InfoCell label="Tổng thời gian" value={`${option.summary.totalMinutes} phút`} />
+                      <InfoCell label="Xe tới" value={option.summary.firstEtaText || `${option.summary.waitMinutes || 0} phút`} />
+                      <InfoCell label="Đi bộ" value={`${Math.round(numberValue(option.summary.walkMeters))}m`} />
+                      <InfoCell label="Chuyển tuyến" value={option.summary.transferCount ? `${option.summary.transferCount} lần` : "Không"} />
+                      <InfoCell label="Độ tin cậy" value={option.summary.confidence || "HIGH"} />
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap items-center gap-2">
+                      {option.legs.map((leg, legIndex) => (
+                        <span key={`${option.optionId}-${leg.legId}`} className="inline-flex items-center gap-2 rounded-full bg-surface-container-high px-3 py-1.5 text-xs font-bold">
+                          {leg.mode === "WALK" ? <Navigation2 className="size-3.5" /> : <Bus className="size-3.5" />}
+                          {leg.mode === "WALK"
+                            ? `${leg.durationMinutes || 0} phút đi bộ`
+                            : `${leg.routeCode} · ${leg.stopCount || leg.stops?.length || 0} trạm`}
+                          {legIndex < option.legs.length - 1 && <ArrowRight className="size-3 opacity-60" />}
+                        </span>
+                      ))}
+                    </div>
+                  </button>
+                </StaggerItem>
+              );
+            })}
+          </StaggerGroup>
+
+          {!loading && journeys.length === 0 && (
+            <EmptyState
+              icon={<RouteIcon className="size-7" />}
+              title="Chưa có kết quả"
+              description="Chọn điểm đi và điểm đến để UniBus tìm lộ trình từ dữ liệu tuyến Đà Nẵng."
+            />
+          )}
+        </div>
+
+        <div className="min-w-0 xl:sticky xl:top-4 xl:self-start">
+          <ExpressiveCard variant="elevated" className="overflow-hidden p-0">
+            <div className="h-[420px] bg-surface-container">
+              {selectedJourney && selectedStops.length >= 2 ? (
+                <JourneyMap
+                  stops={selectedStops}
+                  routeColor={primaryColor}
+                  buses={journeyBuses}
+                  walkPolylines={journeyPolylines}
+                  height="100%"
+                  animateCamera
+                  arrivalOverlay={
+                    selectedEta ? (
+                      <div className="rounded-2xl bg-[#14140f]/95 p-3 text-white shadow-xl">
+                        <p className="text-[10px] font-black uppercase tracking-wide text-[#beff50]">Xe gần nhất</p>
+                        <p className="text-sm font-black">{selectedEta.routeCode} tới {selectedEta.stopName}</p>
+                        <p className="text-xs opacity-75">{selectedEta.minutesAway} phút nữa</p>
+                      </div>
+                    ) : null
+                  }
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center p-8 text-center">
+                  <div>
+                    <MapPinned className="mx-auto size-12 text-on-surface-variant" />
+                    <p className="mt-3 text-sm font-bold text-on-surface">Bản đồ hành trình</p>
+                    <p className="mt-1 text-xs text-on-surface-variant">Kết quả tìm tuyến sẽ hiển thị tại đây.</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-4 p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-black uppercase text-on-surface-variant">Chi tiết hành trình</p>
+                  <h2 className="mt-1 truncate text-lg font-black text-on-surface">
+                    {selectedJourney
+                      ? `${selectedJourney.summary.totalMinutes} phút · ${selectedJourney.summary.transferCount ? `${selectedJourney.summary.transferCount} lần chuyển` : "đi thẳng"}`
+                      : "Chưa chọn lộ trình"}
+                  </h2>
+                </div>
+                {selectedJourney?.summary.monthlyFare != null && (
+                  <div className="text-right">
+                    <p className="text-sm font-black text-primary">{formatVND(moneyValue(selectedJourney.summary.monthlyFare))}</p>
+                    <p className="text-[10px] font-bold uppercase text-on-surface-variant">vé tháng</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
+                {(selectedJourney?.legs || []).map((leg, index) => (
+                  <div key={leg.legId} className="flex gap-3">
+                    <div className="flex flex-col items-center">
+                      <span
+                        className="flex size-8 items-center justify-center rounded-full text-xs font-black text-white"
+                        style={{ backgroundColor: leg.mode === "BUS" ? (leg.colorHex || primaryColor) : "#64748b" }}
+                      >
+                        {index + 1}
+                      </span>
+                      <span className="mt-1 h-full w-px bg-outline-variant" />
+                    </div>
+                    <div className="min-w-0 flex-1 rounded-2xl bg-surface-container-low p-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {leg.mode === "BUS" ? <Bus className="size-4 text-primary" /> : <Navigation2 className="size-4 text-on-surface-variant" />}
+                        <p className="text-sm font-black">
+                          {leg.mode === "BUS" ? `Tuyến ${leg.routeCode}` : "Đi bộ"}
+                        </p>
+                        <span className="text-xs font-bold text-on-surface-variant">{leg.durationMinutes || 0} phút</span>
+                      </div>
+                      <p className="mt-1 truncate text-xs text-on-surface-variant">
+                        {leg.fromStopName} {"->"} {leg.toStopName}
+                      </p>
+                      {leg.mode === "BUS" && leg.stops?.length ? (
+                        <p className="mt-2 text-[11px] font-bold text-on-surface-variant">
+                          {leg.stops.slice(0, 3).map((stop) => stop.stopName).join(" · ")}
+                          {leg.stops.length > 3 ? " · ..." : ""}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <button
+                  type="button"
+                  onClick={registerSelected}
+                  disabled={!selectedJourney}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-primary px-4 text-xs font-black text-on-primary disabled:opacity-50"
+                >
+                  <CheckCircle2 className="size-4" />
+                  Đăng ký
+                </button>
+                <button
+                  type="button"
+                  onClick={buyJourneyPass}
+                  disabled={!selectedJourney}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-[#14140f] px-4 text-xs font-black text-[#beff50] disabled:opacity-50"
+                >
+                  <QrCode className="size-4" />
+                  Mua QR
+                </button>
+                <button
+                  type="button"
+                  onClick={trackSelected}
+                  disabled={!selectedJourney}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-outline-variant px-4 text-xs font-black hover:bg-surface-container-high disabled:opacity-50"
+                >
+                  <Navigation className="size-4" />
+                  Theo dõi
+                </button>
+              </div>
+            </div>
+          </ExpressiveCard>
+        </div>
+      </div>
+    </PageTransition>
+  );
+}
+
 // =============================================================================
 // Screen 4: Find routes — search boarding → alighting
 // =============================================================================
@@ -2211,9 +2907,97 @@ function TrackingScreen({ ctx }: { ctx: Ctx }) {
   const [selectedRouteId, setSelectedRouteId] = useState<string>(ctx.routes[0]?.id || "");
   const [eta, setEta] = useState<EtaDTO[] | null>(null);
   const [loading, setLoading] = useState(false);
+  const [journeyId, setJourneyId] = useState("");
+  const [journeyTracking, setJourneyTracking] = useState<JourneyTrackingSnapshotDTO | null>(null);
+  const [journeyLoading, setJourneyLoading] = useState(false);
 
   const selectedRoute = ctx.routes.find((r) => r.id === selectedRouteId);
-  const routeStops = ctx.stops.filter((s: any) => selectedRoute?.stops?.includes(s.id));
+  const routeStops = useMemo(
+    () => ctx.stops.filter((s: any) => selectedRoute?.stops?.includes(s.id)),
+    [ctx.stops, selectedRoute],
+  );
+
+  const numberValue = (value: number | string | undefined | null) => Number(value ?? 0) || 0;
+  const firstBusLine = journeyTracking?.polylines?.find((line) => line.mode !== "WALK");
+  const journeyRouteColor = firstBusLine?.colorHex || "#144fcc";
+  const journeyPolylines: JourneyPolyline[] = useMemo(() => (
+    journeyTracking?.polylines || []
+  ).map((line) => ({
+    id: line.legId,
+    label: line.mode === "WALK" ? "Đi bộ" : "Tuyến xe",
+    color: line.colorHex || (line.mode === "WALK" ? "#14140f" : "#144fcc"),
+    dashed: line.mode === "WALK",
+    points: (line.points || [])
+      .map((point) => ({ lat: numberValue(point.latitude), lng: numberValue(point.longitude) }))
+      .filter((point) => point.lat && point.lng),
+  })).filter((line) => line.points.length >= 2), [journeyTracking?.polylines]);
+
+  const journeyStops = useMemo(() => {
+    const points = journeyPolylines.flatMap((line) => line.points);
+    const first = points[0];
+    const last = points[points.length - 1];
+    if (!first || !last) return [];
+    return [
+      {
+        id: "journey-origin",
+        name: "Điểm xuất phát",
+        code: "A",
+        address: "Đà Nẵng",
+        lat: first.lat,
+        lng: first.lng,
+        routes: [],
+        hasShelter: false,
+      },
+      {
+        id: "journey-destination",
+        name: "Điểm đến",
+        code: "B",
+        address: "Đà Nẵng",
+        lat: last.lat,
+        lng: last.lng,
+        routes: [],
+        hasShelter: false,
+      },
+    ];
+  }, [journeyPolylines]);
+
+  const journeyBuses = useMemo(() => (journeyTracking?.vehicles || [])
+    .map((vehicle) => ({
+      id: vehicle.vehicleId,
+      plate: vehicle.plateNumber || "43B-00000",
+      routeCode: vehicle.routeCode || "BUS",
+      routeColor: journeyRouteColor,
+      lat: numberValue(vehicle.latitude),
+      lng: numberValue(vehicle.longitude),
+      occupancy: vehicle.occupancy,
+      capacity: vehicle.capacity,
+      etaMinutes: vehicle.etaMinutes,
+    }))
+    .filter((vehicle) => vehicle.lat && vehicle.lng), [journeyRouteColor, journeyTracking?.vehicles]);
+
+  useEffect(() => {
+    setJourneyId(localStorage.getItem("unibus.trackingJourneyId") || "");
+  }, []);
+
+  const loadJourneyTracking = useCallback(async () => {
+    if (!journeyId) return;
+    setJourneyLoading(true);
+    try {
+      const snapshot = await transportApi.trackJourney(journeyId);
+      setJourneyTracking(snapshot);
+    } catch {
+      setJourneyTracking(null);
+    } finally {
+      setJourneyLoading(false);
+    }
+  }, [journeyId]);
+
+  useEffect(() => {
+    if (!journeyId) return;
+    void loadJourneyTracking();
+    const interval = window.setInterval(loadJourneyTracking, 15000);
+    return () => window.clearInterval(interval);
+  }, [journeyId, loadJourneyTracking]);
 
   const loadEta = useCallback(async () => {
     if (!selectedRouteId || !routeStops.length) return;
@@ -2235,6 +3019,12 @@ function TrackingScreen({ ctx }: { ctx: Ctx }) {
     return () => clearInterval(interval);
   }, [loadEta]);
 
+  const clearJourneyTracking = () => {
+    localStorage.removeItem("unibus.trackingJourneyId");
+    setJourneyId("");
+    setJourneyTracking(null);
+  };
+
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
@@ -2242,18 +3032,147 @@ function TrackingScreen({ ctx }: { ctx: Ctx }) {
         description="Vị trí xe và thời gian đến trạm theo thời gian thực."
         icon={<Navigation className="size-7" />}
         actions={
-          <Select value={selectedRouteId} onValueChange={setSelectedRouteId}>
-            <SelectTrigger className="w-full sm:w-64"><SelectValue placeholder="Chọn tuyến" /></SelectTrigger>
-            <SelectContent>
-              {ctx.routes.map((r: any) => (
-                <SelectItem key={r.id} value={r.id}>{r.code} — {r.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          journeyId ? (
+            <button
+              type="button"
+              onClick={clearJourneyTracking}
+              className="inline-flex h-11 items-center gap-2 rounded-2xl border border-outline-variant px-4 text-sm font-black hover:bg-surface-container-high"
+            >
+              <RouteIcon className="size-4" />
+              Chọn tuyến khác
+            </button>
+          ) : (
+            <Select value={selectedRouteId} onValueChange={setSelectedRouteId}>
+              <SelectTrigger className="w-full sm:w-64"><SelectValue placeholder="Chọn tuyến" /></SelectTrigger>
+              <SelectContent>
+                {ctx.routes.map((r: any) => (
+                  <SelectItem key={r.id} value={r.id}>{r.code} - {r.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )
         }
       />
 
-      {selectedRoute && (
+      {journeyId && (
+        <div className="grid grid-cols-1 gap-4 min-w-0 xl:grid-cols-[minmax(0,1fr)_420px]">
+          <ScrollReveal>
+            <ExpressiveCard variant="elevated" className="overflow-hidden min-w-0">
+              <div className="h-[460px] bg-surface-container">
+                {journeyStops.length >= 2 ? (
+                  <JourneyMap
+                    stops={journeyStops}
+                    routeColor={journeyRouteColor}
+                    buses={journeyBuses}
+                    walkPolylines={journeyPolylines}
+                    height="100%"
+                    animateCamera
+                    arrivalOverlay={
+                      journeyTracking?.stopEtas?.[0] ? (
+                        <div className="rounded-2xl bg-[#14140f]/95 p-3 text-white shadow-xl">
+                          <p className="text-[10px] font-black uppercase tracking-wide text-[#beff50]">Xe gần nhất</p>
+                          <p className="text-sm font-black">
+                            {journeyTracking.stopEtas[0].routeCode} tới {journeyTracking.stopEtas[0].stopName}
+                          </p>
+                          <p className="text-xs opacity-75">{journeyTracking.stopEtas[0].minutesAway} phút nữa</p>
+                        </div>
+                      ) : null
+                    }
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center p-8 text-center">
+                    <div>
+                      <RefreshCw className={cn("mx-auto size-10 text-on-surface-variant", journeyLoading && "animate-spin")} />
+                      <p className="mt-3 text-sm font-bold text-on-surface">Đang tải hành trình</p>
+                      <p className="mt-1 text-xs text-on-surface-variant">Mô phỏng xe sẽ cập nhật mỗi 15 giây.</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-outline-variant p-4">
+                <div>
+                  <p className="text-xs font-black uppercase text-on-surface-variant">Journey ID</p>
+                  <p className="max-w-[360px] truncate text-sm font-black text-on-surface">{journeyId}</p>
+                </div>
+                <div className="flex items-center gap-2 text-xs font-bold text-on-surface-variant">
+                  <RefreshCw className={cn("size-4", journeyLoading && "animate-spin")} />
+                  {journeyTracking?.updatedAt ? `Cập nhật ${formatDateTime(journeyTracking.updatedAt)}` : "Đang đồng bộ"}
+                </div>
+              </div>
+            </ExpressiveCard>
+          </ScrollReveal>
+
+          <ScrollReveal delay={0.1}>
+            <ExpressiveCard variant="filled" className="p-5 min-w-0">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase text-on-surface-variant">Xe đang chạy</p>
+                  <h3 className="text-lg font-black text-on-surface">{journeyBuses.length || 0} xe mô phỏng</h3>
+                </div>
+                <button onClick={loadJourneyTracking} className="text-on-surface-variant hover:text-primary">
+                  <RefreshCw className={cn("size-4", journeyLoading && "animate-spin")} />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <InfoCell label="Cập nhật" value="15 giây" />
+                <InfoCell label="ETA tiếp theo" value={journeyTracking?.stopEtas?.[0]?.minutesAway != null ? `${journeyTracking.stopEtas[0].minutesAway} phút` : "Đang tính"} />
+              </div>
+
+              <div className="mt-5 space-y-3">
+                {(journeyTracking?.vehicles || []).map((vehicle) => (
+                  <motion.div
+                    key={vehicle.vehicleId}
+                    layout
+                    className="rounded-2xl bg-surface p-4 shadow-sm"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-black text-on-surface">
+                          {vehicle.routeCode || "BUS"} · {vehicle.plateNumber || "43B-00000"}
+                        </p>
+                        <p className="mt-1 text-xs text-on-surface-variant">
+                          Trạm kế: {vehicle.nextStopName || "đang xác định"}
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-[#beff50]/25 px-3 py-1 text-xs font-black text-[#166534]">
+                        {vehicle.etaMinutes ?? 0} phút
+                      </span>
+                    </div>
+                    <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                      <InfoCell label="Tốc độ" value={`${Math.round(numberValue(vehicle.speedKmh))} km/h`} />
+                      <InfoCell label="Tải" value={vehicle.occupancy != null && vehicle.capacity ? `${vehicle.occupancy}/${vehicle.capacity}` : "--"} />
+                      <InfoCell label="Tuyến" value={vehicle.routeCode || "--"} />
+                    </div>
+                  </motion.div>
+                ))}
+                {!journeyTracking?.vehicles?.length && (
+                  <EmptyState
+                    icon={<Bus className="size-7" />}
+                    title="Chưa có xe mô phỏng"
+                    description="Hệ thống đang dựng snapshot theo lịch chạy và shape tuyến."
+                  />
+                )}
+              </div>
+
+              <div className="mt-5 space-y-2">
+                <p className="text-xs font-black uppercase text-on-surface-variant">ETA các trạm</p>
+                {(journeyTracking?.stopEtas || []).slice(0, 6).map((stop) => (
+                  <div key={`${stop.routeId}-${stop.stopId}`} className="flex items-center justify-between gap-3 rounded-xl bg-surface-container-low px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-black">{stop.stopName}</p>
+                      <p className="text-[10px] text-on-surface-variant">{stop.routeCode || "BUS"}</p>
+                    </div>
+                    <p className="text-xs font-black text-primary">{stop.minutesAway ?? 0} phút</p>
+                  </div>
+                ))}
+              </div>
+            </ExpressiveCard>
+          </ScrollReveal>
+        </div>
+      )}
+
+      {!journeyId && selectedRoute && (
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-4 min-w-0">
           {/* Map */}
           <ScrollReveal>
@@ -3161,28 +4080,87 @@ function AIScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => v
 // =============================================================================
 // Screen 10: Chatbot
 // =============================================================================
-function AiWorkingIndicator() {
+const CHATBOT_SUGGESTIONS = [
+  "Tìm tuyến từ Đại học Bách khoa Đà Nẵng đến Đại học FPT",
+  "So sánh giá vé tháng sau trợ giá cho tuyến phù hợp",
+  "Cho biết chuyến gần nhất và các trạm dừng chính",
+  "Hướng dẫn tôi đăng ký tuyến và mua vé tháng SePay",
+];
+
+function chatbotReasoningSteps(prompt: string) {
+  const text = prompt.toLowerCase();
+  const steps = ["Phân tích yêu cầu người dùng", "Đọc hồ sơ sinh viên"];
+  if (text.includes("tuyến") || text.includes("trạm") || text.includes("đến") || text.includes("route")) {
+    steps.push("Truy vấn tuyến, trạm và thứ tự dừng");
+  }
+  if (text.includes("giá") || text.includes("vé") || text.includes("trợ giá") || text.includes("sepay")) {
+    steps.push("Tính giá vé và chính sách trợ giá");
+  }
+  if (text.includes("lịch") || text.includes("chuyến") || text.includes("eta") || text.includes("mấy giờ")) {
+    steps.push("Kiểm tra lịch chạy và chuyến gần nhất");
+  }
+  steps.push("Tổng hợp câu trả lời bằng AI");
+  return steps;
+}
+
+function AiWorkingIndicator({ prompt }: { prompt: string }) {
+  const steps = useMemo(() => chatbotReasoningSteps(prompt), [prompt]);
+  const [activeStep, setActiveStep] = useState(0);
+
+  useEffect(() => {
+    setActiveStep(0);
+    const timer = window.setInterval(() => {
+      setActiveStep((value) => Math.min(value + 1, steps.length - 1));
+    }, 420);
+    return () => window.clearInterval(timer);
+  }, [steps.length, prompt]);
+
+  const icons = [Sparkles, Search, RouteIcon, Wallet, Clock, CheckCircle2];
+
   return (
     <motion.div
-      initial={{ opacity: 0, y: 4 }}
+      initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: 0.2, ease: "easeOut" }}
-      className="flex gap-2 max-w-[92%] min-w-0"
+      transition={{ duration: 0.25, ease: "easeOut" }}
+      className="flex gap-3 max-w-[92%] min-w-0"
       role="status"
       aria-live="polite"
     >
-      <div className="size-8 shrink-0 rounded-full bg-[#beff50] text-[#14140f] flex items-center justify-center">
+      <div className="grid size-8 shrink-0 place-items-center rounded-full bg-primary text-on-primary">
         <Bot className="size-4" />
       </div>
-      <div className="rounded-2xl rounded-tl-sm border border-outline-variant/60 bg-surface px-4 py-3 min-w-0">
-        <div className="flex items-center gap-2 text-sm font-semibold text-on-surface">
-          <RefreshCw className="size-3.5 shrink-0 text-on-surface-variant motion-safe:animate-spin" />
-          <span>Đang xử lý yêu cầu</span>
+      <div className="min-w-0 rounded-2xl rounded-tl-sm border border-outline-variant bg-surface px-4 py-3 text-sm shadow-sm">
+        <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-on-surface-variant">
+          <Sparkles className="size-3.5 text-primary" />
+          <span>UniBus Copilot đang xử lý</span>
         </div>
-        <p className="mt-1.5 border-l-2 border-[#beff50] pl-3 text-xs leading-5 text-on-surface-variant">
-          Truy xuất ngữ cảnh sinh viên và dữ liệu UniBus liên quan
-        </p>
+        <div className="space-y-1.5">
+          {steps.map((step, index) => {
+            const Icon = icons[index] ?? CheckCircle2;
+            const done = index < activeStep;
+            const active = index === activeStep;
+            return (
+              <motion.div
+                key={step}
+                initial={false}
+                animate={{ opacity: done || active ? 1 : 0.42 }}
+                className="flex items-center gap-2 text-xs"
+              >
+                <Icon
+                  className={cn(
+                    "size-3.5 shrink-0",
+                    done && "text-success",
+                    active && "text-primary",
+                    !done && !active && "text-on-surface-variant"
+                  )}
+                />
+                <span className={done ? "text-on-surface" : "text-on-surface-variant"}>{step}</span>
+                {active && <span className="ml-auto thinking-dot size-1 rounded-full bg-primary" />}
+              </motion.div>
+            );
+          })}
+        </div>
       </div>
     </motion.div>
   );
@@ -3409,11 +4387,13 @@ type AssistantMessage = {
 };
 
 function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
+  const displayName = ctx.user.name?.split(" ").slice(-1)[0] || "bạn";
+  const userInitial = (ctx.user.name || ctx.user.email || "M").trim().slice(0, 1).toUpperCase();
   const welcomeMessage = useMemo<AssistantMessage>(() => ({
       role: "bot",
-      text: `Xin chào ${ctx.user.name?.split(" ").slice(-1)[0] || "bạn"}! Mình là trợ lý ảo UniBus. Mình có thể giúp bạn tra cứu tuyến, giá vé, lịch xe... Hôm nay bạn cần hỗ trợ gì?`,
+      text: `Xin chào ${displayName}! Mình là UniBus Copilot. Mình có thể tra cứu tuyến, giá vé, lịch xe, trợ giá và hướng dẫn mua vé SePay bằng dữ liệu thật của hệ thống.`,
       time: new Date().toISOString(),
-  }), [ctx.user.name]);
+  }), [displayName]);
   const sessionKey = useMemo(
     () => `unibus:assistant:${String(ctx.user.email || ctx.user.id || "student").toLowerCase()}`,
     [ctx.user.email, ctx.user.id]
@@ -3422,6 +4402,7 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
   const [sessionReady, setSessionReady] = useState(false);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [pendingPrompt, setPendingPrompt] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -3454,11 +4435,12 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, loading]);
 
-  const send = async () => {
-    if (!input.trim() || loading || !sessionReady) return;
-    const userMsg = { role: "user" as const, text: input.trim(), time: new Date().toISOString() };
+  const send = async (value = input) => {
+    if (!value.trim() || loading || !sessionReady) return;
+    const userMsg = { role: "user" as const, text: value.trim(), time: new Date().toISOString() };
     setMessages((m) => [...m, userMsg]);
     setInput("");
+    setPendingPrompt(userMsg.text);
     setLoading(true);
     try {
       const res = await experienceApi.sendAssistantChat({
@@ -3483,76 +4465,136 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
       setMessages((m) => [...m, { role: "bot", text: "Xin lỗi, mình không thể trả lời lúc này. Vui lòng thử lại sau.", time: new Date().toISOString() }]);
     } finally {
       setLoading(false);
+      setPendingPrompt("");
+    }
+  };
+
+  const reset = () => {
+    setMessages([{ ...welcomeMessage, time: new Date().toISOString() }]);
+    setInput("");
+    setPendingPrompt("");
+    setLoading(false);
+    try {
+      window.sessionStorage.removeItem(sessionKey);
+    } catch {
+      // Ignore storage failures; the visible session has already been reset.
     }
   };
 
   return (
-    <PageTransition className="space-y-6 min-w-0">
-      <PageHeader
-        title="Chatbot tra cứu"
-        description="Trò chuyện với trợ lý ảo để được hỗ trợ nhanh."
-        icon={<Bot className="size-7" />}
-      />
-      <ExpressiveCard variant="elevated" className="flex flex-col h-[60vh] min-h-[400px] min-w-0">
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-3 min-w-0">
-          {messages.map((m, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className={cn("flex gap-2 max-w-[94%] sm:max-w-[88%] min-w-0", m.role === "user" && "ml-auto flex-row-reverse")}
-            >
-              <div
-                className={cn(
-                  "size-8 shrink-0 rounded-full flex items-center justify-center text-xs font-bold",
-                  m.role === "user" ? "bg-primary text-on-primary" : "bg-[#beff50] text-[#14140f]"
-                )}
+    <PageTransition className="min-w-0">
+      <div className="flex h-[calc(100vh-7rem)] min-h-[560px] min-w-0 flex-col overflow-hidden rounded-3xl border border-outline-variant bg-surface shadow-sm">
+        <header className="flex items-center justify-between gap-3 border-b border-outline-variant bg-surface px-4 py-3 sm:px-5">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-[#14140f] text-[#beff50]">
+              <Bot className="size-5" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="truncate text-base font-semibold text-on-surface">UniBus Copilot</h2>
+              <p className="truncate text-xs text-on-surface-variant">AI agent tra cứu tuyến, vé tháng và SePay</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={reset}
+            className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-outline-variant bg-surface px-3 text-xs font-semibold text-on-surface transition-colors hover:bg-surface-container-high"
+          >
+            <RefreshCw className="size-3.5" />
+            Chat mới
+          </button>
+        </header>
+
+        <div ref={scrollRef} className="scrollbar-soft min-w-0 flex-1 space-y-4 overflow-y-auto bg-surface-container-low/35 px-3 py-4 sm:px-6">
+          <AnimatePresence initial={false}>
+            {messages.map((m, i) => (
+              <motion.div
+                key={`${m.time}-${i}`}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+                className={cn("flex min-w-0 gap-2 sm:gap-3", m.role === "user" && "justify-end")}
               >
-                {m.role === "user" ? "M" : <Bot className="size-4" />}
-              </div>
-              <div
-                className={cn(
-                  "px-4 py-2.5 rounded-2xl text-sm break-words min-w-0 space-y-3",
-                  m.role === "user"
-                    ? "bg-primary text-on-primary rounded-tr-sm"
-                    : "bg-surface-container-high text-on-surface rounded-tl-sm"
+                {m.role === "bot" && (
+                  <span className="mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-[#beff50] text-[#14140f]">
+                    <Bot className="size-4" />
+                  </span>
                 )}
-              >
-                <p>{m.text}</p>
-                <AgentExecutionSummary sources={m.sources} mode={m.mode} />
-                {!!m.routeSuggestions?.length && (
-                  <div className="space-y-3">
-                    {m.routeSuggestions.slice(0, 3).map((route, routeIndex) => (
-                      <AiRouteResultCard
-                        key={route.routeId}
-                        route={route}
-                        index={routeIndex}
-                        onNavigate={onNavigate}
-                      />
-                    ))}
-                  </div>
+                <div
+                  className={cn(
+                    "min-w-0 max-w-[92%] break-words text-sm leading-relaxed sm:max-w-[78%]",
+                    m.role === "user"
+                      ? "rounded-[1.35rem] rounded-tr-md bg-primary px-4 py-3 text-on-primary"
+                      : "rounded-[1.35rem] rounded-tl-md border border-outline-variant bg-surface px-4 py-3 text-on-surface shadow-sm"
+                  )}
+                >
+                  <p className="whitespace-pre-wrap">{m.text}</p>
+                  {m.role === "bot" && (
+                    <>
+                      <AgentExecutionSummary sources={m.sources} mode={m.mode} />
+                      {!!m.routeSuggestions?.length && (
+                        <div className="mt-3 space-y-3">
+                          {m.routeSuggestions.slice(0, 3).map((route, routeIndex) => (
+                            <AiRouteResultCard
+                              key={route.routeId}
+                              route={route}
+                              index={routeIndex}
+                              onNavigate={onNavigate}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+                {m.role === "user" && (
+                  <span className="mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-on-primary">
+                    {userInitial}
+                  </span>
                 )}
-              </div>
-            </motion.div>
-          ))}
-          {loading && (
-            <AiWorkingIndicator />
-          )}
+              </motion.div>
+            ))}
+            {loading && <AiWorkingIndicator prompt={pendingPrompt || input} />}
+          </AnimatePresence>
         </div>
-        <div className="p-4 border-t-2 border-outline-variant flex gap-2 min-w-0">
+
+        {messages.length <= 1 && (
+          <div className="border-t border-outline-variant bg-surface px-4 py-3 sm:px-5">
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {CHATBOT_SUGGESTIONS.map((suggestion) => (
+                <button
+                  key={suggestion}
+                  type="button"
+                  onClick={() => send(suggestion)}
+                  disabled={loading || !sessionReady}
+                  className="shrink-0 rounded-full border border-outline-variant bg-surface px-3 py-2 text-xs font-medium text-on-surface transition-colors hover:bg-surface-container-high disabled:opacity-50"
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <form
+          className="flex min-w-0 items-end gap-2 border-t border-outline-variant bg-surface px-3 py-3 sm:px-5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            send(input);
+          }}
+        >
           <Input
-            placeholder="Nhập câu hỏi..."
+            placeholder="Hỏi về tuyến xe, điểm đến, giá vé, lịch chạy..."
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && send()}
             disabled={loading || !sessionReady}
-            className="flex-1 min-w-0"
+            className="min-h-12 flex-1 rounded-2xl border-outline-variant bg-surface px-4"
           />
-          <ExpressiveButton variant="filled" size="icon" onClick={send} disabled={loading || !sessionReady || !input.trim()}>
+          <ExpressiveButton variant="filled" size="icon" type="submit" disabled={loading || !sessionReady || !input.trim()} className="size-12 rounded-2xl">
             <Send className="size-4" />
           </ExpressiveButton>
-        </div>
-      </ExpressiveCard>
+        </form>
+      </div>
     </PageTransition>
   );
 }
