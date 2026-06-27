@@ -3,10 +3,12 @@ package com.unibus.api.coordinator;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.unibus.api.coordinator.dto.CoordinatorSchedulesDtos.BusDropdownDto;
+import com.unibus.api.coordinator.dto.CoordinatorSchedulesDtos.ConductorDropdownDto;
 import com.unibus.api.coordinator.dto.CoordinatorSchedulesDtos.CreateScheduleRequest;
 import com.unibus.api.coordinator.dto.CoordinatorSchedulesDtos.DriverDropdownDto;
 import com.unibus.api.coordinator.dto.CoordinatorSchedulesDtos.ScheduleListItem;
@@ -29,43 +31,16 @@ public class CoordinatorSchedulesService {
     private final BusRouteRepository routeRepository;
     private final BusRepository busRepository;
     private final DriverRepository driverRepository;
+    private final JdbcTemplate jdbcTemplate;
 
     @Transactional(readOnly = true)
     public List<ScheduleListItem> getAllSchedules() {
-        return scheduleRepository.findAll().stream()
-                .map(s -> new ScheduleListItem(
-                        s.getId(),
-                        s.getRoute() != null ? s.getRoute().getId() : null,
-                        s.getRoute() != null ? s.getRoute().getRouteName() : "Unknown Route",
-                        s.getBus() != null ? s.getBus().getId() : null,
-                        s.getBus() != null ? s.getBus().getLicensePlate() : "No Bus",
-                        s.getDriver() != null ? s.getDriver().getId() : null,
-                        s.getDriver() != null && s.getDriver().getUser() != null ? s.getDriver().getUser().getFullName() : "No Driver",
-                        s.getWeekdayNumber(),
-                        s.getDepartureTime(),
-                        s.getEndTime(),
-                        s.getStatus()
-                ))
-                .collect(Collectors.toList());
+        return findScheduleItems(null);
     }
 
     @Transactional(readOnly = true)
     public List<ScheduleListItem> getSchedulesByRoute(Integer routeId) {
-        return scheduleRepository.findByRouteId(routeId).stream()
-                .map(s -> new ScheduleListItem(
-                        s.getId(),
-                        s.getRoute() != null ? s.getRoute().getId() : null,
-                        s.getRoute() != null ? s.getRoute().getRouteName() : "Unknown Route",
-                        s.getBus() != null ? s.getBus().getId() : null,
-                        s.getBus() != null ? s.getBus().getLicensePlate() : "No Bus",
-                        s.getDriver() != null ? s.getDriver().getId() : null,
-                        s.getDriver() != null && s.getDriver().getUser() != null ? s.getDriver().getUser().getFullName() : "No Driver",
-                        s.getWeekdayNumber(),
-                        s.getDepartureTime(),
-                        s.getEndTime(),
-                        s.getStatus()
-                ))
-                .collect(Collectors.toList());
+        return findScheduleItems(routeId);
     }
 
     @Transactional
@@ -90,20 +65,10 @@ public class CoordinatorSchedulesService {
         schedule.setStatus("ACTIVE");
 
         schedule = scheduleRepository.save(schedule);
+        updateConductor(schedule.getId(), request.conductorId());
+        syncTodayTrip(schedule.getId());
 
-        return new ScheduleListItem(
-                schedule.getId(),
-                route.getId(),
-                route.getRouteName(),
-                schedule.getBus() != null ? schedule.getBus().getId() : null,
-                schedule.getBus() != null ? schedule.getBus().getLicensePlate() : "No Bus",
-                schedule.getDriver() != null ? schedule.getDriver().getId() : null,
-                schedule.getDriver() != null && schedule.getDriver().getUser() != null ? schedule.getDriver().getUser().getFullName() : "No Driver",
-                schedule.getWeekdayNumber(),
-                schedule.getDepartureTime(),
-                schedule.getEndTime(),
-                schedule.getStatus()
-        );
+        return findScheduleItem(schedule.getId());
     }
 
     @Transactional
@@ -138,20 +103,10 @@ public class CoordinatorSchedulesService {
         }
 
         schedule = scheduleRepository.save(schedule);
+        updateConductor(schedule.getId(), request.conductorId());
+        syncTodayTrip(schedule.getId());
 
-        return new ScheduleListItem(
-                schedule.getId(),
-                schedule.getRoute() != null ? schedule.getRoute().getId() : null,
-                schedule.getRoute() != null ? schedule.getRoute().getRouteName() : "Unknown Route",
-                schedule.getBus() != null ? schedule.getBus().getId() : null,
-                schedule.getBus() != null ? schedule.getBus().getLicensePlate() : "No Bus",
-                schedule.getDriver() != null ? schedule.getDriver().getId() : null,
-                schedule.getDriver() != null && schedule.getDriver().getUser() != null ? schedule.getDriver().getUser().getFullName() : "No Driver",
-                schedule.getWeekdayNumber(),
-                schedule.getDepartureTime(),
-                schedule.getEndTime(),
-                schedule.getStatus()
-        );
+        return findScheduleItem(schedule.getId());
     }
 
     @Transactional
@@ -175,5 +130,105 @@ public class CoordinatorSchedulesService {
                         d.getUser() != null ? d.getUser().getFullName() : "Unknown Driver"
                 ))
                 .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<ConductorDropdownDto> getAvailableConductors() {
+        return jdbcTemplate.query("""
+                SELECT c.conductor_id, u.full_name
+                FROM conductors c
+                JOIN users u ON u.user_id = c.user_id
+                WHERE u.role = 'CONDUCTOR' AND u.status = 'ACTIVE'
+                ORDER BY u.full_name
+                """, (rs, rowNum) -> new ConductorDropdownDto(
+                        rs.getInt("conductor_id"),
+                        rs.getString("full_name")));
+    }
+
+    private void updateConductor(Integer scheduleId, Integer conductorId) {
+        jdbcTemplate.update("UPDATE bus_schedules SET conductor_id = ? WHERE schedule_id = ?", conductorId, scheduleId);
+    }
+
+    private void syncTodayTrip(Integer scheduleId) {
+        jdbcTemplate.update("""
+                DELETE FROM trips t
+                USING bus_schedules bs
+                WHERE t.schedule_id = bs.schedule_id
+                  AND t.schedule_id = ?
+                  AND t.service_date = CURRENT_DATE
+                  AND (bs.bus_id IS NULL OR bs.driver_id IS NULL OR bs.conductor_id IS NULL)
+                """, scheduleId);
+
+        jdbcTemplate.update("""
+                UPDATE trips t
+                SET route_id = bs.route_id,
+                    bus_id = bs.bus_id,
+                    driver_id = bs.driver_id,
+                    conductor_id = bs.conductor_id
+                FROM bus_schedules bs
+                WHERE bs.schedule_id = t.schedule_id
+                  AND t.schedule_id = ?
+                  AND t.service_date = CURRENT_DATE
+                  AND bs.bus_id IS NOT NULL
+                  AND bs.driver_id IS NOT NULL
+                  AND bs.conductor_id IS NOT NULL
+                """, scheduleId);
+
+        jdbcTemplate.update("""
+                INSERT INTO trips(schedule_id, route_id, bus_id, driver_id, conductor_id, service_date, status)
+                SELECT bs.schedule_id, bs.route_id, bs.bus_id, bs.driver_id, bs.conductor_id, CURRENT_DATE, 'NOT_STARTED'
+                FROM bus_schedules bs
+                WHERE bs.schedule_id = ?
+                  AND bs.weekday_number = EXTRACT(ISODOW FROM CURRENT_DATE)::int
+                  AND bs.bus_id IS NOT NULL
+                  AND bs.driver_id IS NOT NULL
+                  AND bs.conductor_id IS NOT NULL
+                  AND NOT EXISTS (
+                      SELECT 1 FROM trips t
+                      WHERE t.schedule_id = bs.schedule_id
+                        AND t.service_date = CURRENT_DATE
+                  )
+                """, scheduleId);
+    }
+
+    private ScheduleListItem findScheduleItem(Integer scheduleId) {
+        return findScheduleItems(null).stream()
+                .filter(item -> item.id().equals(scheduleId))
+                .findFirst()
+                .orElseThrow();
+    }
+
+    private List<ScheduleListItem> findScheduleItems(Integer routeId) {
+        String routeFilter = routeId == null ? "" : "WHERE bs.route_id = ?";
+        Object[] args = routeId == null ? new Object[]{} : new Object[]{routeId};
+        return jdbcTemplate.query("""
+                SELECT bs.schedule_id, bs.route_id, r.route_name,
+                       bs.bus_id, COALESCE(b.license_plate, 'No Bus') AS license_plate,
+                       bs.driver_id, COALESCE(du.full_name, 'No Driver') AS driver_name,
+                       bs.conductor_id, COALESCE(cu.full_name, 'No Conductor') AS conductor_name,
+                       bs.weekday_number, bs.departure_time, bs.end_time, bs.status
+                FROM bus_schedules bs
+                LEFT JOIN routes r ON r.route_id = bs.route_id
+                LEFT JOIN buses b ON b.bus_id = bs.bus_id
+                LEFT JOIN drivers d ON d.driver_id = bs.driver_id
+                LEFT JOIN users du ON du.user_id = d.user_id
+                LEFT JOIN conductors c ON c.conductor_id = bs.conductor_id
+                LEFT JOIN users cu ON cu.user_id = c.user_id
+                %s
+                ORDER BY bs.weekday_number, bs.departure_time, r.route_name
+                """.formatted(routeFilter), (rs, rowNum) -> new ScheduleListItem(
+                        rs.getInt("schedule_id"),
+                        (Integer) rs.getObject("route_id"),
+                        rs.getString("route_name"),
+                        (Integer) rs.getObject("bus_id"),
+                        rs.getString("license_plate"),
+                        (Integer) rs.getObject("driver_id"),
+                        rs.getString("driver_name"),
+                        (Integer) rs.getObject("conductor_id"),
+                        rs.getString("conductor_name"),
+                        (Integer) rs.getObject("weekday_number"),
+                        rs.getTime("departure_time") == null ? null : rs.getTime("departure_time").toLocalTime(),
+                        rs.getTime("end_time") == null ? null : rs.getTime("end_time").toLocalTime(),
+                        rs.getString("status")), args);
     }
 }
