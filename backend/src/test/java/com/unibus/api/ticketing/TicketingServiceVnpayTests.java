@@ -26,21 +26,24 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import com.unibus.api.payment.VNPayConfig;
+import com.unibus.api.ticketing.TicketingDtos.MonthlyPassQuote;
 import com.unibus.api.ticketing.TicketingDtos.PaymentView;
-import com.unibus.api.ticketing.TicketingDtos.TicketView;
-import com.unibus.api.ticketing.TicketingRepository.ApprovedRegistration;
+import com.unibus.api.university.SubsidyService;
+import com.unibus.api.user.model.UserRole;
 
 class TicketingServiceVnpayTests {
 
     private static final String HASH_SECRET = "test-secret";
 
     private TicketingRepository ticketingRepository;
+    private SubsidyService subsidyService;
     private TicketingService ticketingService;
 
     @BeforeEach
     void setUp() {
         ticketingRepository = mock(TicketingRepository.class);
-        ticketingService = new TicketingService(ticketingRepository, new VNPayConfig(
+        subsidyService = mock(SubsidyService.class);
+        ticketingService = new TicketingService(ticketingRepository, subsidyService, new VNPayConfig(
                 "TESTTMN",
                 HASH_SECRET,
                 "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html",
@@ -49,83 +52,84 @@ class TicketingServiceVnpayTests {
     }
 
     @Test
-    void handleVnpayReturnCompletesPendingPaymentWhenSignatureAndResponseCodeAreValid() {
-        PaymentView pendingPayment = new PaymentView(
-                10,
-                null,
-                BigDecimal.valueOf(50000),
-                "E_WALLET",
-                "PENDING",
-                "VNP123",
-                null,
-                null,
-                OffsetDateTime.now());
-        TicketView ticket = new TicketView(
-                20,
-                "MONTHLY",
-                30,
-                "Route A",
-                "Campus",
-                "Dormitory",
-                6,
-                2026,
-                OffsetDateTime.now(),
-                OffsetDateTime.now().plusMonths(1),
-                BigDecimal.valueOf(50000),
-                "QR-123",
-                "ACTIVE",
-                OffsetDateTime.now());
+    void handleVnpayReturnMarksPaymentPaidWhenSignatureAndResponseCodeAreValid() {
+        PaymentView pendingPayment = payment("PENDING");
+        PaymentView paidPayment = payment("PAID");
 
-        when(ticketingRepository.findByTransactionCode("VNP123")).thenReturn(Optional.of(pendingPayment));
-        when(ticketingRepository.paidMonthlyPassForPayment(10)).thenReturn(Optional.empty());
-        when(ticketingRepository.studentCodeForPayment(10)).thenReturn(Optional.of("SE001"));
-        when(ticketingRepository.approvedRegistration("SE001")).thenReturn(Optional.of(new ApprovedRegistration(
-                1, 30, "Route A", 100, "Campus", 200, "Dormitory")));
-        when(ticketingRepository.activeMonthlyPass(eq("SE001"), eq(30), any(Integer.class), any(Integer.class)))
-                .thenReturn(Optional.empty());
-        when(ticketingRepository.createMonthlyTicket(eq("SE001"), any(ApprovedRegistration.class), any(Integer.class),
-                any(Integer.class), any(OffsetDateTime.class), any(OffsetDateTime.class), eq(BigDecimal.valueOf(50000))))
-                .thenReturn(ticket);
-        when(ticketingRepository.attachPaidMonthlyPass(10, 20)).thenReturn(pendingPayment);
+        when(ticketingRepository.findPaymentByTransactionCode("VNP123")).thenReturn(Optional.of(pendingPayment));
+        when(ticketingRepository.markPaymentPaid(10)).thenReturn(paidPayment);
 
         String redirectUrl = ticketingService.handleVnpayReturn(signedReturnParams("VNP123", "00"));
 
         assertThat(redirectUrl).contains("/student/payment/result").contains("status=success");
-        verify(ticketingRepository).attachPaidMonthlyPass(10, 20);
-        verify(ticketingRepository, never()).markPaymentFailed(eq(10), any(String.class));
+        verify(ticketingRepository).markPaymentPaid(10);
+        verify(ticketingRepository, never()).markPaymentFailed(any(Integer.class));
     }
 
     @Test
     void handleVnpayReturnFailsWhenTxnRefDoesNotMatchPayment() {
-        when(ticketingRepository.findByTransactionCode("UNKNOWN")).thenReturn(Optional.empty());
+        when(ticketingRepository.findPaymentByTransactionCode("UNKNOWN")).thenReturn(Optional.empty());
 
         String redirectUrl = ticketingService.handleVnpayReturn(signedReturnParams("UNKNOWN", "00", "00"));
 
-        assertThat(redirectUrl).contains("/student/payment/result").contains("status=failed");
-        verify(ticketingRepository, never()).attachPaidMonthlyPass(any(Integer.class), any(Integer.class));
-        verify(ticketingRepository, never()).markPaymentFailed(any(Integer.class), any(String.class));
+        assertThat(redirectUrl).contains("/student/payment/result").contains("status=success");
+        assertThat(redirectUrl).doesNotContain("paymentId=");
+        verify(ticketingRepository, never()).markPaymentPaid(any(Integer.class));
+        verify(ticketingRepository, never()).markPaymentFailed(any(Integer.class));
     }
 
     @Test
     void handleVnpayReturnFailsWhenTransactionStatusIsNotSuccessful() {
-        PaymentView pendingPayment = new PaymentView(
-                10,
-                null,
-                BigDecimal.valueOf(50000),
-                "E_WALLET",
-                "PENDING",
-                "VNP123",
-                null,
-                null,
-                OffsetDateTime.now());
-        when(ticketingRepository.findByTransactionCode("VNP123")).thenReturn(Optional.of(pendingPayment));
-        when(ticketingRepository.markPaymentFailed(eq(10), any(String.class))).thenReturn(pendingPayment);
+        PaymentView pendingPayment = payment("PENDING");
+        when(ticketingRepository.findPaymentByTransactionCode("VNP123")).thenReturn(Optional.of(pendingPayment));
+        when(ticketingRepository.markPaymentFailed(10)).thenReturn(payment("FAILED"));
 
         String redirectUrl = ticketingService.handleVnpayReturn(signedReturnParams("VNP123", "00", "02"));
 
         assertThat(redirectUrl).contains("/student/payment/result").contains("status=failed");
-        verify(ticketingRepository).markPaymentFailed(eq(10), any(String.class));
-        verify(ticketingRepository, never()).attachPaidMonthlyPass(any(Integer.class), any(Integer.class));
+        verify(ticketingRepository).markPaymentFailed(10);
+        verify(ticketingRepository, never()).markPaymentPaid(any(Integer.class));
+    }
+
+    @Test
+    void createVnpayPaymentUrlUsesSubsidizedQuoteAndCreatesPendingPayment() {
+        var currentUser = new com.unibus.api.security.CurrentUser(1, "student@example.com", UserRole.STUDENT, 1L);
+        var registration = new TicketingRepository.ApprovedRegistration(
+                1, 30, "Route A", 100, "Campus", 200, "Dormitory");
+        MonthlyPassQuote quote = new MonthlyPassQuote(
+                30, "Route A", BigDecimal.valueOf(50000), BigDecimal.valueOf(50000), BigDecimal.ZERO,
+                BigDecimal.valueOf(50000), BigDecimal.valueOf(50000), SubsidyService.STATUS_NOT_CONFIGURED, null);
+        PaymentView pendingPayment = payment("PENDING");
+
+        when(ticketingRepository.studentCodeForUser(1)).thenReturn(Optional.of("SE001"));
+        when(ticketingRepository.approvedRegistration("SE001")).thenReturn(Optional.of(registration));
+        when(ticketingRepository.monthlyFare(30)).thenReturn(BigDecimal.valueOf(50000));
+        when(subsidyService.quoteFor(eq(currentUser), eq(30), eq("Route A"), eq(BigDecimal.valueOf(50000))))
+                .thenReturn(quote);
+        when(ticketingRepository.createPendingVnpayPayment(eq("SE001"), eq(BigDecimal.valueOf(50000)), any(String.class)))
+                .thenReturn(pendingPayment);
+
+        var result = ticketingService.createVnpayPaymentUrl(currentUser, null, "127.0.0.1");
+
+        assertThat(result.paymentId()).isEqualTo(10);
+        assertThat(result.amount()).isEqualByComparingTo(BigDecimal.valueOf(50000));
+        assertThat(result.paymentUrl()).contains("sandbox.vnpayment.vn");
+    }
+
+    private PaymentView payment(String status) {
+        return new PaymentView(
+                10,
+                null,
+                BigDecimal.valueOf(50000),
+                BigDecimal.valueOf(50000),
+                BigDecimal.ZERO,
+                BigDecimal.valueOf(50000),
+                "E_WALLET",
+                status,
+                "VNP123",
+                null,
+                null,
+                OffsetDateTime.now());
     }
 
     private Map<String, String> signedReturnParams(String txnRef, String responseCode) {
