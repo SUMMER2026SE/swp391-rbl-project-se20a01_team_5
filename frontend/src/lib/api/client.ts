@@ -272,6 +272,32 @@ export interface RouteSuggestionDTO {
   }[];
 }
 
+export interface RouteDirectionDTO {
+  direction: number;
+  stopCount: number;
+  firstStopName?: string;
+  lastStopName?: string;
+}
+
+export interface RouteLookupDTO {
+  routeId: number;
+  routeCode?: string;
+  routeName: string;
+  colorHex?: string;
+  distanceKm?: number | string;
+  estimatedMinutes?: number;
+  frequencyMin?: number;
+  singleFare?: number | string;
+  monthlyFare?: number | string;
+  firstTrip?: string;
+  lastTrip?: string;
+  stopCount?: number;
+  directions?: number[];
+  universityLinked?: boolean;
+  interregional?: boolean;
+  externalSource?: string;
+}
+
 export interface EtaDTO {
   tripId?: number;
   busId?: number;
@@ -421,8 +447,32 @@ export interface JourneyTrackingSnapshotDTO {
   polylines?: { legId: string; mode: string; colorHex?: string; points: CoordinateDTO[] }[];
 }
 
+export interface RouteMapPreviewDTO {
+  routeId: number;
+  routeCode?: string;
+  routeName: string;
+  colorHex?: string;
+  distanceKm?: number | string;
+  estimatedMinutes?: number;
+  frequencyMin?: number;
+  singleFare?: number | string;
+  monthlyFare?: number | string;
+  firstTrip?: string;
+  lastTrip?: string;
+  universityLinked?: boolean;
+  interregional?: boolean;
+  externalSource?: string;
+  direction: number;
+  directions?: RouteDirectionDTO[];
+  stops?: JourneyStopDTO[];
+  polylines?: { legId: string; mode: string; colorHex?: string; points: CoordinateDTO[] }[];
+}
+
 export const transportApi = {
   stops: () => apiFetch.get<StopDTO[]>("/stops"),
+  routes: () => apiFetch.get<RouteLookupDTO[]>("/routes"),
+  routePreview: (routeId: number | string, direction?: number) =>
+    apiFetch.get<RouteMapPreviewDTO>(`/routes/${routeId}/preview`, { direction }),
   searchPlaces: (q: string, lat?: number, lng?: number, limit = 8) =>
     apiFetch.get<PlaceSuggestionDTO[]>("/places/search", { q, lat, lng, limit }),
   reversePlace: (lat: number, lng: number) =>

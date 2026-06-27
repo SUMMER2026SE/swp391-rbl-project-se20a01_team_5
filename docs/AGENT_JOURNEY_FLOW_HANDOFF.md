@@ -2,6 +2,100 @@
 
 Date: 2026-06-27
 
+## 2026-06-28 Desktop UX Correction Pass
+
+This pass rebuilds the student route finder around the user's latest desktop-web feedback.
+
+Key decisions:
+
+- The active student route finder is now `frontend/src/components/bus/student/journey-planner-desktop.tsx`.
+- `stu-find` in `frontend/src/components/bus/roles/student-module.tsx` renders `JourneyPlannerDesktop`; the older in-file `JourneyPlannerDesktopScreen` is legacy and is not active.
+- `frontend/src/components/bus/app-shell.tsx` auto-collapses the desktop sidebar when the student opens `stu-find`, and removes the normal `max-w-7xl` cap for this module so the map/planner can use the full desktop width.
+- Palette follows the existing student theme in `frontend/src/app/globals.css`: warm off-white surfaces, off-black `#14140f`, and a youthful lime accent. The active planner pass uses `#BDFD4F` for route-planner accent states and avoids blue text in this screen.
+- Planner/map shadows were removed. `frontend/src/components/m3/journey-map.tsx` now disables injected shadow on zoom controls, popups, and custom markers.
+- Lookup tab behavior:
+  - Default map is blank over Da Nang until a route is selected.
+  - Route list uses official BusMap/DanaBus routes only; no `V14/V15` labels appear in the UI.
+  - Selecting a route opens a left-side route detail panel and draws backend route `path_points` on Leaflet.
+  - Direction controls use different active colors: outbound lime `#BDFD4F`, return terracotta. The lookup map polyline also changes with direction.
+  - Route lookup now has a quick `Đăng ký tuyến` CTA fixed at the bottom of the left panel. It registers first stop to last stop for the selected direction and navigates to `stu-payment`. There is no `Mua QR` button in this flow.
+- Journey planner tab behavior:
+  - Origin/destination inputs are vertical and saved in `localStorage` under `unibus.studentJourneyPlanner.v1`.
+  - GPS success always labels the origin as `Vị trí hiện tại` instead of trusting reverse-geocode display text.
+  - Max bus legs selector is now a no-shadow dropdown, not the old segmented selector.
+  - The old swap-origin/destination icon was removed because it caused bad spacing in the vertical desktop form.
+  - Result cards are clickable summaries. Clicking a card opens a separate left detail panel with route steps, boarding/alighting info, the actual stops passed by each bus leg, and a fixed bottom `Đăng ký` CTA.
+  - The confusing compact icon-only sequence was replaced with readable step rows such as `Đi bộ 2 phút` and `Tuyến 16 · 33 trạm`.
+  - Route and journey cards no longer use blue text for prices or labels. Lookup cards use a centered lime bus icon chip and lighter state-layer press feedback.
+  - Successful route registration stores lightweight context in `localStorage.unibus.lastRegisteredRouteContext` so the future My Tickets/tracking redesign can infer whether the user came from route lookup or journey planning.
+- Address suggestions are still backend-driven through `GET /api/v1/places/search`, which prioritizes local stops/landmarks and then falls back to geocoders. Browser QA confirmed suggestions include `Bến xe buýt Đại học Việt Hàn` with Da Nang stop address data.
+
+Verification for this pass:
+
+- `npm run build` passed in `frontend/` after the latest color/icon/dropdown/detail changes.
+- Browser visual QA at 1440x900 confirmed:
+  - Sidebar collapses to full-width planner when opening `Tìm tuyến xe`.
+  - Lookup default has 19 active routes and a blank map path count before selection.
+  - Selecting route `02` draws a backend polyline; switching direction changes active color.
+  - Lookup detail shows `Đăng ký tuyến` fixed in the left panel.
+  - Planner result cards open a separate journey detail panel with fixed `Đăng ký`; no `Mua QR` appears.
+  - Reloading the app and returning to `Tìm tuyến xe > Tìm đường` restores saved origin/destination and results.
+  - GPS physical accuracy was not accepted/validated in browser automation; implementation uses `navigator.geolocation.getCurrentPosition({ enableHighAccuracy: true })` and keeps the label as `Vị trí hiện tại`.
+
+## 2026-06-28 Student IA, Chatbot, and Business Policy Research
+
+Implemented UI/IA changes:
+
+- Student sidebar now groups `Theo dõi xe`, `Tuyến của tôi`, and `Vé của tôi` under `Chuyến đi của tôi`.
+- `Chuyến đi của tôi` has three internal tabs: registered routes, ticket/QR, and tracking.
+- Student sidebar no longer exposes standalone `Phản hồi & đánh giá` or `Báo mất đồ`; `Lịch sử chuyến đi` now contains tabs for trip history, feedback, and lost-item reports.
+- Dashboard upcoming-trip copy now prefers the student's registered/ticket boarding and alighting stops before falling back to route endpoints. This fixes the confusing `Bến xe buýt Hội An -> Bến xe buýt Hội An` style display for seeded student demo accounts.
+- Chatbot UI no longer uses clipped chat bubble corners or card shadows in the chat surface. The loading state is now an agent-style working indicator that fades between context/tools such as student profile, routes/stops, ticket/subsidy, schedule, and final response.
+- `ChatbotService` now has a `FAST_CONTEXT` path for simple, short factual questions. It answers from backend context without waiting for an LLM call. Longer or reasoning-heavy prompts still go through the configured LLM provider/fallback chain.
+
+Verification for this pass:
+
+```powershell
+cd frontend
+npm run build
+```
+
+```powershell
+cd backend
+& "C:\Users\DuckHai\.m2\wrapper\dists\apache-maven-3.9.15-bin\4rlcemksed9vjmkvgss0jpc4po\apache-maven-3.9.15\bin\mvn.cmd" -q -DskipTests compile
+```
+
+Schema note:
+
+- No new schema or Flyway migration was added in this pass.
+- Existing journey-planner schema remains V14/V15.
+
+Business policy research, current code behavior:
+
+- Student must be verified before route registration. Enforced in `RouteRegistrationService.requireVerifiedStudent`.
+- Registration currently requires the route to be linked to the student's university. Enforced through `TransportService.requireValidSelection`, which calls `SubsidyService.requireRouteLinked`.
+- The backend currently allows more than one active route registration as long as the exact route + boarding stop + alighting stop pair is not duplicated. The list endpoint returns all `PENDING`/`APPROVED` registrations.
+- Changing an existing registration is supported by `PUT /api/v1/students/me/route-registrations/{registrationId}`. Same-route changes update boarding/alighting stops. Different-route changes cancel the old registration and create a new one through `previous_registration_id`.
+- A student cannot cancel a registration while any active monthly pass exists. Enforced by `countActiveMonthlyPasses`.
+- A student cannot change to a different route while there is an active monthly pass on another route. Enforced by `countActiveMonthlyPassesOnDifferentRoute`.
+- Monthly pass purchase requires an approved route registration. Journey monthly pass purchase requires approved registrations for every bus leg route.
+- Current code does not support "register non-university-linked public route and pay full price" for registration/monthly-pass flows. Non-linked routes can be discovered in the new public planner, but registration and subsidized/monthly pass purchase are still university-linked.
+
+Neutral BA recommendation for next decision:
+
+- Do not lock the product forever to "school-linked routes only". It is too restrictive for a real city bus product and creates UX dead ends when the best public route is not subsidized.
+- Recommended policy split:
+  - Students can search every public old-Da-Nang route.
+  - Students can register any public route for personal convenience.
+  - Subsidy only applies when the route is linked to the student's university and there is an active subsidy policy.
+  - Non-linked route purchase should be allowed at full fare with a clear badge such as `Không trợ giá` / `Giá gốc`.
+  - Financial reconciliation remains route-level: linked routes have subsidy accounting; non-linked routes have zero subsidy.
+- Recommended implementation later, not done in this pass:
+  - Change `RouteRegistrationService`/`TransportService.requireValidSelection` to validate route/stop order without requiring `requireRouteLinked`.
+  - Keep subsidy gating in `SubsidyService.quoteFor` and payment quote logic.
+  - Add explicit `eligibility/subsidyStatus` to route/journey APIs so UI can show `Trường hỗ trợ`, `Giá gốc`, or `Chưa đủ điều kiện`.
+  - Add tests for public non-linked registration, full-price monthly pass, linked subsidized pass, duplicate registration, cancel locked by active pass, and replace locked by active pass.
+
 ## Objective
 
 Refactor student journey flow into a desktop-first, map-first planner:
@@ -114,21 +208,21 @@ Main file:
 
 New desktop planner:
 
-- `JourneyPlannerDesktopScreen`
-- Replaces `stu-find` route in the student module switch.
+- `JourneyPlannerDesktop`
+- Replaces `stu-find` route in the student module switch. The older in-file planner screens remain legacy/backward-compatible but are not active in the sidebar route.
 - Uses local stop/place autocomplete plus GPS reverse lookup.
 - Calls `transportApi.searchJourneys`.
 - Shows result cards, selected journey detail, Leaflet route polylines, bus markers, and CTA buttons.
 - Desktop layout uses an `xl` split view: journey results on the left and sticky map/detail panel on the right. This was adjusted after visual QA because `2xl` pushed the map below the fold at 1440px-wide demo viewports.
 - CTA flow:
   - `Đăng ký` -> `studentApi.registerRoute` -> `stu-payment`
-  - `Mua QR` -> `studentApi.purchaseJourneyMonthlyPass` -> `stu-my-ticket`
-  - `Theo dõi` -> stores `unibus.trackingJourneyId` -> `stu-tracking`
+  - No `Mua QR` button is shown in the route-finder planner. Buying remains in `stu-payment`.
+  - Tracking is grouped under `stu-my-journeys`.
 
 Tracking screen:
 
 - If `localStorage.unibus.trackingJourneyId` exists, `TrackingScreen` loads journey tracking snapshots from the new tracking API every 15 seconds.
-- If no journey ID exists, the old route tracking UI remains available.
+- If no journey ID exists, route ETA tracking remains available, including inside `Chuyến đi của tôi`.
 
 API client:
 
@@ -178,6 +272,7 @@ Highest priority:
 - Continue visual QA desktop planner against real DB before merging major UI refinements.
 - Add backend integration tests for direct journey, transfer journey, old-Da-Nang filtering, journey order, and QR scan by route.
 - Extend My Ticket / Payment screens to display journey-order grouping more explicitly; current purchase endpoint works, but UI is still pass-centric.
+- Decide and implement the public-route full-price policy. Current backend still requires university-linked routes for route registration.
 - Add richer local landmarks for Da Nang so geocoder suggestions feel product-grade even when OSM is slow.
 
 Do not reset/revert user work in dirty files. Existing dirty files before this refactor included `backend/src/main/java/com/unibus/api/ai/ZaiAiLlmService.java`, `frontend/src/app/globals.css`, and `frontend/src/components/bus/roles/student-module.tsx`.

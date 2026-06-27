@@ -3,9 +3,8 @@
 // =============================================================================
 // Student Module — UniBus (M3 Expressive, aligned to UIPrototype v1.1)
 // 14 role-specific screens driven by `activeId`:
-//   stu-dashboard, stu-university, stu-stops, stu-find, stu-tracking,
-//   stu-my-routes, stu-my-ticket, stu-history, stu-ai, stu-chatbot,
-//   stu-payment, stu-invoices, stu-feedback, stu-lost
+//   stu-dashboard, stu-university, stu-stops, stu-find, stu-my-journeys,
+//   stu-history, stu-chatbot, stu-payment, stu-invoices plus legacy hidden routes
 //
 // Visual: keeps prototype v1.1 look (hero lime card, M3 Expressive cards,
 // SplitText reveal, ScrollReveal, M3MapCanvas, vertical timeline).
@@ -189,6 +188,7 @@ import {
   ApiError,
 } from "@/lib/api/client";
 import { ProtectedImage } from "@/components/bus/protected-image";
+import { JourneyPlannerDesktop } from "@/components/bus/student/journey-planner-desktop";
 
 type StudentModuleProps = {
   activeId: string;
@@ -244,7 +244,9 @@ export function StudentModule({ activeId, onNavigate, onProfileRefresh }: Studen
     case "stu-stops":
       return <StopsScreen ctx={ctx} />;
     case "stu-find":
-      return <JourneyPlannerDesktopScreen ctx={ctx} onNavigate={onNavigate} />;
+      return <JourneyPlannerDesktop ctx={ctx} onNavigate={onNavigate} />;
+    case "stu-my-journeys":
+      return <MyJourneysScreen ctx={ctx} onNavigate={onNavigate} />;
     case "stu-tracking":
       return <TrackingScreen ctx={ctx} />;
     case "stu-my-routes":
@@ -478,6 +480,8 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
   const activeRoute = nextTrip
     ? ctx.routes.find((r) => r.id === String(nextTrip.routeId))
     : ctx.routes[0];
+  const tripFrom = ctx.registration?.boardingStopName || activeTicket?.boardingStopName || activeRoute?.from || "Điểm lên";
+  const tripTo = ctx.registration?.alightingStopName || activeTicket?.alightingStopName || activeRoute?.to || "Điểm xuống";
   const unread = ctx.notifications.filter((n: any) => !n.read).length;
   const tripsThisMonth = ctx.tripsHistory.length;
 
@@ -493,9 +497,9 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
 
   const quickActions = [
     { id: "stu-find", label: "Tìm tuyến xe", icon: RouteIcon, bg: "#144fcc", fg: "#fff", iconBg: "#beff50", iconFg: "#14140f" },
-    { id: "stu-tracking", label: "Theo dõi xe", icon: Navigation, bg: "#ff8c5f", fg: "#14140f", iconBg: "#14140f", iconFg: "#ff8c5f" },
+    { id: "stu-my-journeys", label: "Chuyến đi của tôi", icon: TicketCheck, bg: "#ff8c5f", fg: "#14140f", iconBg: "#14140f", iconFg: "#ff8c5f" },
     { id: "stu-payment", label: "Mua vé tháng", icon: CreditCard, bg: "#14140f", fg: "#fff", iconBg: "#beff50", iconFg: "#14140f" },
-    { id: "stu-ai", label: "AI gợi ý", icon: Sparkles, bg: "#c8a0ff", fg: "#14140f", iconBg: "#14140f", iconFg: "#c8a0ff" },
+    { id: "stu-chatbot", label: "Hỏi Copilot", icon: Bot, bg: "#c8a0ff", fg: "#14140f", iconBg: "#14140f", iconFg: "#c8a0ff" },
   ];
 
   const myRoutes = ctx.registration
@@ -570,7 +574,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
                   Chuyến sắp tới
                 </h3>
                 <p className="text-sm sm:text-base font-medium opacity-80 truncate">
-                  {activeRoute?.from || ctx.registration?.boardingStopName || "Điểm lên"} → {activeRoute?.to || ctx.registration?.alightingStopName || "Điểm xuống"}
+                  {tripFrom} → {tripTo}
                 </p>
                 <div className="flex items-center gap-3 sm:gap-4 pt-1 flex-wrap">
                   <HeroMetric label="Khởi hành" value={nextTrip?.departTime || activeRoute?.firstTrip || "Hôm nay"} />
@@ -610,7 +614,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
                     whileHover={{ y: -2 }}
                     whileTap={{ scale: 0.97 }}
                     transition={{ type: "spring", stiffness: 400, damping: 22 }}
-                    onClick={() => onNavigate("stu-tracking")}
+                    onClick={() => onNavigate("stu-my-journeys")}
                     className="state-layer inline-flex items-center gap-1.5 h-10 px-4 rounded-full bg-[#14140f] text-white text-sm font-bold"
                   >
                     <Navigation className="size-4" />
@@ -680,7 +684,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
                   <div
                     key={r.id}
                     className="state-layer flex items-center gap-3 p-3 rounded-xl cursor-pointer min-w-0"
-                    onClick={() => onNavigate("stu-my-ticket")}
+                    onClick={() => onNavigate("stu-my-journeys")}
                   >
                     <div
                       className="flex size-11 shrink-0 items-center justify-center rounded-xl"
@@ -851,7 +855,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
                 whileHover={{ y: -2 }}
                 whileTap={{ scale: 0.97 }}
                 transition={{ type: "spring", stiffness: 400, damping: 22 }}
-                onClick={() => { setQrExpanded(false); onNavigate("stu-my-ticket"); }}
+                onClick={() => { setQrExpanded(false); onNavigate("stu-my-journeys"); }}
                 className="w-full h-11 rounded-full bg-[#beff50] text-[#14140f] text-sm font-bold flex items-center justify-center gap-2"
               >
                 Xem chi tiết vé
@@ -896,7 +900,17 @@ function NotificationRow({ notification }: { notification: any }) {
   );
 }
 
-function HistoryRow({ history, routes, onSupport }: { history: any; routes: any[]; onSupport: () => void }) {
+function HistoryRow({
+  history,
+  routes,
+  onFeedback,
+  onLostItem,
+}: {
+  history: any;
+  routes: any[];
+  onFeedback: () => void;
+  onLostItem: () => void;
+}) {
   const route = routes.find((r) => r.id === String(history.routeId));
   return (
     <div className="flex flex-wrap items-center gap-3 p-3 rounded-xl bg-surface-container-low min-w-0">
@@ -916,14 +930,24 @@ function HistoryRow({ history, routes, onSupport }: { history: any; routes: any[
         <p className="text-[10px] text-on-surface-variant">{formatDate(history.boardedAt || history.serviceDate)}</p>
         <CheckCircle2 className="size-4 text-success ml-auto" />
       </div>
-      <button
-        type="button"
-        onClick={onSupport}
-        className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-full bg-primary-container px-3 text-xs font-bold text-on-primary-container"
-      >
-        <LifeBuoy className="size-3.5" />
-        Yêu cầu hỗ trợ
-      </button>
+      <div className="ml-auto flex shrink-0 flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={onFeedback}
+          className="inline-flex h-8 items-center gap-1.5 rounded-full bg-[#BDFD4F] px-3 text-xs font-bold text-[#14140f]"
+        >
+          <Star className="size-3.5" />
+          Đánh giá
+        </button>
+        <button
+          type="button"
+          onClick={onLostItem}
+          className="inline-flex h-8 items-center gap-1.5 rounded-full border border-outline-variant bg-surface px-3 text-xs font-bold text-on-surface"
+        >
+          <PackageSearch className="size-3.5" />
+          Mất đồ
+        </button>
+      </div>
     </div>
   );
 }
@@ -2903,7 +2927,7 @@ function FindRoutesScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
 // =============================================================================
 // Screen 5: Tracking — live map + ETA
 // =============================================================================
-function TrackingScreen({ ctx }: { ctx: Ctx }) {
+function TrackingScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean }) {
   const [selectedRouteId, setSelectedRouteId] = useState<string>(ctx.routes[0]?.id || "");
   const [eta, setEta] = useState<EtaDTO[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -2919,13 +2943,13 @@ function TrackingScreen({ ctx }: { ctx: Ctx }) {
 
   const numberValue = (value: number | string | undefined | null) => Number(value ?? 0) || 0;
   const firstBusLine = journeyTracking?.polylines?.find((line) => line.mode !== "WALK");
-  const journeyRouteColor = firstBusLine?.colorHex || "#144fcc";
+  const journeyRouteColor = firstBusLine?.colorHex || "#6CA82B";
   const journeyPolylines: JourneyPolyline[] = useMemo(() => (
     journeyTracking?.polylines || []
   ).map((line) => ({
     id: line.legId,
     label: line.mode === "WALK" ? "Đi bộ" : "Tuyến xe",
-    color: line.colorHex || (line.mode === "WALK" ? "#14140f" : "#144fcc"),
+    color: line.colorHex || (line.mode === "WALK" ? "#14140f" : "#6CA82B"),
     dashed: line.mode === "WALK",
     points: (line.points || [])
       .map((point) => ({ lat: numberValue(point.latitude), lng: numberValue(point.longitude) }))
@@ -3027,32 +3051,55 @@ function TrackingScreen({ ctx }: { ctx: Ctx }) {
 
   return (
     <PageTransition className="space-y-6 min-w-0">
-      <PageHeader
-        title="Theo dõi xe"
-        description="Vị trí xe và thời gian đến trạm theo thời gian thực."
-        icon={<Navigation className="size-7" />}
-        actions={
-          journeyId ? (
-            <button
-              type="button"
-              onClick={clearJourneyTracking}
-              className="inline-flex h-11 items-center gap-2 rounded-2xl border border-outline-variant px-4 text-sm font-black hover:bg-surface-container-high"
-            >
-              <RouteIcon className="size-4" />
-              Chọn tuyến khác
-            </button>
-          ) : (
-            <Select value={selectedRouteId} onValueChange={setSelectedRouteId}>
-              <SelectTrigger className="w-full sm:w-64"><SelectValue placeholder="Chọn tuyến" /></SelectTrigger>
-              <SelectContent>
-                {ctx.routes.map((r: any) => (
-                  <SelectItem key={r.id} value={r.id}>{r.code} - {r.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )
-        }
-      />
+      {!compact && (
+        <PageHeader
+          title="Theo dõi xe"
+          description="Vị trí xe và thời gian đến trạm theo thời gian thực."
+          icon={<Navigation className="size-7" />}
+          actions={
+            journeyId ? (
+              <button
+                type="button"
+                onClick={clearJourneyTracking}
+                className="inline-flex h-11 items-center gap-2 rounded-2xl border border-outline-variant px-4 text-sm font-black hover:bg-surface-container-high"
+              >
+                <RouteIcon className="size-4" />
+                Chọn tuyến khác
+              </button>
+            ) : (
+              <Select value={selectedRouteId} onValueChange={setSelectedRouteId}>
+                <SelectTrigger className="w-full sm:w-64"><SelectValue placeholder="Chọn tuyến" /></SelectTrigger>
+                <SelectContent>
+                  {ctx.routes.map((r: any) => (
+                    <SelectItem key={r.id} value={r.id}>{r.code} - {r.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )
+          }
+        />
+      )}
+
+      {compact && !journeyId && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-outline-variant bg-surface p-3">
+          <div className="min-w-0">
+            <p className="text-xs font-bold uppercase text-on-surface-variant">Theo dõi tuyến</p>
+            <p className="truncate text-sm font-semibold text-on-surface">
+              {selectedRoute ? `${selectedRoute.code} - ${selectedRoute.name}` : "Chọn tuyến để xem ETA"}
+            </p>
+          </div>
+          <Select value={selectedRouteId} onValueChange={setSelectedRouteId}>
+            <SelectTrigger className="h-10 w-full rounded-xl border-outline-variant bg-surface text-sm shadow-none sm:w-64">
+              <SelectValue placeholder="Chọn tuyến" />
+            </SelectTrigger>
+            <SelectContent>
+              {ctx.routes.map((r: any) => (
+                <SelectItem key={r.id} value={r.id}>{r.code} - {r.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       {journeyId && (
         <div className="grid grid-cols-1 gap-4 min-w-0 xl:grid-cols-[minmax(0,1fr)_420px]">
@@ -3124,7 +3171,7 @@ function TrackingScreen({ ctx }: { ctx: Ctx }) {
                   <motion.div
                     key={vehicle.vehicleId}
                     layout
-                    className="rounded-2xl bg-surface p-4 shadow-sm"
+                    className="rounded-2xl border border-outline-variant bg-surface p-4"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -3221,9 +3268,76 @@ function TrackingScreen({ ctx }: { ctx: Ctx }) {
 }
 
 // =============================================================================
+// Screen 5.5: My Journeys — registered routes + tickets + tracking in one place
+// =============================================================================
+function MyJourneysScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
+  const [tab, setTab] = useState("routes");
+  const tabs = [
+    { id: "routes", label: "Tuyến đã đăng ký", icon: TicketCheck },
+    { id: "ticket", label: "Vé & QR", icon: QrCode },
+    { id: "tracking", label: "Theo dõi xe", icon: Navigation },
+  ];
+
+  return (
+    <PageTransition className="space-y-5 min-w-0">
+      <PageHeader
+        title="Chuyến đi của tôi"
+        description="Quản lý tuyến đã đăng ký, vé tháng và trạng thái xe trong một nơi."
+        icon={<TicketCheck className="size-7" />}
+        actions={
+          <ExpressiveButton variant="filled" onClick={() => onNavigate("stu-find")}>
+            <RouteIcon className="size-4" />
+            Tìm tuyến mới
+          </ExpressiveButton>
+        }
+      />
+
+      <div className="rounded-3xl border border-outline-variant bg-surface p-2">
+        <div className="grid grid-cols-3 gap-1">
+          {tabs.map((item) => {
+            const Icon = item.icon;
+            const active = tab === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setTab(item.id)}
+                className={cn(
+                  "state-layer flex min-h-11 items-center justify-center gap-2 rounded-2xl px-3 text-xs font-bold transition-colors sm:text-sm",
+                  active
+                    ? "bg-[#BDFD4F] text-[#14140f]"
+                    : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface",
+                )}
+              >
+                <Icon className="size-4 shrink-0" />
+                <span className="truncate">{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={tab}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -6 }}
+          transition={{ duration: 0.18, ease: "easeOut" }}
+        >
+          {tab === "routes" && <MyRoutesScreen ctx={ctx} onNavigate={onNavigate} compact />}
+          {tab === "ticket" && <MyTicketScreen ctx={ctx} onNavigate={onNavigate} compact />}
+          {tab === "tracking" && <TrackingScreen ctx={ctx} compact />}
+        </motion.div>
+      </AnimatePresence>
+    </PageTransition>
+  );
+}
+
+// =============================================================================
 // Screen 6: My Routes — registration management
 // =============================================================================
-function MyRoutesScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
+function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavigate: (id: string) => void; compact?: boolean }) {
   const [showRegister, setShowRegister] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
@@ -3271,17 +3385,19 @@ function MyRoutesScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string
 
   return (
     <PageTransition className="space-y-6 min-w-0">
-      <PageHeader
-        title="Tuyến của tôi"
-        description="Quản lý tuyến đã đăng ký và thay đổi trạm lên/xuống."
-        icon={<TicketCheck className="size-7" />}
-        actions={
-          <ExpressiveButton variant="filled" onClick={() => setShowRegister(true)}>
-            <Plus className="size-4" />
-            Đăng ký tuyến
-          </ExpressiveButton>
-        }
-      />
+      {!compact && (
+        <PageHeader
+          title="Tuyến của tôi"
+          description="Quản lý tuyến đã đăng ký và thay đổi trạm lên/xuống."
+          icon={<TicketCheck className="size-7" />}
+          actions={
+            <ExpressiveButton variant="filled" onClick={() => setShowRegister(true)}>
+              <Plus className="size-4" />
+              Đăng ký tuyến
+            </ExpressiveButton>
+          }
+        />
+      )}
 
       {activeRegistrations.length === 0 ? (
         <EmptyState
@@ -3528,14 +3644,14 @@ function RegisterRouteDialog({
 // =============================================================================
 // Screen 7: My Ticket — QR code + ticket details
 // =============================================================================
-function MyTicketScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
+function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavigate: (id: string) => void; compact?: boolean }) {
   const t = ctx.activeTicket;
   const [expanded, setExpanded] = useState(false);
 
   if (!t) {
     return (
       <PageTransition>
-        <PageHeader title="Vé của tôi" icon={<QrCode className="size-7" />} />
+        {!compact && <PageHeader title="Vé của tôi" icon={<QrCode className="size-7" />} />}
         <EmptyState
           icon={<QrCode className="size-7" />}
           title="Chưa có vé tháng"
@@ -3552,7 +3668,7 @@ function MyTicketScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string
 
   return (
     <PageTransition className="space-y-6 min-w-0">
-      <PageHeader title="Vé của tôi" icon={<QrCode className="size-7" />} />
+      {!compact && <PageHeader title="Vé của tôi" icon={<QrCode className="size-7" />} />}
 
       <ScrollReveal>
         <motion.div
@@ -3674,6 +3790,7 @@ function MyTicketScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string
 // Screen 8: History — travel history list with stat cards
 // =============================================================================
 function HistoryScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
+  const [view, setView] = useState<"trips" | "feedback" | "lost">("trips");
   const totalTrips = ctx.tripsHistory.length;
   // Estimate monthly spend from active ticket fare
   const monthlyFare = ctx.activeTicket?.finalFareAmount ?? ctx.activeTicket?.originalFareAmount ?? 0;
@@ -3687,10 +3804,22 @@ function HistoryScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Lịch sử chuyến đi"
-        description={`${totalTrips} chuyến đã đi`}
+        description="Xem chuyến đã đi, gửi đánh giá hoặc báo thất lạc theo từng chuyến."
         icon={<History className="size-7" />}
       />
 
+      <Tabs value={view} onValueChange={(value) => setView(value as "trips" | "feedback" | "lost")}>
+        <TabsList className="grid w-full grid-cols-3 rounded-2xl bg-surface-container-low p-1 shadow-none">
+          <TabsTrigger value="trips" className="rounded-xl">Chuyến đã đi</TabsTrigger>
+          <TabsTrigger value="feedback" className="rounded-xl">Phản hồi</TabsTrigger>
+          <TabsTrigger value="lost" className="rounded-xl">Mất đồ</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {view === "feedback" && <FeedbackScreen ctx={ctx} compact />}
+      {view === "lost" && <LostItemsScreen ctx={ctx} compact />}
+      {view !== "trips" ? null : (
+        <>
       {/* Stat cards — 3 mini cards giống prototype */}
       {totalTrips > 0 && (
         <StaggerGroup className="grid grid-cols-3 gap-2 sm:gap-3 min-w-0">
@@ -3728,15 +3857,21 @@ function HistoryScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
               <HistoryRow
                 history={h}
                 routes={ctx.routes}
-                onSupport={() => {
+                onFeedback={() => {
                   localStorage.setItem("unibus.supportTripId", String(h.tripId || h.id));
                   if (h.routeId) localStorage.setItem("unibus.supportRouteId", String(h.routeId));
-                  onNavigate("stu-feedback");
+                  setView("feedback");
+                }}
+                onLostItem={() => {
+                  localStorage.setItem("unibus.lostTripId", String(h.tripId || h.id));
+                  setView("lost");
                 }}
               />
             </StaggerItem>
           ))}
         </StaggerGroup>
+      )}
+        </>
       )}
     </PageTransition>
   );
@@ -4059,7 +4194,7 @@ function AIScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => v
                       transition={{ type: "spring", stiffness: 400, damping: 22 }}
                       onClick={() => {
                         toast.success(`Đã chuyển đến đăng ký tuyến ${r.routeCode || route.code}`);
-                        onNavigate("stu-my-routes");
+                        onNavigate("stu-my-journeys");
                       }}
                       className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-[#beff50] text-[#14140f] text-sm font-bold shrink-0"
                     >
@@ -4087,35 +4222,45 @@ const CHATBOT_SUGGESTIONS = [
   "Hướng dẫn tôi đăng ký tuyến và mua vé tháng SePay",
 ];
 
-function chatbotReasoningSteps(prompt: string) {
+type AgentWorkStep = {
+  label: string;
+  detail: string;
+  icon: React.ElementType;
+};
+
+function chatbotWorkSteps(prompt: string): AgentWorkStep[] {
   const text = prompt.toLowerCase();
-  const steps = ["Phân tích yêu cầu người dùng", "Đọc hồ sơ sinh viên"];
-  if (text.includes("tuyến") || text.includes("trạm") || text.includes("đến") || text.includes("route")) {
-    steps.push("Truy vấn tuyến, trạm và thứ tự dừng");
+  const steps: AgentWorkStep[] = [
+    { label: "Đọc câu hỏi", detail: "Xác định ý định và độ khó", icon: Search },
+    { label: "Hồ sơ sinh viên", detail: "Kiểm tra trường, đăng ký và vé hiện tại", icon: School },
+  ];
+  if (text.includes("tuyến") || text.includes("trạm") || text.includes("đến") || text.includes("route") || text.includes("đường")) {
+    steps.push({ label: "Tuyến & trạm", detail: "Tra route, stop order và điểm lên/xuống", icon: RouteIcon });
   }
   if (text.includes("giá") || text.includes("vé") || text.includes("trợ giá") || text.includes("sepay")) {
-    steps.push("Tính giá vé và chính sách trợ giá");
+    steps.push({ label: "Vé & trợ giá", detail: "Tính giá sau trợ giá nếu có dữ liệu", icon: Wallet });
   }
   if (text.includes("lịch") || text.includes("chuyến") || text.includes("eta") || text.includes("mấy giờ")) {
-    steps.push("Kiểm tra lịch chạy và chuyến gần nhất");
+    steps.push({ label: "Lịch chạy", detail: "Đọc chuyến gần nhất và ETA mô phỏng", icon: Clock });
   }
-  steps.push("Tổng hợp câu trả lời bằng AI");
+  steps.push({ label: "Soạn phản hồi", detail: "Trả lời ngắn, không bịa dữ liệu ngoài context", icon: Sparkles });
   return steps;
 }
 
 function AiWorkingIndicator({ prompt }: { prompt: string }) {
-  const steps = useMemo(() => chatbotReasoningSteps(prompt), [prompt]);
+  const steps = useMemo(() => chatbotWorkSteps(prompt), [prompt]);
   const [activeStep, setActiveStep] = useState(0);
 
   useEffect(() => {
     setActiveStep(0);
     const timer = window.setInterval(() => {
-      setActiveStep((value) => Math.min(value + 1, steps.length - 1));
-    }, 420);
+      setActiveStep((value) => (value + 1) % Math.max(steps.length, 1));
+    }, 780);
     return () => window.clearInterval(timer);
   }, [steps.length, prompt]);
 
-  const icons = [Sparkles, Search, RouteIcon, Wallet, Clock, CheckCircle2];
+  const active = steps[activeStep] || steps[0];
+  const ActiveIcon = active?.icon || Sparkles;
 
   return (
     <motion.div
@@ -4127,36 +4272,61 @@ function AiWorkingIndicator({ prompt }: { prompt: string }) {
       role="status"
       aria-live="polite"
     >
-      <div className="grid size-8 shrink-0 place-items-center rounded-full bg-primary text-on-primary">
+      <div className="grid size-8 shrink-0 place-items-center rounded-full bg-[#BDFD4F] text-[#14140f]">
         <Bot className="size-4" />
       </div>
-      <div className="min-w-0 rounded-2xl rounded-tl-sm border border-outline-variant bg-surface px-4 py-3 text-sm shadow-sm">
-        <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-on-surface-variant">
-          <Sparkles className="size-3.5 text-primary" />
-          <span>UniBus Copilot đang xử lý</span>
+      <div className="min-w-0 rounded-[28px] border border-outline-variant bg-surface px-4 py-3 text-sm">
+        <div className="mb-3 flex items-center justify-between gap-3 text-xs font-semibold text-on-surface-variant">
+          <span className="inline-flex items-center gap-2">
+            <Sparkles className="size-3.5 text-on-surface" />
+            Copilot đang làm việc
+          </span>
+          <span className="inline-flex items-center gap-1" aria-hidden="true">
+            {[0, 1, 2].map((index) => (
+              <motion.span
+                key={index}
+                className="size-1.5 rounded-full bg-[#BDFD4F]"
+                animate={{ opacity: [0.35, 1, 0.35], y: [0, -2, 0] }}
+                transition={{ duration: 0.9, repeat: Infinity, delay: index * 0.14 }}
+              />
+            ))}
+          </span>
         </div>
-        <div className="space-y-1.5">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={active?.label}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="flex items-start gap-3 rounded-2xl bg-surface-container-low px-3 py-2.5"
+          >
+            <span className="grid size-8 shrink-0 place-items-center rounded-xl bg-[#14140f] text-[#BDFD4F]">
+              <ActiveIcon className="size-4" />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold text-on-surface">{active?.label}</span>
+              <span className="block text-xs leading-5 text-on-surface-variant">{active?.detail}</span>
+            </span>
+          </motion.div>
+        </AnimatePresence>
+        <div className="mt-3 flex flex-wrap gap-1.5">
           {steps.map((step, index) => {
-            const Icon = icons[index] ?? CheckCircle2;
-            const done = index < activeStep;
-            const active = index === activeStep;
+            const Icon = step.icon;
+            const isActive = index === activeStep;
             return (
               <motion.div
-                key={step}
+                key={step.label}
                 initial={false}
-                animate={{ opacity: done || active ? 1 : 0.42 }}
-                className="flex items-center gap-2 text-xs"
+                animate={{
+                  opacity: isActive ? 1 : 0.5,
+                  backgroundColor: isActive ? "#BDFD4F" : "rgba(20,20,15,0.04)",
+                }}
+                transition={{ duration: 0.18 }}
+                className="inline-flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[11px] font-semibold text-[#14140f]"
               >
-                <Icon
-                  className={cn(
-                    "size-3.5 shrink-0",
-                    done && "text-success",
-                    active && "text-primary",
-                    !done && !active && "text-on-surface-variant"
-                  )}
-                />
-                <span className={done ? "text-on-surface" : "text-on-surface-variant"}>{step}</span>
-                {active && <span className="ml-auto thinking-dot size-1 rounded-full bg-primary" />}
+                <Icon className="size-3.5 shrink-0" />
+                <span>{step.label}</span>
               </motion.div>
             );
           })}
@@ -4172,7 +4342,7 @@ function AgentExecutionSummary({ sources, mode }: { sources?: AiSource[]; mode?:
   if (!sourceCount && !mode) return null;
 
   return (
-    <div className="overflow-hidden rounded-xl border border-outline-variant/70 bg-surface">
+    <div className="mt-3 overflow-hidden rounded-2xl border border-outline-variant/70 bg-surface">
       <button
         type="button"
         onClick={() => setExpanded((value) => !value)}
@@ -4206,9 +4376,11 @@ function AgentExecutionSummary({ sources, mode }: { sources?: AiSource[]; mode?:
               ))}
               {mode && (
                 <div className="flex items-start gap-2 text-xs">
-                  <Sparkles className="mt-0.5 size-3.5 shrink-0 text-primary" />
+                  <Sparkles className="mt-0.5 size-3.5 shrink-0 text-on-surface" />
                   <span className="text-on-surface-variant">
-                    {mode === "ZAI"
+                    {mode === "FAST_CONTEXT"
+                      ? "Trả lời nhanh bằng dữ liệu UniBus"
+                      : mode === "ZAI"
                       ? "Tổng hợp phản hồi bằng Z.AI"
                       : mode === "BEDROCK"
                         ? "Tổng hợp phản hồi bằng AWS Bedrock"
@@ -4254,7 +4426,7 @@ function AiRouteResultCard({
         alightingStopId: String(alightingStopId),
       }));
     }
-    onNavigate("stu-my-routes");
+    onNavigate("stu-my-journeys");
   };
 
   return (
@@ -4277,7 +4449,7 @@ function AiRouteResultCard({
             </div>
             <h3 className="mt-2 text-sm font-bold leading-5">{route.routeName}</h3>
           </div>
-          <Bus className="size-5 shrink-0 text-primary" />
+          <Bus className="size-5 shrink-0 text-on-surface-variant" />
         </div>
 
         {!!route.reasons?.length && (
@@ -4341,7 +4513,7 @@ function AiRouteResultCard({
                 >
                   {stops.map((stop, stopIndex) => (
                     <li key={`${route.routeId}-${stop.stopId}`} className="relative py-1.5 text-xs">
-                      <span className="absolute -left-[23px] top-3 size-1.5 rounded-full bg-primary" />
+                      <span className="absolute -left-[23px] top-3 size-1.5 rounded-full bg-[#BDFD4F]" />
                       <span className="font-medium">{stop.stopName}</span>
                       {stopIndex > 0 && stop.minutesFromPreviousStop != null && (
                         <span className="ml-2 text-on-surface-variant">+{stop.minutesFromPreviousStop} phút</span>
@@ -4367,7 +4539,7 @@ function AiRouteResultCard({
         <button
           type="button"
           onClick={registerRoute}
-          className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-primary px-3 text-xs font-semibold text-on-primary transition-opacity hover:opacity-90"
+          className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-[#14140f] px-3 text-xs font-semibold text-[#BDFD4F] transition-opacity hover:opacity-90"
         >
           Đăng ký tuyến
           <ArrowRight className="size-4" />
@@ -4483,10 +4655,10 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
 
   return (
     <PageTransition className="min-w-0">
-      <div className="flex h-[calc(100vh-7rem)] min-h-[560px] min-w-0 flex-col overflow-hidden rounded-3xl border border-outline-variant bg-surface shadow-sm">
+      <div className="flex h-[calc(100vh-7rem)] min-h-[560px] min-w-0 flex-col overflow-hidden rounded-3xl border border-outline-variant bg-surface">
         <header className="flex items-center justify-between gap-3 border-b border-outline-variant bg-surface px-4 py-3 sm:px-5">
           <div className="flex min-w-0 items-center gap-3">
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-[#14140f] text-[#beff50]">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-[#14140f] text-[#BDFD4F]">
               <Bot className="size-5" />
             </span>
             <div className="min-w-0">
@@ -4516,7 +4688,7 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                 className={cn("flex min-w-0 gap-2 sm:gap-3", m.role === "user" && "justify-end")}
               >
                 {m.role === "bot" && (
-                  <span className="mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-[#beff50] text-[#14140f]">
+                  <span className="mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-[#BDFD4F] text-[#14140f]">
                     <Bot className="size-4" />
                   </span>
                 )}
@@ -4524,8 +4696,8 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                   className={cn(
                     "min-w-0 max-w-[92%] break-words text-sm leading-relaxed sm:max-w-[78%]",
                     m.role === "user"
-                      ? "rounded-[1.35rem] rounded-tr-md bg-primary px-4 py-3 text-on-primary"
-                      : "rounded-[1.35rem] rounded-tl-md border border-outline-variant bg-surface px-4 py-3 text-on-surface shadow-sm"
+                      ? "rounded-[28px] bg-[#14140f] px-4 py-3 text-[#BDFD4F]"
+                      : "rounded-[28px] border border-outline-variant bg-surface px-4 py-3 text-on-surface"
                   )}
                 >
                   <p className="whitespace-pre-wrap">{m.text}</p>
@@ -4548,7 +4720,7 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                   )}
                 </div>
                 {m.role === "user" && (
-                  <span className="mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-on-primary">
+                  <span className="mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-[#14140f] text-xs font-bold text-[#BDFD4F]">
                     {userInitial}
                   </span>
                 )}
@@ -5048,7 +5220,7 @@ function InvoicesScreen({ ctx }: { ctx: Ctx }) {
 // =============================================================================
 // Screen 13: Feedback — submit + list
 // =============================================================================
-function FeedbackScreen({ ctx }: { ctx: Ctx }) {
+function FeedbackScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean }) {
   const [rating, setRating] = useState(5);
   const [category, setCategory] = useState("service");
   const [content, setContent] = useState("");
@@ -5102,11 +5274,13 @@ function FeedbackScreen({ ctx }: { ctx: Ctx }) {
 
   return (
     <PageTransition className="space-y-6 min-w-0">
-      <PageHeader
-        title="Phản hồi"
-        description="Chia sẻ trải nghiệm của bạn để chúng tôi cải thiện dịch vụ."
-        icon={<Star className="size-7" />}
-      />
+      {!compact && (
+        <PageHeader
+          title="Phản hồi"
+          description="Chia sẻ trải nghiệm của bạn để chúng tôi cải thiện dịch vụ."
+          icon={<Star className="size-7" />}
+        />
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
         <ScrollReveal>
@@ -5218,7 +5392,7 @@ function FeedbackScreen({ ctx }: { ctx: Ctx }) {
 // =============================================================================
 // Screen 14: Lost Items — report + list
 // =============================================================================
-function LostItemsScreen({ ctx }: { ctx: Ctx }) {
+function LostItemsScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean }) {
   const [description, setDescription] = useState("");
   const [tripId, setTripId] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
@@ -5245,13 +5419,23 @@ function LostItemsScreen({ ctx }: { ctx: Ctx }) {
     }
   };
 
+  useEffect(() => {
+    const pendingTripId = localStorage.getItem("unibus.lostTripId");
+    if (pendingTripId) {
+      setTripId(pendingTripId);
+      localStorage.removeItem("unibus.lostTripId");
+    }
+  }, []);
+
   return (
     <PageTransition className="space-y-6 min-w-0">
-      <PageHeader
-        title="Đồ thất lạc"
-        description="Báo mất vật dụng và theo dõi trạng thái tìm kiếm."
-        icon={<PackageSearch className="size-7" />}
-      />
+      {!compact && (
+        <PageHeader
+          title="Đồ thất lạc"
+          description="Báo mất vật dụng và theo dõi trạng thái tìm kiếm."
+          icon={<PackageSearch className="size-7" />}
+        />
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
         <ScrollReveal>
@@ -5264,7 +5448,9 @@ function LostItemsScreen({ ctx }: { ctx: Ctx }) {
                   <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn chuyến" /></SelectTrigger>
                   <SelectContent>
                     {ctx.tripsHistory.map((h: any) => (
-                      <SelectItem key={h.id} value={h.id}>{h.routeName} — {formatDate(h.boardedAt)}</SelectItem>
+                      <SelectItem key={h.tripId || h.id} value={String(h.tripId || h.id)}>
+                        {(h.routeName || "Tuyến xe")} — {formatDate(h.boardedAt || h.serviceDate)}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

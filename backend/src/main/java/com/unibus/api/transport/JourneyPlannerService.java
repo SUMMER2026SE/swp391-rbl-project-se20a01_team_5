@@ -2,8 +2,6 @@ package com.unibus.api.transport;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
@@ -256,12 +254,11 @@ public class JourneyPlannerService {
         OffsetDateTime nextDeparture = departAt.plusMinutes(wait);
         OffsetDateTime arrival = nextDeparture.plusMinutes(ride);
         List<JourneyStop> stops = new ArrayList<>();
-        int eta = wait;
+        int hopCount = Math.max(1, segment.toIndex() - segment.fromIndex());
         for (int i = segment.fromIndex(); i <= segment.toIndex(); i++) {
             RouteStopNode routeStop = segment.line().stops().get(i);
-            if (i > segment.fromIndex()) {
-                eta += Math.max(2, routeStop.minutesFromPrevious() == null ? 3 : routeStop.minutesFromPrevious());
-            }
+            double progress = (i - segment.fromIndex()) / (double) hopCount;
+            int eta = wait + (int) Math.round(ride * progress);
             stops.add(new JourneyStop(
                     routeStop.stop().stopId(),
                     routeStop.stop().name(),
@@ -398,20 +395,10 @@ public class JourneyPlannerService {
     }
 
     private int waitMinutes(RouteLine line, OffsetDateTime departAt) {
-        LocalDate date = departAt.atZoneSameInstant(VIETNAM_ZONE).toLocalDate();
         LocalTime now = departAt.atZoneSameInstant(VIETNAM_ZONE).toLocalTime();
-        LocalTime first = line.firstTrip().orElse(LocalTime.of(5, 30));
-        LocalTime last = line.lastTrip().orElse(LocalTime.of(21, 0));
         int headway = line.frequencyMin() == null || line.frequencyMin() <= 0 ? 15 : line.frequencyMin();
-        if (now.isBefore(first)) {
-            return (int) java.time.Duration.between(now, first).toMinutes();
-        }
-        if (now.isAfter(last)) {
-            return (int) java.time.Duration.between(LocalDateTime.of(date, now),
-                    LocalDateTime.of(date.plusDays(1), first)).toMinutes();
-        }
-        int minutesSinceFirst = (int) java.time.Duration.between(first, now).toMinutes();
-        int remainder = minutesSinceFirst % headway;
+        int simulatedMinute = now.getHour() * 60 + now.getMinute();
+        int remainder = simulatedMinute % headway;
         return remainder == 0 ? 1 : headway - remainder;
     }
 
@@ -650,12 +637,12 @@ public class JourneyPlannerService {
         }
 
         int durationMinutes() {
-            int total = 0;
-            for (int i = fromIndex + 1; i <= toIndex; i++) {
-                Integer minutes = line.stops().get(i).minutesFromPrevious();
-                total += Math.max(2, minutes == null ? 3 : minutes);
-            }
-            return Math.max(5, total);
+            int hopCount = Math.max(1, toIndex - fromIndex);
+            double kilometers = distanceKm().doubleValue();
+            double averageSpeedKmh = kilometers < 3 ? 17.0 : 21.0;
+            int movingMinutes = (int) Math.ceil((kilometers / averageSpeedKmh) * 60.0);
+            int dwellMinutes = (int) Math.ceil(Math.max(0, hopCount - 1) * 0.45);
+            return Math.max(4, Math.min(120, movingMinutes + dwellMinutes));
         }
 
         BigDecimal distanceKm() {

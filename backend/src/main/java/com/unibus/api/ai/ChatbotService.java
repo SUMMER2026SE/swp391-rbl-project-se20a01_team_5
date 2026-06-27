@@ -85,10 +85,18 @@ public class ChatbotService {
         context.put("clientContext", request.context());
 
         persist(userId, "USER", advisoryType.name(), userMessage);
-        Optional<AiLlmService.LlmResult> llm = llmService.complete(new AiPrompt(SYSTEM_PROMPT, userMessage, context));
-        String mode = llm.map(result -> result.provider().toUpperCase()).orElse("FALLBACK");
-        LlmMessage llmMessage = llm.map(result -> parseLlmMessage(result.text(), advisoryType))
-                .orElseGet(() -> fallbackMessage(userMessage, advisoryType, student, registration, activeTicket, routeSuggestions));
+        boolean fastContextAnswer = shouldUseFastContextAnswer(userMessage, advisoryType, registration, activeTicket, routeSuggestions);
+        String mode;
+        LlmMessage llmMessage;
+        if (fastContextAnswer) {
+            mode = "FAST_CONTEXT";
+            llmMessage = fallbackMessage(userMessage, advisoryType, student, registration, activeTicket, routeSuggestions);
+        } else {
+            Optional<AiLlmService.LlmResult> llm = llmService.complete(new AiPrompt(SYSTEM_PROMPT, userMessage, context));
+            mode = llm.map(result -> result.provider().toUpperCase()).orElse("FALLBACK");
+            llmMessage = llm.map(result -> parseLlmMessage(result.text(), advisoryType))
+                    .orElseGet(() -> fallbackMessage(userMessage, advisoryType, student, registration, activeTicket, routeSuggestions));
+        }
         List<AiAction> actions = routeSuggestions.stream()
                 .flatMap(route -> route.actions().stream())
                 .distinct()
@@ -103,6 +111,38 @@ public class ChatbotService {
                 actions,
                 sources,
                 sessionId);
+    }
+
+    private boolean shouldUseFastContextAnswer(
+            String message,
+            AdvisoryType advisoryType,
+            RegistrationSnapshot registration,
+            TicketSnapshot activeTicket,
+            List<RouteSuggestionCard> routes) {
+        String text = normalizeSearchText(message);
+        if (text.length() > 180) {
+            return false;
+        }
+        boolean needsReasoning = containsAny(text, "so sanh", "phan tich", "tai sao", "giai thich", "toi uu", "ke hoach");
+        if (needsReasoning) {
+            return false;
+        }
+        return switch (advisoryType) {
+            case PAYMENT_LOOKUP, VERIFICATION -> true;
+            case FARE_LOOKUP, SCHEDULE_LOOKUP -> !routes.isEmpty() || registration != null || activeTicket != null;
+            case ROUTE_SUGGESTION -> !routes.isEmpty();
+            case HELP -> registration != null || activeTicket != null;
+            default -> false;
+        };
+    }
+
+    private boolean containsAny(String text, String... needles) {
+        for (String needle : needles) {
+            if (text.contains(needle)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private RouteSuggestionRequest routeRequestFromChat(Integer userId, ChatRequest request, AdvisoryType advisoryType) {

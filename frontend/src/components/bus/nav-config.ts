@@ -87,15 +87,11 @@ export const NAV_CONFIG: Record<Role, NavItem[]> = {
   student: [
     { id: "stu-dashboard", label: "Trang chủ", icon: LayoutDashboard, group: "Tổng quan" },
     { id: "stu-find", label: "Tìm tuyến xe", icon: RouteIcon, group: "Tuyến xe" },
-    { id: "stu-tracking", label: "Theo dõi xe", icon: Navigation, group: "Tuyến xe" },
-    { id: "stu-my-routes", label: "Tuyến của tôi", icon: TicketCheck, group: "Tuyến xe" },
-    { id: "stu-my-ticket", label: "Vé của tôi", icon: QrCode, group: "Tuyến xe" },
+    { id: "stu-my-journeys", label: "Chuyến đi của tôi", icon: TicketCheck, group: "Tuyến xe" },
     { id: "stu-history", label: "Lịch sử chuyến", icon: History, group: "Tuyến xe" },
     { id: "stu-chatbot", label: "Chatbot tra cứu", icon: Bot, group: "Thông minh" },
-    { id: "stu-payment", label: "Thanh toán & vé", icon: CreditCard, group: "Tài chính" },
+    { id: "stu-payment", label: "Mua vé tháng", icon: CreditCard, group: "Tài chính" },
     { id: "stu-invoices", label: "Hóa đơn", icon: Receipt, group: "Tài chính" },
-    { id: "stu-feedback", label: "Phản hồi & đánh giá", icon: Star, group: "Hỗ trợ" },
-    { id: "stu-lost", label: "Báo mất đồ", icon: PackageSearch, group: "Hỗ trợ" },
   ],
   driver: [
     { id: "drv-dashboard", label: "Lịch hôm nay", icon: LayoutDashboard, group: "Tổng quan" },

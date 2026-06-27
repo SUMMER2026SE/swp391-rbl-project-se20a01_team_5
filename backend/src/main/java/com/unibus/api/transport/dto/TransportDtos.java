@@ -26,6 +26,25 @@ public final class TransportDtos {
          String lastTrip, boolean universityLinked) {
    }
 
+   public static record RouteLookup(Integer routeId, String routeName, String routeCode,
+         String colorHex, BigDecimal distanceKm, Integer estimatedMinutes, Integer frequencyMin,
+         BigDecimal singleFare, BigDecimal monthlyFare, String firstTrip, String lastTrip,
+         Integer stopCount, List<Integer> directions, boolean universityLinked,
+         boolean interregional, String externalSource) {
+   }
+
+   public static record RouteDirectionSummary(Integer direction, Integer stopCount,
+         String firstStopName, String lastStopName) {
+   }
+
+   public static record RouteMapPreview(Integer routeId, String routeName, String routeCode,
+         String colorHex, BigDecimal distanceKm, Integer estimatedMinutes, Integer frequencyMin,
+         BigDecimal singleFare, BigDecimal monthlyFare, String firstTrip, String lastTrip,
+         boolean universityLinked, boolean interregional, String externalSource,
+         Integer direction, List<RouteDirectionSummary> directions, List<JourneyStop> stops,
+         List<MapPolyline> polylines) {
+   }
+
    public static record Eta(Integer tripId, Integer busId, Integer stopId, OffsetDateTime estimatedArrivalAt, OffsetDateTime actualArrivalAt, OffsetDateTime updatedAt) {
    }
 

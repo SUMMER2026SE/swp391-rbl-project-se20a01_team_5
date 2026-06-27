@@ -21,6 +21,8 @@ import com.unibus.api.transport.dto.TransportDtos.JourneySearchRequest;
 import com.unibus.api.transport.dto.TransportDtos.JourneyTrackingSnapshot;
 import com.unibus.api.transport.dto.TransportDtos.PlaceReverseResult;
 import com.unibus.api.transport.dto.TransportDtos.PlaceSuggestion;
+import com.unibus.api.transport.dto.TransportDtos.RouteLookup;
+import com.unibus.api.transport.dto.TransportDtos.RouteMapPreview;
 import com.unibus.api.transport.dto.TransportDtos.RouteSuggestion;
 import com.unibus.api.transport.dto.TransportDtos.StopSummary;
 
@@ -86,9 +88,22 @@ public class TransportController {
         return ApiResponse.ok("Routes retrieved", transportService.searchRoutes(currentUser, boardingStopId, alightingStopId));
     }
 
+    @GetMapping("/routes")
+    ApiResponse<List<RouteLookup>> listRoutes(@AuthenticationPrincipal CurrentUser currentUser) {
+        return ApiResponse.ok("Routes retrieved", transportService.listRoutes(currentUser));
+    }
+
     @GetMapping("/routes/{routeId}")
     ApiResponse<RouteSuggestion> getRoute(@AuthenticationPrincipal CurrentUser currentUser, @PathVariable Integer routeId) {
         return ApiResponse.ok("Route retrieved", transportService.getRoute(currentUser, routeId));
+    }
+
+    @GetMapping("/routes/{routeId}/preview")
+    ApiResponse<RouteMapPreview> getRoutePreview(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @PathVariable Integer routeId,
+            @RequestParam(required = false) Integer direction) {
+        return ApiResponse.ok("Route preview retrieved", transportService.getRoutePreview(currentUser, routeId, direction));
     }
 
     @GetMapping("/routes/{routeId}/stops/{stopId}/eta")
