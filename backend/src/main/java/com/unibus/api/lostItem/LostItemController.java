@@ -19,7 +19,7 @@ import com.unibus.api.security.CurrentUser;
 import jakarta.validation.Valid;
 
 @RestController
-@RequestMapping("/api/v1/students/me/lost-items")
+@RequestMapping("/api/v1/students/me/lost-item-reports")
 @PreAuthorize("hasRole('STUDENT')")
 public class LostItemController {
 
