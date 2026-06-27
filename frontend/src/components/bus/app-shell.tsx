@@ -325,10 +325,6 @@ export function AppShell({
             </PageTransition>
           </AnimatePresence>
         </main>
-
-        <footer className="mt-auto hidden border-t border-outline-variant/40 bg-surface-container-low px-6 py-4 text-center text-xs text-on-surface-variant lg:block">
-          <p>UniBus - Hệ thống xe bus sinh viên liên kết trường đại học tại Đà Nẵng</p>
-        </footer>
       </div>
 
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>

@@ -1,288 +1,415 @@
 package com.unibus.api.ai;
 
-import java.math.BigDecimal;
-import java.time.LocalTime;
-import java.util.HashMap;
+import java.time.OffsetDateTime;
+import java.text.Normalizer;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-/**
- * Rule-based chatbot service for REQ-STU-017.
- *
- * <p>Implements intent detection on Vietnamese natural-language queries:
- * <ul>
- *   <li><b>FARE_LOOKUP</b> - "giá vé", "bao nhiêu tiền", "giá" - looks up SINGLE/MONTHLY fare</li>
- *   <li><b>SCHEDULE_LOOKUP</b> - "lịch", "giờ chạy", "mấy giờ", "chuyến" - looks up first/last trip + frequency</li>
- *   <li><b>ROUTE_SUGGESTION</b> - "tuyến nào", "đường nào", "đi bằng" - returns top 3 routes</li>
- *   <li><b>OTHER</b> - fallback - returns a helpful default message</li>
- * </ul>
- *
- * <p>Each turn is persisted to {@code ai_chat_history} with {@code message_role=USER/AI} and
- * {@code advisory_type} set to the detected intent. The frontend can replay the history
- * via {@code GET /api/v1/students/me/assistant-chat}.
- *
- * <p>For a real conversational chatbot, replace {@link #respond} with a call to an LLM
- * (Gemini, OpenAI, Anthropic, etc.) that has access to the same DB lookups as tool calls.
- */
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.unibus.api.ai.AiDtos.AiAction;
+import com.unibus.api.ai.AiDtos.AiSource;
+import com.unibus.api.ai.AiDtos.ChatRequest;
+import com.unibus.api.ai.AiDtos.ChatResponse;
+import com.unibus.api.ai.AiDtos.RouteSuggestionCard;
+import com.unibus.api.ai.AiDtos.RouteSuggestionRequest;
+import com.unibus.api.ai.AiKnowledgeRepository.RegistrationSnapshot;
+import com.unibus.api.ai.AiKnowledgeRepository.StudentContext;
+import com.unibus.api.ai.AiKnowledgeRepository.TicketSnapshot;
+import com.unibus.api.ai.AiLlmService.AiPrompt;
+
 @Service
 public class ChatbotService {
 
+    private static final Logger log = LoggerFactory.getLogger(ChatbotService.class);
+
+    private static final String SYSTEM_PROMPT = """
+            Bạn là UniBus AI Copilot cho sinh viên.
+            Chỉ trả lời dựa trên UniBus context JSON được backend cung cấp.
+            Không bịa tuyến, trạm, lịch chạy, giá vé, trạng thái thanh toán hoặc chính sách trợ giá.
+            Nếu context thiếu dữ liệu quan trọng, hãy hỏi lại ngắn gọn.
+            Không sinh SQL, không yêu cầu quyền admin, không tự thực hiện đăng ký tuyến hoặc mua vé.
+            Trả về JSON thuần, không markdown, theo schema:
+            {"message":"câu trả lời tiếng Việt","advisoryType":"ROUTE_SUGGESTION|FARE_LOOKUP|SCHEDULE_LOOKUP|PAYMENT_LOOKUP|VERIFICATION|HELP|OTHER"}
+            """;
+
     private final JdbcTemplate jdbcTemplate;
+    private final ObjectMapper objectMapper;
+    private final AiKnowledgeRepository knowledgeRepository;
     private final RouteSuggestionService routeSuggestionService;
+    private final AiLlmService llmService;
 
-    public ChatbotService(JdbcTemplate jdbcTemplate, RouteSuggestionService routeSuggestionService) {
+    public ChatbotService(
+            JdbcTemplate jdbcTemplate,
+            AiKnowledgeRepository knowledgeRepository,
+            RouteSuggestionService routeSuggestionService,
+            AiLlmService llmService) {
         this.jdbcTemplate = jdbcTemplate;
+        this.objectMapper = new ObjectMapper();
+        this.knowledgeRepository = knowledgeRepository;
         this.routeSuggestionService = routeSuggestionService;
+        this.llmService = llmService;
     }
 
-    public ChatTurn respond(Integer userId, String userMessage) {
-        if (userMessage == null || userMessage.isBlank()) {
-            return persistTurn(userId, "USER", "OTHER", userMessage,
-                    "Xin lỗi, mình không hiểu câu hỏi. Bạn có thể hỏi về giá vé, lịch chạy xe, hoặc đề xuất tuyến phù hợp.");
+    @Transactional
+    public ChatResponse respond(Integer userId, ChatRequest request) {
+        String userMessage = request.message() == null ? "" : request.message().trim();
+        AdvisoryType advisoryType = detectIntent(userMessage);
+        StudentContext student = knowledgeRepository.studentContext(userId);
+        RegistrationSnapshot registration = knowledgeRepository.currentRegistration(student.studentCode()).orElse(null);
+        TicketSnapshot activeTicket = knowledgeRepository.activeTicket(student.studentCode()).orElse(null);
+        RouteSuggestionRequest routeRequest = routeRequestFromChat(request, advisoryType);
+        List<RouteSuggestionCard> routeSuggestions = shouldLoadRoutes(advisoryType)
+                ? routeSuggestionService.suggest(userId, routeRequest).stream().limit(3).toList()
+                : List.of();
+        List<AiSource> sources = sources(student, registration, activeTicket, routeSuggestions);
+        Map<String, Object> context = new LinkedHashMap<>();
+        context.put("student", student);
+        context.put("currentRegistration", registration);
+        context.put("activeTicket", activeTicket);
+        context.put("routeSuggestions", routeSuggestions);
+        context.put("sources", sources);
+        context.put("clientContext", request.context());
+
+        persist(userId, "USER", advisoryType.name(), userMessage);
+        Optional<AiLlmService.LlmResult> llm = llmService.complete(new AiPrompt(SYSTEM_PROMPT, userMessage, context));
+        String mode = llm.map(result -> result.provider().toUpperCase()).orElse("FALLBACK");
+        LlmMessage llmMessage = llm.map(result -> parseLlmMessage(result.text(), advisoryType))
+                .orElseGet(() -> fallbackMessage(userMessage, advisoryType, student, registration, activeTicket, routeSuggestions));
+        List<AiAction> actions = routeSuggestions.stream()
+                .flatMap(route -> route.actions().stream())
+                .distinct()
+                .limit(6)
+                .toList();
+        String sessionId = persist(userId, "AI", llmMessage.advisoryType().name(), llmMessage.message());
+        return new ChatResponse(
+                llmMessage.message(),
+                mode,
+                llmMessage.advisoryType().name(),
+                routeSuggestions,
+                actions,
+                sources,
+                sessionId);
+    }
+
+    private RouteSuggestionRequest routeRequestFromChat(ChatRequest request, AdvisoryType advisoryType) {
+        Map<String, Object> context = request.context();
+        Integer boardingStopId = intValue(context == null ? null : context.get("boardingStopId"));
+        Integer alightingStopId = intValue(context == null ? null : context.get("alightingStopId"));
+        if (boardingStopId == null || alightingStopId == null) {
+            List<StopMention> mentions = stopMentions(request.message());
+            if (!mentions.isEmpty()) {
+                StopMention firstMention = mentions.get(0);
+                StopMention secondMention = mentions.size() > 1 ? mentions.get(1) : null;
+                if (boardingStopId == null && shouldTreatSingleMentionAsDestination(request.message(), firstMention)) {
+                    alightingStopId = alightingStopId == null ? firstMention.stopId() : alightingStopId;
+                } else if (boardingStopId == null) {
+                    boardingStopId = firstMention.stopId();
+                }
+                if (alightingStopId == null && secondMention != null) {
+                    alightingStopId = secondMention.stopId();
+                }
+            }
         }
-        Intent intent = detectIntent(userMessage);
-        String response = switch (intent) {
-            case FARE_LOOKUP -> handleFareLookup(userId, userMessage);
-            case SCHEDULE_LOOKUP -> handleScheduleLookup(userId, userMessage);
-            case ROUTE_SUGGESTION -> handleRouteSuggestion(userId, userMessage);
-            case GREETING -> "Xin chào! Mình là trợ lý ảo UniBus. Mình có thể giúp bạn:\n"
-                    + "- Tra cứu giá vé (vé lẻ, vé tháng)\n"
-                    + "- Xem lịch chạy xe và giờ xuất phát\n"
-                    + "- Gợi ý tuyến xe phù hợp với bạn\n\n"
-                    + "Bạn muốn biết gì?";
-            case HELP -> "Mình có thể giúp bạn tra cứu:\n"
-                    + "• Giá vé - ví dụ: 'Giá vé tuyến 1 bao nhiêu?' hoặc 'Vé tháng tuyến 2 giá gì?'\n"
-                    + "• Lịch chạy - ví dụ: 'Lịch chạy tuyến 1', 'Mấy giờ chuyến cuối?'\n"
-                    + "• Gợi ý tuyến - ví dụ: 'Gợi ý tuyến xe cho mình', 'Tuyến nào phù hợp?'\n"
-                    + "• Chào hỏi - ví dụ: 'Xin chào', 'Hello'";
-            case OTHER -> defaultFallback();
+        String preferredDepartureTime = stringValue(context == null ? null : context.get("preferredDepartureTime"));
+        @SuppressWarnings("unchecked")
+        List<String> preferences = context != null && context.get("preferences") instanceof List<?>
+                ? ((List<?>) context.get("preferences")).stream().map(String::valueOf).toList()
+                : List.of();
+        return new RouteSuggestionRequest(
+                boardingStopId,
+                alightingStopId,
+                preferredDepartureTime,
+                preferences,
+                request.message(),
+                advisoryType == AdvisoryType.FARE_LOOKUP ? "cheap" : null);
+    }
+
+    private List<StopMention> stopMentions(String message) {
+        String normalizedMessage = normalizeSearchText(message);
+        if (normalizedMessage.isBlank()) {
+            return List.of();
+        }
+        List<StopMention> mentions = jdbcTemplate.query("""
+                SELECT stop_id, stop_code, stop_name
+                FROM stops
+                WHERE status = 'ACTIVE'
+                """, (rs, rowNum) -> {
+            Integer stopId = rs.getInt("stop_id");
+            String stopCode = rs.getString("stop_code");
+            String stopName = rs.getString("stop_name");
+            int index = stopMentionIndex(normalizedMessage, stopCode, stopName);
+            return index < 0 ? null : new StopMention(stopId, stopName, index);
+        }).stream()
+                .filter(mention -> mention != null)
+                .sorted(Comparator.comparingInt(StopMention::index))
+                .toList();
+        List<StopMention> unique = new ArrayList<>();
+        for (StopMention mention : mentions) {
+            if (unique.stream().noneMatch(existing -> existing.stopId().equals(mention.stopId()))) {
+                unique.add(mention);
+            }
+        }
+        return unique;
+    }
+
+    private int stopMentionIndex(String normalizedMessage, String stopCode, String stopName) {
+        int best = -1;
+        for (String alias : stopAliases(stopCode, stopName)) {
+            int index = normalizedMessage.indexOf(alias);
+            if (index >= 0 && (best < 0 || index < best)) {
+                best = index;
+            }
+        }
+        return best;
+    }
+
+    private List<String> stopAliases(String stopCode, String stopName) {
+        List<String> aliases = new ArrayList<>();
+        String name = normalizeSearchText(stopName);
+        String code = normalizeSearchText(stopCode);
+        addAlias(aliases, name);
+        addAlias(aliases, code);
+        addAlias(aliases, name.replace("dai hoc ", "").replace(" da nang", "").trim());
+        addCampusAlias(aliases, name, "bach khoa");
+        addCampusAlias(aliases, name, "fpt");
+        addCampusAlias(aliases, name, "vku");
+        addCampusAlias(aliases, name, "viet han");
+        addCampusAlias(aliases, name, "kinh te");
+        addCampusAlias(aliases, name, "duy tan");
+        addCampusAlias(aliases, name, "su pham");
+        addCampusAlias(aliases, name, "ben xe");
+        addCampusAlias(aliases, name, "cho han");
+        addCampusAlias(aliases, name, "cau rong");
+        return aliases;
+    }
+
+    private void addCampusAlias(List<String> aliases, String name, String alias) {
+        if (name.contains(alias)) {
+            addAlias(aliases, alias);
+        }
+    }
+
+    private void addAlias(List<String> aliases, String alias) {
+        if (alias != null && alias.length() >= 3 && !aliases.contains(alias)) {
+            aliases.add(alias);
+        }
+    }
+
+    private boolean shouldTreatSingleMentionAsDestination(String message, StopMention mention) {
+        String normalizedMessage = normalizeSearchText(message);
+        int destinationWord = (" " + normalizedMessage + " ").indexOf(" den ");
+        return destinationWord >= 0 && destinationWord < mention.index();
+    }
+
+    private String normalizeSearchText(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        String lower = value.toLowerCase(Locale.ROOT).replace('đ', 'd');
+        String withoutAccent = Normalizer.normalize(lower, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "");
+        return withoutAccent.replaceAll("[^a-z0-9]+", " ").trim();
+    }
+
+    private boolean shouldLoadRoutes(AdvisoryType advisoryType) {
+        return advisoryType == AdvisoryType.ROUTE_SUGGESTION
+                || advisoryType == AdvisoryType.FARE_LOOKUP
+                || advisoryType == AdvisoryType.SCHEDULE_LOOKUP
+                || advisoryType == AdvisoryType.HELP;
+    }
+
+    private AdvisoryType detectIntent(String message) {
+        String text = message.toLowerCase();
+        if (text.contains("tuyến") || text.contains("đường") || text.contains("đi tới")
+                || text.contains("đi đến") || text.contains("gợi ý") || text.contains("nhanh")
+                || text.contains("rẻ") || (text.contains("đi từ") && text.contains("đến"))) {
+            return AdvisoryType.ROUTE_SUGGESTION;
+        }
+        if (text.contains("giá") || text.contains("bao nhiêu tiền") || text.contains("vé tháng")
+                || text.contains("vé lẻ")) {
+            return AdvisoryType.FARE_LOOKUP;
+        }
+        if (text.contains("lịch") || text.contains("mấy giờ") || text.contains("eta")
+                || text.contains("chuyến")) {
+            return AdvisoryType.SCHEDULE_LOOKUP;
+        }
+        if (text.contains("thanh toán") || text.contains("sepay") || text.contains("qr")
+                || text.contains("mua vé")) {
+            return AdvisoryType.PAYMENT_LOOKUP;
+        }
+        if (text.contains("xác minh") || text.contains("trường của tôi") || text.contains("mssv")) {
+            return AdvisoryType.VERIFICATION;
+        }
+        if (text.contains("giúp") || text.contains("help") || text.contains("chào")) {
+            return AdvisoryType.HELP;
+        }
+        return AdvisoryType.OTHER;
+    }
+
+    private LlmMessage parseLlmMessage(String text, AdvisoryType fallbackType) {
+        String candidate = stripCodeFence(text);
+        try {
+            JsonNode root = objectMapper.readTree(candidate);
+            String message = root.path("message").asText("");
+            AdvisoryType type = parseType(root.path("advisoryType").asText(""), fallbackType);
+            if (!message.isBlank()) {
+                return new LlmMessage(message, type);
+            }
+        } catch (RuntimeException ignored) {
+            // Some models may return text despite the JSON instruction; still use it.
+        } catch (Exception ignored) {
+        }
+        return new LlmMessage(text, fallbackType);
+    }
+
+    private String stripCodeFence(String text) {
+        String trimmed = text == null ? "" : text.trim();
+        if (trimmed.startsWith("```")) {
+            int firstLine = trimmed.indexOf('\n');
+            int lastFence = trimmed.lastIndexOf("```");
+            if (firstLine >= 0 && lastFence > firstLine) {
+                return trimmed.substring(firstLine + 1, lastFence).trim();
+            }
+        }
+        return trimmed;
+    }
+
+    private AdvisoryType parseType(String value, AdvisoryType fallback) {
+        try {
+            return AdvisoryType.valueOf(value);
+        } catch (RuntimeException exception) {
+            return fallback;
+        }
+    }
+
+    private LlmMessage fallbackMessage(
+            String userMessage,
+            AdvisoryType advisoryType,
+            StudentContext student,
+            RegistrationSnapshot registration,
+            TicketSnapshot activeTicket,
+            List<RouteSuggestionCard> routes) {
+        if (advisoryType == AdvisoryType.ROUTE_SUGGESTION && routes.isEmpty()) {
+            return new LlmMessage("Mình chưa tìm thấy tuyến phù hợp từ dữ liệu hiện tại. Bạn hãy chọn rõ trạm lên và trạm xuống để mình lọc chính xác hơn.", advisoryType);
+        }
+        if (advisoryType == AdvisoryType.ROUTE_SUGGESTION) {
+            RouteSuggestionCard top = routes.get(0);
+            String departures = top.nextDepartures().isEmpty() ? "chưa có lịch gần nhất" : String.join(", ", top.nextDepartures());
+            return new LlmMessage("Mình gợi ý tuyến %s - %s. Lý do: %s. Vé tháng sau trợ giá khoảng %s VND, chuyến gần nhất: %s."
+                    .formatted(
+                            nullToBlank(top.routeCode()),
+                            top.routeName(),
+                            String.join(", ", top.reasons()),
+                            top.finalFare() == null ? "chưa có dữ liệu" : top.finalFare().toPlainString(),
+                            departures), advisoryType);
+        }
+        if (advisoryType == AdvisoryType.PAYMENT_LOOKUP) {
+            return new LlmMessage(activeTicket == null
+                    ? "Bạn chưa có vé tháng đang hoạt động. Hãy đăng ký tuyến trước, sau đó vào mục Mua vé tháng để tạo QR SePay."
+                    : "Bạn đang có vé %s cho tuyến %s, trạng thái %s."
+                            .formatted(activeTicket.ticketType(), activeTicket.routeName(), activeTicket.status()), advisoryType);
+        }
+        if (advisoryType == AdvisoryType.VERIFICATION) {
+            return new LlmMessage("Trạng thái xác minh sinh viên của bạn hiện là %s, trường liên kết: %s."
+                    .formatted(nullToBlank(student.verificationStatus()), nullToBlank(student.universityName())), advisoryType);
+        }
+        if (registration != null) {
+            return new LlmMessage("Mình có thể hỗ trợ bạn tra tuyến, giá vé, lịch chạy và vé. Hiện bạn đang đăng ký tuyến %s - %s."
+                    .formatted(nullToBlank(registration.routeCode()), registration.routeName()), advisoryType);
+        }
+        return new LlmMessage("Mình có thể giúp bạn gợi ý tuyến, tra giá vé, lịch xe, ETA và hướng dẫn mua vé SePay. Bạn hãy cho mình biết trạm lên, trạm xuống hoặc nơi bạn muốn đến nhé.", advisoryType);
+    }
+
+    private List<AiSource> sources(
+            StudentContext student,
+            RegistrationSnapshot registration,
+            TicketSnapshot activeTicket,
+            List<RouteSuggestionCard> routeSuggestions) {
+        List<AiSource> sources = new java.util.ArrayList<>();
+        sources.add(new AiSource("STUDENT_PROFILE", "Hồ sơ sinh viên", nullToBlank(student.universityName())));
+        if (registration != null) {
+            sources.add(new AiSource("REGISTRATION", "Đăng ký tuyến hiện tại", registration.routeName()));
+        }
+        if (activeTicket != null) {
+            sources.add(new AiSource("TICKET", "Vé đang hoạt động", activeTicket.routeName()));
+        }
+        if (!routeSuggestions.isEmpty()) {
+            sources.add(new AiSource("ROUTE_SUGGESTIONS", "Tuyến gợi ý", routeSuggestions.size() + " tuyến"));
+        }
+        return sources;
+    }
+
+    private String persist(Integer userId, String role, String advisoryType, String content) {
+        String fallbackSessionId = UUID.randomUUID().toString();
+        try {
+            String sessionId = jdbcTemplate.query("""
+                    SELECT chat_session_id FROM ai_chat_history
+                    WHERE user_id = ?
+                    ORDER BY sent_at DESC, chat_history_id DESC LIMIT 1
+                    """, (rs, rowNum) -> rs.getString("chat_session_id"), userId).stream()
+                    .findFirst()
+                    .orElse(fallbackSessionId);
+            jdbcTemplate.update("""
+                    INSERT INTO ai_chat_history (user_id, chat_session_id, message_role, content, advisory_type, sent_at)
+                    VALUES (?, CAST(? AS UUID), ?, ?, ?, CURRENT_TIMESTAMP)
+                    """, userId, sessionId, role, content, storableAdvisoryType(advisoryType));
+            return sessionId;
+        } catch (DataAccessException exception) {
+            log.warn("Unable to persist AI chat history; continuing response without history: {}",
+                    exception.getMostSpecificCause().getMessage());
+            return fallbackSessionId;
+        }
+    }
+
+    private String storableAdvisoryType(String advisoryType) {
+        return switch (advisoryType) {
+            case "ROUTE_SUGGESTION", "FARE_LOOKUP", "SCHEDULE_LOOKUP", "OTHER" -> advisoryType;
+            default -> "OTHER";
         };
-        persistTurn(userId, "USER", intent.name(), userMessage, null);
-        return persistTurn(userId, "AI", intent.name(), null, response);
     }
 
-    private Intent detectIntent(String message) {
-        String m = message.toLowerCase().trim();
-        if (m.contains("chào") || m.contains("hello") || m.contains("hi") || m.equals("xin chào")) {
-            return Intent.GREETING;
+    private Integer intValue(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
         }
-        if (m.contains("giá vé") || m.contains("bao nhiêu tiền") || m.contains("giá tiền")
-                || m.contains("giá") && (m.contains("vé") || m.contains("tháng"))) {
-            return Intent.FARE_LOOKUP;
-        }
-        if (m.contains("lịch") || m.contains("mấy giờ") || m.contains("giờ chạy")
-                || m.contains("chuyến") || m.contains("xuất phát") || m.contains("khởi hành")) {
-            return Intent.SCHEDULE_LOOKUP;
-        }
-        if (m.contains("tuyến") || m.contains("đường") || m.contains("gợi ý")
-                || m.contains("đề xuất") || m.contains("phù hợp")) {
-            return Intent.ROUTE_SUGGESTION;
-        }
-        if (m.contains("giúp") || m.contains("help") || m.contains("hỗ trợ")) {
-            return Intent.HELP;
-        }
-        return Intent.OTHER;
-    }
-
-    private String handleFareLookup(Integer userId, String message) {
-        Optional<Integer> routeId = extractRouteNumber(message);
-        if (routeId.isEmpty()) {
-            return "Để mình tra giá vé, bạn vui lòng nói rõ số tuyến. Ví dụ: 'Giá vé tuyến 1' hoặc 'Vé tháng tuyến 3 bao nhiêu?'";
-        }
-        Map<String, Object> fares = lookupFares(routeId.get());
-        if (fares.isEmpty()) {
-            return "Mình không tìm thấy thông tin giá vé cho tuyến " + routeId.get() + ". Vui lòng kiểm tra lại số tuyến.";
-        }
-        BigDecimal single = (BigDecimal) fares.get("single");
-        BigDecimal monthly = (BigDecimal) fares.get("monthly");
-        String routeName = (String) fares.getOrDefault("routeName", "");
-        boolean wantMonthly = message.toLowerCase().contains("tháng");
-        StringBuilder sb = new StringBuilder();
-        sb.append("💰 Thông tin giá vé tuyến ").append(routeId.get());
-        if (!routeName.isBlank()) sb.append(" (").append(routeName).append(")");
-        sb.append(":\n");
-        if (single != null && !wantMonthly) {
-            sb.append("• Vé lẻ: ").append(String.format("%,.0f", single)).append(" VND/chuyến\n");
-        }
-        if (monthly != null) {
-            sb.append("• Vé tháng: ").append(String.format("%,.0f", monthly)).append(" VND/tháng\n");
-        }
-        sb.append("\nBạn có thể mua vé trực tiếp trên ứng dụng. Cần hỗ trợ gì nữa không?");
-        return sb.toString();
-    }
-
-    private String handleScheduleLookup(Integer userId, String message) {
-        Optional<Integer> routeId = extractRouteNumber(message);
-        if (routeId.isEmpty()) {
-            return "Để mình tra lịch chạy, bạn vui lòng nói rõ số tuyến. Ví dụ: 'Lịch chạy tuyến 1' hoặc 'Tuyến 2 mấy giờ có chuyến cuối?'";
-        }
-        Map<String, Object> schedule = lookupSchedule(routeId.get());
-        if (schedule.isEmpty()) {
-            return "Mình không tìm thấy lịch chạy cho tuyến " + routeId.get() + ". Vui lòng kiểm tra lại.";
-        }
-        String routeName = (String) schedule.getOrDefault("routeName", "");
-        LocalTime first = (LocalTime) schedule.get("first");
-        LocalTime last = (LocalTime) schedule.get("last");
-        Long tripCount = (Long) schedule.get("tripCount");
-        Integer frequency = (Integer) schedule.get("frequency");
-        StringBuilder sb = new StringBuilder();
-        sb.append("🕒 Lịch chạy tuyến ").append(routeId.get());
-        if (!routeName.isBlank()) sb.append(" (").append(routeName).append(")");
-        sb.append(":\n");
-        if (first != null) sb.append("• Chuyến đầu: ").append(first.toString().substring(0, 5)).append("\n");
-        if (last != null) sb.append("• Chuyến cuối: ").append(last.toString().substring(0, 5)).append("\n");
-        if (tripCount != null) sb.append("• Số chuyến/ngày: ").append(tripCount).append("\n");
-        if (frequency != null) sb.append("• Tần suất: mỗi ").append(frequency).append(" phút/chuyến\n");
-        sb.append("\nBạn có thể xem danh sách trạm và ETA chi tiết trong mục Tuyến xe.");
-        return sb.toString();
-    }
-
-    private String handleRouteSuggestion(Integer userId, String message) {
-        List<RouteSuggestionService.RouteSuggestionCard> suggestions =
-                routeSuggestionService.suggest(userId, null, null, message);
-        if (suggestions.isEmpty()) {
-            return "Hiện tại bạn chưa có tuyến xe nào được liên kết với trường đại học. "
-                    + "Vui lòng hoàn tất xác thực sinh viên và đợi trường của bạn được liên kết với tuyến xe để nhận gợi ý.";
-        }
-        StringBuilder sb = new StringBuilder();
-        sb.append("🚌 Top ").append(Math.min(3, suggestions.size())).append(" tuyến xe phù hợp với bạn:\n\n");
-        for (int i = 0; i < Math.min(3, suggestions.size()); i++) {
-            RouteSuggestionService.RouteSuggestionCard r = suggestions.get(i);
-            sb.append(i + 1).append(". Tuyến ").append(r.routeId);
-            if (r.routeName != null && !r.routeName.isBlank()) sb.append(" - ").append(r.routeName);
-            sb.append("\n");
-            if (r.reasons != null && !r.reasons.isBlank()) {
-                sb.append("   Lý do: ").append(r.reasons).append("\n");
-            }
-            if (r.finalFare != null) {
-                sb.append("   Vé tháng: ").append(String.format("%,.0f", r.finalFare)).append(" VND\n");
-            }
-            sb.append("\n");
-        }
-        sb.append("Bạn có thể đăng ký tuyến ngay từ danh sách. Cần hỗ trợ gì nữa không?");
-        return sb.toString();
-    }
-
-    private String defaultFallback() {
-        return "Xin lỗi, mình chưa hiểu câu hỏi của bạn. Mình có thể giúp:\n"
-                + "• Tra giá vé - ví dụ: 'Giá vé tuyến 1?'\n"
-                + "• Tra lịch chạy - ví dụ: 'Lịch chạy tuyến 2?'\n"
-                + "• Gợi ý tuyến - ví dụ: 'Gợi ý tuyến cho mình?'\n"
-                + "Gõ 'giúp' để xem danh sách câu hỏi mẫu.";
-    }
-
-    private Optional<Integer> extractRouteNumber(String message) {
-        String lower = message.toLowerCase();
-        // Match "tuyến X" or " tuyến X " or "tuyến số X"
-        java.util.regex.Pattern p = java.util.regex.Pattern.compile("tuyến\\s*(?:số\\s*)?(\\d+)");
-        java.util.regex.Matcher m = p.matcher(lower);
-        if (m.find()) {
+        if (value instanceof String text && !text.isBlank()) {
             try {
-                return Optional.of(Integer.parseInt(m.group(1)));
+                return Integer.parseInt(text);
             } catch (NumberFormatException ignored) {
             }
         }
-        // Try bare number after route keyword
-        p = java.util.regex.Pattern.compile("(?:route|line)\\s*(\\d+)");
-        m = p.matcher(lower);
-        if (m.find()) {
-            try {
-                return Optional.of(Integer.parseInt(m.group(1)));
-            } catch (NumberFormatException ignored) {
-            }
-        }
-        return Optional.empty();
+        return null;
     }
 
-    private Map<String, Object> lookupFares(Integer routeId) {
-        Map<String, Object> result = new HashMap<>();
-        try {
-            jdbcTemplate.queryForObject("SELECT route_name FROM routes WHERE route_id = ?",
-                    String.class, routeId);
-            result.put("routeName", jdbcTemplate.queryForObject(
-                    "SELECT route_name FROM routes WHERE route_id = ?", String.class, routeId));
-        } catch (Exception e) {
-            return Map.of();
-        }
-        try {
-            BigDecimal single = jdbcTemplate.queryForObject("""
-                    SELECT amount FROM fares
-                    WHERE route_id = ? AND fare_type = 'SINGLE'
-                      AND effective_from <= CURRENT_DATE
-                      AND (effective_until IS NULL OR effective_until >= CURRENT_DATE)
-                    ORDER BY effective_from DESC LIMIT 1
-                    """, BigDecimal.class, routeId);
-            result.put("single", single);
-        } catch (Exception ignored) {
-        }
-        try {
-            BigDecimal monthly = jdbcTemplate.queryForObject("""
-                    SELECT amount FROM fares
-                    WHERE route_id = ? AND fare_type = 'MONTHLY'
-                      AND effective_from <= CURRENT_DATE
-                      AND (effective_until IS NULL OR effective_until >= CURRENT_DATE)
-                    ORDER BY effective_from DESC LIMIT 1
-                    """, BigDecimal.class, routeId);
-            result.put("monthly", monthly);
-        } catch (Exception ignored) {
-        }
-        return result;
+    private String stringValue(Object value) {
+        return value == null ? null : String.valueOf(value);
     }
 
-    private Map<String, Object> lookupSchedule(Integer routeId) {
-        Map<String, Object> result = new HashMap<>();
-        try {
-            result.put("routeName", jdbcTemplate.queryForObject(
-                    "SELECT route_name FROM routes WHERE route_id = ?", String.class, routeId));
-        } catch (Exception e) {
-            return Map.of();
-        }
-        try {
-            result.putAll(jdbcTemplate.queryForMap("""
-                    SELECT MIN(departure_time) AS first, MAX(departure_time) AS last,
-                           COUNT(*) AS trip_count
-                    FROM bus_schedules
-                    WHERE route_id = ? AND status = 'ACTIVE'
-                    """, routeId));
-        } catch (Exception ignored) {
-        }
-        try {
-            Integer freq = jdbcTemplate.queryForObject(
-                    "SELECT frequency_min FROM routes WHERE route_id = ?", Integer.class, routeId);
-            result.put("frequency", freq);
-        } catch (Exception ignored) {
-        }
-        return result;
+    private String nullToBlank(String value) {
+        return value == null ? "" : value;
     }
 
-    private ChatTurn persistTurn(Integer userId, String role, String advisoryType,
-            String userContent, String aiContent) {
-        String sessionId = jdbcTemplate.query("""
-                SELECT chat_session_id FROM ai_chat_history
-                WHERE user_id = ?
-                ORDER BY sent_at DESC LIMIT 1
-                """, (rs, rowNum) -> rs.getString("chat_session_id"), userId).stream()
-                .findFirst()
-                .orElse(UUID.randomUUID().toString());
-        String content = role.equals("USER") ? userContent : aiContent;
-        Long id = jdbcTemplate.queryForObject("""
-                INSERT INTO ai_chat_history (user_id, chat_session_id, message_role, content, advisory_type, sent_at)
-                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                RETURNING chat_history_id
-                """, Long.class, userId, sessionId, role, content, advisoryType);
-        return new ChatTurn(id, role, advisoryType, content, sessionId, java.time.OffsetDateTime.now());
+    private enum AdvisoryType {
+        ROUTE_SUGGESTION, FARE_LOOKUP, SCHEDULE_LOOKUP, PAYMENT_LOOKUP, VERIFICATION, HELP, OTHER
     }
 
-    public enum Intent {
-        GREETING, FARE_LOOKUP, SCHEDULE_LOOKUP, ROUTE_SUGGESTION, HELP, OTHER
+    private record LlmMessage(String message, AdvisoryType advisoryType) {
     }
 
-    public record ChatTurn(Long chatHistoryId, String role, String advisoryType, String content,
-            String sessionId, java.time.OffsetDateTime sentAt) {
+    private record StopMention(Integer stopId, String stopName, int index) {
     }
 }
