@@ -917,7 +917,7 @@ function DriverRoute({ ctx }: { ctx: Ctx }) {
     if (!tripId && ctx.trips.length > 0) {
       setTripId(ctx.trips[0].id);
     }
-  }, [ctx.trips]);
+  }, [ctx.trips, tripId]);
 
   useEffect(() => { load(); }, [load]);
 
