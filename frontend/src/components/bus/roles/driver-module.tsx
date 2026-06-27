@@ -141,6 +141,7 @@ export function DriverModule({ activeId, onNavigate }: DriverModuleProps) {
       return <DriverDashboard ctx={ctx} onNavigate={onNavigate} />;
     case "drv-schedule":
       return <DriverSchedule ctx={ctx} />;
+    case "drv-active":
     case "drv-active-trip":
       return <DriverActiveTrip ctx={ctx} onNavigate={onNavigate} />;
     case "drv-route":
@@ -686,10 +687,10 @@ function DriverActiveTrip({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await operationsApi.driverTrips();
-      setTrips(r);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Không tải được chuyến");
+      const data = await operationsApi.driverTrips();
+      setTrips(data);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không tải được chuyến");
     } finally {
       setLoading(false);
     }
@@ -697,31 +698,41 @@ function DriverActiveTrip({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
 
   useEffect(() => { load(); }, [load]);
 
-  const elapsed = useElapsed(!!trips?.find((t) => t.status === "RUNNING"));
+  const runningTrip = trips?.find((trip) => trip.status?.toUpperCase() === "RUNNING") ?? null;
+  const startableTrips = useMemo(() => {
+    return (trips ?? []).filter((trip) => {
+      const status = trip.status?.toUpperCase();
+      return status !== "RUNNING" && status !== "COMPLETED" && status !== "CANCELLED";
+    });
+  }, [trips]);
+  const nextTrip = runningTrip ?? startableTrips[0] ?? null;
+  const elapsed = useElapsed(!!runningTrip);
 
   const startTrip = async (tripId: number) => {
+    if (starting || ending) return;
     setStarting(tripId);
     try {
       await operationsApi.startTrip(tripId);
       toast.success("Đã bắt đầu chuyến");
-      load();
-      ctx.reload();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Không thể bắt đầu chuyến");
+      await load();
+      await ctx.reload();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể bắt đầu chuyến");
     } finally {
       setStarting(null);
     }
   };
 
   const endTrip = async (tripId: number) => {
+    if (starting || ending) return;
     setEnding(tripId);
     try {
       await operationsApi.endTrip(tripId);
       toast.success("Đã kết thúc chuyến");
-      load();
-      ctx.reload();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Không thể kết thúc chuyến");
+      await load();
+      await ctx.reload();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể kết thúc chuyến");
     } finally {
       setEnding(null);
     }
@@ -741,59 +752,79 @@ function DriverActiveTrip({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
     );
   }
 
-  const runningTrip = trips.find((t) => t.status === "RUNNING");
-
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Chuyến đang chạy"
-        description="Bắt đầu/kết thúc chuyến và theo dõi tiến độ."
+        description={runningTrip ? "Theo dõi và kết thúc chuyến đang chạy." : "Chọn chuyến được phân công để bắt đầu."}
         icon={<PlayCircle className="size-7" />}
       />
 
-      {/* Running trip — timer hero */}
-      {runningTrip && (
+      {nextTrip ? (
         <ScrollReveal>
           <motion.div
             initial={{ opacity: 0, y: 16, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ type: "spring", stiffness: 260, damping: 24 }}
             className="relative overflow-hidden rounded-3xl p-5 sm:p-7 elev-2"
-            style={{ backgroundColor: "#beff50", color: "#14140f" }}
+            style={{ backgroundColor: runningTrip ? "#beff50" : "#e8def8", color: "#14140f" }}
           >
             <div className="absolute -top-12 -right-12 size-48 rounded-full bg-[#14140f]/8 blur-3xl pointer-events-none" />
             <div className="relative min-w-0">
               <div className="flex items-center gap-2 mb-3 flex-wrap">
-                <span className="inline-flex h-7 px-3 rounded-full bg-[#14140f] text-white text-xs font-bold items-center">
-                  <motion.span
-                    className="size-1.5 rounded-full bg-[#beff50]"
-                    animate={{ opacity: [1, 0.3, 1] }}
-                    transition={{ duration: 1.4, repeat: Infinity }}
-                  />
-                  ĐANG CHẠY
+                <span className="inline-flex h-7 px-3 rounded-full bg-[#14140f] text-white text-xs font-bold items-center gap-2">
+                  {runningTrip ? (
+                    <motion.span className="size-1.5 rounded-full bg-[#beff50]" animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.4, repeat: Infinity }} />
+                  ) : (
+                    <PlayCircle className="size-3.5" />
+                  )}
+                  {runningTrip ? "ĐANG CHẠY" : "SẴN SÀNG BẮT ĐẦU"}
                 </span>
                 <span className="inline-flex h-7 px-3 rounded-full bg-[#14140f]/10 text-xs font-bold items-center">
-                  {runningTrip.licensePlate || "—"}
+                  {nextTrip.licensePlate || "Chưa gán xe"}
                 </span>
               </div>
-              <h2 className="text-2xl sm:text-3xl font-bold mb-2 truncate">{runningTrip.routeName}</h2>
-              <div className="flex items-center gap-2 mb-5">
-                <Clock className="size-5" />
-                <span className="text-3xl font-black tabular-nums">{fmtTimer(elapsed)}</span>
+
+              <h2 className="text-2xl sm:text-3xl font-bold mb-2 truncate">{nextTrip.routeName}</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5 text-sm">
+                <div>
+                  <p className="text-[#14140f]/70 font-bold text-xs uppercase">Khởi hành</p>
+                  <p className="font-black">{nextTrip.departureTime || formatDate(nextTrip.serviceDate)}</p>
+                </div>
+                <div>
+                  <p className="text-[#14140f]/70 font-bold text-xs uppercase">Phụ xe</p>
+                  <p className="font-black truncate">{nextTrip.conductorName || "Chưa gán"}</p>
+                </div>
+                <div>
+                  <p className="text-[#14140f]/70 font-bold text-xs uppercase">Thời gian chạy</p>
+                  <p className="font-black tabular-nums">{runningTrip ? fmtTimer(elapsed) : "00:00:00"}</p>
+                </div>
               </div>
-              {runningTrip.stops && runningTrip.stops.length > 0 && (
-                <RouteMapSVG currentIndex={0} />
-              )}
-              <div className="flex flex-wrap gap-2 mt-4">
-                <ExpressiveButton
-                  variant="filled"
-                  className="bg-[#14140f] text-[#beff50]"
-                  onClick={() => endTrip(runningTrip.tripId)}
-                  disabled={ending === runningTrip.tripId}
-                >
-                  {ending === runningTrip.tripId ? <RefreshCw className="size-4 animate-spin" /> : <StopCircle className="size-4" />}
-                  Kết thúc chuyến
-                </ExpressiveButton>
+
+              {nextTrip.stops && nextTrip.stops.length > 0 && <HorizontalTimeline stops={nextTrip.stops} currentIndex={runningTrip ? 0 : undefined} />}
+
+              <div className="flex flex-wrap gap-2 mt-5">
+                {runningTrip ? (
+                  <ExpressiveButton
+                    variant="filled"
+                    className="bg-[#14140f] text-[#beff50]"
+                    onClick={() => endTrip(runningTrip.tripId)}
+                    disabled={ending === runningTrip.tripId}
+                  >
+                    {ending === runningTrip.tripId ? <RefreshCw className="size-4 animate-spin" /> : <StopCircle className="size-4" />}
+                    Kết thúc chuyến
+                  </ExpressiveButton>
+                ) : (
+                  <ExpressiveButton
+                    variant="filled"
+                    className="bg-[#14140f] text-white"
+                    onClick={() => startTrip(nextTrip.tripId)}
+                    disabled={starting === nextTrip.tripId}
+                  >
+                    {starting === nextTrip.tripId ? <RefreshCw className="size-4 animate-spin" /> : <PlayCircle className="size-4" />}
+                    Bắt đầu chuyến
+                  </ExpressiveButton>
+                )}
                 <ExpressiveButton variant="outlined" className="border-[#14140f] text-[#14140f]" onClick={() => onNavigate("drv-route")}>
                   <Navigation className="size-4" />
                   Xem lộ trình
@@ -802,57 +833,55 @@ function DriverActiveTrip({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
             </div>
           </motion.div>
         </ScrollReveal>
+      ) : (
+        <EmptyState
+          icon={<CheckCircle2 className="size-7" />}
+          title="Đã hoàn thành tất cả chuyến"
+          description="Không còn chuyến nào có thể bắt đầu."
+        />
       )}
 
-      {/* All today's trips */}
-      <Section title="Tất cả chuyến hôm nay">
+      <Section title="Danh sách chuyến được phân công">
         <div className="space-y-3">
-          {trips.map((t) => {
-            const sp = tripStatusPill(t.status);
+          {trips.map((trip) => {
+            const status = trip.status?.toUpperCase();
+            const statusPill = tripStatusPill(trip.status);
+            const canStart = status !== "RUNNING" && status !== "COMPLETED" && status !== "CANCELLED";
             return (
-              <ExpressiveCard key={t.tripId} variant="elevated" className="p-5 min-w-0">
+              <ExpressiveCard key={trip.tripId} variant="elevated" className="p-5 min-w-0">
                 <div className="flex items-start justify-between gap-3 mb-3 min-w-0">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="size-12 shrink-0 rounded-2xl bg-surface-container-high flex items-center justify-center">
                       <Bus className="size-6 text-on-surface-variant" />
                     </div>
                     <div className="min-w-0">
-                      <p className="font-bold truncate">{t.routeName}</p>
+                      <p className="font-bold truncate">{trip.routeName}</p>
                       <p className="text-xs text-on-surface-variant">
-                        {t.departureTime || formatDate(t.serviceDate)} • {t.licensePlate || "—"}
+                        {trip.departureTime || formatDate(trip.serviceDate)} ? {trip.licensePlate || "Chưa gán xe"}
                       </p>
                     </div>
                   </div>
-                  <M3StatusPill label={sp.label} tone={sp.tone} />
+                  <M3StatusPill label={statusPill.label} tone={statusPill.tone} />
                 </div>
-                {t.stops && t.stops.length > 0 && (
+                {trip.stops && trip.stops.length > 0 && (
                   <div className="mb-3">
-                    <HorizontalTimeline stops={t.stops} currentIndex={t.status === "RUNNING" ? 0 : undefined} />
+                    <HorizontalTimeline stops={trip.stops} currentIndex={status === "RUNNING" ? 0 : undefined} />
                   </div>
                 )}
-                {t.status === "SCHEDULED" && (
-                  <ExpressiveButton
-                    variant="filled"
-                    size="sm"
-                    onClick={() => startTrip(t.tripId)}
-                    disabled={starting === t.tripId}
-                  >
-                    {starting === t.tripId ? <RefreshCw className="size-4 animate-spin" /> : <PlayCircle className="size-4" />}
-                    Bắt đầu chuyến
-                  </ExpressiveButton>
-                )}
-                {t.status === "RUNNING" && (
-                  <ExpressiveButton
-                    variant="filled"
-                    size="sm"
-                    className="bg-error text-on-error"
-                    onClick={() => endTrip(t.tripId)}
-                    disabled={ending === t.tripId}
-                  >
-                    {ending === t.tripId ? <RefreshCw className="size-4 animate-spin" /> : <StopCircle className="size-4" />}
-                    Kết thúc chuyến
-                  </ExpressiveButton>
-                )}
+                <div className="flex flex-wrap gap-2">
+                  {canStart && (
+                    <ExpressiveButton variant="filled" size="sm" onClick={() => startTrip(trip.tripId)} disabled={starting === trip.tripId || !!runningTrip}>
+                      {starting === trip.tripId ? <RefreshCw className="size-4 animate-spin" /> : <PlayCircle className="size-4" />}
+                      Bắt đầu
+                    </ExpressiveButton>
+                  )}
+                  {status === "RUNNING" && (
+                    <ExpressiveButton variant="filled" size="sm" className="bg-error text-on-error" onClick={() => endTrip(trip.tripId)} disabled={ending === trip.tripId}>
+                      {ending === trip.tripId ? <RefreshCw className="size-4 animate-spin" /> : <StopCircle className="size-4" />}
+                      Kết thúc
+                    </ExpressiveButton>
+                  )}
+                </div>
               </ExpressiveCard>
             );
           })}
@@ -1027,6 +1056,7 @@ function DriverContact() {
   // Incident Form State
   const [incidentType, setIncidentType] = useState("OTHER");
   const [description, setDescription] = useState("");
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
 
   const loadContact = useCallback(async () => {
     try {
@@ -1095,8 +1125,19 @@ function DriverContact() {
 
   const displayMessages = useMemo(() => {
     if (!contact || !contact.messages) return [];
-    return contact.messages.filter(m => !m.content.startsWith("[SOS]"));
+    return contact.messages
+      .filter((message) => !message.content.startsWith("[SOS]"))
+      .sort((left, right) => {
+        const leftTime = left.sentAt ? new Date(left.sentAt).getTime() : 0;
+        const rightTime = right.sentAt ? new Date(right.sentAt).getTime() : 0;
+        if (leftTime !== rightTime) return leftTime - rightTime;
+        return left.messageId - right.messageId;
+      });
   }, [contact]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ block: "end" });
+  }, [displayMessages.length]);
 
   if (loading && !contact) {
     return (
@@ -1159,6 +1200,7 @@ function DriverContact() {
                 );
               })
             )}
+            <div ref={chatEndRef} />
           </div>
           <div className="border-t p-3 bg-surface-container-low flex gap-2 shrink-0">
             <Input
