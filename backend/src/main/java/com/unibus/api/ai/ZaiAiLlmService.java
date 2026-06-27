@@ -41,7 +41,7 @@ public class ZaiAiLlmService implements AiLlmService {
             @Value("${app.ai.provider:bedrock}") String provider,
             @Value("${app.ai.zai.api-key:}") String apiKey,
             @Value("${app.ai.zai.base-url:https://api.z.ai/api/paas/v4/}") String baseUrl,
-            @Value("${app.ai.zai.model-id:glm-4.7-flash}") String modelId,
+            @Value("${app.ai.zai.model-id:glm-4.5-flash}") String modelId,
             @Value("${app.ai.max-output-tokens:1200}") int maxOutputTokens,
             @Value("${app.ai.temperature:0.2}") double temperature) {
         this.objectMapper = new ObjectMapper();
@@ -52,7 +52,7 @@ public class ZaiAiLlmService implements AiLlmService {
         this.provider = provider == null ? "bedrock" : provider.trim();
         this.apiKey = firstNonBlank(apiKey, System.getenv("ZAI_API_KEY"), windowsUserEnv("ZAI_API_KEY"));
         this.baseUrl = normalizeBaseUrl(firstNonBlank(baseUrl, System.getenv("ZAI_BASE_URL"), windowsUserEnv("ZAI_BASE_URL")));
-        this.modelId = firstNonBlank(modelId, System.getenv("ZAI_MODEL_ID"), windowsUserEnv("ZAI_MODEL_ID"), "glm-4.7-flash");
+        this.modelId = firstNonBlank(modelId, System.getenv("ZAI_MODEL_ID"), windowsUserEnv("ZAI_MODEL_ID"), "glm-4.5-flash");
         this.maxOutputTokens = Math.max(128, maxOutputTokens);
         this.temperature = Math.max(0, Math.min(1, temperature));
     }
