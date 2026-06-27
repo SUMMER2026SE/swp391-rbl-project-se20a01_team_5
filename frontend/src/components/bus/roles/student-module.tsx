@@ -3611,12 +3611,6 @@ function instantAssistantReply(message: string, name: string) {
   return null;
 }
 
-const assistantSuggestedPrompts = [
-  "Tôi đang ở Đại học Bách khoa Đà Nẵng và muốn đến Đại học FPT. Gợi ý tuyến phù hợp.",
-  "So sánh giá vé tháng sau trợ giá cho tuyến đến trường.",
-  "Hôm nay chuyến gần nhất của tuyến tôi nên đi là mấy giờ?",
-];
-
 function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
   const displayName = ctx.user.name?.split(" ").slice(-1)[0] || "bạn";
   const userInitial = (ctx.user.name || ctx.user.email || "U").trim().slice(0, 1).toUpperCase();
@@ -3710,161 +3704,85 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
     }
   };
 
-  const startNewChat = () => {
-    const freshWelcome = {
-      ...welcomeMessage,
-      time: new Date().toISOString(),
-    };
-    setMessages([freshWelcome]);
-    setInput("");
-    setPendingPrompt("");
-    setLoading(false);
-    try {
-      window.sessionStorage.removeItem(sessionKey);
-    } catch {
-    }
-  };
-
   return (
-    <PageTransition className="min-w-0">
-      <section className="grid min-h-[calc(100vh-6.5rem)] overflow-hidden rounded-[28px] border border-[#e6e1d8] bg-[#fbfaf6] text-[#171711] shadow-[0_18px_60px_rgba(20,20,15,0.06)] lg:grid-cols-[272px_minmax(0,1fr)]">
-        <aside className="hidden border-r border-[#ebe5dc] bg-[#f4f2eb] p-4 lg:flex lg:flex-col">
-          <div className="flex items-center gap-3 px-1 py-2">
-            <div className="grid size-9 place-items-center rounded-2xl bg-[#14140f] text-[#beff50]">
-              <Bot className="size-4" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm font-black">UniBus Copilot</p>
-              <p className="text-xs text-[#6c675d]">DB tools + LLM</p>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={startNewChat}
-            className="mt-5 flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-[#d8d2c8] bg-white px-4 text-sm font-bold transition-colors hover:bg-[#fffefa]"
-          >
-            <Plus className="size-4" />
-            Cuộc trò chuyện mới
-          </button>
-
-          <div className="mt-7">
-            <p className="px-1 text-[11px] font-black uppercase tracking-[0.14em] text-[#817a6f]">Gợi ý nhanh</p>
-            <div className="mt-3 space-y-2">
-              {assistantSuggestedPrompts.map((prompt) => (
-                <button
-                  key={prompt}
-                  type="button"
-                  onClick={() => setInput(prompt)}
-                  className="w-full rounded-2xl border border-transparent px-3 py-3 text-left text-xs leading-5 text-[#4e493f] transition-colors hover:border-[#ded7cd] hover:bg-white"
-                >
-                  {prompt}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-auto rounded-2xl border border-[#ded7cd] bg-white p-3">
-            <p className="text-xs font-bold text-[#171711]">Trạng thái AI</p>
-            <div className="mt-2 flex items-center gap-2 text-xs text-[#6c675d]">
-              <span className="size-2 rounded-full bg-[#0f9f52]" />
-              Z.ai được ưu tiên, fallback chỉ khi provider lỗi
-            </div>
-          </div>
-        </aside>
-
-        <div className="flex min-h-0 min-w-0 flex-col">
-          <header className="flex min-h-16 items-center justify-between gap-4 border-b border-[#ebe5dc] bg-[#fffefa]/85 px-4 backdrop-blur sm:px-6">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 text-xs text-[#6c675d]">
-                <Bot className="size-3.5" />
-                <span>Sinh viên</span>
-                <span>/</span>
-                <span className="font-bold text-[#171711]">AI Copilot</span>
-              </div>
-              <h1 className="mt-0.5 truncate text-lg font-black">Trợ lý UniBus</h1>
-            </div>
-            <div className="hidden items-center gap-2 rounded-full border border-[#ded7cd] bg-white px-3 py-2 text-xs font-bold text-[#4e493f] sm:flex">
-              <Sparkles className="size-3.5 text-[#144fcc]" />
-              Tool-aware responses
-            </div>
-          </header>
-
-          <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
-            <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-4 py-6 sm:px-6 lg:px-8">
-              <div className="flex-1 space-y-6">
-                {messages.map((m, i) => (
-                  <motion.div
-                    key={i}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.22, ease: "easeOut" }}
-                    className={cn("group flex min-w-0 gap-3", m.role === "user" && "justify-end")}
-                  >
-                    {m.role === "bot" && (
-                      <div className="mt-1 grid size-8 shrink-0 place-items-center rounded-2xl border border-[#d9d3c8] bg-white text-[#14140f] shadow-sm">
-                        <Bot className="size-4" />
-                      </div>
-                    )}
-                    <div className={cn("min-w-0", m.role === "user" ? "max-w-[78%]" : "max-w-[86%] flex-1")}>
-                      {m.role === "user" ? (
-                        <div className="rounded-[20px] rounded-tr-md bg-[#144fcc] px-4 py-3 text-[15px] font-medium leading-6 text-white shadow-[0_8px_22px_rgba(20,79,204,0.14)]">
-                          <p className="whitespace-pre-wrap">{m.text}</p>
-                        </div>
-                      ) : (
-                        <div className="space-y-4 rounded-[24px] rounded-tl-md border border-[#e5ded2] bg-[#f7f5ef] px-5 py-4 text-[15px] leading-6 text-[#171711] shadow-[0_12px_34px_rgba(20,20,15,0.055)]">
-                          <p className="whitespace-pre-wrap">{m.text}</p>
-                          <AgentExecutionSummary
-                            sources={m.sources}
-                            mode={m.mode}
-                            routeSuggestions={m.routeSuggestions}
-                          />
-                          {!!m.routeSuggestions?.length && (
-                            <div className="space-y-3">
-                              {m.routeSuggestions.slice(0, 3).map((route, routeIndex) => (
-                                <AiRouteResultCard
-                                  key={route.routeId}
-                                  route={route}
-                                  index={routeIndex}
-                                  onNavigate={onNavigate}
-                                />
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </motion.div>
-                ))}
-                <AnimatePresence>
-                  {loading && <AiWorkingIndicator prompt={pendingPrompt} />}
-                </AnimatePresence>
-              </div>
-            </div>
-          </div>
-
-          <div className="border-t border-[#ebe5dc] bg-[#fffefa] px-4 py-4 sm:px-6">
-            <div className="mx-auto flex max-w-4xl items-end gap-2 rounded-[24px] border border-[#d8d2c8] bg-white p-2 shadow-[0_12px_34px_rgba(20,20,15,0.08)]">
-              <Input
-                placeholder="Hỏi UniBus Copilot về tuyến, giá vé, lịch xe..."
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && send()}
-                disabled={loading || !sessionReady}
-                className="min-h-12 flex-1 border-0 bg-transparent px-3 shadow-none focus-visible:ring-0"
-              />
-              <button
-                type="button"
-                onClick={send}
-                disabled={loading || !sessionReady || !input.trim()}
-                className="grid size-12 shrink-0 place-items-center rounded-[20px] bg-[#14140f] text-[#beff50] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-35"
+    <PageTransition className="space-y-6 min-w-0">
+      <PageHeader
+        title="Chatbot tra cứu"
+        description="Trò chuyện với trợ lý ảo để được hỗ trợ nhanh."
+        icon={<Bot className="size-7" />}
+      />
+      <ExpressiveCard variant="elevated" className="flex h-[68vh] min-h-[520px] min-w-0 flex-col overflow-hidden border border-[#e8e3da] bg-[#fbfaf6] shadow-none">
+        <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-5 py-6 min-w-0">
+          {messages.map((m, i) => (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.22, ease: "easeOut" }}
+              className={cn(
+                "flex min-w-0 gap-3",
+                m.role === "user" ? "ml-auto max-w-[86%] flex-row-reverse sm:max-w-[72%]" : "max-w-[94%] sm:max-w-[84%]"
+              )}
+            >
+              <div
+                className={cn(
+                  "mt-1 flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-bold shadow-sm",
+                  m.role === "user"
+                    ? "bg-[#beff50] text-[#14140f]"
+                    : "border border-[#d9d5ca] bg-[#faf9f5] text-[#14140f]"
+                )}
               >
-                <Send className="size-4" />
-              </button>
-            </div>
-          </div>
+                {m.role === "user" ? userInitial : <Bot className="size-4" />}
+              </div>
+              <div
+                className={cn(
+                  "min-w-0 break-words text-[15px] leading-6",
+                  m.role === "user"
+                    ? "rounded-[20px] rounded-tr-md bg-[#144fcc] px-4 py-3 font-medium text-white shadow-[0_8px_22px_rgba(20,79,204,0.16)]"
+                    : "space-y-4 rounded-[22px] rounded-tl-md border border-[#e7e3dc] bg-[#f7f6f0] px-5 py-4 text-on-surface shadow-[0_12px_30px_rgba(20,20,15,0.06)]"
+                )}
+              >
+                <p className="whitespace-pre-wrap">{m.text}</p>
+                {m.role === "bot" && (
+                  <AgentExecutionSummary
+                    sources={m.sources}
+                    mode={m.mode}
+                    routeSuggestions={m.routeSuggestions}
+                  />
+                )}
+                {!!m.routeSuggestions?.length && (
+                  <div className="space-y-3">
+                    {m.routeSuggestions.slice(0, 3).map((route, routeIndex) => (
+                      <AiRouteResultCard
+                        key={route.routeId}
+                        route={route}
+                        index={routeIndex}
+                        onNavigate={onNavigate}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          ))}
+          {loading && (
+            <AiWorkingIndicator prompt={pendingPrompt} />
+          )}
         </div>
-      </section>
+        <div className="flex min-w-0 gap-2 border-t border-[#e4dfd5] bg-[#fffefa] p-4">
+          <Input
+            placeholder="Nhập câu hỏi..."
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && send()}
+            disabled={loading || !sessionReady}
+            className="min-h-12 flex-1 rounded-2xl border-[#d8d2c8] bg-white px-4 shadow-sm focus-visible:ring-2 focus-visible:ring-[#144fcc]/20"
+          />
+          <ExpressiveButton variant="filled" size="icon" onClick={send} disabled={loading || !sessionReady || !input.trim()} className="size-12 rounded-2xl bg-[#14140f] text-[#beff50] hover:bg-[#14140f]/90">
+            <Send className="size-4" />
+          </ExpressiveButton>
+        </div>
+      </ExpressiveCard>
     </PageTransition>
   );
 }
