@@ -169,6 +169,7 @@ export const NAV_CONFIG: Record<Role, NavItem[]> = {
     { id: "uniadm-recon", label: "Báo cáo đối soát", icon: FileBarChart, group: "Theo dõi" },
     { id: "uniadm-transactions", label: "Lịch sử giao dịch", icon: Receipt, group: "Theo dõi" },
     { id: "uniadm-notifications", label: "Thông báo", icon: Bell, group: "Tài khoản" },
+    { id: "uniadm-transactions", label: "Lịch sử giao dịch", icon: Receipt, group: "Theo dõi" },
     { id: "uniadm-profile", label: "Hồ sơ cá nhân", icon: UserIcon, group: "Tài khoản" },
   ],
 };

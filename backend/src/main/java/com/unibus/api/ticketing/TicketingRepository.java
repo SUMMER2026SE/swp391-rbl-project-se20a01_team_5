@@ -327,13 +327,14 @@ public class TicketingRepository {
                            COALESCE(i.original_amount, p.amount) AS original_amount,
                            COALESCE(i.subsidy_amount, 0) AS subsidy_amount,
                            COALESCE(i.final_amount, p.amount) AS final_amount,
-                           p.transaction_code,
+                           COALESCE('DH' || tx.matched_order_id, p.transaction_code) AS transaction_code,
                            i.invoice_id,
                            i.issued_at AS invoice_issued_at,
                            p.created_at,
                            1 AS sort_group
                     FROM payments p
                     LEFT JOIN invoices i ON i.payment_id = p.payment_id
+                    LEFT JOIN tb_transactions tx ON tx.reference_number = p.transaction_code
                     WHERE p.student_code = ?
                     UNION ALL
                     SELECT -o.id::integer AS payment_id,
