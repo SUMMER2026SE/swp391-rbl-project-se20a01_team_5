@@ -3161,19 +3161,130 @@ function AIScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => v
 // =============================================================================
 // Screen 10: Chatbot
 // =============================================================================
-function AiWorkingIndicator() {
-  const steps = [
-    "Đọc hồ sơ sinh viên",
-    "Tìm tuyến, trạm và lịch chạy",
-    "Tính giá vé và trợ giá",
+type AgentTraceStatus = "done" | "active" | "pending" | "warning";
+type AgentTraceIntent = "route" | "fare" | "schedule" | "payment" | "verification" | "general";
+type AgentTraceStep = {
+  id: string;
+  label: string;
+  detail?: string;
+  status: AgentTraceStatus;
+};
+
+function assistantIntentFromPrompt(message: string): AgentTraceIntent {
+  const text = normalizeAssistantPrompt(message);
+  if (["gia", "bao nhieu", "tro gia", "ve thang", "ve le"].some((keyword) => text.includes(keyword))) return "fare";
+  if (["lich", "chuyen", "may gio", "eta", "den tram"].some((keyword) => text.includes(keyword))) return "schedule";
+  if (["thanh toan", "sepay", "qr", "mua ve", "hoa don"].some((keyword) => text.includes(keyword))) return "payment";
+  if (["xac minh", "mssv", "truong cua toi"].some((keyword) => text.includes(keyword))) return "verification";
+  if (["tuyen", "tram", "duong", "di den", "di toi", "fpt", "bach khoa", "duy tan"].some((keyword) => text.includes(keyword))) return "route";
+  return "general";
+}
+
+function pendingTraceLabels(message: string) {
+  const intent = assistantIntentFromPrompt(message);
+  const base = [
+    { id: "intent", label: "Hiểu yêu cầu", detail: "Phân loại câu hỏi và ngữ cảnh cần dùng" },
+    { id: "profile", label: "Đọc hồ sơ sinh viên", detail: "Lấy trường, trạng thái xác minh và dữ liệu liên quan" },
   ];
+  if (intent === "route") {
+    return [
+      ...base,
+      { id: "routes", label: "Tìm tuyến và trạm phù hợp", detail: "Tra cứu tuyến active, stop order, lịch chạy" },
+      { id: "fare", label: "Tính giá sau trợ giá", detail: "Ghép fare và chính sách trợ giá của trường" },
+      { id: "llm", label: "Soạn câu trả lời bằng AI", detail: "Gửi context đã truy xuất sang model nếu khả dụng" },
+    ];
+  }
+  if (intent === "fare") {
+    return [
+      ...base,
+      { id: "fare", label: "Tra giá vé và trợ giá", detail: "Đọc fare, vé tháng và chính sách áp dụng" },
+      { id: "llm", label: "Soạn giải thích bằng AI", detail: "Tổng hợp kết quả thành câu trả lời dễ hiểu" },
+    ];
+  }
+  if (intent === "schedule") {
+    return [
+      ...base,
+      { id: "schedule", label: "Tra lịch chạy và ETA", detail: "Đọc lịch tuyến, chuyến gần nhất và trạng thái xe" },
+      { id: "llm", label: "Soạn câu trả lời bằng AI", detail: "Tổng hợp lịch xe từ dữ liệu UniBus" },
+    ];
+  }
+  if (intent === "payment") {
+    return [
+      ...base,
+      { id: "payment", label: "Kiểm tra vé và thanh toán", detail: "Đọc vé hiện tại, hóa đơn và trạng thái SePay" },
+      { id: "llm", label: "Soạn hướng dẫn bằng AI", detail: "Tóm tắt bước tiếp theo cho sinh viên" },
+    ];
+  }
+  return [
+    { id: "intent", label: "Hiểu yêu cầu", detail: "Xác định có cần truy xuất dữ liệu UniBus hay không" },
+    { id: "llm", label: "Soạn câu trả lời", detail: "Dùng AI nếu câu hỏi cần ngữ cảnh ứng dụng" },
+  ];
+}
+
+function traceIcon(status: AgentTraceStatus) {
+  if (status === "done") return <CheckCircle2 className="size-3.5" />;
+  if (status === "warning") return <AlertTriangle className="size-3.5" />;
+  if (status === "active") return <span className="size-2 rounded-full bg-current" />;
+  return <span className="size-1.5 rounded-full bg-current" />;
+}
+
+function AgentTraceTimeline({ steps }: { steps: AgentTraceStep[] }) {
+  return (
+    <div className="relative space-y-3 before:absolute before:bottom-2 before:left-[7px] before:top-2 before:w-px before:bg-[#d8d2c8]">
+      {steps.map((step) => (
+        <div key={step.id} className="relative flex items-start gap-3 text-xs">
+          <span
+            className={cn(
+              "relative z-10 grid size-4 shrink-0 place-items-center rounded-full border bg-white",
+              step.status === "done" && "border-[#0f9f52] text-[#0f9f52]",
+              step.status === "active" && "border-[#144fcc] text-[#144fcc]",
+              step.status === "warning" && "border-[#f59e0b] text-[#b45309]",
+              step.status === "pending" && "border-[#c7c1b6] text-[#8a857b]"
+            )}
+          >
+            {step.status === "active" ? (
+              <motion.span
+                animate={{ scale: [0.72, 1, 0.72], opacity: [0.45, 1, 0.45] }}
+                transition={{ duration: 1, repeat: Infinity, ease: "easeInOut" }}
+                className="grid size-full place-items-center"
+              >
+                {traceIcon(step.status)}
+              </motion.span>
+            ) : traceIcon(step.status)}
+          </span>
+          <span className={cn("min-w-0", step.status === "pending" && "opacity-55")}>
+            <span className="block font-semibold text-on-surface">{step.label}</span>
+            {step.detail && <span className="block leading-5 text-on-surface-variant">{step.detail}</span>}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AiWorkingIndicator({ prompt }: { prompt: string }) {
+  const labels = useMemo(() => pendingTraceLabels(prompt), [prompt]);
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  useEffect(() => {
+    setActiveIndex(0);
+    const interval = window.setInterval(() => {
+      setActiveIndex((index) => Math.min(index + 1, labels.length - 1));
+    }, 850);
+    return () => window.clearInterval(interval);
+  }, [labels.length, prompt]);
+
+  const steps = labels.map((step, index) => ({
+    ...step,
+    status: index < activeIndex ? "done" as const : index === activeIndex ? "active" as const : "pending" as const,
+  }));
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 4 }}
+      initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: 0.2, ease: "easeOut" }}
+      transition={{ duration: 0.18, ease: "easeOut" }}
       className="flex max-w-[92%] gap-3 min-w-0"
       role="status"
       aria-live="polite"
@@ -3182,49 +3293,93 @@ function AiWorkingIndicator() {
         <Bot className="size-4" />
       </div>
       <div className="min-w-0 rounded-[18px] rounded-tl-md border border-[#e7e3dc] bg-[#f7f6f0] px-5 py-4 text-sm text-on-surface shadow-[0_10px_28px_rgba(20,20,15,0.05)]">
-        <div className="flex items-center gap-2 font-semibold">
-          <span className="relative flex size-2.5">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#0f9f52] opacity-35" />
-            <span className="relative inline-flex size-2.5 rounded-full bg-[#0f9f52]" />
-          </span>
-          <span>Đang suy nghĩ với dữ liệu UniBus</span>
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <motion.span
+            animate={{ opacity: [0.35, 1, 0.35] }}
+            transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
+            className="h-2 w-2 rounded-full bg-[#144fcc]"
+          />
+          <span>{steps[activeIndex]?.label || "Đang xử lý"}</span>
         </div>
-        <div className="mt-4 space-y-2.5">
-          {steps.map((step, index) => (
-            <motion.div
-              key={step}
-              initial={{ opacity: 0.45 }}
-              animate={{ opacity: [0.45, 1, 0.65] }}
-              transition={{ duration: 1.35, repeat: Infinity, delay: index * 0.18, ease: "easeInOut" }}
-              className="flex items-center gap-3 text-xs text-on-surface-variant"
-            >
-              <span className="grid size-4 place-items-center rounded-full border border-[#b9b4aa] bg-white">
-                <span className="size-1.5 rounded-full bg-[#0f9f52]" />
-              </span>
-              <span>{step}</span>
-            </motion.div>
-          ))}
+        <div className="mt-4">
+          <AgentTraceTimeline steps={steps} />
         </div>
       </div>
     </motion.div>
   );
 }
 
-function AgentExecutionSummary({ sources, mode }: { sources?: AiSource[]; mode?: string }) {
-  const [expanded, setExpanded] = useState(false);
+function completedTraceSteps(sources?: AiSource[], mode?: string, routeSuggestions?: AiRouteSuggestionCard[]) {
+  const steps: AgentTraceStep[] = [{
+    id: "intent",
+    label: "Đã hiểu yêu cầu",
+    detail: "Phân loại câu hỏi và chuẩn bị context cần thiết",
+    status: "done",
+  }];
+  (sources || []).forEach((source, index) => {
+    const type = source.type || `source-${index}`;
+    const label = type === "STUDENT_PROFILE"
+      ? "Đọc hồ sơ sinh viên"
+      : type === "REGISTRATION"
+        ? "Kiểm tra đăng ký tuyến"
+        : type === "TICKET"
+          ? "Kiểm tra vé hiện tại"
+          : type === "ROUTE_SUGGESTIONS"
+            ? "Tìm tuyến phù hợp"
+            : source.label || "Truy xuất dữ liệu";
+    steps.push({
+      id: `${type}-${index}`,
+      label,
+      detail: source.detail || source.label,
+      status: "done",
+    });
+  });
+  if (routeSuggestions?.length) {
+    steps.push({
+      id: "rank-routes",
+      label: `Xếp hạng ${routeSuggestions.length} tuyến gợi ý`,
+      detail: "So khớp trạm, lịch chạy, giá vé và trợ giá",
+      status: "done",
+    });
+  }
+  if (mode) {
+    const isFallback = mode === "FALLBACK";
+    steps.push({
+      id: "model",
+      label: isFallback ? "LLM không trả phản hồi" : `Gọi model ${mode}`,
+      detail: isFallback
+        ? "Backend đã chuyển sang rule-based fallback, không giả lập LLM"
+        : "Model tổng hợp câu trả lời từ context UniBus",
+      status: isFallback ? "warning" : "done",
+    });
+  }
+  return steps;
+}
+
+function AgentExecutionSummary({
+  sources,
+  mode,
+  routeSuggestions,
+}: {
+  sources?: AiSource[];
+  mode?: string;
+  routeSuggestions?: AiRouteSuggestionCard[];
+}) {
+  const [expanded, setExpanded] = useState(mode === "FALLBACK");
   const sourceCount = sources?.length || 0;
-  if (!sourceCount && !mode) return null;
+  if (!sourceCount && !mode && !routeSuggestions?.length) return null;
   const isFallback = mode === "FALLBACK";
-  const modelLabel = mode === "ZAI"
-    ? "Tổng hợp bằng Z.AI"
-    : mode === "BEDROCK"
-      ? "Tổng hợp bằng AWS Bedrock"
-      : isFallback
-        ? "Hoàn tất bằng chế độ dự phòng"
-        : "Tổng hợp phản hồi";
+  const steps = completedTraceSteps(sources, mode, routeSuggestions);
+  const summary = isFallback
+    ? "Không gọi được LLM, đã dùng fallback"
+    : mode
+      ? `Hoàn tất bằng ${mode}`
+      : sourceCount
+        ? `Đã tra cứu ${sourceCount} nguồn dữ liệu`
+        : "Đã hoàn tất xử lý";
 
   return (
-    <div className="overflow-hidden rounded-[14px] border border-[#ded9cf] bg-[#fffefa]">
+    <div className="overflow-hidden rounded-[14px] border border-[#ded9cf] bg-[#fffefa]/90">
       <button
         type="button"
         onClick={() => setExpanded((value) => !value)}
@@ -3234,9 +3389,7 @@ function AgentExecutionSummary({ sources, mode }: { sources?: AiSource[]; mode?:
         <span className="grid size-5 shrink-0 place-items-center rounded-full border border-[#0f9f52] bg-white text-[#0f9f52]">
           <CheckCircle2 className="size-3.5" />
         </span>
-        <span className="flex-1">
-          {sourceCount ? `Đã tra cứu ${sourceCount} nguồn dữ liệu` : "Đã hoàn tất xử lý"}
-        </span>
+        <span className="flex-1">{summary}</span>
         {isFallback && (
           <span className="rounded-full bg-[#fff1c2] px-2 py-0.5 text-[10px] font-bold text-[#8a5a00]">
             Fallback
@@ -3254,44 +3407,7 @@ function AgentExecutionSummary({ sources, mode }: { sources?: AiSource[]; mode?:
             className="border-t border-[#e9e5dd]"
           >
             <div className="px-3.5 py-3">
-              <div className="relative space-y-3 before:absolute before:bottom-2 before:left-[7px] before:top-2 before:w-px before:bg-[#c9c4ba]">
-                <div className="relative flex items-start gap-3 text-xs">
-                  <span className="relative z-10 grid size-4 shrink-0 place-items-center rounded-full border border-[#0f9f52] bg-white text-[#0f9f52]">
-                    <CheckCircle2 className="size-3" />
-                  </span>
-                  <span>
-                    <span className="font-semibold text-on-surface">Đã phân tích yêu cầu</span>
-                    <span className="block text-on-surface-variant">Xác định intent và ngữ cảnh cần truy xuất</span>
-                  </span>
-                </div>
-              {(sources || []).map((source, index) => (
-                <div key={`${source.type}-${index}`} className="relative flex items-start gap-3 text-xs">
-                  <span className="relative z-10 grid size-4 shrink-0 place-items-center rounded-full border border-[#0f9f52] bg-white text-[#0f9f52]">
-                    <CheckCircle2 className="size-3" />
-                  </span>
-                  <span>
-                    <span className="font-semibold text-on-surface">{source.label}</span>
-                    {source.detail && <span className="block text-on-surface-variant">{source.detail}</span>}
-                  </span>
-                </div>
-              ))}
-              {mode && (
-                <div className="relative flex items-start gap-3 text-xs">
-                  <span className={cn(
-                    "relative z-10 grid size-4 shrink-0 place-items-center rounded-full border bg-white",
-                    isFallback ? "border-[#f59e0b] text-[#b45309]" : "border-[#0f9f52] text-[#0f9f52]"
-                  )}>
-                    {isFallback ? <Sparkles className="size-3" /> : <CheckCircle2 className="size-3" />}
-                  </span>
-                  <span>
-                    <span className="font-semibold text-on-surface">{modelLabel}</span>
-                    <span className="block text-on-surface-variant">
-                      {isFallback ? "Không gọi LLM, dùng rule-based để trả lời ổn định" : "Sinh câu trả lời từ dữ liệu vừa truy xuất"}
-                    </span>
-                  </span>
-                </div>
-              )}
-              </div>
+              <AgentTraceTimeline steps={steps} />
             </div>
           </motion.div>
         )}
@@ -3511,6 +3627,7 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
   const [sessionReady, setSessionReady] = useState(false);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [pendingPrompt, setPendingPrompt] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -3558,6 +3675,7 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
     }
     setMessages((m) => [...m, userMsg]);
     setInput("");
+    setPendingPrompt(userMsg.text);
     setLoading(true);
     try {
       const res = await experienceApi.sendAssistantChat({
@@ -3582,6 +3700,7 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
       setMessages((m) => [...m, { role: "bot", text: "Xin lỗi, mình không thể trả lời lúc này. Vui lòng thử lại sau.", time: new Date().toISOString() }]);
     } finally {
       setLoading(false);
+      setPendingPrompt("");
     }
   };
 
@@ -3624,7 +3743,13 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                 )}
               >
                 <p className="whitespace-pre-wrap">{m.text}</p>
-                {m.role === "bot" && <AgentExecutionSummary sources={m.sources} mode={m.mode} />}
+                {m.role === "bot" && (
+                  <AgentExecutionSummary
+                    sources={m.sources}
+                    mode={m.mode}
+                    routeSuggestions={m.routeSuggestions}
+                  />
+                )}
                 {!!m.routeSuggestions?.length && (
                   <div className="space-y-3">
                     {m.routeSuggestions.slice(0, 3).map((route, routeIndex) => (
@@ -3641,7 +3766,7 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
             </motion.div>
           ))}
           {loading && (
-            <AiWorkingIndicator />
+            <AiWorkingIndicator prompt={pendingPrompt} />
           )}
         </div>
         <div className="flex min-w-0 gap-2 border-t border-[#e4dfd5] bg-[#fffefa] p-4">
