@@ -1,5 +1,7 @@
 package com.unibus.api.registration;
 
+import java.util.List;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -30,6 +32,11 @@ public class RouteRegistrationController {
 
     public RouteRegistrationController(RouteRegistrationService routeRegistrationService) {
         this.routeRegistrationService = routeRegistrationService;
+    }
+
+    @GetMapping
+    ApiResponse<List<Registration>> listActive(@AuthenticationPrincipal CurrentUser currentUser) {
+        return ApiResponse.ok("Route registrations retrieved", routeRegistrationService.listActive(currentUser));
     }
 
     @GetMapping("/current")

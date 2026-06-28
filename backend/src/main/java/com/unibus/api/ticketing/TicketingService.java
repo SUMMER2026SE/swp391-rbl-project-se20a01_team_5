@@ -18,8 +18,10 @@ import com.unibus.api.payment.VNPayConfig;
 import com.unibus.api.payment.VNPayUtils;
 import com.unibus.api.security.CurrentUser;
 import com.unibus.api.ticketing.TicketingDtos.CreateVnpayPaymentRequest;
+import com.unibus.api.ticketing.TicketingDtos.JourneyOrderView;
 import com.unibus.api.ticketing.TicketingDtos.PassesDashboard;
 import com.unibus.api.ticketing.TicketingDtos.MonthlyPassQuote;
+import com.unibus.api.ticketing.TicketingDtos.PurchaseJourneyPassRequest;
 import com.unibus.api.ticketing.TicketingDtos.PaymentView;
 import com.unibus.api.ticketing.TicketingDtos.PurchaseMonthlyPassRequest;
 import com.unibus.api.ticketing.TicketingDtos.PurchaseSingleTripTicketRequest;
@@ -60,7 +62,8 @@ public class TicketingService {
     @Transactional
     public TicketView purchaseMonthlyPass(CurrentUser currentUser, PurchaseMonthlyPassRequest request) {
         String studentCode = requireStudentCode(currentUser);
-        ApprovedRegistration registration = ticketingRepository.approvedRegistration(studentCode)
+        Integer routeId = request == null ? null : request.routeId();
+        ApprovedRegistration registration = ticketingRepository.approvedRegistration(studentCode, routeId)
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Student must have an approved route registration"));
         LocalDate now = LocalDate.now();
         int year = now.getYear();
@@ -76,6 +79,69 @@ public class TicketingService {
                     ticketingRepository.createPaidPayment(ticket.ticketId(), quote.finalFareAmount(), method(request));
                     return ticket;
                 });
+    }
+
+    @Transactional
+    public JourneyOrderView purchaseJourneyMonthlyPass(CurrentUser currentUser, PurchaseJourneyPassRequest request) {
+        String studentCode = requireStudentCode(currentUser);
+        if (request == null || request.legs() == null || request.legs().isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Journey legs are required");
+        }
+        LocalDate now = LocalDate.now();
+        int year = now.getYear();
+        int month = now.getMonthValue();
+        OffsetDateTime validFrom = now.withDayOfMonth(1).atStartOfDay().atOffset(ZoneOffset.UTC);
+        OffsetDateTime expiresAt = now.plusMonths(1).withDayOfMonth(1).atStartOfDay().atOffset(ZoneOffset.UTC);
+
+        List<JourneyOrderLine> lines = new java.util.ArrayList<>();
+        java.util.Set<Integer> routeIds = new java.util.HashSet<>();
+        for (var leg : request.legs()) {
+            if (leg.routeId() == null || !routeIds.add(leg.routeId())) {
+                continue;
+            }
+            ApprovedRegistration registration = ticketingRepository.approvedRegistration(studentCode, leg.routeId())
+                    .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST,
+                            "Student must register every route before buying a journey pass"));
+            TicketView ticket = ticketingRepository.activeMonthlyPass(studentCode, registration.routeId(), year, month)
+                    .orElseGet(() -> {
+                        BigDecimal amount = ticketingRepository.monthlyFare(registration.routeId());
+                        MonthlyPassQuote quote = subsidyService.quoteFor(currentUser, registration.routeId(),
+                                registration.routeName(), amount, now);
+                        ensurePurchasableQuote(quote);
+                        TicketView created = ticketingRepository.createMonthlyTicket(studentCode, registration, year, month,
+                                validFrom, expiresAt, quote);
+                        ticketingRepository.createPaidPayment(created.ticketId(), quote.finalFareAmount(), method(request.method()));
+                        return created;
+                    });
+            lines.add(new JourneyOrderLine(
+                    ticket.ticketId(),
+                    registration.routeId(),
+                    leg.legOrder() == null ? lines.size() + 1 : leg.legOrder(),
+                    leg.boardingStopId() == null ? registration.boardingRouteStopId() : leg.boardingStopId(),
+                    leg.alightingStopId() == null ? registration.alightingRouteStopId() : leg.alightingStopId(),
+                    ticket.originalFareAmount(),
+                    ticket.subsidyAmount(),
+                    ticket.finalFareAmount()));
+        }
+        if (lines.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "No purchasable journey legs found");
+        }
+        BigDecimal total = lines.stream().map(JourneyOrderLine::originalAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal subsidy = lines.stream().map(JourneyOrderLine::subsidyAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal finalAmount = lines.stream().map(JourneyOrderLine::finalAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        Integer journeyOrderId = ticketingRepository.createJourneyOrder(
+                studentCode,
+                label(request.originLabel(), "Điểm đi"),
+                label(request.destinationLabel(), "Điểm đến"),
+                total,
+                subsidy,
+                finalAmount);
+        for (JourneyOrderLine line : lines) {
+            ticketingRepository.addJourneyOrderItem(journeyOrderId, line.monthlyPassId(), line.routeId(),
+                    line.legOrder(), line.boardingStopId(), line.alightingStopId(),
+                    line.originalAmount(), line.subsidyAmount(), line.finalAmount());
+        }
+        return ticketingRepository.findJourneyOrder(journeyOrderId).orElseThrow();
     }
 
     @Transactional
@@ -231,6 +297,14 @@ public class TicketingService {
         return builder.build().toUriString();
     }
 
+    private String method(String method) {
+        return method == null || method.isBlank() ? "BANK_TRANSFER" : method;
+    }
+
+    private String label(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value.trim();
+    }
+
     private void ensurePurchasableQuote(MonthlyPassQuote quote) {
         if (SubsidyService.STATUS_NOT_VERIFIED.equals(quote.subsidyStatus())) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Student verification is required before buying a monthly pass");
@@ -241,5 +315,10 @@ public class TicketingService {
         if (SubsidyService.STATUS_ROUTE_NOT_LINKED.equals(quote.subsidyStatus())) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Route is not configured for the student's university");
         }
+    }
+
+    private record JourneyOrderLine(Integer monthlyPassId, Integer routeId, Integer legOrder,
+            Integer boardingStopId, Integer alightingStopId, BigDecimal originalAmount,
+            BigDecimal subsidyAmount, BigDecimal finalAmount) {
     }
 }

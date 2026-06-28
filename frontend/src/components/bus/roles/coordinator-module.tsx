@@ -153,7 +153,6 @@ export function CoordinatorModule({ activeId, onNavigate }: CoordinatorModulePro
   const [chatOpen, setChatOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
-  if (proto.loading) return <LoadingScreen label="Đang tải dữ liệu điều phối..." />;
   if (proto.error) return <ErrorScreen message={proto.error} onRetry={proto.reload} />;
 
   const d = proto.data!;
@@ -884,10 +883,15 @@ function AssignStaffScreen({ ctx }: { ctx: Ctx }) {
       />
       {loading ? (
         <LoadingScreen />
-      ) : !dashboard || dashboard.shifts.length === 0 ? (
-        <EmptyState icon={<UserCog className="size-7" />} title="Không có chuyến" description="Không có chuyến cần phân công." />
+      ) : !dashboard ? (
+        <EmptyState icon={<UserCog className="size-7" />} title="Không tải được dữ liệu phân công" />
+      ) : dashboard.shifts.length === 0 ? (
+        <NewShiftCard mode="staff" dashboard={dashboard} date={date} onCreated={load} />
       ) : (
         <StaggerGroup className="space-y-3 min-w-0">
+          <StaggerItem>
+            <NewShiftCard mode="staff" dashboard={dashboard} date={date} onCreated={load} compact />
+          </StaggerItem>
           {dashboard.shifts.map((s, i) => {
             const sid = s.scheduleId;
             const locked = ["RUNNING", "COMPLETED"].includes(String(s.status || "").toUpperCase());
@@ -1030,10 +1034,15 @@ function AssignBusScreen({ ctx }: { ctx: Ctx }) {
       />
       {loading ? (
         <LoadingScreen />
-      ) : !dashboard || dashboard.shifts.length === 0 ? (
-        <EmptyState icon={<BusIcon className="size-7" />} title="Không có chuyến" />
+      ) : !dashboard ? (
+        <EmptyState icon={<BusIcon className="size-7" />} title="Không tải được dữ liệu phân công" />
+      ) : dashboard.shifts.length === 0 ? (
+        <NewShiftCard mode="bus" dashboard={dashboard} date={date} onCreated={load} />
       ) : (
         <StaggerGroup className="space-y-3 min-w-0">
+          <StaggerItem>
+            <NewShiftCard mode="bus" dashboard={dashboard} date={date} onCreated={load} compact />
+          </StaggerItem>
           {dashboard.shifts.map((s, i) => {
             const sid = s.scheduleId;
             const locked = ["RUNNING", "COMPLETED"].includes(String(s.status || "").toUpperCase());
@@ -1088,6 +1097,139 @@ function AssignBusScreen({ ctx }: { ctx: Ctx }) {
         </StaggerGroup>
       )}
     </PageTransition>
+  );
+}
+
+function NewShiftCard({
+  mode,
+  dashboard,
+  date,
+  onCreated,
+  compact = false,
+}: {
+  mode: "staff" | "bus";
+  dashboard: ScheduleDashboard;
+  date: string;
+  onCreated: () => void;
+  compact?: boolean;
+}) {
+  const [routeId, setRouteId] = useState("");
+  const [departureTime, setDepartureTime] = useState("");
+  const [driverStaffId, setDriverStaffId] = useState("");
+  const [conductorStaffId, setConductorStaffId] = useState("");
+  const [busId, setBusId] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    if (!routeId || !departureTime) {
+      toast.error("Vui lòng chọn tuyến và giờ chạy");
+      return;
+    }
+    if (mode === "staff" && (!driverStaffId || !conductorStaffId)) {
+      toast.error("Vui lòng chọn tài xế và phụ xe");
+      return;
+    }
+    if (mode === "bus" && !busId) {
+      toast.error("Vui lòng chọn xe");
+      return;
+    }
+    setSaving(true);
+    try {
+      await operationsApi.saveSchedules({
+        serviceDate: date,
+        shifts: [{
+          routeId: Number(routeId),
+          departureTime,
+          driverStaffId: driverStaffId ? Number(driverStaffId) : undefined,
+          conductorStaffId: conductorStaffId ? Number(conductorStaffId) : undefined,
+          busId: busId ? Number(busId) : undefined,
+        }],
+      });
+      toast.success("Đã tạo ca phân công");
+      setRouteId("");
+      setDepartureTime("");
+      setDriverStaffId("");
+      setConductorStaffId("");
+      setBusId("");
+      onCreated();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Không thể tạo ca phân công");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <ExpressiveCard variant="elevated" className="p-5 min-w-0">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <p className="font-bold">{compact ? "Thêm ca phân công" : "Chưa có chuyến để phân công"}</p>
+          <p className="text-xs text-on-surface-variant">Tạo ca chạy mới cho ngày {formatDate(date)}.</p>
+        </div>
+        <M3StatusPill label="Mới" tone="warning" />
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="min-w-0">
+          <Label className="text-xs font-bold">Tuyến</Label>
+          <Select value={routeId} onValueChange={setRouteId}>
+            <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn tuyến" /></SelectTrigger>
+            <SelectContent>
+              {dashboard.routes.map((route) => (
+                <SelectItem key={route.routeId} value={String(route.routeId)}>{route.routeName}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="min-w-0">
+          <Label className="text-xs font-bold">Giờ chạy</Label>
+          <Input className="mt-1.5" type="time" value={departureTime} onChange={(e) => setDepartureTime(e.target.value)} />
+        </div>
+        {mode === "staff" ? (
+          <>
+            <div className="min-w-0">
+              <Label className="text-xs font-bold">Tài xế</Label>
+              <Select value={driverStaffId} onValueChange={setDriverStaffId}>
+                <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn tài xế" /></SelectTrigger>
+                <SelectContent>
+                  {dashboard.drivers.map((driver) => (
+                    <SelectItem key={driver.staffId} value={String(driver.staffId)}>{driver.fullName} ({driver.status})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="min-w-0">
+              <Label className="text-xs font-bold">Phụ xe</Label>
+              <Select value={conductorStaffId} onValueChange={setConductorStaffId}>
+                <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn phụ xe" /></SelectTrigger>
+                <SelectContent>
+                  {dashboard.conductors.map((conductor) => (
+                    <SelectItem key={conductor.staffId} value={String(conductor.staffId)}>{conductor.fullName} ({conductor.status})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </>
+        ) : (
+          <div className="min-w-0 md:col-span-2">
+            <Label className="text-xs font-bold">Xe</Label>
+            <Select value={busId} onValueChange={setBusId}>
+              <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn xe" /></SelectTrigger>
+              <SelectContent>
+                {dashboard.buses.map((bus) => (
+                  <SelectItem key={bus.busId} value={String(bus.busId)}>{bus.licensePlate} ({bus.seatCount || "?"} chỗ)</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+      </div>
+      <div className="mt-4">
+        <ExpressiveButton variant="filled" size="sm" onClick={save} disabled={saving}>
+          {saving ? <RefreshCw className="size-4 animate-spin" /> : <Plus className="size-4" />}
+          Tạo ca phân công
+        </ExpressiveButton>
+      </div>
+    </ExpressiveCard>
   );
 }
 
@@ -1262,20 +1404,37 @@ function StopsScreen({ ctx }: { ctx: Ctx }) {
   const [routes, setRoutes] = useState<RouteListItem[]>([]);
   const [selectedRouteId, setSelectedRouteId] = useState<number | null>(null);
   const [stops, setStops] = useState<RouteStopDto[] | null>(null);
+  const [loadingRoutes, setLoadingRoutes] = useState(true);
+  const [routeError, setRouteError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState<number | null>(null);
 
-  useEffect(() => {
-    coordinatorRoutesApi.getRoutes().then(setRoutes).catch(() => setRoutes([]));
+  const loadRoutes = useCallback(async () => {
+    setLoadingRoutes(true);
+    setRouteError(null);
+    try {
+      const r = await coordinatorRoutesApi.getRoutes();
+      setRoutes(r);
+    } catch (e) {
+      setRoutes([]);
+      setRouteError(e instanceof Error ? e.message : "Không thể tải danh sách tuyến");
+    } finally {
+      setLoadingRoutes(false);
+    }
   }, []);
+
+  useEffect(() => { loadRoutes(); }, [loadRoutes]);
 
   useEffect(() => {
     if (!selectedRouteId && routes.length > 0) setSelectedRouteId(routes[0].id);
-  }, [routes]);
+  }, [routes, selectedRouteId]);
 
   const load = useCallback(async () => {
-    if (!selectedRouteId) return;
+    if (!selectedRouteId) {
+      setStops([]);
+      return;
+    }
     setLoading(true);
     try {
       const s = await coordinatorRoutesApi.getRouteStops(selectedRouteId);
@@ -1308,24 +1467,46 @@ function StopsScreen({ ctx }: { ctx: Ctx }) {
         description="Quản lý trạm trên từng tuyến."
         icon={<MapPin className="size-7" />}
         actions={
-          <Select value={selectedRouteId ? String(selectedRouteId) : ""} onValueChange={(v) => setSelectedRouteId(Number(v))}>
-            <SelectTrigger className="w-full sm:w-64"><SelectValue placeholder="Chọn tuyến" /></SelectTrigger>
-            <SelectContent>
-              {routes.map((r) => (
-                <SelectItem key={r.id} value={String(r.id)}>{r.routeName}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2">
+            <Select
+              value={selectedRouteId ? String(selectedRouteId) : ""}
+              onValueChange={(v) => setSelectedRouteId(Number(v))}
+              disabled={loadingRoutes || routes.length === 0}
+            >
+              <SelectTrigger className="w-full sm:w-72">
+                <SelectValue placeholder={loadingRoutes ? "Đang tải tuyến..." : "Chọn tuyến"} />
+              </SelectTrigger>
+              <SelectContent>
+                {routes.map((r) => (
+                  <SelectItem key={r.id} value={String(r.id)}>
+                    {r.routeName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {routeError && (
+              <ExpressiveButton variant="tonal" size="sm" onClick={loadRoutes}>
+                <RefreshCw className="size-4" /> Tải lại
+              </ExpressiveButton>
+            )}
+          </div>
         }
       />
-      {loading ? (
+      {routes.length === 0 && !loadingRoutes ? (
+        <EmptyState
+          icon={<RouteIcon className="size-7" />}
+          title="Chưa có tuyến"
+          description="Cần tạo tuyến trước khi thêm trạm dừng."
+          action={<ExpressiveButton variant="filled" onClick={() => toast.info("Vào mục Quản lý tuyến đường để tạo tuyến trước")}>Tạo tuyến ở mục tuyến đường</ExpressiveButton>}
+        />
+      ) : loading ? (
         <LoadingScreen />
       ) : !stops || stops.length === 0 ? (
         <EmptyState
           icon={<MapPin className="size-7" />}
           title="Chưa có trạm"
           description="Tuyến này chưa có trạm nào."
-          action={<ExpressiveButton variant="filled" onClick={() => setAdding(true)}><Plus className="size-4" /> Thêm trạm</ExpressiveButton>}
+          action={<ExpressiveButton variant="filled" disabled={!selectedRouteId} onClick={() => setAdding(true)}><Plus className="size-4" /> Thêm trạm</ExpressiveButton>}
         />
       ) : (
         <>
@@ -1892,10 +2073,10 @@ function NotifyScreen({ ctx }: { ctx: Ctx }) {
               <EmptyState icon={<Megaphone className="size-7" />} title="Chưa gửi thông báo" />
             ) : (
               <div className="space-y-2">
-                {(notifications.raw || ctx.notifications).slice(0, 5).map((n: any) => (
-                  <ExpressiveCard key={n.id} variant="filled" className="p-3 min-w-0">
+                {(notifications.raw || ctx.notifications).slice(0, 5).map((n: any, index: number) => (
+                  <ExpressiveCard key={n.notificationId ?? n.id ?? `${n.title}-${n.createdAt ?? index}`} variant="filled" className="p-3 min-w-0">
                     <p className="font-bold text-sm truncate">{n.title}</p>
-                    <p className="text-xs text-on-surface-variant line-clamp-2">{n.body}</p>
+                    <p className="text-xs text-on-surface-variant line-clamp-2">{n.content ?? n.body}</p>
                     <p className="text-[10px] text-on-surface-variant mt-1">{formatDateTime(n.createdAt)}</p>
                   </ExpressiveCard>
                 ))}
@@ -1989,6 +2170,9 @@ function InternalChatPanel({ open, onOpenChange, onUnreadCountChange }: Internal
   const [searchQuery, setSearchQuery] = useState("");
 
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const fetchingThreadsRef = useRef(false);
+  const fetchingMessagesRef = useRef(false);
+  const fetchedStaffRef = useRef(false);
 
   const chatMessages = useMemo(() => {
     return messages.filter((msg) => !(msg.body || "").startsWith("[SOS]"));
@@ -1997,6 +2181,8 @@ function InternalChatPanel({ open, onOpenChange, onUnreadCountChange }: Internal
   // Poll active threads & count unread messages
   useEffect(() => {
     const fetchThreads = async () => {
+      if (fetchingThreadsRef.current) return;
+      fetchingThreadsRef.current = true;
       try {
         const data = await messagingApi.getThreads();
         setThreads(data);
@@ -2006,19 +2192,21 @@ function InternalChatPanel({ open, onOpenChange, onUnreadCountChange }: Internal
         onUnreadCountChange(driverConductorUnread);
       } catch (error) {
         console.error("Failed to fetch message threads:", error);
+      } finally {
+        fetchingThreadsRef.current = false;
       }
     };
 
     if (open) {
-      setTimeout(() => setLoadingThreads(true), 0);
+      if (threads.length === 0) setLoadingThreads(true);
       fetchThreads().finally(() => {
-        setTimeout(() => setLoadingThreads(false), 0);
+        setLoadingThreads(false);
       });
       
-      const interval = setInterval(fetchThreads, 4000);
+      const interval = setInterval(fetchThreads, 15000);
       return () => clearInterval(interval);
     }
-  }, [open, onUnreadCountChange]);
+  }, [open, onUnreadCountChange, threads.length]);
 
   // Poll conversation messages when a thread is active
   useEffect(() => {
@@ -2028,29 +2216,33 @@ function InternalChatPanel({ open, onOpenChange, onUnreadCountChange }: Internal
     }
 
     const fetchConversation = async () => {
+      if (fetchingMessagesRef.current) return;
+      fetchingMessagesRef.current = true;
       try {
         const data = await messagingApi.getConversation(activeThread.peerUserId);
         setMessages(data);
       } catch (error) {
         console.error("Failed to fetch conversation:", error);
+      } finally {
+        fetchingMessagesRef.current = false;
       }
     };
 
     // Mark as read immediately
     messagingApi.markAsRead(activeThread.peerUserId).catch(() => {});
 
-    setTimeout(() => setLoadingMessages(true), 0);
+    if (messages.length === 0) setLoadingMessages(true);
     fetchConversation().finally(() => {
-      setTimeout(() => setLoadingMessages(false), 0);
+      setLoadingMessages(false);
     });
 
-    const interval = setInterval(fetchConversation, 3000);
+    const interval = setInterval(fetchConversation, 8000);
     return () => clearInterval(interval);
-  }, [open, activeThread]);
+  }, [open, activeThread, messages.length]);
 
   // Fetch driver/conductor list for starting new chats
   useEffect(() => {
-    if (!open || !isNewChatMode) return;
+    if (!open || !isNewChatMode || fetchedStaffRef.current) return;
 
     const fetchStaff = async () => {
       try {
@@ -2063,6 +2255,7 @@ function InternalChatPanel({ open, onOpenChange, onUnreadCountChange }: Internal
           if (c.userId) list.push({ userId: c.userId, fullName: c.fullName, role: "CONDUCTOR" });
         });
         setStaffList(list);
+        fetchedStaffRef.current = true;
       } catch (error) {
         console.error("Failed to fetch staff list:", error);
       }

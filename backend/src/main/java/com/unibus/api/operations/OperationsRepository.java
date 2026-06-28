@@ -441,12 +441,13 @@ public class OperationsRepository {
 
     public List<DriverContactView> findDriverDispatcherContacts() {
         return jdbcTemplate.query("""
-                SELECT full_name, phone_number, email
+                SELECT user_id, full_name, phone_number, email
                 FROM users
                 WHERE role = 'DISPATCHER'
                   AND status = 'ACTIVE'
                 ORDER BY full_name
                 """, (rs, rowNum) -> new DriverContactView(
+                        rs.getInt("user_id"),
                         "COORDINATOR",
                         rs.getString("full_name"),
                         "Điều phối viên",
@@ -591,6 +592,34 @@ public class OperationsRepository {
                 WHERE mp.qr_code = ?
                 """, (rs, rowNum) -> mapConductorTicket(rs), qrCode);
         return rows.stream().findFirst();
+    }
+
+    public Optional<ConductorTicketView> findJourneyMonthlyTicketByQr(String qrCode, Integer routeId) {
+        try {
+            List<ConductorTicketView> rows = jdbcTemplate.query("""
+                    SELECT 'JOURNEY_MONTHLY' AS ticket_kind, mp.monthly_pass_id AS ticket_id, jo.qr_code,
+                           mp.student_code, u.full_name AS student_name, mp.route_id, r.route_name,
+                           bs.stop_name AS boarding_stop_name, als.stop_name AS alighting_stop_name,
+                           mp.status, mp.valid_from::timestamptz AS valid_from, mp.expires_on::timestamptz AS expires_at,
+                           mp.last_scanned_at
+                    FROM journey_orders jo
+                    JOIN journey_order_items joi ON joi.journey_order_id = jo.journey_order_id
+                    JOIN monthly_passes mp ON mp.monthly_pass_id = joi.monthly_pass_id
+                    JOIN students s ON s.student_code = mp.student_code
+                    JOIN users u ON u.user_id = s.user_id
+                    JOIN routes r ON r.route_id = mp.route_id
+                    LEFT JOIN stops bs ON bs.stop_id = joi.boarding_stop_id
+                    LEFT JOIN stops als ON als.stop_id = joi.alighting_stop_id
+                    WHERE jo.qr_code = ?
+                      AND jo.status = 'ACTIVE'
+                      AND mp.route_id = ?
+                    ORDER BY joi.leg_order
+                    LIMIT 1
+                    """, (rs, rowNum) -> mapConductorTicket(rs), qrCode, routeId);
+            return rows.stream().findFirst();
+        } catch (org.springframework.dao.DataAccessException ignored) {
+            return Optional.empty();
+        }
     }
 
     public Optional<ConductorTicketView> findSingleTicketByQr(String qrCode) {

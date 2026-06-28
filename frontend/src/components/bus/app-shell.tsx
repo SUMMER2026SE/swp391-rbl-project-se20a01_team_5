@@ -97,6 +97,12 @@ export function AppShell({
     };
   }, [activeId]);
 
+  useEffect(() => {
+    if (role === "student" && activeId === "stu-find") {
+      setSidebarCollapsed(true);
+    }
+  }, [activeId, role]);
+
   // Listen for real-time notification read events from NotificationsScreen
   useEffect(() => {
     const handleNotificationRead = () => {
@@ -111,6 +117,9 @@ export function AppShell({
   const navTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const goTo = (id: string) => {
     setMobileOpen(false);
+    if (role === "student" && id === "stu-find") {
+      setSidebarCollapsed(true);
+    }
     // Cancel any pending navigation from previous click
     if (navTimerRef.current) {
       clearTimeout(navTimerRef.current);
@@ -320,15 +329,15 @@ export function AppShell({
 
         <main className="flex-1 p-3 sm:p-6 lg:p-8">
           <AnimatePresence mode="wait">
-            <PageTransition key={activeId} id={activeId} className="mx-auto max-w-7xl">
+            <PageTransition
+              key={activeId}
+              id={activeId}
+              className={cn("mx-auto", activeId === "stu-find" ? "max-w-none" : "max-w-7xl")}
+            >
               {children}
             </PageTransition>
           </AnimatePresence>
         </main>
-
-        <footer className="mt-auto hidden border-t border-outline-variant/40 bg-surface-container-low px-6 py-4 text-center text-xs text-on-surface-variant lg:block">
-          <p>UniBus - Hệ thống xe bus sinh viên liên kết trường đại học tại Đà Nẵng</p>
-        </footer>
       </div>
 
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>

@@ -48,6 +48,18 @@ public class BusRoute {
     @Column(name = "color_hex", length = 20)
     private String colorHex;
 
+    @Column(name = "external_source", length = 40)
+    private String externalSource;
+
+    @Column(name = "external_route_id", length = 80)
+    private String externalRouteId;
+
+    @Column(name = "source_updated_at")
+    private OffsetDateTime sourceUpdatedAt;
+
+    @Column(name = "is_interregional", nullable = false, columnDefinition = "boolean default false")
+    private boolean interregional;
+
     @Column(name = "is_circular", nullable = false)
     private boolean circular;
 

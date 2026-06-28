@@ -96,12 +96,14 @@ import {
 import {
   operationsApi,
   experienceApi,
+  messagingApi,
   type DriverTripView,
   type DriverDashboardView,
   type ExperienceTripCard,
   type ExperienceFeedbackCard,
   type ExperienceDashboardStat,
   type DriverContactView,
+  type InternalMessageCard,
 } from "@/lib/api/client";
 
 type DriverModuleProps = {
@@ -1018,18 +1020,50 @@ function DriverContact() {
   const contacts = useApi<DriverContactView[]>(() => operationsApi.driverContacts(), undefined, []);
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
-  const [sent, setSent] = useState<{ role: "user" | "dispatch"; text: string; time: string }[]>([]);
+  const [messages, setMessages] = useState<InternalMessageCard[]>([]);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+
+  const coordinator = useMemo(
+    () => contacts.raw?.find((contact) => contact.type === "COORDINATOR" && contact.userId) || null,
+    [contacts.raw]
+  );
+  const coordinatorUserId = coordinator?.userId ?? null;
+
+  const loadMessages = useCallback(async () => {
+    if (!coordinatorUserId) return;
+    setLoadingMessages(true);
+    try {
+      const data = await messagingApi.getConversation(coordinatorUserId);
+      setMessages(data);
+      messagingApi.markAsRead(coordinatorUserId).catch(() => {});
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Không thể tải tin nhắn");
+    } finally {
+      setLoadingMessages(false);
+    }
+  }, [coordinatorUserId]);
+
+  useEffect(() => {
+    if (!coordinatorUserId) return;
+    loadMessages();
+    const interval = setInterval(loadMessages, 8000);
+    return () => clearInterval(interval);
+  }, [coordinatorUserId, loadMessages]);
 
   const send = async () => {
-    if (!message.trim() || sending) return;
-    const m = { role: "user" as const, text: message.trim(), time: new Date().toISOString() };
-    setSent((s) => [...s, m]);
+    if (!message.trim() || sending || !coordinatorUserId) return;
+    const text = message.trim();
     setMessage("");
     setSending(true);
-    setTimeout(() => {
-      setSent((s) => [...s, { role: "dispatch", text: "Đã tiếp nhận. Đội điều phối sẽ phản hồi trong ít phút.", time: new Date().toISOString() }]);
+    try {
+      await messagingApi.sendMessage({ recipientUserId: coordinatorUserId, body: text });
+      await loadMessages();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Không thể gửi tin nhắn");
+      setMessage(text);
+    } finally {
       setSending(false);
-    }, 1000);
+    }
   };
 
   return (
@@ -1084,23 +1118,31 @@ function DriverContact() {
               </h3>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-2 min-w-0">
-              {sent.length === 0 && (
+              {loadingMessages && messages.length === 0 ? (
+                <div className="flex items-center justify-center gap-2 text-sm text-on-surface-variant mt-8">
+                  <RefreshCw className="size-4 animate-spin" />
+                  Đang tải tin nhắn...
+                </div>
+              ) : messages.length === 0 ? (
                 <p className="text-sm text-on-surface-variant text-center mt-8">
                   Gửi tin nhắn cho điều phối viên khi cần hỗ trợ.
                 </p>
-              )}
-              {sent.map((m, i) => (
+              ) : null}
+              {messages.slice().reverse().map((m) => {
+                const isMe = m.senderUserId !== coordinatorUserId;
+                return (
                 <motion.div
-                  key={i}
+                  key={m.messageId}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className={cn("flex max-w-[85%]", m.role === "user" && "ml-auto justify-end")}
+                  className={cn("flex max-w-[85%]", isMe && "ml-auto justify-end")}
                 >
-                  <div className={cn("px-3 py-2 rounded-2xl text-sm", m.role === "user" ? "bg-primary text-on-primary" : "bg-surface-container-high")}>
-                    {m.text}
+                  <div className={cn("px-3 py-2 rounded-2xl text-sm", isMe ? "bg-primary text-on-primary" : "bg-surface-container-high")}>
+                    {m.body}
                   </div>
                 </motion.div>
-              ))}
+                );
+              })}
             </div>
             <div className="p-3 border-t-2 border-outline-variant flex gap-2 min-w-0">
               <Input
@@ -1108,10 +1150,10 @@ function DriverContact() {
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && send()}
-                disabled={sending}
+                disabled={sending || !coordinatorUserId}
                 className="flex-1 min-w-0"
               />
-              <ExpressiveButton variant="filled" size="icon" onClick={send} disabled={sending || !message.trim()}>
+              <ExpressiveButton variant="filled" size="icon" onClick={send} disabled={sending || !message.trim() || !coordinatorUserId}>
                 <Send className="size-4" />
               </ExpressiveButton>
             </div>

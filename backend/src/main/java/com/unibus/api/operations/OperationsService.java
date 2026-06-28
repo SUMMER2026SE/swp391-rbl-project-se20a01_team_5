@@ -101,6 +101,7 @@ public class OperationsService {
         requireDriverStaffId(currentUser);
         List<DriverContactView> contacts = new ArrayList<>(operationsRepository.findDriverDispatcherContacts());
         contacts.add(new DriverContactView(
+                null,
                 "EMERGENCY",
                 "Tổng đài khẩn cấp",
                 "Hỗ trợ 24/7",
@@ -236,6 +237,11 @@ public class OperationsService {
         ConductorTicketView monthlyTicket = operationsRepository.findMonthlyTicketByQr(qrCode).orElse(null);
         if (monthlyTicket != null) {
             return scanMonthlyPass(monthlyTicket, trip, conductorStaffId);
+        }
+
+        ConductorTicketView journeyTicket = operationsRepository.findJourneyMonthlyTicketByQr(qrCode, trip.routeId()).orElse(null);
+        if (journeyTicket != null) {
+            return scanMonthlyPass(journeyTicket, trip, conductorStaffId);
         }
 
         ConductorTicketView singleTicket = operationsRepository.findSingleTicketByQr(qrCode).orElse(null);

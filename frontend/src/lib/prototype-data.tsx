@@ -18,6 +18,7 @@ import {
   AdminUserView,
   ApiError,
   CampusView,
+  CoordinatorDashboardView,
   DomainView,
   DriverDashboardView,
   DriverTripView,
@@ -581,9 +582,21 @@ export function useAssistantPrototypeData() {
 export function useCoordinatorPrototypeData() {
   const dashboard = useApi(() => experienceApi.coordinatorDashboard(), undefined, []);
 
+  const emptyDashboard: CoordinatorDashboardView = {
+    liveFleet: [],
+    routes: [],
+    stops: [],
+    feedback: [],
+    stats: [
+      { label: "Xe live", value: 0, unit: "xe", tone: "success" },
+      { label: "Tuyến active", value: 0, unit: "tuyến", tone: "primary" },
+      { label: "Trạm", value: 0, unit: "trạm", tone: "secondary" },
+      { label: "Feedback mở", value: 0, unit: "mục", tone: "warning" },
+    ],
+  };
+
   const mapped = (() => {
-    if (!dashboard.raw) return null;
-    const d = dashboard.raw;
+    const d = dashboard.raw || emptyDashboard;
     return {
       user: {
         id: "0",
@@ -621,7 +634,7 @@ export function useCoordinatorPrototypeData() {
   return {
     data: mapped,
     loading: dashboard.loading,
-    error: dashboard.error,
+    error: dashboard.raw ? dashboard.error : null,
     reload: dashboard.reload,
   };
 }

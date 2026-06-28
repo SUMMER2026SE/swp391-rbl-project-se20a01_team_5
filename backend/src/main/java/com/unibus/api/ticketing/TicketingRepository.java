@@ -19,6 +19,8 @@ import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 
 import com.unibus.api.ticketing.TicketingDtos.MonthlyPassQuote;
+import com.unibus.api.ticketing.TicketingDtos.JourneyOrderItemView;
+import com.unibus.api.ticketing.TicketingDtos.JourneyOrderView;
 import com.unibus.api.ticketing.TicketingDtos.PaymentView;
 import com.unibus.api.ticketing.TicketingDtos.TicketView;
 
@@ -37,6 +39,10 @@ public class TicketingRepository {
     }
 
     public Optional<ApprovedRegistration> approvedRegistration(String studentCode) {
+        return approvedRegistration(studentCode, null);
+    }
+
+    public Optional<ApprovedRegistration> approvedRegistration(String studentCode, Integer routeId) {
         List<ApprovedRegistration> rows = jdbcTemplate.query("""
                 SELECT rr.registration_id, rr.route_id, r.route_name,
                        rr.boarding_stop_id, bs.stop_name AS boarding_stop_name,
@@ -47,6 +53,7 @@ public class TicketingRepository {
                 LEFT JOIN stops als ON als.stop_id = rr.alighting_stop_id
                 WHERE rr.student_code = ?
                   AND rr.status = 'APPROVED'
+                  AND (? IS NULL OR rr.route_id = ?)
                 ORDER BY rr.approved_at DESC NULLS LAST, rr.registered_at DESC
                 LIMIT 1
                 """, (rs, rowNum) -> new ApprovedRegistration(
@@ -56,7 +63,7 @@ public class TicketingRepository {
                         (Integer) rs.getObject("boarding_stop_id"),
                         rs.getString("boarding_stop_name"),
                         (Integer) rs.getObject("alighting_stop_id"),
-                        rs.getString("alighting_stop_name")), studentCode);
+                        rs.getString("alighting_stop_name")), studentCode, routeId, routeId);
         return rows.stream().findFirst();
     }
 
@@ -372,6 +379,88 @@ public class TicketingRepository {
                       WHERE i.payment_id = p.payment_id
                   )
                 """, paymentId);
+    }
+
+    public Integer createJourneyOrder(String studentCode, String originLabel, String destinationLabel,
+            BigDecimal totalAmount, BigDecimal subsidyAmount, BigDecimal finalAmount) {
+        String qrCode = "UB-JOURNEY-" + UUID.randomUUID();
+        KeyHolder keyHolder = new GeneratedKeyHolder();
+        jdbcTemplate.update(connection -> {
+            PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO journey_orders(student_code, origin_label, destination_label,
+                                           total_amount, subsidy_amount, final_amount,
+                                           qr_code, status, valid_from, expires_on)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'ACTIVE', CURRENT_DATE, CURRENT_DATE + INTERVAL '1 month')
+                """, new String[] { "journey_order_id" });
+            statement.setString(1, studentCode);
+            statement.setString(2, originLabel);
+            statement.setString(3, destinationLabel);
+            statement.setBigDecimal(4, totalAmount);
+            statement.setBigDecimal(5, subsidyAmount);
+            statement.setBigDecimal(6, finalAmount);
+            statement.setString(7, qrCode);
+            return statement;
+        }, keyHolder);
+        return generatedId(keyHolder, "journey order");
+    }
+
+    public void addJourneyOrderItem(Integer journeyOrderId, Integer monthlyPassId, Integer routeId,
+            Integer legOrder, Integer boardingStopId, Integer alightingStopId,
+            BigDecimal originalAmount, BigDecimal subsidyAmount, BigDecimal finalAmount) {
+        jdbcTemplate.update("""
+                INSERT INTO journey_order_items(journey_order_id, monthly_pass_id, route_id, leg_order,
+                                                boarding_stop_id, alighting_stop_id,
+                                                original_amount, subsidy_amount, final_amount)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, journeyOrderId, monthlyPassId, routeId, legOrder, boardingStopId, alightingStopId,
+                originalAmount, subsidyAmount, finalAmount);
+    }
+
+    public Optional<JourneyOrderView> findJourneyOrder(Integer journeyOrderId) {
+        List<JourneyOrderView> orders = jdbcTemplate.query("""
+                SELECT journey_order_id, origin_label, destination_label, total_amount,
+                       subsidy_amount, final_amount, qr_code, status, purchased_at
+                FROM journey_orders
+                WHERE journey_order_id = ?
+                """, (rs, rowNum) -> new JourneyOrderView(
+                        rs.getInt("journey_order_id"),
+                        rs.getString("origin_label"),
+                        rs.getString("destination_label"),
+                        rs.getBigDecimal("total_amount"),
+                        rs.getBigDecimal("subsidy_amount"),
+                        rs.getBigDecimal("final_amount"),
+                        rs.getString("qr_code"),
+                        rs.getString("status"),
+                        toOffsetDateTime(rs.getTimestamp("purchased_at")),
+                        findJourneyOrderItems(rs.getInt("journey_order_id"))), journeyOrderId);
+        return orders.stream().findFirst();
+    }
+
+    private List<JourneyOrderItemView> findJourneyOrderItems(Integer journeyOrderId) {
+        return jdbcTemplate.query("""
+                SELECT joi.journey_order_item_id, joi.monthly_pass_id, joi.route_id, r.route_name,
+                       joi.leg_order, joi.boarding_stop_id, bs.stop_name AS boarding_stop_name,
+                       joi.alighting_stop_id, als.stop_name AS alighting_stop_name,
+                       joi.original_amount, joi.subsidy_amount, joi.final_amount
+                FROM journey_order_items joi
+                JOIN routes r ON r.route_id = joi.route_id
+                LEFT JOIN stops bs ON bs.stop_id = joi.boarding_stop_id
+                LEFT JOIN stops als ON als.stop_id = joi.alighting_stop_id
+                WHERE joi.journey_order_id = ?
+                ORDER BY joi.leg_order
+                """, (rs, rowNum) -> new JourneyOrderItemView(
+                        rs.getInt("journey_order_item_id"),
+                        rs.getInt("monthly_pass_id"),
+                        rs.getInt("route_id"),
+                        rs.getString("route_name"),
+                        rs.getInt("leg_order"),
+                        (Integer) rs.getObject("boarding_stop_id"),
+                        rs.getString("boarding_stop_name"),
+                        (Integer) rs.getObject("alighting_stop_id"),
+                        rs.getString("alighting_stop_name"),
+                        rs.getBigDecimal("original_amount"),
+                        rs.getBigDecimal("subsidy_amount"),
+                        rs.getBigDecimal("final_amount")), journeyOrderId);
     }
 
     private Integer generatedId(KeyHolder keyHolder, String entityName) {
