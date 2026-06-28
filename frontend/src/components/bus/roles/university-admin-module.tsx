@@ -136,7 +136,7 @@ type UniversityAdminModuleProps = {
 export function UniversityAdminModule({ activeId, onNavigate }: UniversityAdminModuleProps) {
   const proto = useUniversityAdminPrototypeData();
 
-  if (proto.loading) return <LoadingScreen label="Đang tải dữ liệu admin trường..." />;
+  if (proto.loading || !proto.data) return <LoadingScreen label="Đang tải dữ liệu admin trường..." />;
   if (proto.error) return <ErrorScreen message={proto.error} onRetry={proto.reload} />;
 
   const d = proto.data!;
@@ -186,6 +186,7 @@ export function UniversityAdminModule({ activeId, onNavigate }: UniversityAdminM
     case "uniadm-notify":
       return <NotifyScreen ctx={ctx} />;
     case "uniadm-recon":
+    case "uniadm-transactions":
       return <ReconScreen ctx={ctx} />;
     default:
       return <FallbackScreen activeId={activeId} />;
@@ -1204,3 +1205,4 @@ function FallbackScreen({ activeId }: { activeId: string }) {
     />
   );
 }
+

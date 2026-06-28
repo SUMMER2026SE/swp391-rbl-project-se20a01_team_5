@@ -1171,12 +1171,35 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
     if (!assistantPreview || routesLoading) return;
     const requestedRouteId = assistantPreview.routeId == null ? "" : String(assistantPreview.routeId);
     const requestedRouteCode = (assistantPreview.routeCode || "").trim().toLowerCase();
+    const requestedRouteName = (assistantPreview.routeName || "").trim().toLowerCase();
     const match = routes.find((route) => (
       String(route.routeId) === requestedRouteId
       || (!!requestedRouteCode && (route.routeCode || "").trim().toLowerCase() === requestedRouteCode)
+      || (!!requestedRouteName && route.routeName.trim().toLowerCase() === requestedRouteName)
     ));
 
-    if (!match) {
+    const fallbackRoute = requestedRouteId
+      ? {
+          routeId: Number(requestedRouteId),
+          routeCode: assistantPreview.routeCode,
+          routeName: assistantPreview.routeName || assistantPreview.routeCode || `Tuyến ${requestedRouteId}`,
+          colorHex: undefined,
+          distanceKm: undefined,
+          estimatedMinutes: undefined,
+          frequencyMin: undefined,
+          singleFare: undefined,
+          monthlyFare: undefined,
+          firstTrip: undefined,
+          lastTrip: undefined,
+          stopCount: undefined,
+          directions: [],
+          universityLinked: false,
+          interregional: false,
+          externalSource: undefined,
+        } satisfies RouteLookupDTO
+      : null;
+
+    if (!match && !fallbackRoute) {
       if (routes.length) {
         toast.error("Không tìm thấy tuyến từ gợi ý AI trong danh sách hiện tại.");
         setAssistantPreview(null);
@@ -1184,12 +1207,16 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
       return;
     }
 
+    const targetRoute = match || fallbackRoute;
+    if (!targetRoute) return;
+
     setActiveTab("lookup");
-    setSelectedRoute(match);
-    setRouteDirection(match.directions?.[0] ?? 0);
+    setSelectedRoute(targetRoute);
+    setRouteDirection(targetRoute.directions?.[0] ?? 0);
     setRoutePreview(null);
+    setRoutesError("");
     setRouteActionError("");
-    setRouteQuery(match.routeCode || match.routeName);
+    setRouteQuery(targetRoute.routeCode || targetRoute.routeName);
     setShowJourneyDetail(false);
     setAssistantPreview(null);
   }, [assistantPreview, routes, routesLoading]);

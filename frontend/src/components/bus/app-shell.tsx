@@ -125,6 +125,8 @@ export function AppShell({
   // Debounce navigation to prevent lag when user clicks rapidly.
   // Each new click cancels the previous pending navigation.
   const navTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewOpenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const goTo = (id: string) => {
     setMobileOpen(false);
     setSidebarPreviewOpen(false);
@@ -147,6 +149,8 @@ export function AppShell({
   useEffect(() => {
     return () => {
       if (navTimerRef.current) clearTimeout(navTimerRef.current);
+      if (previewOpenTimerRef.current) clearTimeout(previewOpenTimerRef.current);
+      if (previewCloseTimerRef.current) clearTimeout(previewCloseTimerRef.current);
     };
   }, []);
 
@@ -217,11 +221,18 @@ export function AppShell({
       <motion.aside
         animate={{ width: sidebarVisible ? 288 : 0 }}
         transition={{ type: "spring", stiffness: 400, damping: 32 }}
+        onMouseEnter={() => {
+          if (previewCloseTimerRef.current) clearTimeout(previewCloseTimerRef.current);
+        }}
         onMouseLeave={() => {
-          if (isStudentFindPage && sidebarCollapsed) setSidebarPreviewOpen(false);
+          if (isStudentFindPage && sidebarCollapsed) {
+            if (previewOpenTimerRef.current) clearTimeout(previewOpenTimerRef.current);
+            previewCloseTimerRef.current = setTimeout(() => setSidebarPreviewOpen(false), 140);
+          }
         }}
         className={cn(
-          "fixed left-0 top-0 z-[2300] hidden h-screen shrink-0 flex-col overflow-hidden border-r border-outline-variant/40 bg-surface-container-low lg:flex",
+          "fixed left-0 z-[2300] hidden shrink-0 flex-col overflow-hidden border-r border-outline-variant/40 bg-surface-container-low lg:flex",
+          isStudentFindPage && sidebarCollapsed ? "top-16 h-[calc(100dvh-4rem)] rounded-tr-[24px]" : "top-0 h-screen",
           sidebarVisible ? "pointer-events-auto" : "pointer-events-none",
         )}
         style={{ width: 288 }}
@@ -233,10 +244,17 @@ export function AppShell({
         <button
           type="button"
           aria-label="Mở nhanh menu"
-          onMouseEnter={() => setSidebarPreviewOpen(true)}
+          onMouseEnter={() => {
+            if (previewCloseTimerRef.current) clearTimeout(previewCloseTimerRef.current);
+            if (previewOpenTimerRef.current) clearTimeout(previewOpenTimerRef.current);
+            previewOpenTimerRef.current = setTimeout(() => setSidebarPreviewOpen(true), 110);
+          }}
+          onMouseLeave={() => {
+            if (previewOpenTimerRef.current) clearTimeout(previewOpenTimerRef.current);
+          }}
           onFocus={() => setSidebarPreviewOpen(true)}
           onClick={() => setSidebarPreviewOpen(true)}
-          className="fixed left-0 top-24 z-[2290] hidden h-[calc(100dvh-8rem)] w-3 rounded-r-full bg-on-surface/10 transition-colors hover:bg-on-surface/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:block"
+          className="fixed left-0 top-20 z-[2290] hidden h-[calc(100dvh-6rem)] w-3 rounded-r-full bg-on-surface/10 transition-colors hover:bg-on-surface/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:block"
         >
           <span className="absolute left-1 top-1/2 h-16 w-1 -translate-y-1/2 rounded-full bg-[#beff50]" />
           <span className="sr-only">Mở nhanh menu</span>

@@ -2487,10 +2487,24 @@ function FindRoutesScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
 
   useEffect(() => {
     const routeId = window.sessionStorage.getItem("unibus:assistant:route-preview");
-    if (!routeId || !routeRows.some((row: any) => String(row.route.id) === routeId)) return;
-    setSelectedJourneyId("");
-    setSelectedRoutePreviewId(routeId);
+    const rawContext = window.sessionStorage.getItem("unibus:assistant:route-preview-context");
+    let routeCode = "";
+    try {
+      routeCode = rawContext ? String(JSON.parse(rawContext)?.routeCode || "") : "";
+    } catch {
+      routeCode = "";
+    }
+    const matched = routeRows.find((row: any) => {
+      const route = row.route || {};
+      return String(route.id) === routeId
+        || String(route.routeId) === routeId
+        || (!!routeCode && String(route.code || route.routeCode).toLowerCase() === routeCode.toLowerCase());
+    });
     window.sessionStorage.removeItem("unibus:assistant:route-preview");
+    window.sessionStorage.removeItem("unibus:assistant:route-preview-context");
+    if (!matched) return;
+    setSelectedJourneyId("");
+    setSelectedRoutePreviewId(String(matched.route.id ?? matched.route.routeId));
   }, [routeRows]);
 
   useEffect(() => {
@@ -4113,8 +4127,6 @@ function AIScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => v
               { bg: "#ff8c5f", fg: "#14140f", label: "#3 THAM KHẢO" },
             ];
             const rank = rankColors[idx] ?? { bg: "#14140f", fg: "#beff50", label: `#${idx + 1}` };
-            const confidence = r.confidence ?? getConfidence(idx, results.length);
-            const matchScore = getMatchScore(r, idx);
             const reason = getReason(r);
             const fare = r.finalFare ?? r.monthlyFare ?? r.singleFare ?? route.fare ?? 0;
 
@@ -4151,37 +4163,6 @@ function AIScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => v
                   <p className="text-sm opacity-90 bg-white/10 rounded-xl p-3 mb-4">
                     {reason}
                   </p>
-
-                  {/* Độ tin cậy + Điểm phù hợp */}
-                  <div className="grid sm:grid-cols-2 gap-4 mb-4 min-w-0">
-                    <div>
-                      <div className="flex items-center justify-between text-xs mb-1.5">
-                        <span className="opacity-70">Độ tin cậy</span>
-                        <span className="font-bold">{confidence}%</span>
-                      </div>
-                      <div className="h-2 rounded-full bg-white/15 overflow-hidden">
-                        <motion.div
-                          className="h-full rounded-full"
-                          style={{ backgroundColor: rank.fg }}
-                          initial={{ width: 0 }}
-                          animate={{ width: `${confidence}%` }}
-                          transition={{ type: "spring", stiffness: 120, damping: 20, delay: 0.2 + idx * 0.1 }}
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs opacity-70 mb-1.5">Điểm phù hợp</p>
-                      <div className="flex items-center gap-1">
-                        {[1, 2, 3, 4, 5].map((star) => (
-                          <Star
-                            key={star}
-                            className={cn("size-4", star <= matchScore ? "fill-current" : "opacity-25")}
-                          />
-                        ))}
-                        <span className="ml-2 text-xs font-bold">{matchScore}/5</span>
-                      </div>
-                    </div>
-                  </div>
 
                   {/* Action */}
                   <div className="flex items-center justify-between gap-3 pt-3 border-t border-white/15 min-w-0">
@@ -4286,23 +4267,31 @@ function ToolTracePanel({
   );
 }
 
+function sanitizeAssistantCopy(text: string) {
+  return text
+    .replace(/\bLý do:\s*/gi, "")
+    .replace(/\b(?:Đi qua đúng trạm lên và trạm xuống|Có trạm lên và trạm xuống|Có trợ giá cho sinh viên)\b[,\s]*/gi, "")
+    .replace(/\bchuyến gần nhất:\s*chưa có lịch gần nhất\.?/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+([,.;:])/g, "$1")
+    .trim();
+}
+function isLongChatBubble(text: string) {
+  const safeText = sanitizeAssistantCopy(text);
+  return safeText.length > 92 || safeText.includes("\n");
+}
 function AssistantText({ text, streaming }: { text: string; streaming?: boolean }) {
   const reducedMotion = useReducedMotion();
   if (!text) {
-    return (
-      <span className="inline-flex items-center gap-1 text-on-surface-variant" aria-label="Đang chờ phản hồi">
-        <span className="size-1.5 rounded-full bg-current opacity-50" />
-        <span className="size-1.5 rounded-full bg-current opacity-70" />
-        <span className="size-1.5 rounded-full bg-current opacity-50" />
-      </span>
-    );
+    return null;
   }
+  const safeText = sanitizeAssistantCopy(text);
   if (reducedMotion || !streaming) {
-    return <p className="whitespace-pre-wrap">{text}</p>;
+    return <p className="whitespace-pre-wrap">{safeText}</p>;
   }
   return (
     <p className="whitespace-pre-wrap">
-      {text.split(/(\s+)/).map((part, index) => (
+      {safeText.split(/(\s+)/).map((part, index) => (
         <motion.span
           key={`${part}-${index}`}
           initial={{ opacity: 0, y: 3 }}
@@ -4313,6 +4302,33 @@ function AssistantText({ text, streaming }: { text: string; streaming?: boolean 
         </motion.span>
       ))}
     </p>
+  );
+}
+
+function AssistantThinkingBubble({ traceEvents }: { traceEvents?: AiTraceEvent[] }) {
+  const reducedMotion = useReducedMotion();
+  const latestEvent = [...(traceEvents || [])]
+    .reverse()
+    .find((event) => event.type === "tool.started" || event.type === "tool.completed");
+  const label = latestEvent?.detail || latestEvent?.label || "Đang chuẩn bị phản hồi";
+
+  return (
+    <div className="inline-flex w-fit max-w-full items-center gap-2.5 rounded-[22px] rounded-tl-lg border border-[#BDFD4F]/30 bg-[#fbfbf7] px-3.5 py-2.5 shadow-[0_12px_30px_rgba(20,20,15,0.06)]">
+      <span className="inline-flex shrink-0 items-center gap-1" aria-label="Copilot đang suy nghĩ">
+        {[0, 1, 2].map((index) => (
+          <motion.span
+            key={index}
+            className="size-2 rounded-full bg-[#14140f]/35"
+            animate={reducedMotion ? { opacity: 0.65 } : { opacity: [0.3, 0.9, 0.3], y: [0, -3, 0] }}
+            transition={{ duration: 0.9, repeat: Infinity, delay: index * 0.12, ease: "easeInOut" }}
+          />
+        ))}
+      </span>
+      <span className="grid size-6 shrink-0 place-items-center rounded-full bg-[#BDFD4F]/60 text-[#4B651F] ring-1 ring-[#BDFD4F]/80">
+        <ToolGlyph tool={latestEvent?.tool} className="size-3.5" />
+      </span>
+      <span className="min-w-0 max-w-[180px] truncate text-sm font-semibold text-[#6f6b63]">{label}</span>
+    </div>
   );
 }
 
@@ -4332,11 +4348,12 @@ function AiRouteResultCard({
   const monthlyFare = route.finalFare ?? route.monthlyFare;
   const departure = route.nextDepartures?.[0];
   const meaningfulReasons = (route.reasons || [])
+    .map((reason) => sanitizeAssistantCopy(reason || ""))
     .filter((reason) => reason && !/phù hợp với dữ liệu tuyến hiện tại/i.test(reason))
     .slice(0, 2);
+  const primaryReason = meaningfulReasons[0];
   const metrics = [
-    departure ? { label: "Chuyến gần nhất", value: departure } : null,
-    stops.length ? { label: "Số trạm", value: String(stops.length) } : null,
+    departure ? { label: "Gần nhất", value: sanitizeAssistantCopy(departure) } : null,
     route.singleFare != null ? { label: "Vé lượt", value: formatVND(route.singleFare) } : null,
     monthlyFare != null ? { label: "Vé tháng", value: formatVND(monthlyFare) } : null,
   ].filter(Boolean) as { label: string; value: string }[];
@@ -4357,67 +4374,66 @@ function AiRouteResultCard({
     <motion.article
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.22, delay: Math.min(index * 0.04, 0.12), ease: "easeOut" }}
-      className="w-full max-w-[420px] overflow-hidden rounded-2xl border border-outline-variant bg-surface text-on-surface"
+      transition={{ duration: 0.2, delay: Math.min(index * 0.035, 0.1), ease: "easeOut" }}
+      className="w-full max-w-[560px] rounded-[22px] border border-[#14140f]/10 bg-[#fffef9] p-3 text-on-surface shadow-[0_4px_10px_rgba(20,20,15,0.03)]"
     >
-      <div className="p-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              {(route.routeCode || route.routeId) && (
-                <span className="inline-flex h-6 items-center rounded-full bg-[#14140f] px-2.5 text-[11px] font-bold text-[#beff50]">
-                  {route.routeCode || `T-${route.routeId}`}
-                </span>
-              )}
-              {route.confidence != null && (
-                <span className="text-xs font-medium text-on-surface-variant">{route.confidence}% phù hợp</span>
-              )}
-            </div>
-            <h3 className="mt-2 text-sm font-semibold leading-5">{route.routeName}</h3>
-          </div>
-          <Bus className="size-5 shrink-0 text-on-surface-variant" />
+      <div className="flex items-start gap-3">
+        <div className="grid size-9 shrink-0 place-items-center rounded-2xl bg-[#14140f] text-[#BDFD4F]">
+          <Bus className="size-4" />
         </div>
 
-        {!!meaningfulReasons.length && (
-          <p className="mt-2 text-xs leading-5 text-on-surface-variant">
-            {meaningfulReasons.join(" · ")}
-          </p>
-        )}
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            {(route.routeCode || route.routeId) && (
+              <span className="inline-flex h-5 shrink-0 items-center rounded-full bg-[#BDFD4F]/28 px-2 text-[10px] font-extrabold text-[#4B651F] ring-1 ring-[#BDFD4F]/50">
+                {route.routeCode || `T-${route.routeId}`}
+              </span>
+            )}
+            {index === 0 && (
+              <span className="hidden h-5 shrink-0 items-center rounded-full bg-[#14140f]/6 px-2 text-[10px] font-bold text-on-surface-variant sm:inline-flex">
+                Tốt nhất
+              </span>
+            )}
+            <h3 className="min-w-0 flex-1 truncate text-sm font-semibold leading-5 tracking-[-0.01em]">{route.routeName}</h3>
+          </div>
 
-        {!!metrics.length && (
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {metrics.slice(0, 3).map((metric) => (
-              <div key={metric.label} className="min-w-0 rounded-xl bg-surface-container-low px-2.5 py-2">
-                <p className="text-[10px] text-on-surface-variant">{metric.label}</p>
-                <p className="mt-1 truncate text-xs font-bold">{metric.value}</p>
+          {primaryReason && (
+            <p className="mt-1.5 line-clamp-1 text-xs leading-5 text-on-surface-variant">{primaryReason}</p>
+          )}
+
+          {!!metrics.length && (
+            <div className="mt-2 flex min-w-0 flex-wrap gap-1.5">
+              {metrics.slice(0, 4).map((metric) => (
+                <div key={metric.label} className="inline-flex min-h-8 items-center gap-1.5 rounded-full bg-surface px-2.5 text-xs ring-1 ring-[#14140f]/7">
+                  <span className="text-[10px] font-medium text-on-surface-variant">{metric.label}</span>
+                  <span className="font-bold text-on-surface">{metric.value}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="mt-2 flex items-center justify-between gap-2">
+            {route.subsidyAmount != null && route.subsidyAmount > 0 ? (
+              <div className="inline-flex min-h-8 min-w-0 items-center gap-2 rounded-full bg-[#BDFD4F]/16 px-2.5 text-xs ring-1 ring-[#BDFD4F]/35">
+                <span className="truncate font-medium text-[#5B6E2A]">Trợ giá</span>
+                <span className="font-bold text-on-surface">-{formatVND(route.subsidyAmount)}</span>
               </div>
-            ))}
-          </div>
-        )}
+            ) : <span />}
 
-        {route.subsidyAmount != null && route.subsidyAmount > 0 && (
-          <div className="mt-2 flex items-center justify-between gap-3 rounded-xl bg-[#beff50]/12 px-3 py-2 text-xs">
-            <span className="text-on-surface-variant">Trợ giá sinh viên</span>
-            <span className="font-bold text-on-surface">-{formatVND(route.subsidyAmount)}</span>
+            <button
+              type="button"
+              onClick={viewOnMap}
+              className="inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-full bg-[#14140f] px-3 text-xs font-semibold text-[#BDFD4F] transition-all duration-150 hover:-translate-y-0.5 hover:bg-[#22221a] active:translate-y-0 active:scale-[0.98]"
+            >
+              Xem tuyến
+              <ArrowRight className="size-3.5" />
+            </button>
           </div>
-        )}
-      </div>
-
-      <div className="border-t border-outline-variant bg-surface-container-low px-3 py-2.5">
-        <button
-          type="button"
-          onClick={viewOnMap}
-          className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#14140f] px-3 text-xs font-semibold text-[#BDFD4F] transition-opacity hover:opacity-90"
-        >
-          <MapPinned className="size-4" />
-          Xem tuyến
-          <ArrowRight className="size-3.5" />
-        </button>
+        </div>
       </div>
     </motion.article>
   );
 }
-
 type AssistantMessage = {
   role: "user" | "bot";
   text: string;
@@ -4448,7 +4464,9 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const toolDismissTimers = useRef<Record<string, number>>({});
+  const shouldRefocusInput = useRef(false);
 
   useEffect(() => () => {
     Object.values(toolDismissTimers.current).forEach((timer) => window.clearTimeout(timer));
@@ -4502,6 +4520,7 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
     setMessages((m) => [...m, userMsg, botDraft]);
     setInput("");
     setLoading(true);
+    shouldRefocusInput.current = true;
     const payload = {
       message: userMsg.text,
       context: {
@@ -4658,7 +4677,7 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -6 }}
                 transition={{ duration: 0.2, ease: "easeOut" }}
-                className={cn("flex min-w-0 gap-2 sm:gap-3", m.role === "user" && "justify-end")}
+                className={cn("flex min-w-0 gap-2 sm:gap-3", m.role === "user" ? "justify-end" : "items-start")}
               >
                 {m.role === "bot" && (
                   <span className={cn(
@@ -4677,36 +4696,47 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                     )}
                   </span>
                 )}
-                <div
-                  className={cn(
-                    "min-w-0 max-w-[92%] break-words text-sm leading-relaxed sm:max-w-[78%]",
-                    m.role === "user"
-                      ? "rounded-[28px] bg-[#14140f] px-4 py-3 text-[#BDFD4F]"
-                      : "rounded-[28px] border border-outline-variant bg-surface px-4 py-3 text-on-surface"
-                  )}
-                >
-                  {m.role === "bot" ? <AssistantText text={m.text} streaming={m.streaming} /> : <p className="whitespace-pre-wrap">{m.text}</p>}
-                  {m.role === "bot" && (
-                    <>
+                <div className={cn("min-w-0 break-words text-sm leading-relaxed", m.role === "bot" ? "max-w-[min(680px,82%)]" : "max-w-[92%] sm:max-w-[78%]")}>
+                  <div
+                    className={cn(
+                      "px-4 py-3",
+                      m.role === "user"
+                        ? "bg-[#14140f] text-[#BDFD4F]"
+                        : "border border-[#14140f]/10 bg-[#fffefb] text-on-surface",
+                      isLongChatBubble(m.text)
+                        ? "rounded-[28px]"
+                        : "rounded-[999px]"
+                    )}
+                  >
+                    {m.role === "bot"
+                      ? m.text
+                        ? <AssistantText text={m.text} streaming={m.streaming} />
+                        : <AssistantThinkingBubble traceEvents={m.traceEvents} />
+                      : <p className="whitespace-pre-wrap">{m.text}</p>}
+                    {m.role === "bot" && m.text && (
                       <ToolTracePanel
                         traceEvents={m.traceEvents}
                         mode={m.mode}
                         providerStatus={m.providerStatus}
                         streaming={m.toolActive}
                       />
-                      {!!m.routeSuggestions?.length && (
-                        <div className="mt-3 space-y-2">
-                          {m.routeSuggestions.slice(0, 3).map((route, routeIndex) => (
-                            <AiRouteResultCard
-                              key={route.routeId}
-                              route={route}
-                              index={routeIndex}
-                              onNavigate={onNavigate}
-                            />
-                          ))}
-                        </div>
-                      )}
-                    </>
+                    )}
+                  </div>
+                  {m.role === "bot" && !!m.routeSuggestions?.length && (
+                    <div className="mt-2.5 space-y-2 pl-1">
+                      <div className="flex items-center gap-2 px-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-on-surface-variant/80">
+                        <Sparkles className="size-3.5 text-[#84a91f]" />
+                        Tuyến được đề xuất
+                      </div>
+                      {m.routeSuggestions.slice(0, 3).map((route, routeIndex) => (
+                        <AiRouteResultCard
+                          key={route.routeId}
+                          route={route}
+                          index={routeIndex}
+                          onNavigate={onNavigate}
+                        />
+                      ))}
+                    </div>
                   )}
                 </div>
                 {m.role === "user" && (
@@ -4720,17 +4750,17 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
         </div>
 
         {messages.length <= 1 && (
-          <div className="border-t border-outline-variant bg-surface px-4 py-3 sm:px-5">
-            <div className="flex gap-2 overflow-x-auto pb-1">
+          <div className="overflow-hidden border-t border-outline-variant bg-surface px-4 py-3 sm:px-5">
+            <div className="grid min-w-0 grid-cols-2 gap-2 lg:grid-cols-4">
               {CHATBOT_SUGGESTIONS.map((suggestion) => (
                 <button
                   key={suggestion}
                   type="button"
                   onClick={() => send(suggestion)}
                   disabled={loading || !sessionReady}
-                  className="shrink-0 rounded-full border border-outline-variant bg-surface px-3 py-2 text-xs font-medium text-on-surface transition-colors hover:bg-surface-container-high disabled:opacity-50"
+                  className="min-h-14 min-w-0 rounded-2xl border border-outline-variant bg-surface px-3 py-2.5 text-left text-[11px] font-semibold leading-snug text-on-surface transition-colors hover:bg-surface-container-high disabled:opacity-50 sm:text-xs"
                 >
-                  {suggestion}
+                  <span className="block line-clamp-2 whitespace-normal">{suggestion}</span>
                 </button>
               ))}
             </div>
@@ -4745,10 +4775,11 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
           }}
         >
           <Input
+            ref={inputRef}
             placeholder={loading ? "Copilot đang phản hồi..." : "Hỏi về tuyến xe, điểm đến, giá vé, lịch chạy..."}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            disabled={loading || !sessionReady}
+            readOnly={loading || !sessionReady}
             className="min-h-12 flex-1 rounded-2xl border-outline-variant bg-surface px-4"
           />
           <ExpressiveButton variant="filled" size="icon" type="submit" disabled={loading || !sessionReady || !input.trim()} className="size-12 rounded-2xl">
