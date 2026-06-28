@@ -18,7 +18,18 @@ public interface RouteRegistrationRepository extends JpaRepository<RouteRegistra
             String studentCode, List<RegistrationStatus> statuses);
 
     @EntityGraph(attributePaths = { "route", "boardingStop", "alightingStop" })
+    List<RouteRegistration> findByStudentStudentCodeAndStatusInOrderByRegisteredAtDesc(
+            String studentCode, List<RegistrationStatus> statuses);
+
+    @EntityGraph(attributePaths = { "route", "boardingStop", "alightingStop" })
     Optional<RouteRegistration> findByIdAndStudentStudentCode(Integer registrationId, String studentCode);
+
+    boolean existsByStudentStudentCodeAndRouteIdAndBoardingStopIdAndAlightingStopIdAndStatusIn(
+            String studentCode,
+            Integer routeId,
+            Integer boardingStopId,
+            Integer alightingStopId,
+            List<RegistrationStatus> statuses);
 
     @Query(value = """
             SELECT COUNT(*)

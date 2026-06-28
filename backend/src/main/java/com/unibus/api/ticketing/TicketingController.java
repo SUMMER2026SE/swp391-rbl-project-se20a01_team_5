@@ -14,8 +14,10 @@ import org.springframework.web.bind.annotation.RestController;
 import com.unibus.api.common.ApiResponse;
 import com.unibus.api.security.CurrentUser;
 import com.unibus.api.ticketing.TicketingDtos.CreateVnpayPaymentRequest;
+import com.unibus.api.ticketing.TicketingDtos.JourneyOrderView;
 import com.unibus.api.ticketing.TicketingDtos.PassesDashboard;
 import com.unibus.api.ticketing.TicketingDtos.PaymentView;
+import com.unibus.api.ticketing.TicketingDtos.PurchaseJourneyPassRequest;
 import com.unibus.api.ticketing.TicketingDtos.PurchaseMonthlyPassRequest;
 import com.unibus.api.ticketing.TicketingDtos.PurchaseSingleTripTicketRequest;
 import com.unibus.api.ticketing.TicketingDtos.SingleTripTicketView;
@@ -46,6 +48,14 @@ public class TicketingController {
             @AuthenticationPrincipal CurrentUser currentUser,
             @Valid @RequestBody(required = false) PurchaseMonthlyPassRequest request) {
         return ApiResponse.ok("Monthly pass purchased", ticketingService.purchaseMonthlyPass(currentUser, request));
+    }
+
+    @PostMapping("/tickets/journey-monthly-pass")
+    ApiResponse<JourneyOrderView> purchaseJourneyMonthlyPass(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @Valid @RequestBody PurchaseJourneyPassRequest request) {
+        return ApiResponse.ok("Journey pass purchased",
+                ticketingService.purchaseJourneyMonthlyPass(currentUser, request));
     }
 
     @PostMapping("/tickets/single-trip")

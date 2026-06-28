@@ -26,6 +26,10 @@ export function ProfileScreen() {
   const profile = useApiResource<UserProfile>(loader);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<Partial<UserProfile>>({});
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordSaving, setPasswordSaving] = useState(false);
 
   const data = profile.data;
   const display = { ...data, ...form } as UserProfile;
@@ -50,6 +54,21 @@ export function ProfileScreen() {
     }
   };
 
+  const changePassword = async () => {
+    setPasswordSaving(true);
+    try {
+      await profileApi.changePassword({ currentPassword, newPassword, confirmPassword });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      toast.success("Đã đổi mật khẩu");
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Không thể đổi mật khẩu"));
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
+
   return (
     <div>
       <PageHeader
@@ -61,25 +80,49 @@ export function ProfileScreen() {
       <AsyncBlock resource={profile}>
         {() => (
           <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
-            <ExpressiveCard variant="elevated" className="space-y-4 p-5">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Họ tên">
-                  <Input value={display.fullName || ""} onChange={(e) => setForm((f) => ({ ...f, fullName: e.target.value }))} />
+            <div className="space-y-4">
+              <ExpressiveCard variant="elevated" className="space-y-4 p-5">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Họ tên">
+                    <Input value={display.fullName || ""} onChange={(e) => setForm((f) => ({ ...f, fullName: e.target.value }))} />
+                  </Field>
+                  <Field label="Email">
+                    <Input value={display.email || ""} disabled />
+                  </Field>
+                  <Field label="Số điện thoại">
+                    <Input value={display.phoneNumber || ""} onChange={(e) => setForm((f) => ({ ...f, phoneNumber: e.target.value }))} />
+                  </Field>
+                  <Field label="Vai trò">
+                    <Input value={display.role || ""} disabled />
+                  </Field>
+                </div>
+                <Field label="Địa chỉ">
+                  <Textarea value={display.address || ""} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} />
                 </Field>
-                <Field label="Email">
-                  <Input value={display.email || ""} disabled />
-                </Field>
-                <Field label="Số điện thoại">
-                  <Input value={display.phoneNumber || ""} onChange={(e) => setForm((f) => ({ ...f, phoneNumber: e.target.value }))} />
-                </Field>
-                <Field label="Vai trò">
-                  <Input value={display.role || ""} disabled />
-                </Field>
-              </div>
-              <Field label="Địa chỉ">
-                <Textarea value={display.address || ""} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} />
-              </Field>
-            </ExpressiveCard>
+              </ExpressiveCard>
+
+              <ExpressiveCard variant="elevated" className="space-y-4 p-5">
+                <div className="flex items-center gap-2">
+                  <KeyRound className="size-5 text-primary" />
+                  <h3 className="font-bold text-on-surface">Mật khẩu</h3>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <Field label="Mật khẩu hiện tại">
+                    <Input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+                  </Field>
+                  <Field label="Mật khẩu mới">
+                    <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+                  </Field>
+                  <Field label="Nhập lại">
+                    <Input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+                  </Field>
+                </div>
+                <ExpressiveButton onClick={changePassword} disabled={passwordSaving || !newPassword || !confirmPassword}>
+                  <KeyRound className="size-4" />
+                  {passwordSaving ? "Đang đổi..." : "Đổi mật khẩu"}
+                </ExpressiveButton>
+              </ExpressiveCard>
+            </div>
 
             <div className="space-y-4">
               <StatCard label="Trạng thái tài khoản" value={<StatusPill status={display.status} />} icon={<Check className="size-6" />} accent="success" />

@@ -1,187 +1,188 @@
 package com.unibus.api.ai;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Optional;
+import java.util.Locale;
 
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
-/**
- * Rule-based route suggestion service for REQ-STU-016.
- *
- * <p>This is intentionally a lightweight rule-based implementation that ranks the
- * student's available routes by:
- * <ol>
- *   <li>Frequency (more frequent = better) - higher priority for routes with more daily trips</li>
- *   <li>Estimated duration - shorter routes rank higher</li>
- *   <li>Distance - shorter routes rank higher</li>
- *   <li>Has subsidy policy attached - routes with subsidy rank higher</li>
- * </ol>
- *
- * <p>The user-supplied preference string is parsed for keywords like "nhanh" (fast),
- * "rẻ" (cheap), "gần" (near) to bias the ranking.
- *
- * <p>For production-grade AI suggestions, replace this with a call to an LLM or
- * a recommendation model trained on historical trip data.
- */
+import com.unibus.api.ai.AiDtos.AiAction;
+import com.unibus.api.ai.AiDtos.RouteSuggestionCard;
+import com.unibus.api.ai.AiDtos.RouteSuggestionRequest;
+import com.unibus.api.ai.AiKnowledgeRepository.RegistrationSnapshot;
+import com.unibus.api.ai.AiKnowledgeRepository.RouteCandidate;
+import com.unibus.api.ai.AiKnowledgeRepository.StudentContext;
+
 @Service
 public class RouteSuggestionService {
 
-    private final JdbcTemplate jdbcTemplate;
+    private final AiKnowledgeRepository knowledgeRepository;
 
-    public RouteSuggestionService(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = jdbcTemplate;
+    public RouteSuggestionService(AiKnowledgeRepository knowledgeRepository) {
+        this.knowledgeRepository = knowledgeRepository;
     }
 
-    public List<RouteSuggestionCard> suggest(Integer userId, Integer boardingStopId,
-            Integer alightingStopId, String preference) {
-        // Pull the student's linked routes (filtered by university linkage).
-        List<RouteSuggestionCard> candidates = fetchCandidateRoutes(userId, boardingStopId, alightingStopId);
-        if (candidates.isEmpty()) {
-            return List.of();
-        }
-
-        ScoreContext ctx = parsePreference(preference);
-        candidates.sort(Comparator
-                .comparingDouble((RouteSuggestionCard r) -> score(r, ctx))
-                .reversed()
-                .thenComparing(r -> r.routeName));
-
-        return candidates.size() > 5 ? candidates.subList(0, 5) : candidates;
+    public List<RouteSuggestionCard> suggest(Integer userId, RouteSuggestionRequest request) {
+        StudentContext student = knowledgeRepository.studentContext(userId);
+        RegistrationSnapshot registration = knowledgeRepository.currentRegistration(student.studentCode()).orElse(null);
+        LocalTime preferredTime = parseTime(request == null ? null : request.preferredDepartureTime());
+        Preference preference = Preference.from(request);
+        Integer boardingStopId = request == null ? null : request.boardingStopId();
+        Integer alightingStopId = request == null ? null : request.alightingStopId();
+        boolean requiresDirectMatch = boardingStopId != null && alightingStopId != null;
+        return knowledgeRepository.candidateRoutes(student).stream()
+                .map(route -> score(route, registration, boardingStopId, alightingStopId, preferredTime, preference))
+                .filter(card -> !requiresDirectMatch || matchesRequestedStops(card, boardingStopId, alightingStopId))
+                .sorted(Comparator.comparing(RouteSuggestionCard::score).reversed()
+                        .thenComparing(RouteSuggestionCard::routeName))
+                .limit(5)
+                .toList();
     }
 
-    private double score(RouteSuggestionCard r, ScoreContext ctx) {
-        double score = 0;
-        // Base score for being a candidate
-        score += 10;
-        // Subsidy bonus
-        if (r.hasSubsidy) score += 20;
-        // Frequency bonus (more frequent = better, capped at 30 min headway)
-        if (r.frequencyMin != null && r.frequencyMin > 0) {
-            score += Math.max(0, 30 - r.frequencyMin) * 0.5;
+    private RouteSuggestionCard score(
+            RouteCandidate route,
+            RegistrationSnapshot registration,
+            Integer boardingStopId,
+            Integer alightingStopId,
+            LocalTime preferredTime,
+            Preference preference) {
+        List<String> reasons = new ArrayList<>();
+        double score = 20;
+        if (route.universityLinked()) {
+            score += 25;
+            reasons.add("Tuyến liên kết với trường của bạn");
         }
-        // Duration bonus
-        if (r.estimatedMinutes != null) {
-            score += Math.max(0, 60 - r.estimatedMinutes) * 0.3;
+        StopMatch match = stopMatch(route, boardingStopId, alightingStopId);
+        if (match.direct()) {
+            score += 35;
+            reasons.add("Đi qua đúng trạm lên và trạm xuống");
+        } else if (boardingStopId != null || alightingStopId != null) {
+            score -= 30;
+            reasons.add("Không đi qua đủ hai trạm");
         }
-        // Distance bonus (closer = better)
-        if (r.distanceKm != null) {
-            score += Math.max(0, 20 - r.distanceKm.doubleValue()) * 0.4;
+        if (registration != null && registration.routeId().equals(route.routeId())) {
+            score += 10;
+            reasons.add("Trùng tuyến bạn đang đăng ký");
         }
-        // Fare bonus - cheaper is better unless user wants premium
-        if (r.finalFare != null) {
-            if (ctx.preferCheap) {
-                score += Math.max(0, 200000 - r.finalFare.longValue()) * 0.0001;
+        if (route.frequencyMin() != null && route.frequencyMin() > 0) {
+            score += Math.max(0, 30 - route.frequencyMin()) * (preference.fast ? 0.9 : 0.45);
+            if (route.frequencyMin() <= 15) {
+                reasons.add("Tần suất chuyến cao");
             }
         }
-        // Preference biases
-        if (ctx.preferFast && r.estimatedMinutes != null) {
-            score += Math.max(0, 60 - r.estimatedMinutes) * 0.4;
+        if (route.estimatedMinutes() != null) {
+            score += Math.max(0, 75 - route.estimatedMinutes()) * (preference.fast ? 0.7 : 0.35);
+            if (route.estimatedMinutes() <= 30) {
+                reasons.add("Thời gian di chuyển ngắn");
+            }
         }
-        if (ctx.preferNear && r.distanceKm != null) {
-            score += Math.max(0, 20 - r.distanceKm.doubleValue()) * 0.5;
+        if (route.finalFare() != null && route.finalFare().compareTo(BigDecimal.ZERO) > 0) {
+            double fareBonus = Math.max(0, 250000 - route.finalFare().doubleValue()) / 10000;
+            score += preference.cheap ? fareBonus * 1.5 : fareBonus * 0.5;
         }
-        // Reason text
-        List<String> reasons = new ArrayList<>();
-        if (r.hasSubsidy) reasons.add("Có trợ giá");
-        if (r.frequencyMin != null && r.frequencyMin <= 15) reasons.add("Tần suất chuyến cao");
-        if (r.estimatedMinutes != null && r.estimatedMinutes <= 30) reasons.add("Thời gian đi ngắn");
-        if (r.distanceKm != null && r.distanceKm.doubleValue() <= 10) reasons.add("Quãng đường gần");
-        r.reasons = String.join("; ", reasons);
-        return score;
+        if (route.subsidyAmount() != null && route.subsidyAmount().compareTo(BigDecimal.ZERO) > 0) {
+            score += 12;
+            reasons.add("Có trợ giá cho sinh viên");
+        }
+        if (preference.fewerStops && route.stops() != null) {
+            score += Math.max(0, 15 - route.stops().size());
+        }
+        List<String> nextDepartures = knowledgeRepository.departureTimes(route.routeId(), preferredTime);
+        if (!nextDepartures.isEmpty()) {
+            score += 8;
+            reasons.add("Có chuyến gần khung giờ bạn cần");
+        }
+        int confidence = Math.max(45, Math.min(98, (int) Math.round(score)));
+        if (reasons.isEmpty()) {
+            reasons.add("Phù hợp với dữ liệu tuyến hiện tại");
+        }
+        List<AiAction> actions = List.of(
+                new AiAction("REGISTER_ROUTE", "Đăng ký tuyến", route.routeId(), boardingStopId, alightingStopId),
+                new AiAction("BUY_MONTHLY_PASS", "Mua vé tháng", route.routeId(), boardingStopId, alightingStopId),
+                new AiAction("VIEW_ETA", "Xem ETA", route.routeId(), boardingStopId, alightingStopId));
+        return new RouteSuggestionCard(
+                route.routeId(),
+                route.routeCode(),
+                route.routeName(),
+                BigDecimal.valueOf(score).setScale(2, RoundingMode.HALF_UP),
+                confidence,
+                reasons.stream().distinct().toList(),
+                route.stops(),
+                nextDepartures,
+                route.singleFare(),
+                route.monthlyFare(),
+                route.subsidyAmount(),
+                route.finalFare(),
+                actions);
     }
 
-    private ScoreContext parsePreference(String preference) {
-        ScoreContext ctx = new ScoreContext();
-        if (preference == null) return ctx;
-        String p = preference.toLowerCase();
-        ctx.preferFast = p.contains("nhanh") || p.contains("fast") || p.contains("quick");
-        ctx.preferCheap = p.contains("rẻ") || p.contains("cheap") || p.contains("tiết kiệm");
-        ctx.preferNear = p.contains("gần") || p.contains("near") || p.contains("short");
-        return ctx;
+    private boolean matchesRequestedStops(RouteSuggestionCard card, Integer boardingStopId, Integer alightingStopId) {
+        StopMatch match = stopMatch(card.stops(), boardingStopId, alightingStopId);
+        return match.direct();
     }
 
-    private List<RouteSuggestionCard> fetchCandidateRoutes(Integer userId, Integer boardingStopId,
-            Integer alightingStopId) {
-        // Use the student's university-linked routes only.
-        String sql = """
-                SELECT DISTINCT r.route_id, r.route_name, r.route_code, r.color_hex,
-                       r.distance_km, r.estimated_minutes, r.frequency_min,
-                       COALESCE(f.amount, 0) AS final_fare,
-                       (sp.subsidy_policy_id IS NOT NULL) AS has_subsidy
-                FROM routes r
-                JOIN route_universities ru ON ru.route_id = r.route_id AND ru.status = 'ACTIVE'
-                JOIN students s ON s.university_id = ru.university_id
-                LEFT JOIN LATERAL (
-                    SELECT amount
-                    FROM fares
-                    WHERE route_id = r.route_id AND fare_type = 'MONTHLY'
-                      AND effective_from <= CURRENT_DATE
-                      AND (effective_until IS NULL OR effective_until >= CURRENT_DATE)
-                    ORDER BY effective_from DESC LIMIT 1
-                ) f ON TRUE
-                LEFT JOIN LATERAL (
-                    SELECT subsidy_policy_id
-                    FROM subsidy_policies
-                    WHERE university_id = s.university_id
-                      AND status = 'ACTIVE'
-                      AND active_from <= CURRENT_DATE
-                      AND (active_until IS NULL OR active_until >= CURRENT_DATE)
-                    ORDER BY active_from DESC LIMIT 1
-                ) sp ON TRUE
-                WHERE s.user_id = ?
-                  AND r.status = 'ACTIVE'
-                ORDER BY r.route_name
-                """;
-        return jdbcTemplate.query(sql, (rs, rowNum) -> new RouteSuggestionCard(
-                rs.getInt("route_id"),
-                rs.getString("route_name"),
-                rs.getString("route_code"),
-                rs.getString("color_hex"),
-                (BigDecimal) rs.getObject("distance_km"),
-                (Integer) rs.getObject("estimated_minutes"),
-                (Integer) rs.getObject("frequency_min"),
-                (BigDecimal) rs.getObject("final_fare"),
-                rs.getBoolean("has_subsidy"),
-                boardingStopId != null && alightingStopId != null), userId);
+    private StopMatch stopMatch(RouteCandidate route, Integer boardingStopId, Integer alightingStopId) {
+        return stopMatch(route.stops(), boardingStopId, alightingStopId);
     }
 
-    private static class ScoreContext {
-        boolean preferFast;
-        boolean preferCheap;
-        boolean preferNear;
+    private StopMatch stopMatch(List<AiDtos.RouteStopCard> stops, Integer boardingStopId, Integer alightingStopId) {
+        if (boardingStopId == null && alightingStopId == null) {
+            return new StopMatch(false);
+        }
+        Integer boardingOrder = null;
+        Integer alightingOrder = null;
+        for (AiDtos.RouteStopCard stop : stops == null ? List.<AiDtos.RouteStopCard>of() : stops) {
+            if (boardingStopId != null && boardingStopId.equals(stop.stopId())) {
+                boardingOrder = stop.stopOrder();
+            }
+            if (alightingStopId != null && alightingStopId.equals(stop.stopId())) {
+                alightingOrder = stop.stopOrder();
+            }
+        }
+        if (boardingStopId != null && alightingStopId != null) {
+            return new StopMatch(boardingOrder != null && alightingOrder != null && alightingOrder > boardingOrder);
+        }
+        return new StopMatch(boardingOrder != null || alightingOrder != null);
     }
 
-    public static class RouteSuggestionCard {
-        public final Integer routeId;
-        public final String routeName;
-        public final String routeCode;
-        public final String colorHex;
-        public final BigDecimal distanceKm;
-        public final Integer estimatedMinutes;
-        public final Integer frequencyMin;
-        public final BigDecimal finalFare;
-        public final boolean hasSubsidy;
-        public final boolean directMatch;
-        public String reasons;
+    private LocalTime parseTime(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return LocalTime.parse(value.trim());
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+    }
 
-        public RouteSuggestionCard(Integer routeId, String routeName, String routeCode, String colorHex,
-                BigDecimal distanceKm, Integer estimatedMinutes, Integer frequencyMin,
-                BigDecimal finalFare, boolean hasSubsidy, boolean directMatch) {
-            this.routeId = routeId;
-            this.routeName = routeName;
-            this.routeCode = routeCode;
-            this.colorHex = colorHex;
-            this.distanceKm = distanceKm;
-            this.estimatedMinutes = estimatedMinutes;
-            this.frequencyMin = frequencyMin;
-            this.finalFare = finalFare;
-            this.hasSubsidy = hasSubsidy;
-            this.directMatch = directMatch;
-            this.reasons = "";
+    private record StopMatch(boolean direct) {
+    }
+
+    private record Preference(boolean fast, boolean cheap, boolean fewerStops) {
+        static Preference from(RouteSuggestionRequest request) {
+            String joined = "";
+            if (request != null) {
+                List<String> values = new ArrayList<>();
+                if (request.preferences() != null) {
+                    values.addAll(request.preferences());
+                }
+                values.add(nullToBlank(request.preference()));
+                values.add(nullToBlank(request.naturalLanguageQuery()));
+                joined = String.join(" ", values).toLowerCase(Locale.ROOT);
+            }
+            boolean fast = joined.contains("fast") || joined.contains("nhanh") || joined.contains("sớm");
+            boolean cheap = joined.contains("cheap") || joined.contains("rẻ") || joined.contains("tiết kiệm");
+            boolean fewerStops = joined.contains("fewer") || joined.contains("ít trạm") || joined.contains("ít dừng");
+            return new Preference(fast, cheap, fewerStops);
+        }
+
+        private static String nullToBlank(String value) {
+            return value == null ? "" : value;
         }
     }
 }
