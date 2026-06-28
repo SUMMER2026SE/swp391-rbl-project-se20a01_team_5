@@ -2834,7 +2834,21 @@ function PaymentScreen({ ctx, title }: { ctx: Ctx; title: string }) {
   const [buying, setBuying] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [countdown, setCountdown] = useState(10);
-  const canUseTestPayment = ["OKNIGGA"].includes(String(ctx.user?.studentId || ctx.university?.studentCode || "").toUpperCase());
+  const [canUseTestPayment, setCanUseTestPayment] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    studentApi.university()
+      .then((profile) => {
+        if (!cancelled) setCanUseTestPayment(String(profile.studentCode || "").toUpperCase() === "OKNIGGA");
+      })
+      .catch(() => {
+        if (!cancelled) setCanUseTestPayment(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const reloadTickets = useCallback(async () => {
     setLoading(true);
@@ -2859,6 +2873,7 @@ function PaymentScreen({ ctx, title }: { ctx: Ctx; title: string }) {
   };
 
   const handleBuy = async (type: "monthly" | "single" | "test") => {
+    if (type === "test" && !canUseTestPayment) return;
     try {
       setBuying(true);
       const order = await studentApi.createSePayOrder(type);
@@ -2925,10 +2940,12 @@ function PaymentScreen({ ctx, title }: { ctx: Ctx; title: string }) {
                 {buying ? <RefreshCw className="size-4 animate-spin" /> : <TicketCheck className="size-4" />}
                 Mua vé thường qua SePay
               </ExpressiveButton>
-              <ExpressiveButton variant="outlined" onClick={() => handleBuy("test")} disabled={buying} className="w-full">
-                {buying ? <RefreshCw className="size-4 animate-spin" /> : <CreditCard className="size-4" />}
-                Test thanh toán 3.000 VND
-              </ExpressiveButton>
+              {canUseTestPayment && (
+                <ExpressiveButton variant="outlined" onClick={() => handleBuy("test")} disabled={buying} className="w-full">
+                  {buying ? <RefreshCw className="size-4 animate-spin" /> : <CreditCard className="size-4" />}
+                  Test thanh toán 3.000 VND
+                </ExpressiveButton>
+              )}
               <p className="text-xs font-semibold text-on-surface-variant">Thanh toán an toàn qua cổng SePay tự động.</p>
             </div>
           </ExpressiveCard>
