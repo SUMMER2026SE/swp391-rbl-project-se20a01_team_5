@@ -42,8 +42,10 @@ public class JourneyPlannerService {
 
     private static final ZoneId VIETNAM_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
     private static final int NEAR_STOP_RADIUS_M = 1_200;
+    private static final int MAX_ACCESS_WALK_M = 1_200;
+    private static final int MAX_TOTAL_WALK_M = 1_600;
     private static final int TRANSFER_WALK_RADIUS_M = 280;
-    private static final int MAX_OPTIONS = 8;
+    private static final int MAX_OPTIONS = 2;
 
     private final JdbcTemplate jdbcTemplate;
     private final SubsidyService subsidyService;
@@ -98,13 +100,7 @@ public class JourneyPlannerService {
                 }
             }
         }
-        List<JourneyOption> sorted = options.stream()
-                .sorted(Comparator
-                        .comparingInt((JourneyOption option) -> option.summary().totalMinutes())
-                        .thenComparing(option -> option.summary().transferCount())
-                        .thenComparing(option -> option.summary().walkMeters()))
-                .limit(MAX_OPTIONS)
-                .toList();
+        List<JourneyOption> sorted = bestDistinctOptions(options);
         sorted.forEach(option -> optionCache.put(option.optionId(), option));
         return sorted;
     }
@@ -171,6 +167,40 @@ public class JourneyPlannerService {
         }
     }
 
+    private List<JourneyOption> bestDistinctOptions(List<JourneyOption> options) {
+        Map<String, JourneyOption> bestByRouteSequence = new LinkedHashMap<>();
+        options.stream()
+                .sorted(journeyComparator())
+                .forEach(option -> bestByRouteSequence.putIfAbsent(journeySignature(option), option));
+        return bestByRouteSequence.values().stream()
+                .limit(MAX_OPTIONS)
+                .toList();
+    }
+
+    private Comparator<JourneyOption> journeyComparator() {
+        return Comparator
+                .comparingInt(this::journeyScore)
+                .thenComparingInt((JourneyOption option) -> option.summary().totalMinutes())
+                .thenComparing(option -> option.summary().transferCount())
+                .thenComparing(option -> option.summary().walkMeters());
+    }
+
+    private int journeyScore(JourneyOption option) {
+        int totalMinutes = option.summary().totalMinutes() == null ? 0 : option.summary().totalMinutes();
+        int transfers = option.summary().transferCount() == null ? 0 : option.summary().transferCount();
+        int walkMeters = option.summary().walkMeters() == null ? 0 : option.summary().walkMeters().intValue();
+        int longWalkPenalty = Math.max(0, walkMeters - 800) / 25;
+        return totalMinutes * 10 + transfers * 60 + walkMeters / 35 + longWalkPenalty;
+    }
+
+    private String journeySignature(JourneyOption option) {
+        String routeSequence = option.legs().stream()
+                .filter(leg -> "BUS".equals(leg.mode()))
+                .map(leg -> leg.routeId() == null ? String.valueOf(leg.routeCode()) : String.valueOf(leg.routeId()))
+                .collect(java.util.stream.Collectors.joining(">"));
+        return routeSequence.isBlank() ? option.optionId() : routeSequence;
+    }
+
     private JourneyOption buildOption(ResolvedPoint origin, ResolvedPoint destination,
             List<Segment> busSegments, OffsetDateTime departAt) {
         List<JourneyLeg> legs = new ArrayList<>();
@@ -186,6 +216,9 @@ public class JourneyPlannerService {
 
         Segment first = busSegments.get(0);
         int firstWalk = origin.distanceTo(first.from().stop());
+        if (firstWalk > MAX_ACCESS_WALK_M) {
+            return null;
+        }
         if (firstWalk > 50) {
             JourneyLeg walk = walkingLeg("walk-origin", origin.label(), first.from().stop().name(),
                     origin.lat(), origin.lng(), first.from().stop().lat(), first.from().stop().lng(), firstWalk);
@@ -210,6 +243,9 @@ public class JourneyPlannerService {
 
         Segment last = busSegments.get(busSegments.size() - 1);
         int lastWalk = destination.distanceTo(last.to().stop());
+        if (lastWalk > MAX_ACCESS_WALK_M) {
+            return null;
+        }
         if (lastWalk > 50) {
             JourneyLeg walk = walkingLeg("walk-destination", last.to().stop().name(), destination.label(),
                     last.to().stop().lat(), last.to().stop().lng(), destination.lat(), destination.lng(), lastWalk);
@@ -217,6 +253,9 @@ public class JourneyPlannerService {
             polylines.add(new MapPolyline(walk.legId(), "WALK", "#64748b", walk.shape()));
             totalWalkMeters += lastWalk;
             totalWalkMinutes += walk.durationMinutes();
+        }
+        if (totalWalkMeters > MAX_TOTAL_WALK_M) {
+            return null;
         }
 
         List<RouteReference> routeBadges = busSegments.stream()
