@@ -71,65 +71,79 @@ public class SePayService {
         String studentCode = ticketingRepository.studentCodeForUser(currentUser.userId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Student profile not found"));
 
-        ApprovedRegistration registration = ticketingRepository.approvedRegistration(studentCode, requestedRouteId)
-                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Student must have an approved route registration"));
-        Integer routeId = registration.routeId();
-
+        boolean testOrder = "test".equalsIgnoreCase(ticketType);
+        if (testOrder && !"OKNIGGA".equalsIgnoreCase(studentCode)) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Test payment is not enabled for this user");
+        }
+        String storedTicketType = testOrder ? "single" : ticketType.toLowerCase();
+        ApprovedRegistration registration = null;
+        Integer routeId = null;
         BigDecimal amount;
         BigDecimal originalFare;
         BigDecimal subsidyAmount = BigDecimal.ZERO;
         BigDecimal finalAmount;
         Integer subsidyPolicyId = null;
 
-        if ("monthly".equalsIgnoreCase(ticketType)) {
-            LocalDate now = LocalDate.now();
-            int year = now.getYear();
-            int month = now.getMonthValue();
-
-            // Check if already has active monthly pass to avoid double purchase
-            boolean exists = jdbcTemplate.queryForObject(
-                    "SELECT EXISTS(SELECT 1 FROM monthly_passes WHERE student_code = ? AND route_id = ? AND effective_year = ? AND effective_month = ? AND status = 'ACTIVE')",
-                    Boolean.class, studentCode, routeId, year, month);
-            if (exists) {
-                throw new ApiException(HttpStatus.BAD_REQUEST, "Active monthly pass already exists for this month");
-            }
-
-            BigDecimal baseFare = ticketingRepository.monthlyFare(routeId);
-            MonthlyPassQuote quote = subsidyService.quoteFor(currentUser, routeId, registration.routeName(), baseFare, now);
-
-            if (SubsidyService.STATUS_NOT_VERIFIED.equals(quote.subsidyStatus())) {
-                throw new ApiException(HttpStatus.FORBIDDEN, "Student verification is required before buying a monthly pass");
-            }
-            if (SubsidyService.STATUS_NO_UNIVERSITY.equals(quote.subsidyStatus())) {
-                throw new ApiException(HttpStatus.CONFLICT, "Student university is not linked to a partner university yet");
-            }
-            if (SubsidyService.STATUS_ROUTE_NOT_LINKED.equals(quote.subsidyStatus())) {
-                throw new ApiException(HttpStatus.FORBIDDEN, "Route is not configured for the student's university");
-            }
-
-            amount = quote.finalFareAmount();
-            originalFare = quote.originalFareAmount();
-            subsidyAmount = quote.subsidyAmount();
-            finalAmount = quote.finalFareAmount();
-            subsidyPolicyId = quote.subsidyPolicyId();
-        } else if ("single".equalsIgnoreCase(ticketType)) {
-            // Get single fare for the route, fallback to 7000 if not configured
-            List<BigDecimal> fares = jdbcTemplate.queryForList(
-                    "SELECT amount FROM fares WHERE route_id = ? AND fare_type = 'SINGLE' AND effective_from <= CURRENT_DATE AND (effective_until IS NULL OR effective_until >= CURRENT_DATE) ORDER BY effective_from DESC LIMIT 1",
-                    BigDecimal.class, routeId);
-            BigDecimal singleFare = fares.isEmpty() ? new BigDecimal("7000") : fares.get(0);
-
-            amount = singleFare;
-            originalFare = singleFare;
-            finalAmount = singleFare;
+        if ("test".equalsIgnoreCase(ticketType)) {
+            routeId = jdbcTemplate.queryForObject("SELECT route_id FROM routes ORDER BY route_id LIMIT 1", Integer.class);
+            amount = new BigDecimal("3000");
+            originalFare = amount;
+            finalAmount = amount;
         } else {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid ticket type: " + ticketType);
+            registration = ticketingRepository.approvedRegistration(studentCode, requestedRouteId)
+                    .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Student must have an approved route registration"));
+            routeId = registration.routeId();
+
+            if ("monthly".equalsIgnoreCase(ticketType)) {
+                LocalDate now = LocalDate.now();
+                int year = now.getYear();
+                int month = now.getMonthValue();
+
+                // Check if already has active monthly pass to avoid double purchase
+                boolean exists = jdbcTemplate.queryForObject(
+                        "SELECT EXISTS(SELECT 1 FROM monthly_passes WHERE student_code = ? AND route_id = ? AND effective_year = ? AND effective_month = ? AND status = 'ACTIVE')",
+                        Boolean.class, studentCode, routeId, year, month);
+                if (exists) {
+                    throw new ApiException(HttpStatus.BAD_REQUEST, "Active monthly pass already exists for this month");
+                }
+
+                BigDecimal baseFare = ticketingRepository.monthlyFare(routeId);
+                MonthlyPassQuote quote = subsidyService.quoteFor(currentUser, routeId, registration.routeName(), baseFare, now);
+
+                if (SubsidyService.STATUS_NOT_VERIFIED.equals(quote.subsidyStatus())) {
+                    throw new ApiException(HttpStatus.FORBIDDEN, "Student verification is required before buying a monthly pass");
+                }
+                if (SubsidyService.STATUS_NO_UNIVERSITY.equals(quote.subsidyStatus())) {
+                    throw new ApiException(HttpStatus.CONFLICT, "Student university is not linked to a partner university yet");
+                }
+                if (SubsidyService.STATUS_ROUTE_NOT_LINKED.equals(quote.subsidyStatus())) {
+                    throw new ApiException(HttpStatus.FORBIDDEN, "Route is not configured for the student's university");
+                }
+
+                amount = quote.finalFareAmount();
+                originalFare = quote.originalFareAmount();
+                subsidyAmount = quote.subsidyAmount();
+                finalAmount = quote.finalFareAmount();
+                subsidyPolicyId = quote.subsidyPolicyId();
+            } else if ("single".equalsIgnoreCase(ticketType)) {
+                // Get single fare for the route, fallback to 7000 if not configured
+                List<BigDecimal> fares = jdbcTemplate.queryForList(
+                        "SELECT amount FROM fares WHERE route_id = ? AND fare_type = 'SINGLE' AND effective_from <= CURRENT_DATE AND (effective_until IS NULL OR effective_until >= CURRENT_DATE) ORDER BY effective_from DESC LIMIT 1",
+                        BigDecimal.class, routeId);
+                BigDecimal singleFare = fares.isEmpty() ? new BigDecimal("7000") : fares.get(0);
+
+                amount = singleFare;
+                originalFare = singleFare;
+                finalAmount = singleFare;
+            } else {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid ticket type: " + ticketType);
+            }
         }
 
         // Check for an existing unpaid order with same student_code, ticket_type, route_id and total amount to avoid spamming
         List<Map<String, Object>> existingOrders = jdbcTemplate.queryForList(
-                "SELECT id, total FROM tb_orders WHERE student_code = ? AND ticket_type = ? AND route_id = ? AND payment_status = 'Unpaid' ORDER BY created_at DESC LIMIT 1",
-                studentCode, ticketType.toLowerCase(), routeId);
+                "SELECT id, total FROM tb_orders WHERE student_code = ? AND ticket_type = ? AND route_id IS NOT DISTINCT FROM ? AND payment_status = 'Unpaid' ORDER BY created_at DESC LIMIT 1",
+                studentCode, storedTicketType, routeId);
 
         if (!existingOrders.isEmpty()) {
             Map<String, Object> existing = existingOrders.get(0);
@@ -139,20 +153,22 @@ public class SePayService {
                 String description = "DH" + orderId;
                 String qrUrl = String.format("https://qr.sepay.vn/img?bank=%s&acc=%s&template=%s&amount=%s&des=%s",
                         bankCode, accountNo, qrTemplate, amount.toPlainString(), description);
-                return orderResponse(orderId, studentCode, ticketType, routeId, registration.routeName(), amount, description, qrUrl);
+                return orderResponse(orderId, studentCode, testOrder ? "test" : storedTicketType, routeId,
+                        registration == null ? null : registration.routeName(), amount, description, qrUrl);
             }
         }
 
+        Integer orderRouteId = routeId;
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update(connection -> {
             PreparedStatement statement = connection.prepareStatement(
                     "INSERT INTO tb_orders (student_code, ticket_type, route_id, total, payment_status, name) VALUES (?, ?, ?, ?, 'Unpaid', ?)",
                     new String[] { "id" });
             statement.setString(1, studentCode);
-            statement.setString(2, ticketType.toLowerCase());
-            statement.setInt(3, routeId);
+            statement.setString(2, storedTicketType);
+            statement.setObject(3, orderRouteId);
             statement.setBigDecimal(4, amount);
-            statement.setString(5, "monthly".equalsIgnoreCase(ticketType) ? "V? th?ng UniBus" : "V? th??ng UniBus");
+            statement.setString(5, testOrder ? "Test UniBus" : orderName(ticketType));
             return statement;
         }, keyHolder);
 
@@ -166,7 +182,8 @@ public class SePayService {
         String qrUrl = String.format("https://qr.sepay.vn/img?bank=%s&acc=%s&template=%s&amount=%s&des=%s",
                 bankCode, accountNo, qrTemplate, amount.toPlainString(), description);
 
-        return orderResponse(orderId, studentCode, ticketType, routeId, registration.routeName(), amount, description, qrUrl);
+        return orderResponse(orderId, studentCode, testOrder ? "test" : storedTicketType, routeId,
+                registration == null ? null : registration.routeName(), amount, description, qrUrl);
     }
 
     private Map<String, Object> orderResponse(
@@ -191,6 +208,14 @@ public class SePayService {
         response.put("accountNo", accountNo);
         response.put("accountName", accountName);
         return response;
+    }
+
+
+    private String orderName(String ticketType) {
+        if ("monthly".equalsIgnoreCase(ticketType)) return "Vé tháng UniBus";
+        if ("single".equalsIgnoreCase(ticketType)) return "Vé thường UniBus";
+        if ("test".equalsIgnoreCase(ticketType)) return "Test thanh toán UniBus";
+        return "Thanh toán UniBus";
     }
 
     @Transactional(readOnly = true)
@@ -294,7 +319,7 @@ public class SePayService {
         }
 
         List<Map<String, Object>> orders = jdbcTemplate.queryForList(
-                "SELECT id, student_code, ticket_type, route_id, total, payment_status FROM tb_orders WHERE id = ? FOR UPDATE",
+                "SELECT id, student_code, ticket_type, route_id, total, payment_status, name FROM tb_orders WHERE id = ? FOR UPDATE",
                 orderId);
 
         if (orders.isEmpty()) {
@@ -320,11 +345,18 @@ public class SePayService {
         String studentCode = (String) order.get("student_code");
         String ticketType = (String) order.get("ticket_type");
         Integer routeId = (Integer) order.get("route_id");
+        String orderName = (String) order.get("name");
+        if (orderName != null && orderName.startsWith("Test UniBus")) {
+            return;
+        }
 
         provisionTickets(studentCode, ticketType, routeId, total, refCode);
     }
 
     private void provisionTickets(String studentCode, String ticketType, Integer routeId, BigDecimal finalAmount, String transactionCode) {
+        if ("test".equalsIgnoreCase(ticketType)) {
+            return;
+        }
         if ("monthly".equalsIgnoreCase(ticketType)) {
             LocalDate now = LocalDate.now();
             int year = now.getYear();

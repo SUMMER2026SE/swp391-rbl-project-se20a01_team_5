@@ -24,6 +24,39 @@ public final class AiDtos {
             List<RouteSuggestionCard> routeSuggestions,
             List<AiAction> actions,
             List<AiSource> sources,
+            String sessionId,
+            List<AiTraceEvent> traceEvents,
+            AiProviderStatus providerStatus) {
+    }
+
+    public record AiTraceEvent(
+            String type,
+            String tool,
+            String label,
+            String detail,
+            String status,
+            Long elapsedMs) {
+    }
+
+    public record AiProviderStatus(
+            String provider,
+            String modelId,
+            String status,
+            String errorCode,
+            String message) {
+    }
+
+    public record ChatStreamEvent(
+            String type,
+            String message,
+            String delta,
+            String mode,
+            String advisoryType,
+            List<RouteSuggestionCard> routeSuggestions,
+            List<AiAction> actions,
+            List<AiSource> sources,
+            List<AiTraceEvent> traceEvents,
+            AiProviderStatus providerStatus,
             String sessionId) {
     }
 

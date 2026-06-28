@@ -89,15 +89,17 @@ public class PlaceService {
         return localStops().stream()
                 .filter(stop -> matchesSearch(stop.searchText(), normalized))
                 .sorted(Comparator
-                        .comparingInt((StopPlace stop) -> stop.hasCoordinate()
+                        .comparingInt((StopPlace stop) -> searchScore(stop, normalized))
+                        .thenComparingInt((StopPlace stop) -> officialNamePriority(stop))
+                        .thenComparingInt((StopPlace stop) -> stop.hasCoordinate()
                                 ? meters(refLat, refLng, stop.lat(), stop.lng())
                                 : Integer.MAX_VALUE)
-                        .thenComparing(StopPlace::name))
+                        .thenComparing(stop -> displayStopName(stop)))
                 .limit(limit)
                 .map(stop -> new PlaceSuggestion(
                         "stop:" + stop.stopId(),
                         "STOP",
-                        stop.name(),
+                        displayStopName(stop),
                         stop.address(),
                         bd(stop.lat()),
                         bd(stop.lng()),
@@ -140,7 +142,6 @@ public class PlaceService {
                 JOIN route_stops rs ON rs.route_id = r.route_id
                 WHERE rs.stop_id = ?
                   AND r.status = 'ACTIVE'
-                  AND COALESCE(r.is_interregional, false) = false
                   AND (
                       r.external_source = 'BUSMAP_DN'
                       OR NOT EXISTS (
@@ -273,6 +274,50 @@ public class PlaceService {
             }
         }
         return true;
+    }
+
+    private int searchScore(StopPlace stop, String normalizedQuery) {
+        if (normalizedQuery == null || normalizedQuery.isBlank()) {
+            return 0;
+        }
+        String displayName = normalize(displayStopName(stop));
+        String searchText = normalize(displayStopName(stop) + " " + stop.address() + " " + stop.stopCode());
+        if (displayName.equals(normalizedQuery)) {
+            return 0;
+        }
+        if (displayName.contains(normalizedQuery)) {
+            return 1;
+        }
+        if (searchText.contains(normalizedQuery)) {
+            return 2;
+        }
+        int matchedTokens = 0;
+        String[] tokens = normalizedQuery.split("\\s+");
+        for (String token : tokens) {
+            if (token.length() > 1 && searchText.contains(token)) {
+                matchedTokens++;
+            }
+        }
+        return 20 + Math.max(0, tokens.length - matchedTokens);
+    }
+
+    private int officialNamePriority(StopPlace stop) {
+        String name = normalize(displayStopName(stop));
+        if (name.contains("ben xe buyt") || name.contains("tram xe buyt")) {
+            return 0;
+        }
+        if (name.contains("dai hoc") || name.contains("cao dang")) {
+            return 1;
+        }
+        return 2;
+    }
+
+    private String displayStopName(StopPlace stop) {
+        String normalizedName = normalize(stop.name());
+        if ("dai hoc viet".equals(normalizedName)) {
+            return "Đại học Việt Hàn";
+        }
+        return stop.name();
     }
 
     private String firstAddressPart(String display) {
