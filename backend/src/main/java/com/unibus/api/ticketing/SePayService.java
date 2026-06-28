@@ -63,6 +63,11 @@ public class SePayService {
 
     @Transactional
     public Map<String, Object> createOrder(CurrentUser currentUser, String ticketType) {
+        return createOrder(currentUser, ticketType, null);
+    }
+
+    @Transactional
+    public Map<String, Object> createOrder(CurrentUser currentUser, String ticketType, Integer requestedRouteId) {
         String studentCode = ticketingRepository.studentCodeForUser(currentUser.userId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Student profile not found"));
 
@@ -84,7 +89,7 @@ public class SePayService {
             originalFare = amount;
             finalAmount = amount;
         } else {
-            ApprovedRegistration registration = ticketingRepository.approvedRegistration(studentCode)
+            ApprovedRegistration registration = ticketingRepository.approvedRegistration(studentCode, requestedRouteId)
                     .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Student must have an approved route registration"));
             routeId = registration.routeId();
 

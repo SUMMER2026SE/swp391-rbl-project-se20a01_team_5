@@ -5,7 +5,6 @@ import java.time.OffsetDateTime;
 import java.util.List;
 
 import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Size;
 
 public final class TicketingDtos {
 
@@ -13,20 +12,22 @@ public final class TicketingDtos {
     }
 
     public record PurchaseMonthlyPassRequest(
-            @Pattern(regexp = "CASH|BANK_TRANSFER|E_WALLET|CARD") String method,
-            @Size(max = 100) String transactionCode,
-            @Size(max = 500) String notes) {
+            Integer routeId,
+            @Pattern(regexp = "CASH|BANK_TRANSFER|E_WALLET|CARD") String method) {
     }
 
-    public record CreateVnpayPaymentRequest(
-            BigDecimal amount) {
+    public record PurchaseJourneyPassRequest(
+            String originLabel,
+            String destinationLabel,
+            List<JourneyPassLegRequest> legs,
+            @Pattern(regexp = "CASH|BANK_TRANSFER|E_WALLET|CARD") String method) {
     }
 
-    public record VnpayPaymentUrlView(
-            Integer paymentId,
-            String transactionCode,
-            BigDecimal amount,
-            String paymentUrl) {
+    public record JourneyPassLegRequest(
+            Integer routeId,
+            Integer boardingStopId,
+            Integer alightingStopId,
+            Integer legOrder) {
     }
 
     public record PurchaseSingleTripTicketRequest(
@@ -106,5 +107,33 @@ public final class TicketingDtos {
     }
 
     public record PassesDashboard(List<TicketView> tickets, List<PaymentView> payments, MonthlyPassQuote monthlyPassQuote) {
+    }
+
+    public record JourneyOrderView(
+            Integer journeyOrderId,
+            String originLabel,
+            String destinationLabel,
+            BigDecimal totalAmount,
+            BigDecimal subsidyAmount,
+            BigDecimal finalAmount,
+            String qrCode,
+            String status,
+            OffsetDateTime purchasedAt,
+            List<JourneyOrderItemView> items) {
+    }
+
+    public record JourneyOrderItemView(
+            Integer itemId,
+            Integer monthlyPassId,
+            Integer routeId,
+            String routeName,
+            Integer legOrder,
+            Integer boardingStopId,
+            String boardingStopName,
+            Integer alightingStopId,
+            String alightingStopName,
+            BigDecimal originalAmount,
+            BigDecimal subsidyAmount,
+            BigDecimal finalAmount) {
     }
 }

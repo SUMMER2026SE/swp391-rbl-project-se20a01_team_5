@@ -7,9 +7,9 @@
 --   - no SePay order/payment/invoice
 --   - no scan/travel history
 --
--- The script also links the university to the route assigned to today's
--- conductor.demo trip and enables a 25% subsidy. This lets the presenter
--- perform the entire flow in the UI and lets conductor.demo scan the new QR.
+-- The script links the university to canonical route UB-DN-01 and enables a
+-- 25% subsidy. This lets the presenter perform the whole flow in the UI and
+-- lets conductor.demo scan the new QR on today's canonical trip.
 
 BEGIN;
 
@@ -280,15 +280,11 @@ SET student_code = EXCLUDED.student_code,
     matched_user_id = EXCLUDED.matched_user_id,
     updated_at = CURRENT_TIMESTAMP;
 
--- Make today's conductor.demo route available to the demo university.
+-- Make the canonical complete-demo route available to the demo university.
 WITH demo_route AS (
-    SELECT t.route_id
-    FROM trips t
-    JOIN conductors c ON c.conductor_id = t.conductor_id
-    JOIN users u ON u.user_id = c.user_id
-    WHERE t.service_date = CURRENT_DATE
-      AND u.email = 'conductor.demo@unibus.local'
-    ORDER BY CASE t.status WHEN 'RUNNING' THEN 0 WHEN 'NOT_STARTED' THEN 1 ELSE 2 END, t.trip_id
+    SELECT route_id
+    FROM routes
+    WHERE route_code = 'UB-DN-01'
     LIMIT 1
 ),
 university_data AS (
