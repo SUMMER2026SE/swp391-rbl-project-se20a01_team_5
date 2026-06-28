@@ -373,3 +373,42 @@ Status:
 
 - Ready for PR review from the frontend/build perspective.
 - Do not merge directly to `main` without reviewing the full dirty worktree, because this branch also contains broader chatbot/API edits from earlier work.
+
+## 2026-06-28 Follow-Up: Merge `origin/main` Into `DucHai` For PR Prep
+
+Purpose:
+
+- Prepare PR direction `DucHai -> main` by bringing latest `origin/main` into the feature branch and resolving conflicts locally before pushing.
+- Keep `DucHai` as the source of truth for the student journey planner/chatbot/ticket hub UI, while preserving compatible backend/frontend additions from `main`.
+
+Conflict resolution notes:
+
+- `TicketingDtos`, `TicketingController`, `TicketingService`, and `TicketingRepository` were merged by keeping Journey Order / journey monthly pass support from `DucHai` and VNPay payment URL / mock result flow from `main`.
+- `SePayService` was merged by keeping `requestedRouteId` and `routeName` in SePay order responses, while preserving the test-payment guard and order fields from `main`.
+- `ExperienceRepository` keeps the `DucHai` route/stop publishing behavior for planner and dashboard cards, and also preserves the newer internal-message SQL from `main` (`content`, `is_read`, and SOS filtering).
+- `frontend/src/lib/api/client.ts` keeps chatbot SSE streaming from `DucHai` and coordinator university route metrics from `main`.
+- `frontend/src/components/bus/roles/student-module.tsx` was resolved to the `DucHai` version because it contains the latest journey planner, chatbot, ticket hub, route result card, and lookup route UI fixes.
+- `frontend/src/components/bus/nav-config.ts` keeps the new `stu-university` item from `main`.
+
+Verification after merge conflict resolution:
+
+```powershell
+cd frontend
+npm run build
+```
+
+```powershell
+cd backend
+& "C:\Users\DuckHai\.m2\wrapper\dists\apache-maven-3.9.15-bin\4rlcemksed9vjmkvgss0jpc4po\apache-maven-3.9.15\bin\mvn.cmd" -q -DskipTests compile
+```
+
+```powershell
+cd backend
+& "C:\Users\DuckHai\.m2\wrapper\dists\apache-maven-3.9.15-bin\4rlcemksed9vjmkvgss0jpc4po\apache-maven-3.9.15\bin\mvn.cmd" -q "-Dtest=TicketingAndRoutePassServiceTests,TicketingServiceVnpayTests,VNPayUtilsTests" test
+```
+
+Additional checks:
+
+- `git diff --check` passed.
+- Repository-wide conflict-marker search passed (`<<<<<<<` / `>>>>>>>` not found).
+- Browser/visual testing intentionally skipped in this merge-prep pass per user instruction.

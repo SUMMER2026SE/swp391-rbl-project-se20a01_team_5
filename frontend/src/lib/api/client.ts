@@ -690,6 +690,7 @@ export const notificationApi = {
   unreadCount: async () => normalizeCount(await apiFetch.get<CountResponse>("/notifications/me/unread-count")),
   markRead: (notificationId: number) => apiFetch.post<void>(`/notifications/${notificationId}/read`),
   create: (data: { title: string; content: string; target?: string }) => apiFetch.post<NotificationView>("/notifications", data),
+  createCoordinator: (data: { title: string; content: string; target?: string }) => apiFetch.post<NotificationView>("/coordinator/notifications", data),
 };
 
 export interface FeedbackView {
@@ -716,6 +717,12 @@ export const feedbackApi = {
   all: (status?: string) => apiFetch.get<FeedbackView[]>("/feedback", { status }),
   resolve: (feedbackId: number, response?: string) =>
     apiFetch.patch<FeedbackView>(`/feedback/${feedbackId}/resolve`, { response }),
+};
+
+export const coordinatorFeedbackApi = {
+  all: (status?: string) => apiFetch.get<FeedbackView[]>("/coordinator/feedback", { status }),
+  resolve: (feedbackId: number, response?: string) =>
+    apiFetch.patch<FeedbackView>(`/coordinator/feedback/${feedbackId}/resolve`, { response }),
 };
 
 export interface ExperienceStopCard {
@@ -1020,6 +1027,20 @@ export interface CoordinatorUniversityMetric {
   tripsToday: number;
 }
 
+export interface CoordinatorUniversityRouteMetric {
+  routeId: number;
+  routeCode?: string;
+  routeName: string;
+  colorHex?: string;
+  registeredStudents: number;
+  activeMonthlyPasses: number;
+  tripsToday: number;
+  runningTrips: number;
+  assignedBuses: number;
+  assignedDrivers: number;
+  assignedConductors: number;
+}
+
 type AssistantChatPayload = {
   message: string;
   context?: {
@@ -1129,7 +1150,8 @@ export const experienceApi = {
     apiFetch.put<ExperienceLostItemCard>(`/conductor/lost-items/${lostItemId}`, data),
   coordinatorDashboard: () => apiFetch.get<CoordinatorDashboardView>("/coordinator/dashboard"),
   coordinatorByUniversity: () => apiFetch.get<CoordinatorUniversityMetric[]>("/coordinator/by-university"),
-  coordinatorFeedback: (status?: string) => apiFetch.get<ExperienceFeedbackCard[]>("/coordinator/experience-feedback", { status }),
+  coordinatorUniversityRoutes: (universityId: number) => apiFetch.get<CoordinatorUniversityRouteMetric[]>(`/coordinator/by-university/${universityId}/routes`),
+  coordinatorFeedback: (status?: string) => apiFetch.get<ExperienceFeedbackCard[]>("/coordinator/feedback", { status }),
   adminStats: (days = 7) => apiFetch.get<AdminStatsView>("/admin/stats", { days }),
   fares: () => apiFetch.get<AdminStatsView["fares"]>("/admin/fares"),
   updateFare: (fareId: number, data: { amount: number; notes?: string }) =>
@@ -1137,6 +1159,39 @@ export const experienceApi = {
   complaints: (status?: string) => apiFetch.get<AdminStatsView["complaints"]>("/admin/complaints", { status }),
   violations: (status?: string) => apiFetch.get<AdminStatsView["violations"]>("/admin/violations", { status }),
 };
+
+export interface ContactThreadCard {
+  peerUserId: number;
+  peerName: string;
+  peerRole: string;
+  lastMessageBody: string;
+  lastMessageAt: string;
+  unreadCount: number;
+}
+
+export interface InternalMessageCard {
+  messageId: number;
+  senderUserId: number;
+  senderName: string;
+  recipientUserId: number;
+  recipientName: string;
+  body: string;
+  sentAt: string;
+  readAt?: string | null;
+}
+
+export interface SendInternalMessageRequest {
+  recipientUserId: number;
+  body: string;
+}
+
+export const messagingApi = {
+  getThreads: () => apiFetch.get<ContactThreadCard[]>("/me/messages/threads"),
+  getConversation: (peerUserId: number) => apiFetch.get<InternalMessageCard[]>(`/me/messages/${peerUserId}`),
+  sendMessage: (data: SendInternalMessageRequest) => apiFetch.post<{ messageId: number }>("/me/messages", data),
+  markAsRead: (peerUserId: number) => apiFetch.post<void>(`/me/messages/${peerUserId}/read`),
+};
+
 
 export interface TripStopView {
   routeStopId?: number;
@@ -1440,6 +1495,29 @@ export interface UniversityStatsView {
   }[];
 }
 
+export interface PaymentTransactionView {
+  orderId: number;
+  transactionId?: number;
+  sepayTransactionId?: number;
+  studentCode?: string;
+  studentName?: string;
+  universityId?: number;
+  universityName?: string;
+  ticketType?: string;
+  routeId?: number;
+  routeName?: string;
+  orderTotal?: number;
+  paymentStatus?: string;
+  gateway?: string;
+  amountIn?: number;
+  amountOut?: number;
+  transactionContent?: string;
+  referenceNumber?: string;
+  transactionDate?: string;
+  paidAt?: string;
+  createdAt?: string;
+}
+
 export interface ReconciliationView {
   universityId: number;
   universityName: string;
@@ -1532,8 +1610,8 @@ export const adminApi = {
   subsidyPolicies: (universityId?: number) => apiFetch.get<SubsidyPolicyView[]>("/admin/subsidy-policies", { universityId }),
   createSubsidyPolicy: (data: { universityId: number; campusId?: number; policyName: string; subsidyType: string; value: number; maxAmount?: number; activeFrom?: string; activeUntil?: string; status?: string }) =>
     apiFetch.post<SubsidyPolicyView>("/admin/subsidy-policies", data),
-  paymentTransactions: (params?: { universityId?: number }) => apiFetch.get<PaymentTransactionView[]>("/admin/payment-transactions", params),
   auditLogs: (params?: { universityId?: number; action?: string }) => apiFetch.get<AuditLogView[]>("/admin/audit-logs", params),
+  paymentTransactions: (params?: { universityId?: number }) => apiFetch.get<PaymentTransactionView[]>("/admin/payment-transactions", params),
 };
 
 export const universityApi = {
@@ -1560,6 +1638,79 @@ export const universityApi = {
   notify: (data: { title: string; content: string }) => apiFetch.post<number>("/university-admin/notifications", data),
 };
 
+export interface DispatchMessageView {
+  messageId: number;
+  senderUserId: number;
+  senderName: string;
+  recipientUserId: number;
+  recipientName: string;
+  tripId?: number;
+  content: string;
+  read: boolean;
+  sentAt?: string;
+}
+
+export interface DispatcherContact {
+  dispatcherUserId: number;
+  dispatcherName: string;
+  phoneNumber?: string;
+  department?: string;
+  activeTripId?: number;
+  messages: DispatchMessageView[];
+}
+
+export const driverDispatchApi = {
+  contact: () => apiFetch.get<DispatcherContact>("/driver/dispatch/contact"),
+  sendMessage: (data: { tripId?: number; content: string }) =>
+    apiFetch.post<DispatchMessageView>("/driver/dispatch/messages", data),
+  reportIncident: (data: { tripId: number; incidentType: string; description: string }) =>
+    apiFetch.post<DispatchMessageView>("/driver/dispatch/incidents", data),
+};
+
+export interface ContactPersonView {
+  userId: number;
+  name: string;
+  role: string;
+  phoneNumber?: string;
+  primary: boolean;
+}
+
+export interface InternalMessageView {
+  messageId: number;
+  senderUserId: number;
+  senderName: string;
+  recipientUserId: number;
+  recipientName: string;
+  tripId?: number;
+  content: string;
+  read: boolean;
+  sentAt?: string;
+}
+
+export interface ConductorContactView {
+  activeTripId?: number;
+  routeName?: string;
+  driverName?: string;
+  driverPhone?: string;
+  contacts: ContactPersonView[];
+  messages: InternalMessageView[];
+}
+
+export interface ConductorSupportResult {
+  type: string;
+  reportId: number;
+  message: string;
+  notificationMessage?: InternalMessageView;
+}
+
+export const conductorApi = {
+  contact: () => apiFetch.get<ConductorContactView>("/conductor/contact"),
+  sendMessage: (data: { tripId?: number; recipientType: string; content: string }) =>
+    apiFetch.post<InternalMessageView>("/conductor/messages", data),
+  submitSupport: (data: { tripId: number; reportType: string; passengerName?: string; location?: string; description: string }) =>
+    apiFetch.post<ConductorSupportResult>("/conductor/support", data),
+};
+
 export const api = {
   auth: authApi,
   profile: profileApi,
@@ -1571,4 +1722,7 @@ export const api = {
   operations: operationsApi,
   admin: adminApi,
   universities: universityApi,
+  messaging: messagingApi,
+  driverDispatch: driverDispatchApi,
+  conductor: conductorApi,
 };

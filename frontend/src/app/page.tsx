@@ -18,6 +18,7 @@ import { NAV_CONFIG } from "@/components/bus/nav-config";
 import { authApi, clearTokens, getAccessToken, getStoredRole, profileApi, type UserProfile } from "@/lib/api/client";
 import type { Role } from "@/lib/types";
 import { motion } from "framer-motion";
+import Image from "next/image";
 
 function mapBackendRole(role?: string | null): Role {
   switch ((role || "").toUpperCase()) {
@@ -44,8 +45,20 @@ export default function Page() {
   const [ready, setReady] = useState(false);
   const [authed, setAuthed] = useState(false);
   const [role, setRole] = useState<Role>("student");
-  const [activeId, setActiveId] = useState(firstNav("student"));
+  const [activeId, setActiveId] = useState(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("unibus_active_nav_id");
+      if (stored) return stored;
+    }
+    return firstNav("student");
+  });
   const [profile, setProfile] = useState<UserProfile | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("unibus_active_nav_id", activeId);
+    }
+  }, [activeId]);
 
   const loadProfile = useCallback(async (fallbackRole?: Role) => {
     const me = await profileApi.me();
@@ -150,7 +163,7 @@ export default function Page() {
           transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
           className="flex flex-col items-center gap-6"
         >
-          <img src="/logo.png" alt="UniBus Logo" className="h-20 w-auto object-contain shrink-0" />
+          <Image src="/logo.png" alt="UniBus Logo" width={96} height={96} priority className="h-20 w-auto shrink-0 object-contain" />
           <div className="h-1.5 w-32 overflow-hidden rounded-full bg-surface-container-high">
             <motion.div
               className="h-full bg-[#beff50]"

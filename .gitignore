@@ -35,4 +35,6 @@ run-frontend.bat
 run-dev.bat
 node_modules/
 backend/*.log
-.vs/ 
+.vs/
+~$*.xlsx
+~$*.docx

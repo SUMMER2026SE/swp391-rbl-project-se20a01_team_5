@@ -86,6 +86,7 @@ export const ROLE_AVATARS: Record<Role, string> = {
 export const NAV_CONFIG: Record<Role, NavItem[]> = {
   student: [
     { id: "stu-dashboard", label: "Trang chủ", icon: LayoutDashboard, group: "Tổng quan" },
+    { id: "stu-university", label: "Trường của tôi", icon: School, group: "Tổng quan" },
     { id: "stu-find", label: "Tìm tuyến xe", icon: RouteIcon, group: "Tuyến xe" },
     { id: "stu-my-journeys", label: "Chuyến đi của tôi", icon: TicketCheck, group: "Tuyến xe" },
     { id: "stu-history", label: "Lịch sử chuyến", icon: History, group: "Tuyến xe" },
@@ -122,7 +123,7 @@ export const NAV_CONFIG: Record<Role, NavItem[]> = {
     { id: "crd-routes", label: "Tuyến đường", icon: RouteIcon, group: "Quản lý" },
     { id: "crd-stops", label: "Trạm dừng", icon: MapPinned, group: "Quản lý" },
     { id: "crd-by-university", label: "Điều phối theo trường", icon: School, group: "Quản lý" },
-    { id: "crd-feedback", label: "Phản hồi sinh viên", icon: MessageSquare, group: "Hỗ trợ" },
+    { id: "crd-feedback", label: "Ý kiến phản hồi", icon: MessageSquare, group: "Hỗ trợ" },
     { id: "crd-notify", label: "Gửi thông báo", icon: Megaphone, group: "Hỗ trợ" },
     { id: "crd-notifications", label: "Thông báo", icon: Bell, group: "Tài khoản" },
     { id: "crd-profile", label: "Hồ sơ cá nhân", icon: UserIcon, group: "Tài khoản" },
@@ -155,6 +156,7 @@ export const NAV_CONFIG: Record<Role, NavItem[]> = {
     { id: "uniadm-recon", label: "Báo cáo đối soát", icon: FileBarChart, group: "Theo dõi" },
     { id: "uniadm-transactions", label: "Lịch sử giao dịch", icon: Receipt, group: "Theo dõi" },
     { id: "uniadm-notifications", label: "Thông báo", icon: Bell, group: "Tài khoản" },
+    { id: "uniadm-transactions", label: "Lịch sử giao dịch", icon: Receipt, group: "Theo dõi" },
     { id: "uniadm-profile", label: "Hồ sơ cá nhân", icon: UserIcon, group: "Tài khoản" },
   ],
 };

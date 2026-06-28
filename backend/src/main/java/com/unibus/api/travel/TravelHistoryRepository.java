@@ -19,6 +19,7 @@ public class TravelHistoryRepository {
     public List<TravelHistoryView> findRecentByStudentCode(String studentCode, int limit, int offset) {
         return jdbcTemplate.query("""
                 SELECT th.travel_history_id, th.trip_id, r.route_id, r.route_name,
+                       CAST(NULL AS INTEGER) AS driver_id, CAST(NULL AS VARCHAR) AS driver_name,
                        t.service_date, th.boarded_at, th.alighted_at,
                        bs.stop_name AS boarding_stop_name,
                        als.stop_name AS alighting_stop_name
@@ -35,6 +36,8 @@ public class TravelHistoryRepository {
                         resultSet.getInt("trip_id"),
                         resultSet.getInt("route_id"),
                         resultSet.getString("route_name"),
+                        (Integer) resultSet.getObject("driver_id"),
+                        resultSet.getString("driver_name"),
                         resultSet.getObject("service_date", LocalDate.class),
                         resultSet.getObject("boarded_at", OffsetDateTime.class),
                         resultSet.getObject("alighted_at", OffsetDateTime.class),
@@ -48,6 +51,8 @@ public class TravelHistoryRepository {
             Integer tripId,
             Integer routeId,
             String routeName,
+            Integer driverId,
+            String driverName,
             LocalDate serviceDate,
             OffsetDateTime boardedAt,
             OffsetDateTime alightedAt,

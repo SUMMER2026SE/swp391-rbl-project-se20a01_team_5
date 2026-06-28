@@ -97,6 +97,8 @@ function str(v: unknown, fallback = ""): string {
   return v == null ? fallback : String(v);
 }
 
+const apiCache = new Map<string, unknown>();
+
 /* =========================================================================
    Generic API hook — same shape as real-data.tsx useApiResource
    but with optional mapper.
@@ -104,7 +106,8 @@ function str(v: unknown, fallback = ""): string {
 export function useApi<T, R = T>(
   loader: () => Promise<T>,
   mapper?: (data: T) => R,
-  deps: unknown[] = []
+  deps: unknown[] = [],
+  cacheKey?: string
 ): {
   data: R | null;
   raw: T | null;
@@ -112,9 +115,10 @@ export function useApi<T, R = T>(
   error: string | null;
   reload: () => void;
 } {
-  const [raw, setRaw] = useState<T | null>(null);
+  const cached = cacheKey ? (apiCache.get(cacheKey) as T | undefined) : undefined;
+  const [raw, setRaw] = useState<T | null>(cached ?? null);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cached);
   const [tick, setTick] = useState(0);
 
   const reload = useCallback(() => setTick((t) => t + 1), []);
@@ -122,11 +126,12 @@ export function useApi<T, R = T>(
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    if (!raw) setLoading(true);
     setError(null);
     stableLoader()
       .then((d) => {
         if (!cancelled) {
+          if (cacheKey) apiCache.set(cacheKey, d);
           setRaw(d);
           setLoading(false);
         }
@@ -140,7 +145,7 @@ export function useApi<T, R = T>(
     return () => {
       cancelled = true;
     };
-  }, [stableLoader, tick]);
+  }, [stableLoader, tick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const data = raw && mapper ? mapper(raw) : ((raw as unknown) as R | null);
   return { data, raw, loading, error, reload };
@@ -246,6 +251,9 @@ export function mapFeedback(f: FeedbackView | ExperienceFeedbackCard): Feedback 
     category: ((f as any).category || "other") as Feedback["category"],
     content: f.content,
     status: f.status === "RESOLVED" ? "resolved" : f.status === "IN_PROGRESS" || f.status === "PROCESSING" ? "processing" : "new",
+    response: (f as any).response,
+    routeName: (f as any).routeName,
+    tripId: (f as any).tripId,
     createdAt: (f as any).createdAt || "",
   };
 }
@@ -337,12 +345,12 @@ export function mapVerification(v: VerificationView): User {
  */
 export function useStudentPrototypeData() {
   // Primary: aggregate dashboard endpoint (1 call instead of 11)
-  const dashboard = useApi(() => experienceApi.studentDashboard(), undefined, []);
+  const dashboard = useApi(() => experienceApi.studentDashboard(), undefined, [], "student-dashboard");
   // Profile is small and shared with app-shell — keep it
-  const profile = useApi(() => profileApi.me(), undefined, []);
+  const profile = useApi(() => profileApi.me(), undefined, [], "student-profile");
   // Passes (tickets+payments) — needed for PaymentScreen + InvoicesScreen
   // Dashboard doesn't return full payments list, so we need this
-  const passes = useApi(() => studentApi.tickets(), undefined, []);
+  const passes = useApi(() => studentApi.tickets(), undefined, [], "student-passes");
 
   const mapped = (() => {
     if (!dashboard.raw) return null;
@@ -389,7 +397,15 @@ export function useStudentPrototypeData() {
       lostItems: [],
       tripsHistory: (d.history || []).map((h: any) => ({
         id: String(h.travelHistoryId),
-        routeId: String(h.routeId),
+        tripId: h.tripId,
+        routeId: String(h.routeId ?? ""),
+        routeName: h.routeName,
+        routeCode: h.routeCode,
+        boardingStopName: h.boardingStopName || d.registration?.boardingStopName || d.activeTicket?.boardingStopName,
+        alightingStopName: h.alightingStopName || d.registration?.alightingStopName || d.activeTicket?.alightingStopName,
+        boardedAt: h.boardedAt,
+        alightedAt: h.alightedAt,
+        serviceDate: h.serviceDate,
         busId: "0",
         driverId: "",
         date: h.serviceDate || "",
@@ -455,7 +471,7 @@ export function useDriverPrototypeData() {
   const trips = useApi(() => operationsApi.driverTrips(), undefined, []);
   const feedback = useApi(() => experienceApi.driverFeedback(), undefined, []);
   const notifications = useApi(() => notificationApi.mine(), undefined, []);
-  const profile = useApi(() => profileApi.me(), undefined, []);
+  const profile = useApi(() => profileApi.me(), undefined, [], "student-profile");
 
   const mapped = (() => {
     if (!dashboard.raw) return null;
@@ -521,7 +537,7 @@ export function useAssistantPrototypeData() {
   const dashboard = useApi(() => experienceApi.assistantDashboard(), undefined, []);
   const trips = useApi(() => operationsApi.conductorTrips(), undefined, []);
   const notifications = useApi(() => notificationApi.mine(), undefined, []);
-  const profile = useApi(() => profileApi.me(), undefined, []);
+  const profile = useApi(() => profileApi.me(), undefined, [], "student-profile");
 
   const mapped = (() => {
     if (!dashboard.raw) return null;
@@ -569,22 +585,17 @@ export function useAssistantPrototypeData() {
 /** Coordinator module: dashboard + fleet + feedback + schedule */
 export function useCoordinatorPrototypeData() {
   const dashboard = useApi(() => experienceApi.coordinatorDashboard(), undefined, []);
-  const fleet = useApi(() => operationsApi.liveFleet(), undefined, []);
-  const schedule = useApi(() => operationsApi.scheduleDashboard(), undefined, []);
-  const feedback = useApi(() => experienceApi.coordinatorFeedback(), undefined, []);
-  const notifications = useApi(() => notificationApi.mine(), undefined, []);
-  const profile = useApi(() => profileApi.me(), undefined, []);
 
   const mapped = (() => {
     if (!dashboard.raw) return null;
     const d = dashboard.raw;
     return {
       user: {
-        id: String(profile.raw?.userId ?? 0),
-        name: profile.raw?.fullName || "Điều phối viên",
-        email: profile.raw?.email || "",
-        phone: profile.raw?.phoneNumber || "",
-        avatar: (profile.raw?.fullName || "").trim().slice(0, 2).toUpperCase() || "ĐP",
+        id: "0",
+        name: "Điều phối viên",
+        email: "",
+        phone: "",
+        avatar: "ĐP",
         role: "coordinator" as const,
         employeeId: "",
         status: "active" as const,
@@ -592,24 +603,23 @@ export function useCoordinatorPrototypeData() {
       } as User,
       routes: (d.routes || []).map(mapRoute),
       stops: (d.stops || []).map(mapStop),
-      fleet: (fleet.raw || []).map((v) => ({
+      fleet: (d.liveFleet || []).map((v) => ({
         ...mapBus(v as any),
         tripId: String(v.tripId),
         routeCode: "",
         driverName: v.driverName,
         conductorName: v.conductorName,
-        locationUpdatedAt: v.locationUpdatedAt,
       })),
-      feedback: (feedback.raw || []).map(mapFeedback),
+      feedback: (d.feedback || []).map(mapFeedback),
       stats: d.stats,
-      schedule: schedule.raw,
-      notifications: (notifications.raw || []).map(mapNotification),
+      schedule: null,
+      notifications: [],
       dashboard,
-      fleetRaw: fleet,
-      scheduleRaw: schedule,
-      feedbackRaw: feedback,
-      notificationsRaw: notifications,
-      profileRaw: profile,
+      fleetRaw: { raw: d.liveFleet || [], loading: false, error: null, reload: dashboard.reload },
+      scheduleRaw: { raw: null, loading: false, error: null, reload: dashboard.reload },
+      feedbackRaw: { raw: d.feedback || [], loading: false, error: null, reload: dashboard.reload },
+      notificationsRaw: { raw: [], loading: false, error: null, reload: dashboard.reload },
+      profileRaw: { raw: null, loading: false, error: null, reload: dashboard.reload },
     };
   })();
 
@@ -617,14 +627,7 @@ export function useCoordinatorPrototypeData() {
     data: mapped,
     loading: dashboard.loading,
     error: dashboard.error,
-    reload: () => {
-      dashboard.reload();
-      fleet.reload();
-      schedule.reload();
-      feedback.reload();
-      notifications.reload();
-      profile.reload();
-    },
+    reload: dashboard.reload,
   };
 }
 
@@ -641,7 +644,7 @@ export function useCoordinatorPrototypeData() {
 export function useAdminPrototypeData() {
   // Primary: aggregate admin stats endpoint (returns stats+routeMetrics+complaints+violations+fares)
   const stats = useApi(() => experienceApi.adminStats(), undefined, []);
-  const profile = useApi(() => profileApi.me(), undefined, []);
+  const profile = useApi(() => profileApi.me(), undefined, [], "student-profile");
   // Audits are needed for the activity feed on Dashboard
   const audits = useApi(() => adminApi.auditLogs(), undefined, []);
 

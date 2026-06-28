@@ -5,6 +5,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 
 public final class TicketingDtos {
 
@@ -13,7 +14,20 @@ public final class TicketingDtos {
 
     public record PurchaseMonthlyPassRequest(
             Integer routeId,
-            @Pattern(regexp = "CASH|BANK_TRANSFER|E_WALLET|CARD") String method) {
+            @Pattern(regexp = "CASH|BANK_TRANSFER|E_WALLET|CARD") String method,
+            @Size(max = 100) String transactionCode,
+            @Size(max = 500) String notes) {
+    }
+
+    public record CreateVnpayPaymentRequest(
+            BigDecimal amount) {
+    }
+
+    public record VnpayPaymentUrlView(
+            Integer paymentId,
+            String transactionCode,
+            BigDecimal amount,
+            String paymentUrl) {
     }
 
     public record PurchaseJourneyPassRequest(

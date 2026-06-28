@@ -114,6 +114,11 @@ public class ExperienceService {
     }
 
     @Transactional(readOnly = true)
+    public List<UniversityRouteOperationsMetric> coordinatorUniversityRoutes(Integer universityId) {
+        return repository.coordinatorUniversityRoutes(universityId);
+    }
+
+    @Transactional(readOnly = true)
     public List<FeedbackCard> coordinatorFeedback(String status) {
         return repository.allFeedback(status, 50);
     }
@@ -225,7 +230,6 @@ public class ExperienceService {
         return repository.driverRatingSummary(driverId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "No ratings yet"));
     }
-
     // ===== Internal messaging (REQ-DRV-006, REQ-AST-007) =====
 
     @Transactional
