@@ -1100,6 +1100,28 @@ function AssignBusScreen({ ctx }: { ctx: Ctx }) {
   );
 }
 
+const HOURS_12 = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, "0"));
+const MINUTES_60 = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, "0"));
+
+function parseTime12(value: string) {
+  const [rawHour = "07", minute = "00"] = (value || "07:00").split(":");
+  const hour24 = Math.max(0, Math.min(23, Number(rawHour) || 7));
+  const period = hour24 >= 12 ? "PM" : "AM";
+  const hour12 = hour24 % 12 || 12;
+  return {
+    hour: String(hour12).padStart(2, "0"),
+    minute: String(Math.max(0, Math.min(59, Number(minute) || 0))).padStart(2, "0"),
+    period,
+  };
+}
+
+function formatTime24(hour: string, minute: string, period: string) {
+  const hour12 = Math.max(1, Math.min(12, Number(hour) || 7));
+  const normalizedMinute = String(Math.max(0, Math.min(59, Number(minute) || 0))).padStart(2, "0");
+  const hour24 = period === "PM" ? (hour12 % 12) + 12 : hour12 % 12;
+  return `${String(hour24).padStart(2, "0")}:${normalizedMinute}`;
+}
+
 function NewShiftCard({
   mode,
   dashboard,
@@ -1114,11 +1136,20 @@ function NewShiftCard({
   compact?: boolean;
 }) {
   const [routeId, setRouteId] = useState("");
-  const [departureTime, setDepartureTime] = useState("");
+  const [departureTime, setDepartureTime] = useState("07:00");
   const [driverStaffId, setDriverStaffId] = useState("");
   const [conductorStaffId, setConductorStaffId] = useState("");
   const [busId, setBusId] = useState("");
   const [saving, setSaving] = useState(false);
+  const timeParts = parseTime12(departureTime);
+
+  const setTimePart = (part: "hour" | "minute" | "period", value: string) => {
+    setDepartureTime(formatTime24(
+      part === "hour" ? value : timeParts.hour,
+      part === "minute" ? value : timeParts.minute,
+      part === "period" ? value : timeParts.period
+    ));
+  };
 
   const save = async () => {
     if (!routeId || !departureTime) {
@@ -1147,7 +1178,7 @@ function NewShiftCard({
       });
       toast.success("Đã tạo ca phân công");
       setRouteId("");
-      setDepartureTime("");
+      setDepartureTime("07:00");
       setDriverStaffId("");
       setConductorStaffId("");
       setBusId("");
@@ -1182,7 +1213,31 @@ function NewShiftCard({
         </div>
         <div className="min-w-0">
           <Label className="text-xs font-bold">Giờ chạy</Label>
-          <Input className="mt-1.5" type="time" value={departureTime} onChange={(e) => setDepartureTime(e.target.value)} />
+          <div className="mt-1.5 grid grid-cols-[1fr_1fr_88px] gap-2">
+            <Select value={timeParts.hour} onValueChange={(value) => setTimePart("hour", value)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {HOURS_12.map((hour) => (
+                  <SelectItem key={hour} value={hour}>{hour}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={timeParts.minute} onValueChange={(value) => setTimePart("minute", value)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {MINUTES_60.map((minute) => (
+                  <SelectItem key={minute} value={minute}>{minute}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={timeParts.period} onValueChange={(value) => setTimePart("period", value)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="AM">SA</SelectItem>
+                <SelectItem value="PM">CH</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         {mode === "staff" ? (
           <>
