@@ -1097,6 +1097,29 @@ export interface UniversityStatsView {
   }[];
 }
 
+export interface PaymentTransactionView {
+  orderId: number;
+  transactionId?: number;
+  sepayTransactionId?: number;
+  studentCode?: string;
+  studentName?: string;
+  universityId?: number;
+  universityName?: string;
+  ticketType?: string;
+  routeId?: number;
+  routeName?: string;
+  orderTotal?: number;
+  paymentStatus?: string;
+  gateway?: string;
+  amountIn?: number;
+  amountOut?: number;
+  transactionContent?: string;
+  referenceNumber?: string;
+  transactionDate?: string;
+  paidAt?: string;
+  createdAt?: string;
+}
+
 export interface ReconciliationView {
   universityId: number;
   universityName: string;
@@ -1189,8 +1212,8 @@ export const adminApi = {
   subsidyPolicies: (universityId?: number) => apiFetch.get<SubsidyPolicyView[]>("/admin/subsidy-policies", { universityId }),
   createSubsidyPolicy: (data: { universityId: number; campusId?: number; policyName: string; subsidyType: string; value: number; maxAmount?: number; activeFrom?: string; activeUntil?: string; status?: string }) =>
     apiFetch.post<SubsidyPolicyView>("/admin/subsidy-policies", data),
-  paymentTransactions: (params?: { universityId?: number }) => apiFetch.get<PaymentTransactionView[]>("/admin/payment-transactions", params),
   auditLogs: (params?: { universityId?: number; action?: string }) => apiFetch.get<AuditLogView[]>("/admin/audit-logs", params),
+  paymentTransactions: (params?: { universityId?: number }) => apiFetch.get<PaymentTransactionView[]>("/admin/payment-transactions", params),
 };
 
 export const universityApi = {
@@ -1217,6 +1240,79 @@ export const universityApi = {
   notify: (data: { title: string; content: string }) => apiFetch.post<number>("/university-admin/notifications", data),
 };
 
+export interface DispatchMessageView {
+  messageId: number;
+  senderUserId: number;
+  senderName: string;
+  recipientUserId: number;
+  recipientName: string;
+  tripId?: number;
+  content: string;
+  read: boolean;
+  sentAt?: string;
+}
+
+export interface DispatcherContact {
+  dispatcherUserId: number;
+  dispatcherName: string;
+  phoneNumber?: string;
+  department?: string;
+  activeTripId?: number;
+  messages: DispatchMessageView[];
+}
+
+export const driverDispatchApi = {
+  contact: () => apiFetch.get<DispatcherContact>("/driver/dispatch/contact"),
+  sendMessage: (data: { tripId?: number; content: string }) =>
+    apiFetch.post<DispatchMessageView>("/driver/dispatch/messages", data),
+  reportIncident: (data: { tripId: number; incidentType: string; description: string }) =>
+    apiFetch.post<DispatchMessageView>("/driver/dispatch/incidents", data),
+};
+
+export interface ContactPersonView {
+  userId: number;
+  name: string;
+  role: string;
+  phoneNumber?: string;
+  primary: boolean;
+}
+
+export interface InternalMessageView {
+  messageId: number;
+  senderUserId: number;
+  senderName: string;
+  recipientUserId: number;
+  recipientName: string;
+  tripId?: number;
+  content: string;
+  read: boolean;
+  sentAt?: string;
+}
+
+export interface ConductorContactView {
+  activeTripId?: number;
+  routeName?: string;
+  driverName?: string;
+  driverPhone?: string;
+  contacts: ContactPersonView[];
+  messages: InternalMessageView[];
+}
+
+export interface ConductorSupportResult {
+  type: string;
+  reportId: number;
+  message: string;
+  notificationMessage?: InternalMessageView;
+}
+
+export const conductorApi = {
+  contact: () => apiFetch.get<ConductorContactView>("/conductor/contact"),
+  sendMessage: (data: { tripId?: number; recipientType: string; content: string }) =>
+    apiFetch.post<InternalMessageView>("/conductor/messages", data),
+  submitSupport: (data: { tripId: number; reportType: string; passengerName?: string; location?: string; description: string }) =>
+    apiFetch.post<ConductorSupportResult>("/conductor/support", data),
+};
+
 export const api = {
   auth: authApi,
   profile: profileApi,
@@ -1229,4 +1325,6 @@ export const api = {
   admin: adminApi,
   universities: universityApi,
   messaging: messagingApi,
+  driverDispatch: driverDispatchApi,
+  conductor: conductorApi,
 };
