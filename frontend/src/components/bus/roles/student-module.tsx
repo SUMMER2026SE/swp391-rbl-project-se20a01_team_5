@@ -4,7 +4,7 @@
 // Student Module — UniBus (M3 Expressive, aligned to UIPrototype v1.1)
 // 14 role-specific screens driven by `activeId`:
 //   stu-dashboard, stu-university, stu-stops, stu-find, stu-my-journeys,
-//   stu-history, stu-chatbot, stu-payment, stu-invoices plus legacy hidden routes
+//   stu-history, stu-chatbot, stu-invoices plus legacy hidden routes
 //
 // Visual: keeps prototype v1.1 look (hero lime card, M3 Expressive cards,
 // SplitText reveal, ScrollReveal, M3MapCanvas, vertical timeline).
@@ -262,9 +262,8 @@ export function StudentModule({ activeId, onNavigate, onProfileRefresh }: Studen
     case "stu-chatbot":
       return <ChatbotScreen ctx={ctx} onNavigate={onNavigate} />;
     case "stu-payment":
-      return <PaymentScreen ctx={ctx} />;
     case "stu-invoices":
-      return <InvoicesScreen ctx={ctx} />;
+      return <FinanceScreen ctx={ctx} />;
     case "stu-feedback":
       return <FeedbackScreen ctx={ctx} />;
     case "stu-lost":
@@ -499,8 +498,8 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
 
   const quickActions = [
     { id: "stu-find", label: "Tìm tuyến xe", icon: RouteIcon, bg: "#144fcc", fg: "#fff", iconBg: "#beff50", iconFg: "#14140f" },
-    { id: "stu-my-journeys", label: "Chuyến đi của tôi", icon: TicketCheck, bg: "#ff8c5f", fg: "#14140f", iconBg: "#14140f", iconFg: "#ff8c5f" },
-    { id: "stu-payment", label: "Mua vé tháng", icon: CreditCard, bg: "#14140f", fg: "#fff", iconBg: "#beff50", iconFg: "#14140f" },
+    { id: "stu-my-journeys", label: "Vé của tôi", icon: TicketCheck, bg: "#ff8c5f", fg: "#14140f", iconBg: "#14140f", iconFg: "#ff8c5f" },
+    { id: "stu-invoices", label: "Vé tháng & hóa đơn", icon: Receipt, bg: "#14140f", fg: "#fff", iconBg: "#beff50", iconFg: "#14140f" },
     { id: "stu-chatbot", label: "Hỏi Copilot", icon: Bot, bg: "#c8a0ff", fg: "#14140f", iconBg: "#14140f", iconFg: "#c8a0ff" },
   ];
 
@@ -626,7 +625,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
                     whileHover={{ y: -2 }}
                     whileTap={{ scale: 0.97 }}
                     transition={{ type: "spring", stiffness: 400, damping: 22 }}
-                    onClick={() => onNavigate("stu-payment")}
+                    onClick={() => onNavigate("stu-invoices")}
                     className="state-layer inline-flex items-center gap-1 h-10 px-4 rounded-full bg-white text-[#14140f] text-sm font-bold border-2 border-[#14140f]"
                   >
                     Mua vé
@@ -1852,12 +1851,12 @@ function JourneyPlannerDesktopScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate
       localStorage.setItem("unibus.paymentRouteId", String(action.routeId));
       ctx.reload();
       toast.success("Đã đăng ký tuyến. Chuyển sang mua vé tháng.");
-      onNavigate("stu-payment");
+      onNavigate("stu-invoices");
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
         localStorage.setItem("unibus.paymentRouteId", String(action.routeId));
         toast.info("Tuyến này đã được đăng ký. Chuyển sang mua vé.");
-        onNavigate("stu-payment");
+        onNavigate("stu-invoices");
         return;
       }
       toast.error(error instanceof Error ? error.message : "Không thể đăng ký tuyến");
@@ -3283,7 +3282,7 @@ function MyJourneysScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
   return (
     <PageTransition className="space-y-5 min-w-0">
       <PageHeader
-        title="Chuyến đi của tôi"
+        title="Vé của tôi"
         description="Quản lý tuyến đã đăng ký, vé tháng và trạng thái xe trong một nơi."
         icon={<TicketCheck className="size-7" />}
         actions={
@@ -3454,12 +3453,12 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
                           transition={{ type: "spring", stiffness: 400, damping: 22 }}
                           onClick={() => {
                             localStorage.setItem("unibus.paymentRouteId", String(item.routeId));
-                            onNavigate("stu-payment");
+                            onNavigate("stu-invoices");
                           }}
                           className="inline-flex items-center gap-1.5 h-10 px-5 rounded-full bg-[#14140f] text-[#beff50] text-sm font-bold"
                         >
                           <CreditCard className="size-4" />
-                          Mua vé tháng
+                          Mở vé tháng
                         </motion.button>
                         <motion.button
                           whileHover={{ y: -2 }}
@@ -3658,7 +3657,7 @@ function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
           icon={<QrCode className="size-7" />}
           title="Chưa có vé tháng"
           description="Mua vé tháng để sử dụng dịch vụ xe buýt không giới hạn trong 30 ngày."
-          action={<ExpressiveButton variant="filled" onClick={() => onNavigate("stu-payment")}>
+          action={<ExpressiveButton variant="filled" onClick={() => onNavigate("stu-invoices")}>
             <CreditCard className="size-4" /> Mua vé tháng
           </ExpressiveButton>}
         />
@@ -3764,7 +3763,7 @@ function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
                   whileHover={{ y: -2 }}
                   whileTap={{ scale: 0.97 }}
                   transition={{ type: "spring", stiffness: 400, damping: 22 }}
-                  onClick={() => onNavigate("stu-payment")}
+                  onClick={() => onNavigate("stu-invoices")}
                   className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-[#14140f] text-[#beff50] text-xs font-bold shrink-0"
                 >
                   Gia hạn vé
@@ -4233,6 +4232,10 @@ function ToolGlyph({ tool, className }: { tool?: string; className?: string }) {
   return <Search className={className} />;
 }
 
+function isRealLlmResponse(mode?: string) {
+  return ["ZAI", "BEDROCK"].includes((mode || "").toUpperCase());
+}
+
 function ToolTracePanel({
   traceEvents,
   mode,
@@ -4328,11 +4331,22 @@ function AiRouteResultCard({
   const alightingStopId = registerAction?.alightingStopId || stops[stops.length - 1]?.stopId;
   const monthlyFare = route.finalFare ?? route.monthlyFare;
   const departure = route.nextDepartures?.[0];
+  const meaningfulReasons = (route.reasons || [])
+    .filter((reason) => reason && !/phù hợp với dữ liệu tuyến hiện tại/i.test(reason))
+    .slice(0, 2);
+  const metrics = [
+    departure ? { label: "Chuyến gần nhất", value: departure } : null,
+    stops.length ? { label: "Số trạm", value: String(stops.length) } : null,
+    route.singleFare != null ? { label: "Vé lượt", value: formatVND(route.singleFare) } : null,
+    monthlyFare != null ? { label: "Vé tháng", value: formatVND(monthlyFare) } : null,
+  ].filter(Boolean) as { label: string; value: string }[];
 
   const viewOnMap = () => {
     window.sessionStorage.setItem("unibus:assistant:route-preview", String(route.routeId));
     window.sessionStorage.setItem("unibus:assistant:route-preview-context", JSON.stringify({
       routeId: route.routeId,
+      routeCode: route.routeCode,
+      routeName: route.routeName,
       boardingStopId,
       alightingStopId,
     }));
@@ -4344,15 +4358,17 @@ function AiRouteResultCard({
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.22, delay: Math.min(index * 0.04, 0.12), ease: "easeOut" }}
-      className="overflow-hidden rounded-2xl border border-outline-variant bg-surface text-on-surface"
+      className="w-full max-w-[420px] overflow-hidden rounded-2xl border border-outline-variant bg-surface text-on-surface"
     >
-      <div className="p-3.5">
+      <div className="p-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex h-6 items-center rounded-full bg-[#14140f] px-2.5 text-[11px] font-bold text-[#beff50]">
-                {route.routeCode || `T-${route.routeId}`}
-              </span>
+              {(route.routeCode || route.routeId) && (
+                <span className="inline-flex h-6 items-center rounded-full bg-[#14140f] px-2.5 text-[11px] font-bold text-[#beff50]">
+                  {route.routeCode || `T-${route.routeId}`}
+                </span>
+              )}
               {route.confidence != null && (
                 <span className="text-xs font-medium text-on-surface-variant">{route.confidence}% phù hợp</span>
               )}
@@ -4362,26 +4378,22 @@ function AiRouteResultCard({
           <Bus className="size-5 shrink-0 text-on-surface-variant" />
         </div>
 
-        {!!route.reasons?.length && (
+        {!!meaningfulReasons.length && (
           <p className="mt-2 text-xs leading-5 text-on-surface-variant">
-            {route.reasons.slice(0, 2).join(" · ")}
+            {meaningfulReasons.join(" · ")}
           </p>
         )}
 
-        <div className="mt-3 grid grid-cols-3 gap-2">
-          <div className="min-w-0 rounded-xl bg-surface-container-low px-2.5 py-2">
-            <p className="text-[10px] text-on-surface-variant">Chuyến gần nhất</p>
-            <p className="mt-1 truncate text-xs font-bold">{departure || "Chưa có"}</p>
+        {!!metrics.length && (
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {metrics.slice(0, 3).map((metric) => (
+              <div key={metric.label} className="min-w-0 rounded-xl bg-surface-container-low px-2.5 py-2">
+                <p className="text-[10px] text-on-surface-variant">{metric.label}</p>
+                <p className="mt-1 truncate text-xs font-bold">{metric.value}</p>
+              </div>
+            ))}
           </div>
-          <div className="min-w-0 rounded-xl bg-surface-container-low px-2.5 py-2">
-            <p className="text-[10px] text-on-surface-variant">Số trạm</p>
-            <p className="mt-1 text-xs font-bold">{stops.length || "Chưa rõ"}</p>
-          </div>
-          <div className="min-w-0 rounded-xl bg-surface-container-low px-2.5 py-2">
-            <p className="text-[10px] text-on-surface-variant">Vé tháng</p>
-            <p className="mt-1 truncate text-xs font-bold">{monthlyFare != null ? formatVND(monthlyFare) : "Chưa có"}</p>
-          </div>
-        </div>
+        )}
 
         {route.subsidyAmount != null && route.subsidyAmount > 0 && (
           <div className="mt-2 flex items-center justify-between gap-3 rounded-xl bg-[#beff50]/12 px-3 py-2 text-xs">
@@ -4436,6 +4448,12 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const toolDismissTimers = useRef<Record<string, number>>({});
+
+  useEffect(() => () => {
+    Object.values(toolDismissTimers.current).forEach((timer) => window.clearTimeout(timer));
+    toolDismissTimers.current = {};
+  }, []);
 
   useEffect(() => {
     try {
@@ -4501,15 +4519,29 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
         return { ...message, ...resolved };
       }));
     };
+    const cancelToolDismiss = () => {
+      const timer = toolDismissTimers.current[botTime];
+      if (timer) window.clearTimeout(timer);
+      delete toolDismissTimers.current[botTime];
+    };
+    const dismissToolTraceSoon = (delay = 760) => {
+      cancelToolDismiss();
+      toolDismissTimers.current[botTime] = window.setTimeout(() => {
+        patchBot({ toolActive: false });
+        delete toolDismissTimers.current[botTime];
+      }, delay);
+    };
     try {
       await experienceApi.streamAssistantChat(payload, (event) => {
         if (event.type === "tool.started" || event.type === "tool.completed") {
+          if (event.type === "tool.started") cancelToolDismiss();
           patchBot((current) => ({
             traceEvents: [...(current.traceEvents || []), ...(event.traceEvents || [])],
             mode: event.mode || current.mode,
             providerStatus: event.providerStatus || current.providerStatus,
             toolActive: true,
           }));
+          if (event.type === "tool.completed") dismissToolTraceSoon(920);
           return;
         }
         if (event.type === "answer.delta" && event.delta) {
@@ -4519,7 +4551,6 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
             sources: event.sources || current.sources,
             routeSuggestions: event.routeSuggestions || current.routeSuggestions,
             providerStatus: event.providerStatus || current.providerStatus,
-            toolActive: false,
           }));
           return;
         }
@@ -4529,7 +4560,6 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
             sources: event.sources || [],
             mode: event.mode,
             providerStatus: event.providerStatus,
-            toolActive: false,
           });
           return;
         }
@@ -4537,8 +4567,8 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
           patchBot({
             mode: event.mode || "PROVIDER_UNAVAILABLE",
             providerStatus: event.providerStatus,
-            toolActive: false,
           });
+          dismissToolTraceSoon(700);
           return;
         }
         if (event.type === "fast_reply" || event.type === "assistant.completed") {
@@ -4550,7 +4580,7 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
             traceEvents: event.traceEvents || undefined,
             providerStatus: event.providerStatus,
             streaming: event.type !== "assistant.completed",
-            toolActive: false,
+            toolActive: event.type === "fast_reply" ? false : undefined,
           });
         }
       });
@@ -4577,12 +4607,15 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
         });
       }
     } finally {
-      patchBot({ streaming: false, toolActive: false });
+      patchBot({ streaming: false });
+      dismissToolTraceSoon(520);
       setLoading(false);
     }
   };
 
   const reset = () => {
+    Object.values(toolDismissTimers.current).forEach((timer) => window.clearTimeout(timer));
+    toolDismissTimers.current = {};
     setMessages([{ ...welcomeMessage, time: new Date().toISOString() }]);
     setInput("");
     setLoading(false);
@@ -4629,10 +4662,19 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
               >
                 {m.role === "bot" && (
                   <span className={cn(
-                    "mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-[#BDFD4F] text-[#14140f]",
+                    "relative mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-[#BDFD4F] text-[#14140f]",
                     m.toolActive && (m.traceEvents?.length || 0) > 0 && "ai-agent-avatar-glow"
                   )}>
                     <Bot className="size-4" />
+                    {isRealLlmResponse(m.mode) && (
+                      <span
+                        aria-label="Phản hồi từ LLM thật"
+                        className="absolute -right-0.5 -top-0.5 flex size-2.5"
+                      >
+                        <span className="absolute inline-flex size-full rounded-full bg-success/45 ai-model-online-ping" />
+                        <span className="relative inline-flex size-2.5 rounded-full border border-surface bg-success" />
+                      </span>
+                    )}
                   </span>
                 )}
                 <div
@@ -4714,6 +4756,15 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
           </ExpressiveButton>
         </form>
       </div>
+    </PageTransition>
+  );
+}
+
+function FinanceScreen({ ctx }: { ctx: Ctx }) {
+  return (
+    <PageTransition className="space-y-8 min-w-0">
+      <PaymentScreen ctx={ctx} />
+      <InvoicesScreen ctx={ctx} />
     </PageTransition>
   );
 }

@@ -141,6 +141,20 @@ class AiCopilotServiceTests {
         assertThat(turns).isZero();
     }
 
+    @Test
+    void genericRouteQuestionAsksForStopsWithoutListingCards() {
+        ChatResponse response = chatbotService.respond(1, new ChatRequest(
+                "tuyến xe",
+                Map.of()));
+
+        assertThat(response.mode()).isEqualTo("FAST_REPLY");
+        assertThat(response.advisoryType()).isEqualTo("ROUTE_SUGGESTION");
+        assertThat(response.message()).contains("từ đâu đến đâu");
+        assertThat(response.routeSuggestions()).isEmpty();
+        Integer turns = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM ai_chat_history", Integer.class);
+        assertThat(turns).isZero();
+    }
+
     private void createTables() {
         jdbcTemplate.execute("DROP ALL OBJECTS");
         jdbcTemplate.execute("""

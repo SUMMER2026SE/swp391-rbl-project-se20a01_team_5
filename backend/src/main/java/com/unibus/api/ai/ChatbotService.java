@@ -110,6 +110,27 @@ public class ChatbotService {
             return response;
         }
 
+        RouteSuggestionRequest routeRequest = routeRequestFromChat(userId, request, advisoryType);
+        if (shouldClarifyRouteRequest(advisoryType, routeRequest, userMessage)) {
+            String message = routeClarificationMessage(routeRequest);
+            String sessionId = UUID.randomUUID().toString();
+            sink.emit("fast_reply", streamEvent("fast_reply", message, null,
+                    "FAST_REPLY", advisoryType, List.of(), List.of(), List.of(), List.of(), null, sessionId));
+            ChatResponse response = new ChatResponse(
+                    message,
+                    "FAST_REPLY",
+                    advisoryType.name(),
+                    List.of(),
+                    List.of(),
+                    List.of(),
+                    sessionId,
+                    List.of(),
+                    null);
+            sink.emit("assistant.completed", streamEvent("assistant.completed", message, null,
+                    "FAST_REPLY", advisoryType, List.of(), List.of(), List.of(), List.of(), null, sessionId));
+            return response;
+        }
+
         persist(userId, "USER", advisoryType.name(), userMessage);
         List<AiTraceEvent> traceEvents = new ArrayList<>();
         ToolTimer profileTimer = toolStarted(sink, traceEvents, "student_context", "Hồ sơ sinh viên", "Đọc trường, đăng ký tuyến và vé đang hoạt động");
@@ -119,9 +140,8 @@ public class ChatbotService {
         toolCompleted(sink, traceEvents, profileTimer, "Tìm thấy " + nullToBlank(student.universityName()));
 
         List<RouteSuggestionCard> routeSuggestions = List.of();
-        if (shouldLoadRoutes(advisoryType)) {
+        if (shouldLoadRoutes(advisoryType, routeRequest, userMessage)) {
             ToolTimer routeTimer = toolStarted(sink, traceEvents, "route_suggestions", "Tuyến, trạm và lịch chạy", "Tìm tuyến phù hợp từ dữ liệu UniBus");
-            RouteSuggestionRequest routeRequest = routeRequestFromChat(userId, request, advisoryType);
             routeSuggestions = routeSuggestionService.suggest(userId, routeRequest).stream().limit(3).toList();
             toolCompleted(sink, traceEvents, routeTimer, routeSuggestions.size() + " tuyến phù hợp");
         }
@@ -215,6 +235,31 @@ public class ChatbotService {
             }
         }
         return false;
+    }
+
+    private boolean shouldClarifyRouteRequest(AiIntent advisoryType, RouteSuggestionRequest request, String message) {
+        if (advisoryType != AiIntent.ROUTE_SUGGESTION) {
+            return false;
+        }
+        if (request != null && request.boardingStopId() != null && request.alightingStopId() != null) {
+            return false;
+        }
+        String text = normalizeSearchText(message);
+        if (containsAny(text, "so sanh", "phan tich", "giai thich", "toi uu", "tai sao")) {
+            return false;
+        }
+        boolean routePrompt = containsAny(text, "tuyen", "tuyen xe", "xe bus", "bus", "duong di", "goi y");
+        return routePrompt && text.length() <= 60;
+    }
+
+    private String routeClarificationMessage(RouteSuggestionRequest request) {
+        if (request != null && request.boardingStopId() != null) {
+            return "Bạn muốn xuống ở đâu? Hãy nhập thêm điểm đến, ví dụ: từ Đại học Bách khoa Đà Nẵng đến Đại học FPT.";
+        }
+        if (request != null && request.alightingStopId() != null) {
+            return "Bạn muốn xuất phát từ đâu? Hãy nhập đủ điểm đi và điểm đến, ví dụ: từ Đại học Bách khoa Đà Nẵng đến Đại học FPT.";
+        }
+        return "Bạn muốn tìm tuyến từ đâu đến đâu? Hãy nhập kiểu: từ Đại học Bách khoa Đà Nẵng đến Đại học FPT.";
     }
 
     private RouteSuggestionRequest routeRequestFromChat(Integer userId, ChatRequest request, AiIntent advisoryType) {
@@ -378,11 +423,20 @@ public class ChatbotService {
         return withoutAccent.replaceAll("[^a-z0-9]+", " ").trim();
     }
 
-    private boolean shouldLoadRoutes(AiIntent advisoryType) {
-        return advisoryType == AiIntent.ROUTE_SUGGESTION
-                || advisoryType == AiIntent.FARE_LOOKUP
-                || advisoryType == AiIntent.SCHEDULE_LOOKUP
-                || advisoryType == AiIntent.HELP;
+    private boolean shouldLoadRoutes(AiIntent advisoryType, RouteSuggestionRequest request, String userMessage) {
+        boolean hasStopPair = request != null
+                && request.boardingStopId() != null
+                && request.alightingStopId() != null;
+        if (advisoryType == AiIntent.ROUTE_SUGGESTION) {
+            return hasStopPair;
+        }
+        if (advisoryType == AiIntent.FARE_LOOKUP || advisoryType == AiIntent.SCHEDULE_LOOKUP) {
+            return hasStopPair;
+        }
+        if (advisoryType == AiIntent.HELP) {
+            return hasStopPair && normalizeSearchText(userMessage).contains("tuyen");
+        }
+        return false;
     }
 
     private LlmMessage parseLlmMessage(String text, AiIntent fallbackType) {
@@ -434,11 +488,14 @@ public class ChatbotService {
         if (advisoryType == AiIntent.ROUTE_SUGGESTION) {
             RouteSuggestionCard top = routes.get(0);
             String departures = top.nextDepartures().isEmpty() ? "chưa có lịch gần nhất" : String.join(", ", top.nextDepartures());
-            return new LlmMessage("Mình gợi ý tuyến %s - %s. Lý do: %s. Vé tháng sau trợ giá khoảng %s VND, chuyến gần nhất: %s."
+            String reasonText = top.reasons().isEmpty()
+                    ? ""
+                    : " Lý do: " + String.join(", ", top.reasons()) + ".";
+            return new LlmMessage("Mình gợi ý tuyến %s - %s.%s Vé tháng sau trợ giá khoảng %s VND, chuyến gần nhất: %s."
                     .formatted(
                             nullToBlank(top.routeCode()),
                             top.routeName(),
-                            String.join(", ", top.reasons()),
+                            reasonText,
                             top.finalFare() == null ? "chưa có dữ liệu" : top.finalFare().toPlainString(),
                             departures), advisoryType);
         }

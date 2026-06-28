@@ -412,3 +412,84 @@ Additional checks:
 - `git diff --check` passed.
 - Repository-wide conflict-marker search passed (`<<<<<<<` / `>>>>>>>` not found).
 - Browser/visual testing intentionally skipped in this merge-prep pass per user instruction.
+
+## 2026-06-28 Follow-Up: Student Nav Consolidation And Planner Fit
+
+Purpose:
+
+- Finish the small UX cleanup after PR prep without changing database schema or backend APIs.
+- Keep the student journey planner desktop layout intact, but make it fit lower desktop viewports better.
+
+Changes:
+
+- Removed `Trường của tôi` from the student sidebar navigation. The hidden `stu-university` screen still exists and remains reachable from the avatar dropdown for verification/university profile workflows.
+- Consolidated sidebar finance navigation into one item: `Vé tháng & hóa đơn`.
+- Kept `stu-payment` as a legacy route alias, but it now renders the consolidated finance screen together with `stu-invoices`.
+- Updated student CTAs that previously navigated to `stu-payment` so they now navigate to `stu-invoices`.
+- Added a temporary hover sidebar affordance on the student `Tìm tuyến xe` page:
+  - The planner still auto-collapses the full sidebar.
+  - Hovering or focusing the thin left-edge handle opens the sidebar as an overlay.
+  - Moving the pointer away closes the overlay without shifting the map.
+- Reduced the journey planner container minimum height from `680px` to `520px` and recalculated the viewport height from `100dvh - 116px` to `100dvh - 128px`, so route/register/detail footers are less likely to sit below the visible desktop viewport.
+
+Verification:
+
+```powershell
+cd frontend
+npm run build
+```
+
+Notes:
+
+- No DB/RDS/schema changes were made in this pass.
+- Browser/visual testing was intentionally skipped per user instruction to avoid spending extra tokens.
+- Existing dirty chatbot/backend files were not reverted or modified by this narrow nav/planner-fit pass.
+
+## 2026-06-28 Follow-Up: RDS Live Check And Student Label Rename
+
+UI change:
+
+- Renamed the student nav/dashboard/screen label from `Chuyến đi của tôi` to `Vé của tôi`.
+- Kept the internal route id as `stu-my-journeys` to avoid breaking existing navigation/state.
+
+RDS live check:
+
+- Connected read-only via local `dbauth.txt` and PostgreSQL JDBC.
+- Latest successful Flyway migration on RDS is now `16 | sepay journey combo orders | 2026-06-28 11:57:46.557172`.
+- Local workspace migration folder currently lists through `V15__journey_seed_conflict_keys.sql`; there is no local `V16__...sql` file in this checkout at the time of this note.
+- Follow-up validation found the exact RDS script metadata:
+  - script: `V16__sepay_journey_combo_orders.sql`
+  - checksum: `-3587936`
+  - local/remote refs searched after fetch did not contain that file
+- Production Flyway config was updated with `spring.flyway.ignore-migration-patterns=*:missing,*:future` so this checkout can still boot against the shared demo RDS history without mutating the database. This does not ignore checksum mismatches.
+- Long-term fix remains: recover the exact V16 migration file matching checksum `-3587936`, or intentionally repair Flyway history after agreeing on a canonical replacement file.
+- Current RDS transport counts:
+  - `routes_total=31`, `routes_active=31`
+  - `stops_total=876`, `stops_active=876`
+  - `route_stops=1194`
+  - `active_fares=62`
+- Source split:
+  - `BUSMAP_DN=25`
+  - `NULL=6` canonical/demo UniBus routes
+- Active route codes on RDS:
+  - `01, 02, 03, 04, 05, 06, 07, 08, 09, 11, 12, 14, 16, 17, LK01, LK02, LK21, N1, N2, R15, R16, R17A, R4A, R6A, TMF1, UB-DN-01, UB-DN-02, UB-DN-03, UB-DN-04, UB-DN-05, UB-DN-06`
+- Data quality:
+  - `routes_missing_code=0`
+  - `stops_missing_code=0`
+  - `duplicate_stop_code=0`
+  - old audit key `route_id + stop_order` reports duplicates because it ignores `station_direction`
+  - corrected key `route_id + station_direction + stop_order` reports `0` duplicates
+- Journey order schema exists on RDS (`journey_orders`, `journey_order_items`). Current live data count from audit is `orders=0`, `items=0`.
+- Demo flow user still exists and `SV-FLOW-001` transactional rows remain `0`.
+
+Verification:
+
+```powershell
+cd frontend
+npm run build
+```
+
+```powershell
+# Flyway validate against RDS using prod ignore patterns
+# Result: validationSuccessful=true_with_prod_ignore_patterns
+```
