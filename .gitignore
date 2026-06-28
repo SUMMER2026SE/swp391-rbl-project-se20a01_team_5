@@ -13,6 +13,7 @@ backend/uploads/
 frontend/frontend-run*.log
 .codex-tmp/
 .codex/tmp/
+.codex-backend*.log
 *.rej
 *.orig
 patch6.patch

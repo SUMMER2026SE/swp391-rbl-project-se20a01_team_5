@@ -1,6 +1,5 @@
 package com.unibus.api.ai;
 
-import java.time.OffsetDateTime;
 import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -21,9 +20,12 @@ import org.springframework.transaction.annotation.Transactional;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.unibus.api.ai.AiDtos.AiAction;
+import com.unibus.api.ai.AiDtos.AiProviderStatus;
 import com.unibus.api.ai.AiDtos.AiSource;
+import com.unibus.api.ai.AiDtos.AiTraceEvent;
 import com.unibus.api.ai.AiDtos.ChatRequest;
 import com.unibus.api.ai.AiDtos.ChatResponse;
+import com.unibus.api.ai.AiDtos.ChatStreamEvent;
 import com.unibus.api.ai.AiDtos.RouteSuggestionCard;
 import com.unibus.api.ai.AiDtos.RouteSuggestionRequest;
 import com.unibus.api.ai.AiKnowledgeRepository.RegistrationSnapshot;
@@ -51,30 +53,78 @@ public class ChatbotService {
     private final AiKnowledgeRepository knowledgeRepository;
     private final RouteSuggestionService routeSuggestionService;
     private final AiLlmService llmService;
+    private final IntentRouter intentRouter;
+    private final FastReplyService fastReplyService;
 
     public ChatbotService(
             JdbcTemplate jdbcTemplate,
             AiKnowledgeRepository knowledgeRepository,
             RouteSuggestionService routeSuggestionService,
-            AiLlmService llmService) {
+            AiLlmService llmService,
+            IntentRouter intentRouter,
+            FastReplyService fastReplyService) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = new ObjectMapper();
         this.knowledgeRepository = knowledgeRepository;
         this.routeSuggestionService = routeSuggestionService;
         this.llmService = llmService;
+        this.intentRouter = intentRouter;
+        this.fastReplyService = fastReplyService;
     }
 
     @Transactional
     public ChatResponse respond(Integer userId, ChatRequest request) {
+        return runConversation(userId, request, StreamSink.noop());
+    }
+
+    @Transactional
+    public ChatResponse respondStream(Integer userId, ChatRequest request, StreamSink sink) {
+        return runConversation(userId, request, sink == null ? StreamSink.noop() : sink);
+    }
+
+    private ChatResponse runConversation(Integer userId, ChatRequest request, StreamSink sink) {
         String userMessage = request.message() == null ? "" : request.message().trim();
-        AdvisoryType advisoryType = detectIntent(userMessage);
+        AiIntent advisoryType = intentRouter.detect(userMessage);
+        sink.emit("assistant.started", streamEvent("assistant.started", null, null, null,
+                advisoryType, List.of(), List.of(), List.of(), List.of(), null, null));
+
+        if (advisoryType == AiIntent.SMALL_TALK) {
+            LlmMessage fastReply = new LlmMessage(
+                    fastReplyService.reply(userMessage).orElse("Xin chào. Bạn muốn mình hỗ trợ gì về UniBus?"),
+                    AiIntent.SMALL_TALK);
+            String sessionId = UUID.randomUUID().toString();
+            sink.emit("fast_reply", streamEvent("fast_reply", fastReply.message(), null,
+                    "FAST_REPLY", fastReply.advisoryType(), List.of(), List.of(), List.of(), List.of(), null, sessionId));
+            ChatResponse response = new ChatResponse(
+                    fastReply.message(),
+                    "FAST_REPLY",
+                    fastReply.advisoryType().name(),
+                    List.of(),
+                    List.of(),
+                    List.of(),
+                    sessionId,
+                    List.of(),
+                    null);
+            sink.emit("assistant.completed", streamEvent("assistant.completed", fastReply.message(), null,
+                    "FAST_REPLY", fastReply.advisoryType(), List.of(), List.of(), List.of(), List.of(), null, sessionId));
+            return response;
+        }
+
+        persist(userId, "USER", advisoryType.name(), userMessage);
+        List<AiTraceEvent> traceEvents = new ArrayList<>();
+        ToolTimer profileTimer = toolStarted(sink, traceEvents, "student_context", "Hồ sơ sinh viên", "Đọc trường, đăng ký tuyến và vé đang hoạt động");
         StudentContext student = knowledgeRepository.studentContext(userId);
         RegistrationSnapshot registration = knowledgeRepository.currentRegistration(student.studentCode()).orElse(null);
         TicketSnapshot activeTicket = knowledgeRepository.activeTicket(student.studentCode()).orElse(null);
-        RouteSuggestionRequest routeRequest = routeRequestFromChat(userId, request, advisoryType);
-        List<RouteSuggestionCard> routeSuggestions = shouldLoadRoutes(advisoryType)
-                ? routeSuggestionService.suggest(userId, routeRequest).stream().limit(3).toList()
-                : List.of();
+        toolCompleted(sink, traceEvents, profileTimer, "Tìm thấy " + nullToBlank(student.universityName()));
+
+        List<RouteSuggestionCard> routeSuggestions = List.of();
+        if (shouldLoadRoutes(advisoryType)) {
+            ToolTimer routeTimer = toolStarted(sink, traceEvents, "route_suggestions", "Tuyến, trạm và lịch chạy", "Tìm tuyến phù hợp từ dữ liệu UniBus");
+            RouteSuggestionRequest routeRequest = routeRequestFromChat(userId, request, advisoryType);
+            routeSuggestions = routeSuggestionService.suggest(userId, routeRequest).stream().limit(3).toList();
+            toolCompleted(sink, traceEvents, routeTimer, routeSuggestions.size() + " tuyến phù hợp");
+        }
         List<AiSource> sources = sources(student, registration, activeTicket, routeSuggestions);
         Map<String, Object> context = new LinkedHashMap<>();
         context.put("student", student);
@@ -84,18 +134,27 @@ public class ChatbotService {
         context.put("sources", sources);
         context.put("clientContext", request.context());
 
-        persist(userId, "USER", advisoryType.name(), userMessage);
-        boolean fastContextAnswer = shouldUseFastContextAnswer(userMessage, advisoryType, registration, activeTicket, routeSuggestions);
+        boolean toolAssistedAnswer = shouldUseToolAssistedAnswer(userMessage, advisoryType, registration, activeTicket, routeSuggestions);
         String mode;
         LlmMessage llmMessage;
-        if (fastContextAnswer) {
-            mode = "FAST_CONTEXT";
+        AiProviderStatus providerStatus = null;
+        if (toolAssistedAnswer) {
+            mode = "TOOL_ASSISTED";
             llmMessage = fallbackMessage(userMessage, advisoryType, student, registration, activeTicket, routeSuggestions);
         } else {
+            ToolTimer llmTimer = toolStarted(sink, traceEvents, "llm_composer", "LLM composer", "Tổng hợp câu trả lời từ context đã truy xuất");
             Optional<AiLlmService.LlmResult> llm = llmService.complete(new AiPrompt(SYSTEM_PROMPT, userMessage, context));
-            mode = llm.map(result -> result.provider().toUpperCase()).orElse("FALLBACK");
+            providerStatus = llmService.providerStatus();
+            List<RouteSuggestionCard> finalRouteSuggestions = routeSuggestions;
+            if (llm.isPresent()) {
+                toolCompleted(sink, traceEvents, llmTimer, "Phản hồi bởi " + llm.get().provider());
+            } else {
+                toolCompleted(sink, traceEvents, llmTimer, "Provider chưa sẵn sàng");
+            }
+            mode = llm.map(result -> result.provider().toUpperCase())
+                    .orElse(providerUnavailable(providerStatus) ? "PROVIDER_UNAVAILABLE" : "FALLBACK");
             llmMessage = llm.map(result -> parseLlmMessage(result.text(), advisoryType))
-                    .orElseGet(() -> fallbackMessage(userMessage, advisoryType, student, registration, activeTicket, routeSuggestions));
+                    .orElseGet(() -> fallbackMessage(userMessage, advisoryType, student, registration, activeTicket, finalRouteSuggestions));
         }
         List<AiAction> actions = routeSuggestions.stream()
                 .flatMap(route -> route.actions().stream())
@@ -103,6 +162,17 @@ public class ChatbotService {
                 .limit(6)
                 .toList();
         String sessionId = persist(userId, "AI", llmMessage.advisoryType().name(), llmMessage.message());
+        if (providerUnavailable(providerStatus)) {
+            sink.emit("provider_unavailable", streamEvent("provider_unavailable", providerStatus.message(), null,
+                    mode, llmMessage.advisoryType(), routeSuggestions, actions, sources, traceEvents, providerStatus, sessionId));
+        }
+        emitAnswerDeltas(sink, llmMessage.message(), mode, llmMessage.advisoryType(), routeSuggestions, actions, sources, traceEvents, providerStatus, sessionId);
+        if (!routeSuggestions.isEmpty()) {
+            sink.emit("route.cards", streamEvent("route.cards", null, null, mode,
+                    llmMessage.advisoryType(), routeSuggestions, actions, sources, traceEvents, providerStatus, sessionId));
+        }
+        sink.emit("assistant.completed", streamEvent("assistant.completed", llmMessage.message(), null,
+                mode, llmMessage.advisoryType(), routeSuggestions, actions, sources, traceEvents, providerStatus, sessionId));
         return new ChatResponse(
                 llmMessage.message(),
                 mode,
@@ -110,12 +180,14 @@ public class ChatbotService {
                 routeSuggestions,
                 actions,
                 sources,
-                sessionId);
+                sessionId,
+                traceEvents,
+                providerStatus);
     }
 
-    private boolean shouldUseFastContextAnswer(
+    private boolean shouldUseToolAssistedAnswer(
             String message,
-            AdvisoryType advisoryType,
+            AiIntent advisoryType,
             RegistrationSnapshot registration,
             TicketSnapshot activeTicket,
             List<RouteSuggestionCard> routes) {
@@ -145,7 +217,7 @@ public class ChatbotService {
         return false;
     }
 
-    private RouteSuggestionRequest routeRequestFromChat(Integer userId, ChatRequest request, AdvisoryType advisoryType) {
+    private RouteSuggestionRequest routeRequestFromChat(Integer userId, ChatRequest request, AiIntent advisoryType) {
         Map<String, Object> context = request.context();
         Integer boardingStopId = intValue(context == null ? null : context.get("boardingStopId"));
         Integer alightingStopId = intValue(context == null ? null : context.get("alightingStopId"));
@@ -184,7 +256,7 @@ public class ChatbotService {
                 preferredDepartureTime,
                 preferences,
                 request.message(),
-                advisoryType == AdvisoryType.FARE_LOOKUP ? "cheap" : null);
+                advisoryType == AiIntent.FARE_LOOKUP ? "cheap" : null);
     }
 
     private StopPair firstRouteCompatiblePair(
@@ -306,47 +378,19 @@ public class ChatbotService {
         return withoutAccent.replaceAll("[^a-z0-9]+", " ").trim();
     }
 
-    private boolean shouldLoadRoutes(AdvisoryType advisoryType) {
-        return advisoryType == AdvisoryType.ROUTE_SUGGESTION
-                || advisoryType == AdvisoryType.FARE_LOOKUP
-                || advisoryType == AdvisoryType.SCHEDULE_LOOKUP
-                || advisoryType == AdvisoryType.HELP;
+    private boolean shouldLoadRoutes(AiIntent advisoryType) {
+        return advisoryType == AiIntent.ROUTE_SUGGESTION
+                || advisoryType == AiIntent.FARE_LOOKUP
+                || advisoryType == AiIntent.SCHEDULE_LOOKUP
+                || advisoryType == AiIntent.HELP;
     }
 
-    private AdvisoryType detectIntent(String message) {
-        String text = message.toLowerCase();
-        if (text.contains("tuyến") || text.contains("đường") || text.contains("đi tới")
-                || text.contains("đi đến") || text.contains("gợi ý") || text.contains("nhanh")
-                || text.contains("rẻ") || (text.contains("đi từ") && text.contains("đến"))) {
-            return AdvisoryType.ROUTE_SUGGESTION;
-        }
-        if (text.contains("giá") || text.contains("bao nhiêu tiền") || text.contains("vé tháng")
-                || text.contains("vé lẻ")) {
-            return AdvisoryType.FARE_LOOKUP;
-        }
-        if (text.contains("lịch") || text.contains("mấy giờ") || text.contains("eta")
-                || text.contains("chuyến")) {
-            return AdvisoryType.SCHEDULE_LOOKUP;
-        }
-        if (text.contains("thanh toán") || text.contains("sepay") || text.contains("qr")
-                || text.contains("mua vé")) {
-            return AdvisoryType.PAYMENT_LOOKUP;
-        }
-        if (text.contains("xác minh") || text.contains("trường của tôi") || text.contains("mssv")) {
-            return AdvisoryType.VERIFICATION;
-        }
-        if (text.contains("giúp") || text.contains("help") || text.contains("chào")) {
-            return AdvisoryType.HELP;
-        }
-        return AdvisoryType.OTHER;
-    }
-
-    private LlmMessage parseLlmMessage(String text, AdvisoryType fallbackType) {
+    private LlmMessage parseLlmMessage(String text, AiIntent fallbackType) {
         String candidate = stripCodeFence(text);
         try {
             JsonNode root = objectMapper.readTree(candidate);
             String message = root.path("message").asText("");
-            AdvisoryType type = parseType(root.path("advisoryType").asText(""), fallbackType);
+            AiIntent type = parseType(root.path("advisoryType").asText(""), fallbackType);
             if (!message.isBlank()) {
                 return new LlmMessage(message, type);
             }
@@ -369,9 +413,9 @@ public class ChatbotService {
         return trimmed;
     }
 
-    private AdvisoryType parseType(String value, AdvisoryType fallback) {
+    private AiIntent parseType(String value, AiIntent fallback) {
         try {
-            return AdvisoryType.valueOf(value);
+            return AiIntent.valueOf(value);
         } catch (RuntimeException exception) {
             return fallback;
         }
@@ -379,15 +423,15 @@ public class ChatbotService {
 
     private LlmMessage fallbackMessage(
             String userMessage,
-            AdvisoryType advisoryType,
+            AiIntent advisoryType,
             StudentContext student,
             RegistrationSnapshot registration,
             TicketSnapshot activeTicket,
             List<RouteSuggestionCard> routes) {
-        if (advisoryType == AdvisoryType.ROUTE_SUGGESTION && routes.isEmpty()) {
+        if (advisoryType == AiIntent.ROUTE_SUGGESTION && routes.isEmpty()) {
             return new LlmMessage("Mình chưa tìm thấy tuyến phù hợp từ dữ liệu hiện tại. Bạn hãy chọn rõ trạm lên và trạm xuống để mình lọc chính xác hơn.", advisoryType);
         }
-        if (advisoryType == AdvisoryType.ROUTE_SUGGESTION) {
+        if (advisoryType == AiIntent.ROUTE_SUGGESTION) {
             RouteSuggestionCard top = routes.get(0);
             String departures = top.nextDepartures().isEmpty() ? "chưa có lịch gần nhất" : String.join(", ", top.nextDepartures());
             return new LlmMessage("Mình gợi ý tuyến %s - %s. Lý do: %s. Vé tháng sau trợ giá khoảng %s VND, chuyến gần nhất: %s."
@@ -398,13 +442,13 @@ public class ChatbotService {
                             top.finalFare() == null ? "chưa có dữ liệu" : top.finalFare().toPlainString(),
                             departures), advisoryType);
         }
-        if (advisoryType == AdvisoryType.PAYMENT_LOOKUP) {
+        if (advisoryType == AiIntent.PAYMENT_LOOKUP) {
             return new LlmMessage(activeTicket == null
                     ? "Bạn chưa có vé tháng đang hoạt động. Hãy đăng ký tuyến trước, sau đó vào mục Mua vé tháng để tạo QR SePay."
                     : "Bạn đang có vé %s cho tuyến %s, trạng thái %s."
                             .formatted(activeTicket.ticketType(), activeTicket.routeName(), activeTicket.status()), advisoryType);
         }
-        if (advisoryType == AdvisoryType.VERIFICATION) {
+        if (advisoryType == AiIntent.VERIFICATION) {
             return new LlmMessage("Trạng thái xác minh sinh viên của bạn hiện là %s, trường liên kết: %s."
                     .formatted(nullToBlank(student.verificationStatus()), nullToBlank(student.universityName())), advisoryType);
         }
@@ -484,11 +528,127 @@ public class ChatbotService {
         return value == null ? "" : value;
     }
 
-    private enum AdvisoryType {
-        ROUTE_SUGGESTION, FARE_LOOKUP, SCHEDULE_LOOKUP, PAYMENT_LOOKUP, VERIFICATION, HELP, OTHER
+    private ToolTimer toolStarted(
+            StreamSink sink,
+            List<AiTraceEvent> traceEvents,
+            String tool,
+            String label,
+            String detail) {
+        ToolTimer timer = new ToolTimer(tool, label, detail, System.currentTimeMillis());
+        AiTraceEvent event = new AiTraceEvent("tool.started", tool, label, detail, "RUNNING", 0L);
+        traceEvents.add(event);
+        sink.emit("tool.started", streamEvent("tool.started", null, null, null,
+                null, List.of(), List.of(), List.of(), List.of(event), null, null));
+        return timer;
     }
 
-    private record LlmMessage(String message, AdvisoryType advisoryType) {
+    private void toolCompleted(
+            StreamSink sink,
+            List<AiTraceEvent> traceEvents,
+            ToolTimer timer,
+            String detail) {
+        long elapsedMs = Math.max(0L, System.currentTimeMillis() - timer.startedAtMs());
+        AiTraceEvent event = new AiTraceEvent(
+                "tool.completed",
+                timer.tool(),
+                timer.label(),
+                detail == null || detail.isBlank() ? timer.detail() : detail,
+                "COMPLETED",
+                elapsedMs);
+        traceEvents.add(event);
+        sink.emit("tool.completed", streamEvent("tool.completed", null, null, null,
+                null, List.of(), List.of(), List.of(), List.of(event), null, null));
+    }
+
+    private void emitAnswerDeltas(
+            StreamSink sink,
+            String message,
+            String mode,
+            AiIntent advisoryType,
+            List<RouteSuggestionCard> routeSuggestions,
+            List<AiAction> actions,
+            List<AiSource> sources,
+            List<AiTraceEvent> traceEvents,
+            AiProviderStatus providerStatus,
+            String sessionId) {
+        for (String delta : chunks(message)) {
+            sink.emit("answer.delta", streamEvent("answer.delta", null, delta, mode,
+                    advisoryType, routeSuggestions, actions, sources, traceEvents, providerStatus, sessionId));
+        }
+    }
+
+    private List<String> chunks(String value) {
+        if (value == null || value.isBlank()) {
+            return List.of();
+        }
+        List<String> chunks = new ArrayList<>();
+        String[] words = value.split(" ");
+        StringBuilder current = new StringBuilder();
+        for (String word : words) {
+            if (current.length() + word.length() > 34 && current.length() > 0) {
+                chunks.add(current.toString());
+                current.setLength(0);
+            }
+            if (current.length() > 0) {
+                current.append(' ');
+            }
+            current.append(word);
+        }
+        if (current.length() > 0) {
+            chunks.add(current.toString());
+        }
+        return chunks;
+    }
+
+    private ChatStreamEvent streamEvent(
+            String type,
+            String message,
+            String delta,
+            String mode,
+            AiIntent advisoryType,
+            List<RouteSuggestionCard> routeSuggestions,
+            List<AiAction> actions,
+            List<AiSource> sources,
+            List<AiTraceEvent> traceEvents,
+            AiProviderStatus providerStatus,
+            String sessionId) {
+        return new ChatStreamEvent(
+                type,
+                message,
+                delta,
+                mode,
+                advisoryType == null ? null : advisoryType.name(),
+                routeSuggestions,
+                actions,
+                sources,
+                traceEvents,
+                providerStatus,
+                sessionId);
+    }
+
+    private boolean providerUnavailable(AiProviderStatus providerStatus) {
+        if (providerStatus == null || providerStatus.status() == null) {
+            return false;
+        }
+        return switch (providerStatus.status()) {
+            case "UNAVAILABLE", "CIRCUIT_OPEN" -> true;
+            default -> false;
+        };
+    }
+
+    public interface StreamSink {
+        void emit(String eventName, ChatStreamEvent event);
+
+        static StreamSink noop() {
+            return (eventName, event) -> {
+            };
+        }
+    }
+
+    private record ToolTimer(String tool, String label, String detail, long startedAtMs) {
+    }
+
+    private record LlmMessage(String message, AiIntent advisoryType) {
     }
 
     private record StopMention(Integer stopId, String stopName, int index) {

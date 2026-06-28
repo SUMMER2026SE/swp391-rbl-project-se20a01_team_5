@@ -344,6 +344,46 @@
     animation: busgo-thinking-dot 1.2s infinite ease-in-out;
   }
 
+  @keyframes ai-agent-glow {
+    0%, 100% {
+      box-shadow: 0 0 0 0 color-mix(in oklch, var(--m3-primary) 0%, transparent);
+    }
+    50% {
+      box-shadow: 0 0 0 3px color-mix(in oklch, var(--m3-primary) 28%, transparent);
+    }
+  }
+
+  .ai-agent-glow {
+    animation: ai-agent-glow 1.8s ease-in-out infinite;
+  }
+
+  .ai-agent-avatar-glow {
+    box-shadow: 0 0 0 4px color-mix(in oklch, var(--m3-primary) 22%, transparent);
+  }
+
+  @keyframes ai-tool-thinking {
+    0%, 100% {
+      opacity: 0.72;
+      transform: translateY(0);
+    }
+    50% {
+      opacity: 1;
+      transform: translateY(-1px);
+    }
+  }
+
+  .ai-tool-thinking {
+    animation: ai-tool-thinking 1.45s ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .thinking-dot,
+    .ai-agent-glow,
+    .ai-tool-thinking {
+      animation: none;
+    }
+  }
+
   /* M3 Expressive aurora/gradient backdrops */
   .bg-aurora-m3 {
     background-image:

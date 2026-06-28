@@ -227,7 +227,7 @@ export function AppShell({
             borderRadius: scrolled ? 20 : 0,
           }}
           transition={{ type: "spring", stiffness: 400, damping: 30 }}
-          className="glass-m3 sticky top-0 z-30 flex items-center gap-2 border border-outline-variant/40 px-3 sm:gap-3 sm:px-6"
+          className="glass-m3 sticky top-0 z-[2400] flex items-center gap-2 border border-outline-variant/40 px-3 sm:gap-3 sm:px-6"
         >
           {!isFirstNav ? (
             <button

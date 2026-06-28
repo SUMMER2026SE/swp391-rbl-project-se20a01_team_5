@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { JourneyMap, type JourneyExtraMarker, type JourneyPolyline } from "@/components/m3/journey-map";
+import { JourneyMap, type JourneyPolyline } from "@/components/m3/journey-map";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -79,7 +79,7 @@ const STUDENT_GREEN = "#087f5b";
 const STUDENT_MAP_GREEN = "#6CA82B";
 const STUDENT_CORAL = "#EE7D5A";
 const MAX_JOURNEY_RESULT_CARDS = 2;
-const PREFERRED_MAX_WALK_METERS = 900;
+const PREFERRED_TOTAL_WALK_METERS = 1800;
 
 function numeric(value: number | string | null | undefined) {
   const parsed = Number(value ?? 0);
@@ -169,6 +169,15 @@ function operationLabel(firstTrip?: string, lastTrip?: string) {
   return `${firstTrip || "--:--"} - ${lastTrip || "--:--"}`;
 }
 
+function durationLabel(minutes: number | string | null | undefined) {
+  const total = Math.max(1, Math.round(numeric(minutes)));
+  const hours = Math.floor(total / 60);
+  const remainingMinutes = total % 60;
+  if (!hours) return `${total} phút`;
+  if (!remainingMinutes) return `${hours} giờ`;
+  return `${hours} giờ ${remainingMinutes} phút`;
+}
+
 function optionBusLegs(option: JourneyOptionDTO | null) {
   return option?.legs.filter((leg) => leg.mode === "BUS") ?? [];
 }
@@ -187,9 +196,12 @@ function optionBadges(option: JourneyOptionDTO) {
 
 function resultWindow(option: JourneyOptionDTO) {
   const busLegs = optionBusLegs(option);
+  const timedLegs = option.legs.filter((leg) => leg.nextDepartureAt || leg.estimatedArrivalAt);
+  const firstTimedLeg = timedLegs[0];
+  const lastTimedLeg = timedLegs[timedLegs.length - 1];
   return {
-    departure: timeLabel(busLegs[0]?.nextDepartureAt),
-    arrival: timeLabel(busLegs[busLegs.length - 1]?.estimatedArrivalAt),
+    departure: timeLabel(firstTimedLeg?.nextDepartureAt || busLegs[0]?.nextDepartureAt),
+    arrival: timeLabel(lastTimedLeg?.estimatedArrivalAt || busLegs[busLegs.length - 1]?.estimatedArrivalAt),
   };
 }
 
@@ -204,31 +216,65 @@ function normalizeJourneyResults(options: JourneyOptionDTO[]) {
       if (byTransfers) return byTransfers;
       return numeric(left.summary.walkMeters) - numeric(right.summary.walkMeters);
     });
-  const preferred = sorted.filter((option) => numeric(option.summary.walkMeters) <= PREFERRED_MAX_WALK_METERS);
-  const source = preferred.length ? preferred : sorted;
   const bestByRouteSequence = new globalThis.Map<string, JourneyOptionDTO>();
-  source.forEach((option) => {
+  sorted.forEach((option) => {
     const signature = journeyResultSignature(option);
     if (!bestByRouteSequence.has(signature)) bestByRouteSequence.set(signature, option);
   });
-  return Array.from(bestByRouteSequence.values()).slice(0, MAX_JOURNEY_RESULT_CARDS);
+  const distinct = Array.from(bestByRouteSequence.values());
+  const direct = distinct
+    .filter((option) => !numeric(option.summary.transferCount))
+    .slice(0, MAX_JOURNEY_RESULT_CARDS);
+  if (direct.length >= MAX_JOURNEY_RESULT_CARDS) return direct;
+  if (direct.length) {
+    const bestDirect = direct[0];
+    const strongTransfer = distinct.find((option) => (
+      numeric(option.summary.transferCount) > 0
+      && journeyResultScore(option) + 18 < journeyResultScore(bestDirect)
+    ));
+    return strongTransfer ? [...direct, strongTransfer].slice(0, MAX_JOURNEY_RESULT_CARDS) : direct;
+  }
+  return distinct.slice(0, MAX_JOURNEY_RESULT_CARDS);
 }
 
 function journeyResultScore(option: JourneyOptionDTO) {
   const walkMeters = numeric(option.summary.walkMeters);
-  const longWalkPenalty = Math.max(0, walkMeters - 800) / 25;
-  return numeric(option.summary.totalMinutes) * 10
-    + numeric(option.summary.transferCount) * 60
-    + walkMeters / 35
-    + longWalkPenalty;
+  const longWalkPenalty = Math.max(0, walkMeters - PREFERRED_TOTAL_WALK_METERS) / 80;
+  const aliasRoutePenalty = option.legs
+    .filter((leg) => leg.mode === "BUS" && isAliasRouteCode(leg.routeCode))
+    .length * 10;
+  const confidencePenalty = option.summary.confidence === "LOW"
+    ? 12
+    : option.summary.confidence === "MEDIUM"
+      ? 4
+      : 0;
+  return numeric(option.summary.totalMinutes)
+    + numeric(option.summary.transferCount) * 12
+    + numeric(option.summary.walkMinutes) * 0.75
+    + longWalkPenalty
+    + aliasRoutePenalty
+    + confidencePenalty;
 }
 
 function journeyResultSignature(option: JourneyOptionDTO) {
   const routeSequence = option.legs
     .filter((leg) => leg.mode === "BUS")
-    .map((leg) => String(leg.routeId || leg.routeCode || "BUS"))
+    .map((leg) => {
+      const direction = leg.stops?.find((stop) => stop.stationDirection !== undefined)?.stationDirection ?? "x";
+      return `${canonicalRouteCode(leg.routeCode, leg.routeId)}:${direction}`;
+    })
     .join(">");
   return routeSequence || option.optionId;
+}
+
+function canonicalRouteCode(routeCode?: string, routeId?: number | string | null) {
+  const normalized = String(routeCode || "").trim().toUpperCase();
+  if (!normalized) return String(routeId || "BUS");
+  return isAliasRouteCode(normalized) ? normalized.slice(1) : normalized;
+}
+
+function isAliasRouteCode(routeCode?: string | null) {
+  return /^R\d+[A-Z]?$/.test(String(routeCode || "").trim().toUpperCase());
 }
 
 function emptyJourneyMessage(rawCount: number) {
@@ -286,27 +332,6 @@ function polylinesFromJourney(option: JourneyOptionDTO | null): JourneyPolyline[
       };
     })
     .filter((line) => line.points.length >= 2);
-}
-
-function markerFromPlace(kind: PlaceKind, place: PlaceSuggestionDTO | null): JourneyExtraMarker | null {
-  if (!place || !hasCoordinate(place.latitude) || !hasCoordinate(place.longitude)) return null;
-  const isCurrentLocation = kind === "origin" && place.id === "gps:current";
-  return {
-    id: `${kind}:${place.id || place.stopId || place.label}`,
-    label: isCurrentLocation
-      ? CURRENT_LOCATION_LABEL
-      : kind === "origin"
-        ? `Điểm xuất phát: ${place.label}`
-        : `Điểm đến: ${place.label}`,
-    lat: numeric(place.latitude),
-    lng: numeric(place.longitude),
-    tone: kind === "origin" ? "current" : "destination",
-  };
-}
-
-function plannerExtraMarkers(destination: PlaceSuggestionDTO | null) {
-  return [markerFromPlace("destination", destination)]
-    .filter(Boolean) as JourneyExtraMarker[];
 }
 
 function routeDirectionColor(preview: RouteMapPreviewDTO | null) {
@@ -518,7 +543,7 @@ function RouteLookupCard({
           : "border-outline-variant/75 hover:border-outline hover:bg-surface-container-low",
       )}
     >
-      <div className="flex items-start gap-3">
+      <div className="flex items-center gap-3">
         <span
           className="grid size-11 shrink-0 place-items-center rounded-full border border-on-surface/10 text-on-surface"
           style={{ backgroundColor: STUDENT_LIME }}
@@ -767,8 +792,8 @@ function legSubtitle(leg: JourneyLegDTO) {
     const count = leg.stopCount || leg.stops?.length || 0;
     return `${count} trạm · ${leg.fromStopName || "điểm lên"} → ${leg.toStopName || "điểm xuống"}`;
   }
-  if (leg.distanceKm) return `${numeric(leg.distanceKm).toFixed(1)} km đến trạm`;
-  return "Kết nối đến trạm gần nhất";
+  const distance = leg.distanceKm ? `${numeric(leg.distanceKm).toFixed(1)} km` : "Đoạn đi bộ";
+  return `${distance} · ${leg.fromStopName || "Điểm đi"} → ${leg.toStopName || "điểm đến"}`;
 }
 
 function RouteSequence({ option, compact = false }: { option: JourneyOptionDTO; compact?: boolean }) {
@@ -851,8 +876,9 @@ function JourneyResultCard({
 }) {
   const badges = optionBadges(option);
   const window = resultWindow(option);
-  const walkMeters = Math.round(numeric(option.summary.walkMeters));
-  const waitText = option.summary.firstEtaText || `Chờ ${option.summary.waitMinutes || 0} phút`;
+  const walkMinutes = Math.max(1, Math.round(numeric(option.summary.walkMinutes)));
+  const waitMinutes = Math.max(0, Math.round(numeric(option.summary.waitMinutes)));
+  const waitText = waitMinutes <= 1 ? "Xe sắp tới" : `Chờ ${waitMinutes} phút`;
   const transferText = option.summary.transferCount
     ? `${option.summary.transferCount} lần chuyển`
     : "Đi thẳng";
@@ -873,60 +899,80 @@ function JourneyResultCard({
       tabIndex={0}
       aria-selected={selected}
       className={cn(
-        "state-layer relative w-full cursor-pointer overflow-hidden rounded-xl border bg-surface px-4 py-3 text-left transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-on-surface/20",
+        "state-layer relative w-full cursor-pointer overflow-hidden rounded-xl border bg-surface px-4 py-3 text-left transition-[background-color,border-color,box-shadow,transform] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-on-surface/20",
         selected
-          ? "border-on-surface/45 bg-surface-container-low"
-          : "border-outline-variant/75 hover:border-outline hover:bg-surface-container-low",
+          ? "border-on-surface/20 bg-surface-container-low"
+          : "border-outline-variant/70 hover:border-outline/70 hover:bg-surface-container-low",
       )}
     >
       {selected ? (
         <motion.span
           layoutId="selected-journey-accent"
-          className="pointer-events-none absolute inset-0 rounded-xl ring-2 ring-inset ring-[#BDFD4F]/70"
+          className="pointer-events-none absolute inset-0 rounded-xl ring-1 ring-inset ring-on-surface/15"
           transition={{ type: "spring", stiffness: 420, damping: 34 }}
         />
       ) : null}
       <div className="relative flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            {badges.map((badge) => (
-              <span
-                key={`${option.optionId}-${badge.routeId}`}
-                className="inline-flex h-7 min-w-9 items-center justify-center rounded-full px-2.5 text-xs font-bold text-white"
-                style={{ backgroundColor: badge.colorHex || STUDENT_GREEN }}
-              >
-                {badge.routeCode || badge.routeId}
-              </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-0.5 scrollbar-soft">
+            <BusFront className="size-4 shrink-0 text-on-surface-variant" />
+            {badges.map((badge, badgeIndex) => (
+              <React.Fragment key={`${option.optionId}-${badge.routeId}`}>
+                <span
+                  className="inline-flex h-7 min-w-11 shrink-0 items-center justify-center rounded-full px-3 text-xs font-bold text-white"
+                  style={{ backgroundColor: badge.colorHex || STUDENT_GREEN }}
+                >
+                  {badge.routeCode || badge.routeId}
+                </span>
+                {badgeIndex < badges.length - 1 ? (
+                  <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-on-surface-variant">
+                    <ArrowRight className="size-3" />
+                    Chuyển
+                  </span>
+                ) : null}
+              </React.Fragment>
             ))}
-            <span className="text-sm font-bold tabular-nums text-on-surface">
+          </div>
+
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-medium text-on-surface-variant">
+            <span className="inline-flex items-center gap-1.5 tabular-nums">
+              <Clock3 className="size-3.5 shrink-0" />
               {window.departure} - {window.arrival}
             </span>
-          </div>
-          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-medium text-on-surface-variant">
-            <span>{transferText}</span>
-            <span>Đi bộ {walkMeters} m</span>
-            <span>{waitText}</span>
+            <span className="inline-flex items-center gap-1.5">
+              <Route className="size-3.5 shrink-0" />
+              {transferText}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <Footprints className="size-3.5 shrink-0" />
+              Đi bộ {walkMinutes} phút
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <RefreshCw className="size-3.5 shrink-0" />
+              {waitText}
+            </span>
           </div>
         </div>
-        <div className="shrink-0 text-right">
-          <p className="text-lg font-bold tabular-nums text-on-surface">
-            {Math.max(1, option.summary.totalMinutes)}
-            <span className="ml-1 text-xs font-bold text-on-surface-variant">phút</span>
-          </p>
+
+        <div className="flex shrink-0 flex-col items-end gap-2 text-right">
+          <div>
+            <p className="text-[11px] font-semibold leading-none text-on-surface-variant">Tổng</p>
+            <p className="mt-1 whitespace-nowrap text-lg font-bold tabular-nums leading-none text-on-surface">
+              {durationLabel(option.summary.totalMinutes)}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onDetails();
+            }}
+            className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg bg-[#14140f] px-3 text-xs font-bold text-[#BDFD4F] transition-colors hover:bg-[#14140f]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            Xem chi tiết
+            <ArrowRight className="size-3.5" />
+          </button>
         </div>
-      </div>
-      <div className="relative mt-3 flex justify-end">
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onDetails();
-          }}
-          className="inline-flex h-8 cursor-pointer items-center gap-1 rounded-md border border-outline-variant bg-surface px-2.5 text-xs font-semibold text-on-surface transition-colors hover:bg-surface-container-high focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        >
-          Xem chi tiết
-          <ArrowRight className="size-3.5" />
-        </button>
       </div>
     </motion.article>
   );
@@ -977,7 +1023,7 @@ function JourneyPlanDetailPanel({
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 scrollbar-soft">
         <div className="grid grid-cols-3 gap-2">
-          <InfoPill label="Đi bộ" value={`${Math.round(numeric(option.summary.walkMeters))} m`} />
+          <InfoPill label="Đi bộ" value={`${Math.max(1, Math.round(numeric(option.summary.walkMinutes)))} phút`} />
           <InfoPill label="Chờ xe" value={`${option.summary.waitMinutes || 0} phút`} />
           <InfoPill label="Bus" value={`${busLegs.length} tuyến`} />
         </div>
@@ -1425,11 +1471,9 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
 
   const mapStops = activeTab === "lookup" ? stopsFromRoute(routePreview) : stopsFromJourney(selectedJourney);
   const mapPolylines = activeTab === "lookup" ? polylinesFromRoute(routePreview) : polylinesFromJourney(selectedJourney);
-  const mapExtraMarkers = activeTab === "lookup" ? [] : plannerExtraMarkers(destination);
   const mapColor = activeTab === "lookup"
     ? routeDirectionColor(routePreview)
     : selectedJourney?.routeBadges?.[0]?.colorHex || STUDENT_GREEN;
-
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -1679,10 +1723,10 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
               stops={mapStops}
               routeColor={mapColor}
               buses={[]}
-              extraMarkers={mapExtraMarkers}
               polylines={mapPolylines}
               height="100%"
               animateCamera
+              allowFallbackPolyline={false}
             />
             {routePreviewLoading ? (
               <div className="pointer-events-none absolute left-4 top-4 z-[500] rounded-lg border border-outline-variant bg-surface px-3 py-2 text-xs font-bold text-on-surface">

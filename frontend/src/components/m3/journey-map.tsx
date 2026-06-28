@@ -69,6 +69,7 @@ export interface JourneyMapProps {
   animateCamera?: boolean;
   arrivalOverlay?: React.ReactNode;
   compact?: boolean;
+  allowFallbackPolyline?: boolean;
 }
 
 const STYLE_ID = "unibus-journey-map-styles-v2";
@@ -274,6 +275,7 @@ export const JourneyMap = React.memo(function JourneyMap({
   fitOnStopsChange = true,
   animateCamera = true,
   arrivalOverlay,
+  allowFallbackPolyline = true,
 }: JourneyMapProps) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const mapRef = React.useRef<any>(null);
@@ -352,7 +354,7 @@ export const JourneyMap = React.memo(function JourneyMap({
       .map((line) => ({ ...line, points: line.points.filter(validPoint) }))
       .filter((line) => line.points.length >= 2);
 
-    const fallbackPolyline: JourneyPolyline[] = cleanStops.length >= 2
+    const fallbackPolyline: JourneyPolyline[] = allowFallbackPolyline && cleanStops.length >= 2
       ? [{
           id: "stops-fallback",
           points: cleanStops.map((stop) => ({ lat: stop.lat, lng: stop.lng })),
@@ -478,6 +480,7 @@ export const JourneyMap = React.memo(function JourneyMap({
     }
   }, [
     animateCamera,
+    allowFallbackPolyline,
     effectivePolylines,
     extraMarkers,
     fitOnStopsChange,

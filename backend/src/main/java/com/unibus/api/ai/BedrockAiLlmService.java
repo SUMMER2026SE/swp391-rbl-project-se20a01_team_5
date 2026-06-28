@@ -3,6 +3,7 @@ package com.unibus.api.ai;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.time.Instant;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,6 +39,8 @@ public class BedrockAiLlmService implements AiLlmService {
     private final int maxOutputTokens;
     private final double temperature;
     private final BedrockRuntimeClient client;
+    private volatile AiDtos.AiProviderStatus lastStatus;
+    private volatile Instant circuitOpenUntil = Instant.EPOCH;
 
     public BedrockAiLlmService(
             @Value("${app.ai.enabled:false}") boolean enabled,
@@ -56,19 +59,28 @@ public class BedrockAiLlmService implements AiLlmService {
         this.client = BedrockRuntimeClient.builder()
                 .region(Region.of(region))
                 .build();
+        this.lastStatus = status("READY", null, null);
     }
 
     @Override
     public Optional<LlmResult> complete(AiPrompt prompt) {
-        if (!enabled || !"bedrock".equalsIgnoreCase(provider)) {
+        if (!enabled) {
+            lastStatus = status("DISABLED", null, "AI is disabled");
+            return Optional.empty();
+        }
+        if (Instant.now().isBefore(circuitOpenUntil)) {
+            lastStatus = status("CIRCUIT_OPEN", "COOLDOWN", "Bedrock is temporarily skipped after a provider failure");
             return Optional.empty();
         }
         try {
             Optional<String> converseText = completeWithConverse(prompt);
             if (converseText.isPresent()) {
+                lastStatus = status("HEALTHY", null, null);
                 return Optional.of(new LlmResult(converseText.get(), "bedrock", modelId));
             }
             if (!supportsNativeInvoke(modelId)) {
+                lastStatus = status("UNAVAILABLE", "UNSUPPORTED_MODEL", "Model is not supported by native invoke fallback");
+                openCircuit();
                 return Optional.empty();
             }
             String requestBody = isAmazonNova(modelId) ? novaRequest(prompt) : anthropicRequest(prompt);
@@ -81,13 +93,23 @@ public class BedrockAiLlmService implements AiLlmService {
             String responseBody = client.invokeModel(request).body().asUtf8String();
             String text = isAmazonNova(modelId) ? parseNovaResponse(responseBody) : parseAnthropicResponse(responseBody);
             if (text == null || text.isBlank()) {
+                lastStatus = status("UNAVAILABLE", "EMPTY_RESPONSE", "Bedrock returned an empty message");
+                openCircuit();
                 return Optional.empty();
             }
+            lastStatus = status("HEALTHY", null, null);
             return Optional.of(new LlmResult(text.trim(), "bedrock", modelId));
         } catch (RuntimeException exception) {
+            lastStatus = status("UNAVAILABLE", "BEDROCK_ERROR", exception.getMessage());
+            openCircuit();
             log.warn("Bedrock AI completion failed, falling back to deterministic response: {}", exception.getMessage());
             return Optional.empty();
         }
+    }
+
+    @Override
+    public AiDtos.AiProviderStatus providerStatus() {
+        return lastStatus;
     }
 
     private Optional<String> completeWithConverse(AiPrompt prompt) {
@@ -217,5 +239,13 @@ public class BedrockAiLlmService implements AiLlmService {
         } catch (Exception exception) {
             throw new IllegalStateException("Unable to parse AI payload", exception);
         }
+    }
+
+    private AiDtos.AiProviderStatus status(String status, String errorCode, String message) {
+        return new AiDtos.AiProviderStatus("bedrock", modelId, status, errorCode, message);
+    }
+
+    private void openCircuit() {
+        circuitOpenUntil = Instant.now().plusSeconds(45);
     }
 }

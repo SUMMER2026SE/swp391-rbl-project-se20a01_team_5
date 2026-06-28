@@ -761,6 +761,23 @@ export interface AiSource {
   detail?: string;
 }
 
+export interface AiTraceEvent {
+  type: "tool.started" | "tool.completed" | string;
+  tool?: string;
+  label: string;
+  detail?: string;
+  status?: string;
+  elapsedMs?: number;
+}
+
+export interface AiProviderStatus {
+  provider?: string;
+  modelId?: string;
+  status?: string;
+  errorCode?: string;
+  message?: string;
+}
+
 export interface AiRouteSuggestionCard {
   routeId: number;
   routeCode?: string;
@@ -785,11 +802,27 @@ export interface AiRouteSuggestionCard {
 
 export interface AiChatResponse {
   message: string;
-  mode: "BEDROCK" | "FALLBACK" | string;
+  mode: "FAST_REPLY" | "TOOL_ASSISTED" | "ZAI" | "BEDROCK" | "PROVIDER_UNAVAILABLE" | "FALLBACK" | string;
   advisoryType: string;
   routeSuggestions?: AiRouteSuggestionCard[];
   actions?: AiAction[];
   sources?: AiSource[];
+  sessionId?: string;
+  traceEvents?: AiTraceEvent[];
+  providerStatus?: AiProviderStatus;
+}
+
+export interface AiChatStreamEvent {
+  type: string;
+  message?: string;
+  delta?: string;
+  mode?: AiChatResponse["mode"];
+  advisoryType?: string;
+  routeSuggestions?: AiRouteSuggestionCard[];
+  actions?: AiAction[];
+  sources?: AiSource[];
+  traceEvents?: AiTraceEvent[];
+  providerStatus?: AiProviderStatus;
   sessionId?: string;
 }
 
@@ -987,6 +1020,85 @@ export interface CoordinatorUniversityMetric {
   tripsToday: number;
 }
 
+type AssistantChatPayload = {
+  message: string;
+  context?: {
+    boardingStopId?: number;
+    alightingStopId?: number;
+    preferredDepartureTime?: string;
+    preferences?: string[];
+    conversationHistory?: {
+      role: "user" | "assistant";
+      content: string;
+    }[];
+  };
+};
+
+function parseSseChunk(chunk: string): AiChatStreamEvent | null {
+  const lines = chunk.split(/\r?\n/);
+  let eventName = "message";
+  const dataLines: string[] = [];
+  for (const line of lines) {
+    if (line.startsWith("event:")) {
+      eventName = line.slice(6).trim();
+    } else if (line.startsWith("data:")) {
+      dataLines.push(line.slice(5).trimStart());
+    }
+  }
+  if (!dataLines.length) return null;
+  try {
+    const parsed = JSON.parse(dataLines.join("\n")) as AiChatStreamEvent;
+    return { ...parsed, type: parsed.type || eventName };
+  } catch {
+    return { type: eventName, delta: dataLines.join("\n") };
+  }
+}
+
+async function streamAssistantChat(
+  data: AssistantChatPayload,
+  onEvent: (event: AiChatStreamEvent) => void,
+  signal?: AbortSignal
+) {
+  const token = getAccessToken();
+  const res = await fetch(`${API_BASE}/students/me/assistant-chat/stream`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(data),
+    signal,
+  });
+  if (!res.ok || !res.body) {
+    const payload = await readPayload(res);
+    throw new ApiError(
+      res.status,
+      payload?.message || payload?.error || res.statusText || "AI stream failed",
+      payload?.data
+    );
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let match = buffer.match(/\r?\n\r?\n/);
+    while (match?.index != null) {
+      const raw = buffer.slice(0, match.index).trim();
+      buffer = buffer.slice(match.index + match[0].length);
+      const event = raw ? parseSseChunk(raw) : null;
+      if (event) onEvent(event);
+      match = buffer.match(/\r?\n\r?\n/);
+    }
+  }
+  const tail = buffer.trim();
+  const event = tail ? parseSseChunk(tail) : null;
+  if (event) onEvent(event);
+}
+
 export const experienceApi = {
   studentDashboard: () => apiFetch.get<StudentDashboardView>("/students/me/dashboard"),
   studentRouteSuggestions: () => apiFetch.get<ExperienceRouteCard[]>("/students/me/route-suggestions"),
@@ -1004,19 +1116,8 @@ export const experienceApi = {
   createStudentSupportTicket: (data: { title: string; content: string; supportType?: string }) =>
     apiFetch.post<ExperienceSupportTicketCard>("/students/me/support-tickets", data),
   studentAssistantChat: () => apiFetch.get<{ chatHistoryId: number; role: string; content: string; sentAt?: string }[]>("/students/me/assistant-chat"),
-  sendAssistantChat: (data: {
-    message: string;
-    context?: {
-      boardingStopId?: number;
-      alightingStopId?: number;
-      preferredDepartureTime?: string;
-      preferences?: string[];
-      conversationHistory?: {
-        role: "user" | "assistant";
-        content: string;
-      }[];
-    };
-  }) => apiFetch.post<AiChatResponse>("/students/me/assistant-chat", data),
+  sendAssistantChat: (data: AssistantChatPayload) => apiFetch.post<AiChatResponse>("/students/me/assistant-chat", data),
+  streamAssistantChat,
   driverDashboard: () => apiFetch.get<DriverDashboardView>("/driver/dashboard"),
   driverFeedback: () => apiFetch.get<ExperienceFeedbackCard[]>("/driver/feedback"),
   assistantDashboard: () => apiFetch.get<AssistantDashboardView>("/conductor/dashboard"),
