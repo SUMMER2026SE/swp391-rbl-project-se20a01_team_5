@@ -300,6 +300,80 @@ public class TicketingRepository {
         return findPayment(paymentId).orElseThrow();
     }
 
+    public PaymentView createPendingVnpayPayment(String studentCode, BigDecimal amount, String transactionCode) {
+        KeyHolder keyHolder = new GeneratedKeyHolder();
+        jdbcTemplate.update(connection -> {
+            PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO payments(student_code, amount, method, status, transaction_code, notes)
+                VALUES (?, ?, 'E_WALLET', 'PENDING', ?, 'VNPay payment request')
+                """, new String[] { "payment_id" });
+            statement.setString(1, studentCode);
+            statement.setBigDecimal(2, amount);
+            statement.setString(3, transactionCode);
+            return statement;
+        }, keyHolder);
+        return findPayment(generatedId(keyHolder, "payment")).orElseThrow();
+    }
+
+    public Optional<PaymentView> findPaymentForStudent(Integer paymentId, String studentCode) {
+        List<PaymentView> rows = jdbcTemplate.query(paymentQuery("WHERE p.payment_id = ? AND p.student_code = ?"),
+                (rs, rowNum) -> mapPayment(rs), paymentId, studentCode);
+        return rows.stream().findFirst();
+    }
+
+    public Optional<PaymentView> findPaymentByTransactionCode(String transactionCode) {
+        List<PaymentView> rows = jdbcTemplate.query(paymentQuery("WHERE p.transaction_code = ?"),
+                (rs, rowNum) -> mapPayment(rs), transactionCode);
+        return rows.stream().findFirst();
+    }
+
+    public PaymentView markPaymentPaid(Integer paymentId) {
+        jdbcTemplate.update("""
+                UPDATE payments
+                SET status = 'PAID'
+                WHERE payment_id = ?
+                  AND status <> 'PAID'
+                """, paymentId);
+        createInvoiceIfMissing(paymentId);
+        return findPayment(paymentId).orElseThrow();
+    }
+
+    public PaymentView markPaymentFailed(Integer paymentId) {
+        jdbcTemplate.update("""
+                UPDATE payments
+                SET status = 'FAILED'
+                WHERE payment_id = ?
+                  AND status = 'PENDING'
+                """, paymentId);
+        return findPayment(paymentId).orElseThrow();
+    }
+
+    private void createInvoiceIfMissing(Integer paymentId) {
+        jdbcTemplate.update("""
+                INSERT INTO invoices(payment_id, student_code, description, amount, original_amount, subsidy_amount, final_amount)
+                SELECT p.payment_id,
+                       p.student_code,
+                       CASE
+                           WHEN p.monthly_pass_id IS NOT NULL THEN 'Monthly bus pass payment'
+                           WHEN p.single_trip_ticket_id IS NOT NULL THEN 'Single trip ticket payment'
+                           ELSE 'VNPay payment'
+                       END,
+                       p.amount,
+                       COALESCE(mp.original_fare_amount, stt.original_fare_amount, p.amount),
+                       COALESCE(mp.subsidy_amount, stt.subsidy_amount, 0),
+                       COALESCE(mp.final_fare_amount, stt.final_fare_amount, p.amount)
+                FROM payments p
+                LEFT JOIN monthly_passes mp ON mp.monthly_pass_id = p.monthly_pass_id
+                LEFT JOIN single_trip_tickets stt ON stt.single_trip_ticket_id = p.single_trip_ticket_id
+                WHERE p.payment_id = ?
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM invoices i
+                      WHERE i.payment_id = p.payment_id
+                  )
+                """, paymentId);
+    }
+
     private Integer generatedId(KeyHolder keyHolder, String entityName) {
         Number key = keyHolder.getKey();
         if (key == null) {

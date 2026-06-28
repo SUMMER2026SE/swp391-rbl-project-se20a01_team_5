@@ -410,6 +410,14 @@ WITH seed_routes AS (
 DELETE FROM route_stops
 WHERE route_id IN (SELECT route_id FROM seed_routes);
 
+WITH seed_routes AS (
+    SELECT route_id
+    FROM routes
+    WHERE description LIKE 'ITER1 seed route:%'
+)
+DELETE FROM fares
+WHERE route_id IN (SELECT route_id FROM seed_routes);
+
 DELETE FROM routes
 WHERE description LIKE 'Tuyến nội khu (Seed):%';
 
@@ -431,6 +439,18 @@ INSERT INTO routes (route_name, description, distance_km, estimated_minutes, is_
 VALUES
     ('Tuyến số 1 - Campus Loop', 'Tuyến nội khu (Seed): campus loop for route search and registration testing', 18.20, 45, FALSE, 'ACTIVE', CURRENT_TIMESTAMP),
     ('Tuyến số 2 - City Connector', 'Tuyến nội khu (Seed): city connector for long distance registration testing', 24.60, 60, FALSE, 'ACTIVE', CURRENT_TIMESTAMP);
+
+INSERT INTO fares (route_id, fare_type, amount, effective_from, effective_until, notes)
+SELECT route_id, fare_type, amount, CURRENT_DATE, NULL, notes
+FROM (
+    VALUES
+        ('ITER1 - Campus Loop', 'MONTHLY', 50000, 'VNPay sandbox monthly fare for campus loop'),
+        ('ITER1 - Campus Loop', 'SINGLE', 7000, 'Single trip fare for campus loop'),
+        ('ITER1 - City Connector', 'MONTHLY', 65000, 'VNPay sandbox monthly fare for city connector'),
+        ('ITER1 - City Connector', 'SINGLE', 10000, 'Single trip fare for city connector')
+) AS items(route_name, fare_type, amount, notes)
+JOIN routes r ON r.route_name = items.route_name
+WHERE r.description LIKE 'ITER1 seed route:%';
 
 WITH route_data AS (
     SELECT route_id, route_name

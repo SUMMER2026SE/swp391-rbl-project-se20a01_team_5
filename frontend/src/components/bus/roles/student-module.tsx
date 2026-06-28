@@ -3,7 +3,7 @@
 // =============================================================================
 // Student Module — UniBus (M3 Expressive, aligned to UIPrototype v1.1)
 // 14 role-specific screens driven by `activeId`:
-//   stu-dashboard, stu-university, stu-stops, stu-find, stu-tracking,
+//   stu-dashboard, stu-university, stu-find, stu-tracking,
 //   stu-my-routes, stu-my-ticket, stu-history, stu-ai, stu-chatbot,
 //   stu-payment, stu-invoices, stu-feedback, stu-lost
 //
@@ -232,8 +232,6 @@ export function StudentModule({ activeId, onNavigate, onProfileRefresh }: Studen
       return <DashboardScreen ctx={ctx} onNavigate={onNavigate} />;
     case "stu-university":
       return <UniversityScreen ctx={ctx} onProfileRefresh={onProfileRefresh} />;
-    case "stu-stops":
-      return <StopsScreen ctx={ctx} />;
     case "stu-find":
       return <FindRoutesScreen ctx={ctx} onNavigate={onNavigate} />;
     case "stu-tracking":
@@ -718,7 +716,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
           actions={
             <button
               className="state-layer inline-flex items-center gap-1 h-8 px-3 rounded-full text-sm font-bold text-[#14140f] hover:bg-[#14140f]/8"
-              onClick={() => onNavigate("stu-stops")}
+              onClick={() => onNavigate("stu-notifications")}
             >
               Xem tất cả
               <ArrowRight className="size-4" />
@@ -1178,6 +1176,7 @@ function UniversityScreen({ ctx, onProfileRefresh }: { ctx: Ctx; onProfileRefres
       toast.error("Vui lòng chọn ảnh thẻ sinh viên");
       return;
     }
+
     setSubmitting(true);
     try {
       const result = await studentApi.submitVerification({
@@ -1411,224 +1410,265 @@ function UniversityScreen({ ctx, onProfileRefresh }: { ctx: Ctx; onProfileRefres
 }
 
 // =============================================================================
-// Screen 3: Stops — list of bus stops with route info (prototype-aligned)
-// =============================================================================
-function StopsScreen({ ctx }: { ctx: Ctx }) {
-  const [query, setQuery] = useState("");
-  const filtered = ctx.stops.filter(
-    (s: any) =>
-      s.name.toLowerCase().includes(query.toLowerCase()) ||
-      s.code.toLowerCase().includes(query.toLowerCase()) ||
-      s.address.toLowerCase().includes(query.toLowerCase())
-  );
-
-  const stopsWithShelter = ctx.stops.filter((s: any) => s.hasShelter).length;
-
-  return (
-    <PageTransition className="space-y-5 min-w-0">
-      <PageHeader
-        title="Trạm dừng"
-        description="Tra cứu trạm dừng trên toàn tuyến UniBus."
-        icon={<MapPin className="size-6 sm:size-7" />}
-      />
-
-      {/* Search bar — large, prototype style */}
-      <div className="relative min-w-0">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-5 text-[#144fcc] pointer-events-none" />
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Tìm trạm theo tên, mã, địa chỉ…"
-          className="w-full h-12 sm:h-14 pl-12 pr-4 rounded-2xl bg-white border-2 border-[#14140f]/15 text-sm font-semibold text-[#14140f] placeholder:text-[#14140f]/40 placeholder:font-normal focus:border-[#144fcc] focus:outline-none transition-colors dark:bg-surface-container-lowest dark:text-on-surface dark:border-outline-variant"
-        />
-      </div>
-
-      {/* Stats bar — 3 bold mini-cards (prototype) */}
-      <div className="grid grid-cols-3 gap-2 sm:gap-3 min-w-0">
-        <div className="rounded-2xl bg-[#14140f] text-[#beff50] p-3 sm:p-4 text-center min-w-0">
-          <p className="text-xl sm:text-2xl font-bold tabular-nums">{ctx.stops.length}</p>
-          <p className="text-[10px] sm:text-xs font-bold opacity-70 uppercase truncate">Tổng trạm</p>
-        </div>
-        <div className="rounded-2xl bg-[#144fcc] text-white p-3 sm:p-4 text-center min-w-0">
-          <p className="text-xl sm:text-2xl font-bold tabular-nums">{ctx.routes.length}</p>
-          <p className="text-[10px] sm:text-xs font-bold opacity-70 uppercase truncate">Tuyến</p>
-        </div>
-        <div className="rounded-2xl bg-[#ff8c5f] text-[#14140f] p-3 sm:p-4 text-center min-w-0">
-          <p className="text-xl sm:text-2xl font-bold tabular-nums">{stopsWithShelter}</p>
-          <p className="text-[10px] sm:text-xs font-bold opacity-70 uppercase truncate">Mái che</p>
-        </div>
-      </div>
-
-      {/* List of stops — clean list, not grid (better mobile, matches prototype) */}
-      <div className="space-y-2 min-w-0">
-        {filtered.length === 0 ? (
-          <EmptyState
-            icon={<MapPin className="size-7" />}
-            title="Không tìm thấy trạm"
-            description="Thử từ khóa khác."
-          />
-        ) : (
-          filtered.map((s: any, i: number) => {
-            const stopRoutes = (s.routes || [])
-              .map((rId: string) => ctx.routes.find((r: any) => r.id === rId))
-              .filter(Boolean);
-            const palette = ["#14140f", "#144fcc", "#ff8c5f", "#c8a0ff"];
-            const accent = palette[i % palette.length];
-            return (
-              <div
-                key={s.id}
-                className="state-layer w-full text-left rounded-2xl bg-white border-2 border-[#14140f]/10 hover:border-[#144fcc] p-4 transition-colors min-w-0 dark:bg-surface-container-lowest dark:border-outline-variant"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  {/* Number badge */}
-                  <div
-                    className="flex size-10 shrink-0 items-center justify-center rounded-xl text-xs font-bold"
-                    style={{ backgroundColor: accent, color: accent === "#14140f" ? "#beff50" : "#fff" }}
-                  >
-                    {s.code?.substring(0, 2) || "?"}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <p className="text-sm font-bold text-[#14140f] truncate dark:text-on-surface">{s.name}</p>
-                      {s.hasShelter && (
-                        <ShieldCheck className="size-3.5 text-[#16a34a] shrink-0" />
-                      )}
-                    </div>
-                    <p className="text-xs text-[#14140f]/50 truncate dark:text-on-surface-variant">{s.address}</p>
-                  </div>
-                  <div className="flex flex-col items-end gap-1 shrink-0">
-                    <div className="flex gap-1">
-                      {stopRoutes.slice(0, 2).map((r: any) => (
-                        <span
-                          key={r.id}
-                          className="inline-flex items-center h-5 px-2 rounded-full text-[9px] font-bold text-white"
-                          style={{ backgroundColor: r.color }}
-                        >
-                          {r.code}
-                        </span>
-                      ))}
-                      {stopRoutes.length > 2 && (
-                        <span className="inline-flex items-center h-5 px-1.5 rounded-full bg-[#14140f]/10 text-[#14140f] text-[9px] font-bold dark:bg-surface-container-high dark:text-on-surface">
-                          +{stopRoutes.length - 2}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
-    </PageTransition>
-  );
-}
-
-// =============================================================================
-// Screen 4: Find routes — search boarding → alighting
+// Screen 4: Find routes — filter by university destination
 // =============================================================================
 function FindRoutesScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
-  const [boardingId, setBoardingId] = useState<string>("");
-  const [alightingId, setAlightingId] = useState<string>("");
-  const [results, setResults] = useState<any[] | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const suggestions = useApi(() => experienceApi.studentRouteSuggestions(), undefined, []);
+  const [destinationQuery, setDestinationQuery] = useState("");
+  const [destinationOpen, setDestinationOpen] = useState(false);
 
-  const search = async () => {
-    if (!boardingId || !alightingId) {
-      toast.error("Vui lòng chọn trạm lên và trạm xuống");
-      return;
-    }
-    if (boardingId === alightingId) {
-      toast.error("Trạm lên và trạm xuống phải khác nhau");
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const r = await transportApi.searchRoutes(boardingId, alightingId);
-      setResults(r);
-      if (r.length === 0) toast.info("Không tìm thấy tuyến trực tiếp");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Không thể tìm tuyến");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const normalizeSearch = useCallback((value: string) => {
+    return value
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/đ/g, "d")
+      .trim();
+  }, []);
+
+  const stopById = useMemo(() => {
+    const map = new Map<string, any>();
+    ctx.stops.forEach((stop: any) => map.set(String(stop.id ?? stop.stopId), stop));
+    return map;
+  }, [ctx.stops]);
+
+  const routes = useMemo(() => {
+    const rawRoutes = suggestions.raw && suggestions.raw.length > 0 ? suggestions.raw : ctx.routes;
+    return rawRoutes.map((route: any) => {
+      const routeId = String(route.routeId ?? route.id);
+      const fallback = ctx.routes.find((item: any) => String(item.id ?? item.routeId) === routeId);
+      const rawStops = route.stops || fallback?.stops || [];
+      const stopIds = rawStops.map((stop: any) => String(stop.stopId ?? stop.id ?? stop));
+      const stops = rawStops
+        .map((stop: any) => {
+          const id = String(stop.stopId ?? stop.id ?? stop);
+          const mappedStop = stopById.get(id);
+          return typeof stop === "object" ? { ...stop, ...mappedStop } : mappedStop;
+        })
+        .filter(Boolean);
+      const destinationStop = stops[stops.length - 1] || route.stops?.[route.stops.length - 1];
+      const boardingFromRegistration =
+        ctx.registration?.boardingStopId && stopIds.includes(String(ctx.registration.boardingStopId))
+          ? stopById.get(String(ctx.registration.boardingStopId))
+          : null;
+      const boardingStop = boardingFromRegistration || stops[0] || route.stops?.[0];
+      const relatedTrip = ctx.trips.find((trip: any) => String(trip.routeId) === routeId);
+      const interval = stopIds.length > 1
+        ? Math.max(3, Math.round(Number(route.estimatedMinutes ?? fallback?.durationMin ?? 30) / (stopIds.length - 1)))
+        : 0;
+      const boardingIndex = Math.max(0, stopIds.indexOf(String(boardingStop?.id ?? boardingStop?.stopId)));
+      const destinationIndex = Math.max(boardingIndex, stopIds.indexOf(String(destinationStop?.id ?? destinationStop?.stopId)));
+      const departTime = relatedTrip?.departTime || route.firstTrip || fallback?.firstTrip || "05:30";
+      const addMinutes = (time: string, minutes: number) => {
+        const match = /^(\d{1,2}):(\d{2})/.exec(time || "");
+        if (!match) return minutes ? `+${minutes} phút` : "—";
+        const date = new Date(2000, 0, 1, Number(match[1]), Number(match[2]) + minutes);
+        return date.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", hour12: false });
+      };
+
+      return {
+        ...fallback,
+        ...route,
+        routeId,
+        routeCode: route.routeCode || fallback?.code,
+        routeName: route.routeName || fallback?.name,
+        colorHex: route.colorHex || fallback?.color,
+        distanceKm: route.distanceKm ?? fallback?.distanceKm,
+        estimatedMinutes: route.estimatedMinutes ?? fallback?.durationMin,
+        frequencyMin: route.frequencyMin ?? fallback?.frequencyMin,
+        singleFare: route.singleFare ?? fallback?.fare,
+        monthlyFare: route.monthlyFare ?? fallback?.monthlyPass,
+        stops,
+        stopIds,
+        boardingStop,
+        destinationStop,
+        departTime,
+        boardingArrivalTime: addMinutes(departTime, boardingIndex * interval),
+        alightingEstimateTime: addMinutes(departTime, destinationIndex * interval),
+        statusLabel: relatedTrip?.status === "running" ? "Đang đi" : "Chưa đi",
+        statusTone: relatedTrip?.status === "running" ? "success" : "neutral",
+      };
+    });
+  }, [ctx.registration, ctx.routes, ctx.trips, stopById, suggestions.raw]);
+
+  const destinationOptions = useMemo(() => {
+    const map = new Map<string, { id: string; label: string; code?: string; address?: string; routeCount: number }>();
+    routes.forEach((route: any) => {
+      const stop = route.destinationStop;
+      const id = String(stop?.id ?? stop?.stopId ?? "");
+      if (!id) return;
+      const existing = map.get(id);
+      map.set(id, existing
+        ? { ...existing, routeCount: existing.routeCount + 1 }
+        : {
+            id,
+            label: stop?.name || stop?.stopName || route.toStopName || route.to || "Trạm đến",
+            code: stop?.code || stop?.stopCode,
+            address: stop?.address,
+            routeCount: 1,
+          });
+    });
+    return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label, "vi"));
+  }, [routes]);
+
+  const destinationMatches = useMemo(() => {
+    const query = normalizeSearch(destinationQuery);
+    if (!query) return destinationOptions.slice(0, 6);
+    return destinationOptions
+      .filter((stop) => normalizeSearch(`${stop.label} ${stop.code || ""}`).includes(query))
+      .slice(0, 6);
+  }, [destinationOptions, destinationQuery, normalizeSearch]);
+
+  const results = useMemo(() => {
+    const query = normalizeSearch(destinationQuery);
+    if (!query) return routes;
+    return routes.filter((route: any) => {
+      const stop = route.destinationStop;
+      const text = `${stop?.name || stop?.stopName || route.toStopName || route.to || ""} ${stop?.code || stop?.stopCode || ""}`;
+      return normalizeSearch(text).includes(query);
+    });
+  }, [destinationQuery, normalizeSearch, routes]);
 
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Tìm tuyến xe"
-        description="Chọn trạm lên và trạm xuống để tìm tuyến phù hợp."
+        description="Chọn trạm đến của trường để xem các tuyến phù hợp."
         icon={<RouteIcon className="size-7" />}
       />
 
       <ScrollReveal>
-        {/* Hero search card — bold dark với lime accent (giống prototype) */}
-        <div className="relative overflow-hidden rounded-3xl p-5 sm:p-6 bg-[#14140f] min-w-0">
-          <div className="absolute -top-10 -right-10 size-40 rounded-full bg-[#beff50]/15 blur-3xl pointer-events-none" />
-          <div className="absolute -bottom-12 -left-6 size-32 rounded-full bg-[#ff8c5f]/15 blur-3xl pointer-events-none" />
-          <div className="relative grid sm:grid-cols-[1fr_1fr_auto] gap-3 items-end min-w-0">
-            <div className="space-y-2 min-w-0">
-              <Label className="text-xs font-bold text-[#beff50] uppercase tracking-wide">Từ trạm</Label>
-              <Select value={boardingId} onValueChange={setBoardingId}>
-                <SelectTrigger className="h-12 rounded-xl bg-white border-2 border-[#beff50]/30 text-[#14140f] font-semibold">
-                  <SelectValue placeholder="Chọn trạm đi" />
-                </SelectTrigger>
-                <SelectContent>
-                  {ctx.stops.map((s: any) => (
-                    <SelectItem key={s.id} value={s.id}>{s.name} ({s.code})</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2 min-w-0">
-              <Label className="text-xs font-bold text-[#beff50] uppercase tracking-wide">Đến trạm</Label>
-              <Select value={alightingId} onValueChange={setAlightingId}>
-                <SelectTrigger className="h-12 rounded-xl bg-white border-2 border-[#beff50]/30 text-[#14140f] font-semibold">
-                  <SelectValue placeholder="Chọn trạm đến" />
-                </SelectTrigger>
-                <SelectContent>
-                  {ctx.stops.map((s: any) => (
-                    <SelectItem key={s.id} value={s.id}>{s.name} ({s.code})</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <motion.button
-              whileHover={{ y: -2 }}
-              whileTap={{ scale: 0.97 }}
-              transition={{ type: "spring", stiffness: 400, damping: 22 }}
-              onClick={search}
-              disabled={loading}
-              className="inline-flex items-center justify-center gap-2 h-12 px-6 rounded-xl bg-[#beff50] text-[#14140f] text-sm font-bold disabled:opacity-60 shrink-0"
-            >
-              {loading ? <RefreshCw className="size-4 animate-spin" /> : <Search className="size-4" />}
-              Tìm tuyến
-            </motion.button>
+        <div className="relative overflow-visible rounded-3xl p-5 sm:p-6 bg-[#14140f] min-w-0">
+          <div className="absolute inset-0 overflow-hidden rounded-3xl pointer-events-none">
+            <div className="absolute -top-10 -right-10 size-40 rounded-full bg-[#beff50]/15 blur-3xl" />
+            <div className="absolute -bottom-12 -left-6 size-32 rounded-full bg-[#ff8c5f]/15 blur-3xl" />
           </div>
-          {/* Swap button */}
-          <button
-            onClick={() => { setBoardingId(alightingId); setAlightingId(boardingId); }}
-            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 size-8 rounded-full bg-[#beff50] text-[#14140f] flex items-center justify-center hover:scale-110 transition-transform hidden sm:flex"
-            style={{ left: "calc(50% - 8px)", top: "calc(50% + 8px)" }}
-            title="Đảo chiều"
-          >
-            <ArrowLeftRight className="size-3.5" />
-          </button>
+          <div className="relative grid lg:grid-cols-[minmax(0,1fr)_minmax(360px,420px)] gap-4 items-end min-w-0">
+            <div className="space-y-3 min-w-0">
+              <div className="flex flex-wrap items-center gap-2 min-w-0">
+                <span className="inline-flex size-10 items-center justify-center rounded-2xl bg-[#beff50] text-[#14140f]">
+                  <School className="size-5" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-lg font-black text-white truncate">Tuyến đến các trường</p>
+                  <p className="text-sm font-medium text-white/70 truncate">
+                    Ban đầu hiển thị tất cả tuyến, nhập trạm đến để hiện gợi ý phù hợp.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="space-y-2 min-w-0 w-full">
+              <Label className="text-xs font-bold text-[#beff50] uppercase tracking-wide">Trạm đến</Label>
+              <div className="relative w-full text-[#14140f]">
+                <div
+                  className={cn(
+                    "relative flex h-14 items-center overflow-hidden bg-white shadow-xl",
+                    destinationOpen ? "rounded-t-2xl border-b border-[#14140f]/10" : "rounded-2xl"
+                  )}
+                >
+                  <Input
+                    value={destinationQuery}
+                    onChange={(event) => {
+                      setDestinationQuery(event.target.value);
+                      setDestinationOpen(true);
+                    }}
+                    onFocus={() => setDestinationOpen(true)}
+                    onBlur={() => window.setTimeout(() => setDestinationOpen(false), 120)}
+                    placeholder="Nhập tên trạm/trường muốn đến"
+                    className="h-14 flex-1 rounded-none border-0 bg-white pl-5 pr-24 text-base font-semibold text-[#14140f] shadow-none outline-none ring-0 placeholder:text-[#14140f]/45 focus-visible:ring-0"
+                  />
+                  <button
+                    type="button"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => setDestinationOpen(true)}
+                    className="absolute right-14 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-full text-[#007c89] hover:bg-[#007c89]/10"
+                    aria-label="Tìm trạm đến"
+                  >
+                    <Search className="size-6" />
+                  </button>
+                  <button
+                    type="button"
+                    onMouseDown={(event) => event.preventDefault()}
+                    className="absolute right-3 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-full text-[#007c89] hover:bg-[#007c89]/10"
+                    aria-label="Gợi ý đường đi"
+                  >
+                    <CornerDownRight className="size-6" />
+                  </button>
+                  {destinationQuery && (
+                    <button
+                      type="button"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => {
+                        setDestinationQuery("");
+                        setDestinationOpen(true);
+                      }}
+                      className="absolute right-24 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-full text-[#14140f]/45 hover:bg-[#14140f]/5 hover:text-[#14140f]"
+                      aria-label="Xóa trạm đến"
+                    >
+                      <XCircle className="size-4" />
+                    </button>
+                  )}
+                </div>
+                {destinationOpen && (
+                  <div className="absolute left-0 right-0 top-full z-40 w-full overflow-hidden rounded-b-2xl bg-white text-[#14140f] shadow-xl">
+                    {destinationMatches.length > 0 ? (
+                      <div className="max-h-[320px] overflow-y-auto overflow-x-hidden py-2">
+                        {destinationMatches.map((stop, index) => (
+                          <button
+                            key={stop.id}
+                            type="button"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => {
+                              setDestinationQuery(stop.label);
+                              setDestinationOpen(false);
+                            }}
+                            className="flex w-full min-w-0 items-center gap-4 px-5 py-3 text-left hover:bg-[#f5f7f8]"
+                          >
+                            <span className="flex size-7 shrink-0 items-center justify-center text-[#5f6368]">
+                              {index === 0 && !destinationQuery ? (
+                                <MapPin className="size-5 text-[#007c89]" />
+                              ) : (
+                                <Clock className="size-5" />
+                              )}
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-base font-semibold text-[#202124]">{stop.label}</span>
+                              <span className="block truncate text-sm text-[#5f6368]">
+                                {stop.address || stop.code || `${stop.routeCount} tuyến đi qua`}
+                              </span>
+                            </span>
+                            <span className="shrink-0 text-xs font-bold text-[#007c89]">{stop.routeCount} tuyến</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="px-5 py-4 text-sm font-semibold text-[#5f6368]">
+                        Chưa có trạm đến khớp với từ khóa.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       </ScrollReveal>
 
-      {error && <ErrorScreen message={error} onRetry={search} />}
+      {suggestions.error && <ErrorScreen message={suggestions.error} onRetry={suggestions.reload} />}
 
-      {results && results.length > 0 && (
+      {suggestions.loading && (
+        <div className="space-y-4 min-w-0">
+          {[1, 2, 3].map((i) => (
+            <Shimmer key={i} className="h-56 rounded-2xl" />
+          ))}
+        </div>
+      )}
+
+      {!suggestions.loading && results.length > 0 && (
         <ScrollReveal delay={0.1}>
           <Section title={`${results.length} tuyến phù hợp`}>
             <StaggerGroup className="space-y-3 min-w-0">
               {results.map((r, idx) => {
-                const route = ctx.routes.find((x) => x.id === String(r.routeId)) || r;
-                // Alternating palettes like prototype: dark/blue/coral
                 const palettes = [
                   { bg: "#14140f", fg: "#ffffff", accent: "#beff50", chipBg: "#beff50", chipFg: "#14140f" },
                   { bg: "#144fcc", fg: "#ffffff", accent: "#beff50", chipBg: "#beff50", chipFg: "#14140f" },
@@ -1652,30 +1692,26 @@ function FindRoutesScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
                             style={{ backgroundColor: pal.chipBg, color: pal.chipFg }}
                           >
                             <Bus className="size-4" />
-                            {r.routeCode || route.code}
+                            {r.routeCode || "UNIBUS"}
                           </span>
                           <div className="min-w-0">
                             <p className="text-base font-bold truncate">{r.routeName}</p>
                             <p className="text-xs flex items-center gap-1.5 opacity-80 min-w-0">
-                              <span className="truncate">{r.fromStopName || route.from}</span>
+                              <span className="truncate">{r.boardingStop?.name || r.boardingStop?.stopName || r.fromStopName || "Trạm lên"}</span>
                               <ArrowLeftRight className="size-3 shrink-0" />
-                              <span className="truncate">{r.toStopName || route.to}</span>
+                              <span className="truncate">{r.destinationStop?.name || r.destinationStop?.stopName || r.toStopName || "Trạm đến"}</span>
                             </p>
                           </div>
                         </div>
-                        {r.universityLinked && (
-                          <span className="inline-flex items-center gap-1.5 h-7 px-3 rounded-full text-xs font-bold shrink-0" style={{ backgroundColor: "#beff50", color: "#14140f" }}>
-                            <School className="size-3.5" />
-                            Dành cho trường bạn
-                          </span>
-                        )}
+                        <M3StatusPill label={r.statusLabel} tone={r.statusTone} />
                       </div>
 
-                      <div className="relative grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 min-w-0">
+                      <div className="relative grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4 min-w-0">
                         {[
-                          { label: "Thời gian", value: r.estimatedMinutes ? `${r.estimatedMinutes} phút` : "—", icon: Clock },
-                          { label: "Quãng đường", value: r.distanceKm ? `${r.distanceKm} km` : "—", icon: MapPin },
-                          { label: "Tần suất", value: r.frequencyMin ? `${r.frequencyMin} phút` : "—", icon: RefreshCw },
+                          { label: "Xuất phát", value: r.departTime || "—", icon: Clock },
+                          { label: "Đến trạm lên", value: r.boardingArrivalTime || "—", icon: MapPin },
+                          { label: "Ước tính xuống", value: r.alightingEstimateTime || "—", icon: Navigation },
+                          { label: "Số km", value: r.distanceKm ? `${r.distanceKm} km` : "—", icon: Gauge },
                           { label: "Giá vé", value: r.singleFare ? formatVND(r.singleFare) : "—", icon: Wallet },
                         ].map((m) => (
                           <div
@@ -1697,6 +1733,12 @@ function FindRoutesScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
                             <span className="font-bold text-lg" style={{ color: pal.accent }}>{formatVND(r.monthlyFare)}</span>
                           </p>
                         )}
+                        {r.frequencyMin && (
+                          <p className="text-sm">
+                            <span className="opacity-70">Tần suất: </span>
+                            <span className="font-bold">{r.frequencyMin} phút/chuyến</span>
+                          </p>
+                        )}
                         <motion.button
                           whileHover={{ y: -2 }}
                           whileTap={{ scale: 0.97 }}
@@ -1709,6 +1751,32 @@ function FindRoutesScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
                           <ArrowRight className="size-4" />
                         </motion.button>
                       </div>
+
+                      <details className="relative mt-4 group rounded-2xl border border-white/15 bg-white/10 p-3">
+                        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-xs font-bold">
+                          <span className="inline-flex items-center gap-1.5">
+                            <MapPinned className="size-4" style={{ color: pal.accent }} />
+                            Xem thêm thông tin trạm dừng
+                          </span>
+                          <ChevronRight className="size-4 transition-transform group-open:rotate-90" />
+                        </summary>
+                        <div className="mt-3 grid gap-2">
+                          {(r.stops || []).map((stop: any, stopIdx: number) => (
+                            <div key={`${r.routeId}-${stop.id ?? stop.stopId}`} className="flex items-start gap-3 rounded-xl p-3 bg-white/10 min-w-0">
+                              <span
+                                className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full text-[10px] font-black"
+                                style={{ backgroundColor: pal.accent, color: pal.bg }}
+                              >
+                                {stopIdx + 1}
+                              </span>
+                              <div className="min-w-0">
+                                <p className="text-sm font-bold truncate">{stop.name || stop.stopName}</p>
+                                <p className="text-xs opacity-70 truncate">{stop.address || stop.code || stop.stopCode || "Trạm trên tuyến"}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </details>
                     </div>
                   </StaggerItem>
                 );
@@ -1718,11 +1786,11 @@ function FindRoutesScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
         </ScrollReveal>
       )}
 
-      {results && results.length === 0 && !loading && (
+      {!suggestions.loading && results.length === 0 && (
         <EmptyState
           icon={<RouteIcon className="size-7" />}
-          title="Không có tuyến trực tiếp"
-          description="Không tìm thấy tuyến đi thẳng từ trạm lên đến trạm xuống. Hãy thử trạm khác."
+          title="Không có tuyến phù hợp"
+          description="Chưa tìm thấy tuyến chạy đến trạm đã nhập. Hãy thử từ khóa khác."
         />
       )}
     </PageTransition>
@@ -3059,7 +3127,7 @@ function FeedbackScreen({ ctx }: { ctx: Ctx }) {
       return;
     }
     if (!tripId) {
-      toast.error("Vui long chon chuyen da di de gui phan hoi");
+      toast.error("Vui lòng chọn chuyến đã đi để gửi phản hồi");
       return;
     }
     setSubmitting(true);
