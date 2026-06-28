@@ -149,7 +149,7 @@ public class SePayService {
             BigDecimal existingTotal = (BigDecimal) existing.get("total");
             if (existingTotal.compareTo(amount) == 0) {
                 long orderId = ((Number) existing.get("id")).longValue();
-                String description = "DH" + orderId;
+                String description = paymentDescription(orderId);
                 String qrUrl = String.format("https://qr.sepay.vn/img?bank=%s&acc=%s&template=%s&amount=%s&des=%s",
                         bankCode, accountNo, qrTemplate, amount.toPlainString(), description);
                 return Map.of(
@@ -185,7 +185,7 @@ public class SePayService {
             throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to create payment order");
         }
         long orderId = idVal.longValue();
-        String description = "DH" + orderId;
+        String description = paymentDescription(orderId);
         // Generate SePay QR URL
         String qrUrl = String.format("https://qr.sepay.vn/img?bank=%s&acc=%s&template=%s&amount=%s&des=%s",
                 bankCode, accountNo, qrTemplate, amount.toPlainString(), description);
@@ -203,6 +203,11 @@ public class SePayService {
         );
     }
 
+
+    private String paymentDescription(long orderId) {
+        long mixed = (orderId * 7919L) + 1782577075040L;
+        return "UB" + Long.toString(mixed, 36).toUpperCase() + "DH" + orderId;
+    }
 
     private String orderName(String ticketType) {
         if ("monthly".equalsIgnoreCase(ticketType)) return "Vé tháng UniBus";
@@ -227,7 +232,7 @@ public class SePayService {
         Map<String, Object> order = orders.get(0);
         BigDecimal total = (BigDecimal) order.get("total");
         long id = ((Number) order.get("id")).longValue();
-        String description = "DH" + id;
+        String description = paymentDescription(id);
         String qrUrl = String.format("https://qr.sepay.vn/img?bank=%s&acc=%s&template=%s&amount=%s&des=%s",
                 bankCode, accountNo, qrTemplate, total.toPlainString(), description);
         Map<String, Object> response = new LinkedHashMap<>();
