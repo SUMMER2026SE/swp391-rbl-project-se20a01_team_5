@@ -44,6 +44,7 @@ import {
   type PlaceSuggestionDTO,
   type RouteLookupDTO,
   type RouteMapPreviewDTO,
+  type StopDTO,
 } from "@/lib/api/client";
 import { formatVND } from "@/lib/prototype-data";
 import type { BusStop } from "@/lib/types";
@@ -101,6 +102,15 @@ function numeric(value: number | string | null | undefined) {
 
 function hasCoordinate(value: number | string | null | undefined) {
   return value !== undefined && value !== null && value !== "" && Number.isFinite(Number(value));
+}
+
+function normalizeSearch(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase();
 }
 
 function pointDistanceMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
@@ -1181,7 +1191,11 @@ function InfoPill({ label, value }: { label: string; value: string }) {
 export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktopProps) {
   const [activeTab, setActiveTab] = useState<PlannerTab>("lookup");
   const [routeQuery, setRouteQuery] = useState("");
+  const [lookupDestinationQuery, setLookupDestinationQuery] = useState("");
+  const [lookupDestinationStop, setLookupDestinationStop] = useState<StopDTO | null>(null);
+  const [lookupDestinationFocused, setLookupDestinationFocused] = useState(false);
   const [routes, setRoutes] = useState<RouteLookupDTO[]>([]);
+  const [lookupStops, setLookupStops] = useState<StopDTO[]>([]);
   const [routesLoading, setRoutesLoading] = useState(true);
   const [routesError, setRoutesError] = useState("");
   const [selectedRoute, setSelectedRoute] = useState<RouteLookupDTO | null>(null);
@@ -1244,6 +1258,14 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    transportApi.stops()
+      .then((items) => { if (!cancelled) setLookupStops(items); })
+      .catch(() => { if (!cancelled) setLookupStops([]); });
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -1582,7 +1604,7 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
       }));
       await ctx.reload();
       toast.success("Đăng ký tuyến thành công.");
-      onNavigate("stu-invoices");
+      onNavigate("stu-payment");
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
         localStorage.setItem("unibus.paymentRouteId", String(action.routeId));
@@ -1594,7 +1616,7 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
           journeyOptionId: journey.optionId,
           savedAt: new Date().toISOString(),
         }));
-        onNavigate("stu-invoices");
+        onNavigate("stu-payment");
         return;
       }
       setInlineError(error instanceof Error ? error.message : "Không thể đăng ký tuyến.");
@@ -1607,7 +1629,9 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
     if (!routePreview) return;
     const stops = routePreview.stops || [];
     const firstStop = stops[0];
-    const lastStop = stops[stops.length - 1];
+    const lastStop = lookupDestinationStop && stops.some((stop) => stop.stopId === lookupDestinationStop.stopId)
+      ? stops.find((stop) => stop.stopId === lookupDestinationStop.stopId)
+      : stops[stops.length - 1];
     if (!firstStop || !lastStop || firstStop.stopId === lastStop.stopId) {
       setRouteActionError("Tuyến này chưa đủ dữ liệu trạm để đăng ký nhanh.");
       return;
@@ -1632,7 +1656,7 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
       }));
       await ctx.reload();
       toast.success("Đăng ký tuyến thành công.");
-      onNavigate("stu-invoices");
+      onNavigate("stu-payment");
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
         localStorage.setItem("unibus.paymentRouteId", String(routePreview.routeId));
@@ -1644,7 +1668,7 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
           direction: routePreview.direction,
           savedAt: new Date().toISOString(),
         }));
-        onNavigate("stu-invoices");
+        onNavigate("stu-payment");
         return;
       }
       setRouteActionError(error instanceof Error ? error.message : "Không thể đăng ký tuyến.");
@@ -1654,14 +1678,29 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
   };
 
   const filteredRoutes = useMemo(() => {
-    const query = routeQuery.trim().toLowerCase();
-    if (!query) return routes;
+    const query = normalizeSearch(routeQuery.trim());
+    const destinationRouteIds = lookupDestinationStop?.routes?.length
+      ? new Set((lookupDestinationStop.routes || []).map((route) => String(route.routeId)))
+      : null;
     return routes.filter((route) => (
-      route.routeName.toLowerCase().includes(query)
-      || (route.routeCode || "").toLowerCase().includes(query)
-      || String(route.routeId).includes(query)
+      (!destinationRouteIds || destinationRouteIds.has(String(route.routeId)))
+      && (!query
+        || normalizeSearch(route.routeName).includes(query)
+        || normalizeSearch(route.routeCode || "").includes(query)
+        || String(route.routeId).includes(query))
     ));
-  }, [routeQuery, routes]);
+  }, [lookupDestinationStop, routeQuery, routes]);
+
+  const lookupDestinationSuggestions = useMemo(() => {
+    const query = normalizeSearch(lookupDestinationQuery.trim());
+    const schoolKeywords = ["bach", "fpt", "vku", "kinh", "duy", "su", "dai hoc", "campus"];
+    const matched = lookupStops.filter((stop) => {
+      const haystack = normalizeSearch(`${stop.stopName || ""} ${stop.stopCode || ""} ${stop.address || ""}`);
+      if (query) return haystack.includes(query);
+      return schoolKeywords.some((keyword) => haystack.includes(keyword));
+    });
+    return (matched.length ? matched : lookupStops).slice(0, 8);
+  }, [lookupDestinationQuery, lookupStops]);
 
   const mapStops = activeTab === "lookup" ? stopsFromRoute(routePreview) : stopsFromJourney(selectedJourney);
   const mapPolylines = activeTab === "lookup" ? polylinesFromRoute(routePreview) : polylinesFromJourney(selectedJourney);
@@ -1751,18 +1790,65 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
                   />
                 ) : (
                   <>
-                    <div className="border-b border-outline-variant p-4">
-                      <label className="relative block">
+                    <div className="relative z-[1200] border-b border-outline-variant p-4">
+                      <label className="text-xs font-black uppercase tracking-wide text-on-surface-variant">Trạm đến</label>
+                      <div className="relative mt-2">
                         <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-on-surface-variant" />
+                        <Input
+                          value={lookupDestinationQuery}
+                          onChange={(event) => {
+                            setLookupDestinationQuery(event.target.value);
+                            setLookupDestinationStop(null);
+                            setSelectedRoute(null);
+                            setRoutePreview(null);
+                            setLiveArrivals([]);
+                            setLookupDestinationFocused(true);
+                          }}
+                          onFocus={() => setLookupDestinationFocused(true)}
+                          onBlur={() => window.setTimeout(() => setLookupDestinationFocused(false), 140)}
+                          className="h-12 rounded-lg border-outline-variant bg-surface-container-low pl-10 text-sm font-semibold shadow-none focus-visible:ring-primary"
+                          placeholder="Nhập tên trạm hoặc trường muốn đến"
+                        />
+                        {lookupDestinationFocused && (
+                          <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-[1500] max-h-80 overflow-y-auto rounded-2xl border border-outline-variant bg-surface p-2 shadow-xl scrollbar-soft">
+                            {lookupDestinationSuggestions.map((stop) => (
+                              <button
+                                key={stop.stopId}
+                                type="button"
+                                onMouseDown={(event) => event.preventDefault()}
+                                onClick={() => {
+                                  setLookupDestinationStop(stop);
+                                  setLookupDestinationQuery(stop.stopName);
+                                  setSelectedRoute(null);
+                                  setRoutePreview(null);
+                                  setSelectedLiveStopId(stop.stopId);
+                                  setLiveArrivals([]);
+                                  setLookupDestinationFocused(false);
+                                }}
+                                className="flex w-full items-start gap-3 rounded-xl px-3 py-2 text-left hover:bg-surface-container-low"
+                              >
+                                <MapPin className="mt-0.5 size-4 shrink-0 text-primary" />
+                                <span className="min-w-0">
+                                  <span className="block truncate text-sm font-bold text-on-surface">{stop.stopName}</span>
+                                  <span className="block truncate text-xs text-on-surface-variant">{stop.address || stop.stopCode || `${stop.routes?.length || 0} tuyến đi qua`}</span>
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <label className="relative mt-3 block">
+                        <Route className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-on-surface-variant" />
                         <Input
                           value={routeQuery}
                           onChange={(event) => setRouteQuery(event.target.value)}
-                          className="h-12 rounded-lg border-outline-variant bg-surface-container-low pl-10 text-sm font-semibold shadow-none focus-visible:ring-primary"
-                          placeholder="Tìm tuyến xe"
+                          className="h-11 rounded-lg border-outline-variant bg-surface pl-10 text-sm font-semibold shadow-none focus-visible:ring-primary"
+                          placeholder="Lọc thêm theo mã/tên tuyến"
                         />
                       </label>
-                      <div className="mt-3 flex items-center justify-between text-xs font-semibold text-on-surface-variant">
-                        <span>{routesLoading ? "Đang tải tuyến..." : `${filteredRoutes.length} tuyến hoạt động`}</span>
+                      <div className="mt-3 flex items-center justify-between gap-2 text-xs font-semibold text-on-surface-variant">
+                        <span>{routesLoading ? "Đang tải tuyến..." : `${filteredRoutes.length} tuyến phù hợp`}</span>
+                        {lookupDestinationStop ? <span className="min-w-0 truncate">Đến: {lookupDestinationStop.stopName}</span> : null}
                         {routesError ? <span className="text-error">{routesError}</span> : null}
                       </div>
                     </div>
@@ -1782,6 +1868,7 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
                               setRouteDirection(route.directions?.[0] ?? 0);
                               setRoutePreview(null);
                               setRouteActionError("");
+                              setSelectedLiveStopId(lookupDestinationStop?.stopId);
                               setActiveTab("lookup");
                             }}
                           />
@@ -1954,7 +2041,7 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
             <JourneyMap
               stops={mapStops}
               routeColor={mapColor}
-              buses={liveMapBuses}
+              buses={activeTab === "lookup" ? [] : liveMapBuses}
               onSelectBus={(busId) => {
                 const arrival = displayedLiveArrivals.find((item) => item.vehicleId === busId);
                 if (arrival && routePreview) {

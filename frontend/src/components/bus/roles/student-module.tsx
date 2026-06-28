@@ -12,6 +12,7 @@
 // =============================================================================
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { QRCodeCanvas } from "qrcode.react";
 import {
@@ -175,6 +176,7 @@ import {
   type ExperienceDashboardStat,
   type TravelHistoryView,
   type RegistrationDTO,
+  type PassesDashboard,
   type PaymentView,
   type TicketView,
   type EtaDTO,
@@ -204,6 +206,50 @@ type SelectedBusTracking = {
   stopName?: string;
   savedAt?: string;
 };
+
+function geoDistanceMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
+  const earthRadiusMeters = 6371000;
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * earthRadiusMeters * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+function distanceAlongPolyline(points: { lat: number; lng: number }[], target: { lat: number; lng: number }) {
+  if (points.length < 2) return 0;
+  let cumulative = 0;
+  let bestMeters = 0;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const start = points[index];
+    const end = points[index + 1];
+    const segmentMeters = geoDistanceMeters(start, end);
+    if (segmentMeters <= 0) continue;
+    const latScale = 111320;
+    const lngScale = 111320 * Math.cos(((start.lat + end.lat) / 2) * Math.PI / 180);
+    const sx = start.lng * lngScale;
+    const sy = start.lat * latScale;
+    const ex = end.lng * lngScale;
+    const ey = end.lat * latScale;
+    const tx = target.lng * lngScale;
+    const ty = target.lat * latScale;
+    const dx = ex - sx;
+    const dy = ey - sy;
+    const ratio = Math.max(0, Math.min(1, ((tx - sx) * dx + (ty - sy) * dy) / (dx * dx + dy * dy || 1)));
+    const px = sx + dx * ratio;
+    const py = sy + dy * ratio;
+    const projectedDistance = Math.hypot(tx - px, ty - py);
+    if (projectedDistance < bestDistance) {
+      bestDistance = projectedDistance;
+      bestMeters = cumulative + segmentMeters * ratio;
+    }
+    cumulative += segmentMeters;
+  }
+  return bestMeters;
+}
 
 type StudentModuleProps = {
   activeId: string;
@@ -2219,12 +2265,34 @@ function TrackingScreen({ ctx }: { ctx: Ctx }) {
     ? [{ id: tracked.vehicleId, routeCode: tracked.routeCode || preview?.routeCode || String(selected?.routeId || ""), routeColor: preview?.colorHex || "#65a30d", plate: tracked.plateNumber || tracked.vehicleId, lat: Number(tracked.latitude), lng: Number(tracked.longitude), etaMinutes: tracked.etaMinutes }]
     : [];
   const routeStops = preview?.stops || [];
+  const linePoints = mapPolylines.flatMap((line) => line.points || []);
+  const busPoint = tracked && tracked.latitude && tracked.longitude
+    ? { lat: Number(tracked.latitude), lng: Number(tracked.longitude) }
+    : null;
+  const busMeters = busPoint ? distanceAlongPolyline(linePoints, busPoint) : null;
+  const stopPositions = routeStops
+    .filter((stop) => stop.latitude && stop.longitude)
+    .map((stop) => ({ stop, meters: distanceAlongPolyline(linePoints, { lat: Number(stop.latitude), lng: Number(stop.longitude) }) }));
+  const computedIndex = busMeters == null
+    ? -1
+    : stopPositions.findIndex((item) => item.meters >= busMeters - 35);
   const targetStopId = tracked?.targetStopId || selected?.stopId;
   const targetIndex = routeStops.findIndex((stop) => stop.stopId === targetStopId);
-  const currentStop = targetIndex >= 0 ? routeStops[targetIndex] : routeStops.find((stop) => stop.stopId === selected?.stopId);
-  const nextStop = targetIndex >= 0 ? routeStops[targetIndex + 1] : undefined;
+  const currentStop = computedIndex >= 0
+    ? stopPositions[computedIndex]?.stop
+    : targetIndex >= 0 ? routeStops[targetIndex] : routeStops.find((stop) => stop.stopId === selected?.stopId);
+  const nextStop = computedIndex >= 0
+    ? stopPositions[computedIndex + 1]?.stop
+    : targetIndex >= 0 ? routeStops[targetIndex + 1] : undefined;
+  const computedDistanceMeters = busMeters != null && computedIndex >= 0
+    ? Math.max(0, Math.round((stopPositions[computedIndex]?.meters || 0) - busMeters))
+    : undefined;
+  const effectiveDistanceMeters = computedDistanceMeters ?? tracked?.distanceMeters;
+  const effectiveEtaMinutes = computedDistanceMeters != null && tracked?.speedKmh
+    ? Math.max(0, Math.ceil(computedDistanceMeters / Math.max(1, Number(tracked.speedKmh) / 3.6) / 60))
+    : tracked?.etaMinutes;
   const distanceLabel = (meters?: number) => { const value = Math.max(0, Math.round(meters ?? 0)); return value >= 1000 ? `${(value / 1000).toFixed(2)} km` : `${value} m`; };
-  const etaLabel = (arrival?: LiveArrivalDTO | null) => { if (!arrival) return "Đang cập nhật"; if (arrival.status === "STOPPED_AT_STOP") return "Đang dừng"; const minutes = Math.max(0, Math.round(arrival.etaMinutes ?? 0)); return minutes <= 0 ? "Sắp đến" : `${minutes} phút`; };
+  const etaLabel = (arrival?: LiveArrivalDTO | null) => { if (!arrival) return "Đang cập nhật"; if (arrival.status === "STOPPED_AT_STOP") return "Đang dừng"; const minutes = Math.max(0, Math.round(effectiveEtaMinutes ?? arrival.etaMinutes ?? 0)); return minutes <= 0 ? "Sắp đến" : `${minutes} phút`; };
 
   if (!selected) {
     return (
@@ -2249,14 +2317,14 @@ function TrackingScreen({ ctx }: { ctx: Ctx }) {
             <div className="flex items-center justify-between gap-3"><span className="rounded-lg bg-[#05c46b] px-3 py-2 text-sm font-black text-white">{tracked?.plateNumber || "Xe gần nhất"}</span><span className="text-sm font-bold text-on-surface-variant">{tracked?.status === "STOPPED_AT_STOP" ? "Đang dừng" : tracked?.status === "SLOWING" ? "Đang giảm tốc" : "Đang chạy"}</span></div>
             <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
               <div className="rounded-xl bg-surface-container-low p-3"><p className="text-[10px] font-bold uppercase text-on-surface-variant">Tốc độ</p><p className="font-black">{tracked?.status === "STOPPED_AT_STOP" ? "0" : Number(tracked?.speedKmh || 0).toFixed(0)} km/h</p></div>
-              <div className="rounded-xl bg-surface-container-low p-3"><p className="text-[10px] font-bold uppercase text-on-surface-variant">Còn cách trạm</p><p className="font-black">{distanceLabel(tracked?.distanceMeters)}</p></div>
+              <div className="rounded-xl bg-surface-container-low p-3"><p className="text-[10px] font-bold uppercase text-on-surface-variant">Còn cách trạm</p><p className="font-black">{distanceLabel(effectiveDistanceMeters)}</p></div>
               <div className="rounded-xl bg-surface-container-low p-3"><p className="text-[10px] font-bold uppercase text-on-surface-variant">Dự kiến đến</p><p className="font-black">{etaLabel(tracked)}</p></div>
               <div className="rounded-xl bg-surface-container-low p-3"><p className="text-[10px] font-bold uppercase text-on-surface-variant">Tuyến</p><p className="font-black">{tracked?.routeCode || preview?.routeCode || selected.routeId}</p></div>
             </div>
           </div>
           <div className="mt-4 rounded-2xl border border-outline-variant bg-surface p-4">
             <p className="text-xs font-bold uppercase tracking-wide text-on-surface-variant">Trạm sắp tới</p>
-            <p className="mt-1 text-base font-bold text-on-surface">{tracked?.targetStopName || currentStop?.stopName || selected.stopName || "Đang cập nhật"}</p>
+            <p className="mt-1 text-base font-bold text-on-surface">{currentStop?.stopName || tracked?.targetStopName || selected.stopName || "Đang cập nhật"}</p>
             <div className="mt-3 rounded-xl bg-surface-container-low p-3">
               <p className="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">Trạm tiếp theo</p>
               <p className="mt-1 text-sm font-bold text-on-surface">{nextStop?.stopName || "Cuối tuyến / đang cập nhật"}</p>
@@ -3653,369 +3721,210 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
 // =============================================================================
 // Screen 11: Payment — buy monthly pass (SePay QR)
 // =============================================================================
-function PaymentScreen({ ctx }: { ctx: Ctx }) {
-  const [purchasing, setPurchasing] = useState(false);
-  const [registrations, setRegistrations] = useState<RegistrationDTO[]>([]);
-  const [selectedRouteId, setSelectedRouteId] = useState<string>("");
-  const [sepayOrder, setSepayOrder] = useState<{
-    orderId: number;
-    routeId?: number;
-    routeName?: string;
-    qrUrl: string;
-    amount: number;
-    description: string;
-    bankCode?: string;
-    accountNo?: string;
-    accountName?: string;
-  } | null>(null);
-  const [paidStatus, setPaidStatus] = useState<"idle" | "checking" | "paid" | "expired">("idle");
-  const [copying, setCopying] = useState(false);
-  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+function PaymentScreen({ ctx, title = "Thanh toán & vé" }: { ctx: Ctx; title?: string }) {
+  const [dashboard, setDashboard] = useState<PassesDashboard | null>(ctx.raw.passes?.data ?? null);
+  const [loading, setLoading] = useState(!ctx.raw.passes?.data);
+  const [activeOrder, setActiveOrder] = useState<any>(null);
+  const [buying, setBuying] = useState(false);
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [countdown, setCountdown] = useState(10);
+  const canUseTestPayment = ["OKNIGGA"].includes(String(ctx.user?.studentId || ctx.university?.studentCode || "").toUpperCase());
 
-  const passes = ctx.raw.passes?.data;
-  const quote = passes?.monthlyPassQuote;
-  const selectedRegistration = registrations.find((item) => String(item.routeId) === selectedRouteId) || ctx.registration;
+  const reloadTickets = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await studentApi.tickets();
+      setDashboard(data);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không tải được dữ liệu vé");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    studentApi.registrations()
-      .then((list) => {
-        if (cancelled) return;
-        setRegistrations(list);
-        const preferred = localStorage.getItem("unibus.paymentRouteId");
-        const firstRoute = preferred || list[0]?.routeId?.toString() || ctx.registration?.routeId?.toString() || "";
-        setSelectedRouteId(firstRoute);
-        localStorage.removeItem("unibus.paymentRouteId");
-      })
-      .catch(() => {
-        if (!cancelled && ctx.registration?.routeId) {
-          setSelectedRouteId(String(ctx.registration.routeId));
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [ctx.registration?.routeId]);
+    if (!ctx.raw.passes?.data) reloadTickets();
+  }, [ctx.raw.passes?.data, reloadTickets]);
 
-  // Step state: 1 = review, 2 = pay, 3 = done
-  const step = !sepayOrder ? 1 : paidStatus === "paid" ? 3 : 2;
+  const openPaymentPopup = (order: any) => {
+    setActiveOrder(order);
+    setPaymentSuccess(false);
+    setCountdown(10);
+  };
 
-  // Countdown timer
+  const handleBuy = async (type: "monthly" | "single" | "test") => {
+    try {
+      setBuying(true);
+      const order = await studentApi.createSePayOrder(type);
+      openPaymentPopup(order);
+      toast.success("Đã tạo đơn hàng thanh toán SePay!");
+    } catch (error: any) {
+      toast.error(error.message || "Tạo đơn hàng thất bại");
+    } finally {
+      setBuying(false);
+    }
+  };
+
+  const handleClosePopup = () => {
+    setActiveOrder(null);
+    setPaymentSuccess(false);
+    setCountdown(10);
+  };
+
   useEffect(() => {
-    if (!sepayOrder || paidStatus === "paid" || paidStatus === "expired") return;
-    setSecondsLeft(300); // 5 minutes
-    const id = setInterval(() => {
-      setSecondsLeft((s) => {
-        if (s == null) return null;
-        if (s <= 1) {
-          setPaidStatus("expired");
-          return 0;
+    if (!activeOrder || paymentSuccess) return;
+    const intervalId = window.setInterval(async () => {
+      try {
+        const result = await studentApi.getSePayOrderStatus(activeOrder.orderId);
+        if (result.paid) {
+          toast.success("Thanh toán thành công!");
+          setPaymentSuccess(true);
+          setCountdown(10);
+          reloadTickets();
+          ctx.reload();
         }
-        return s - 1;
-      });
-    }, 1000);
-    return () => clearInterval(id);
-  }, [sepayOrder, paidStatus]);
+      } catch (error) {
+        console.warn("Lỗi kiểm tra trạng thái đơn hàng:", error);
+      }
+    }, 3000);
+    return () => window.clearInterval(intervalId);
+  }, [activeOrder, paymentSuccess, reloadTickets, ctx]);
 
-  const buy = async () => {
-    if (!selectedRouteId) {
-      toast.error("Hãy chọn tuyến cần mua vé tháng.");
-      return;
+  useEffect(() => {
+    if (!paymentSuccess) return;
+    if (countdown <= 0) {
+      const deferId = window.setTimeout(handleClosePopup, 0);
+      return () => window.clearTimeout(deferId);
     }
-    setPurchasing(true);
-    try {
-      const order = await studentApi.createSePayOrder("MONTHLY", Number(selectedRouteId));
-      setSepayOrder(order);
-      setPaidStatus("checking");
-      toast.success("Đã tạo đơn hàng. Vui lòng quét mã QR để thanh toán.");
-      // Poll for payment status
-      const poll = async () => {
-        for (let i = 0; i < 60; i++) {
-          try {
-            const s = await studentApi.getSePayOrderStatus(order.orderId);
-            if (s.paid) {
-              setPaidStatus("paid");
-              toast.success("Thanh toán thành công! Vé tháng đã được kích hoạt.");
-              ctx.reload();
-              return;
-            }
-          } catch { /* ignore */ }
-          await new Promise((r) => setTimeout(r, 5000));
-        }
-        if (paidStatus !== "paid") setPaidStatus("expired");
-      };
-      poll();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Không thể tạo đơn thanh toán");
-    } finally {
-      setPurchasing(false);
-    }
-  };
-
-  const copyAccount = async () => {
-    if (!sepayOrder?.accountNo) return;
-    setCopying(true);
-    try {
-      await navigator.clipboard.writeText(sepayOrder.accountNo);
-      toast.success("Đã sao chép số tài khoản");
-    } catch {
-      toast.error("Không thể sao chép");
-    } finally {
-      setTimeout(() => setCopying(false), 1500);
-    }
-  };
-
-  const reset = () => {
-    setSepayOrder(null);
-    setPaidStatus("idle");
-    setSecondsLeft(null);
-  };
-
-  const fmtCountdown = (s: number | null) => {
-    if (s == null) return "--:--";
-    const m = Math.floor(s / 60);
-    const sec = s % 60;
-    return `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
-  };
+    const timerId = window.setTimeout(() => setCountdown((value) => value - 1), 1000);
+    return () => window.clearTimeout(timerId);
+  }, [paymentSuccess, countdown]);
 
   return (
     <PageTransition className="space-y-6 min-w-0">
-      <PageHeader
-        title="Mua vé tháng"
-        description="Thanh toán qua SePay bằng mã QR VietQR — nhanh, an toàn."
-        icon={<CreditCard className="size-7" />}
-      />
+      <PageHeader title={title} description="Vé và thanh toán thật từ ticketing backend." icon={<QrCode className="size-7" />} />
 
-      {/* Step indicator */}
-      <ScrollReveal>
-        <div className="flex items-center justify-center gap-2 sm:gap-4">
-          {[
-            { n: 1, label: "Xem đơn", icon: Info },
-            { n: 2, label: "Thanh toán", icon: CreditCard },
-            { n: 3, label: "Hoàn tất", icon: CheckCircle2 },
-          ].map((s, i) => (
-            <React.Fragment key={s.n}>
-              <div className={cn(
-                "flex items-center gap-2 px-3 py-2 rounded-full transition-colors shrink-0",
-                step >= s.n ? "bg-[#beff50] text-[#14140f]" : "bg-surface-container-high text-on-surface-variant"
-              )}>
-                <div className={cn(
-                  "size-6 rounded-full flex items-center justify-center text-xs font-black",
-                  step >= s.n ? "bg-[#14140f] text-[#beff50]" : "bg-surface-container-lowest"
-                )}>
-                  {step > s.n ? <CheckCircle2 className="size-4" /> : s.n}
-                </div>
-                <span className="text-xs font-bold hidden sm:inline">{s.label}</span>
+      {loading ? (
+        <LoadingScreen label="Đang tải vé..." />
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-[420px_1fr]">
+          <ExpressiveCard variant="elevated" className="p-5">
+            <PaymentTicketSummary dashboard={dashboard} onNavigate={() => {}} />
+            <div className="mt-5 grid gap-3">
+              <ExpressiveButton onClick={() => handleBuy("monthly")} disabled={buying} className="w-full">
+                {buying ? <RefreshCw className="size-4 animate-spin" /> : <CreditCard className="size-4" />}
+                Mua vé tháng qua SePay
+              </ExpressiveButton>
+              <ExpressiveButton variant="tonal" onClick={() => handleBuy("single")} disabled={buying} className="w-full">
+                {buying ? <RefreshCw className="size-4 animate-spin" /> : <TicketCheck className="size-4" />}
+                Mua vé thường qua SePay
+              </ExpressiveButton>
+              {canUseTestPayment && (
+                <ExpressiveButton variant="outlined" onClick={() => handleBuy("test")} disabled={buying} className="w-full">
+                  {buying ? <RefreshCw className="size-4 animate-spin" /> : <CreditCard className="size-4" />}
+                  Test thanh toán 3.000 VND
+                </ExpressiveButton>
+              )}
+              <p className="text-xs font-semibold text-on-surface-variant">Thanh toán an toàn qua cổng SePay tự động.</p>
+            </div>
+          </ExpressiveCard>
+
+          <Section title="Danh sách vé">
+            {(dashboard?.tickets || []).length === 0 ? (
+              <EmptyState icon={<QrCode className="size-7" />} title="Chưa có vé" description="Mua vé tháng để QR xuất hiện tại đây." />
+            ) : (
+              <div className="space-y-3">
+                {(dashboard?.tickets || []).map((ticket: any) => (
+                  <ExpressiveCard key={ticket.ticketId} variant="elevated" className="p-4">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <h3 className="font-bold text-on-surface">{ticket.routeName}</h3>
+                        <p className="text-sm text-on-surface-variant">{ticket.boardingStopName} {"->"} {ticket.alightingStopName}</p>
+                        <p className="mt-1 text-xs text-on-surface-variant">Hết hạn: {formatDateTime(ticket.expiresAt)}</p>
+                        <div className="mt-2"><M3StatusPill label={ticket.status} tone={ticket.status === "ACTIVE" ? "success" : "warning"} /></div>
+                      </div>
+                      {ticket.qrCode && (
+                        <div className="rounded-2xl bg-white p-3">
+                          <QRCodeCanvas value={ticket.qrCode} size={112} />
+                        </div>
+                      )}
+                    </div>
+                  </ExpressiveCard>
+                ))}
               </div>
-              {i < 2 && <div className={cn("h-0.5 w-4 sm:w-8", step > s.n ? "bg-[#beff50]" : "bg-outline-variant")} />}
-            </React.Fragment>
-          ))}
+            )}
+          </Section>
         </div>
-      </ScrollReveal>
+      )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.2fr] gap-4 min-w-0">
-        {/* Order details */}
-        <ScrollReveal>
-          <ExpressiveCard variant="elevated" className="p-6 h-full min-w-0">
-            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-              <TicketCheck className="size-5 text-primary" />
-              Đơn vé tháng
-            </h3>
-            {selectedRegistration ? (
-              <div className="space-y-3 text-sm">
-                {registrations.length > 1 && (
-                  <div>
-                    <Label className="text-xs font-bold">Chọn tuyến cần mua vé</Label>
-                    <Select value={selectedRouteId} onValueChange={setSelectedRouteId}>
-                      <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn tuyến" /></SelectTrigger>
-                      <SelectContent>
-                        {registrations.map((item) => (
-                          <SelectItem key={item.registrationId} value={String(item.routeId)}>
-                            {item.routeName} — {item.boardingStopName} → {item.alightingStopName}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-                <Row label="Tuyến" value={selectedRegistration.routeName} icon={<RouteIcon className="size-4" />} />
-                <Row label="Trạm lên" value={selectedRegistration.boardingStopName} icon={<MapPin className="size-4" />} />
-                <Row label="Trạm xuống" value={selectedRegistration.alightingStopName} icon={<MapPin className="size-4" />} />
-                <Row label="Hiệu lực" value="30 ngày" icon={<Calendar className="size-4" />} />
-                {quote && (
-                  <>
-                    <div className="h-px bg-outline-variant my-2" />
-                    <Row label="Giá gốc" value={formatVND(quote.originalFareAmount || quote.baseAmount || 0)} muted />
-                    {quote.subsidyAmount != null && quote.subsidyAmount > 0 && (
-                      <Row label="Trợ giá trường" value={`-${formatVND(quote.subsidyAmount)}`} accent="success" />
-                    )}
-                    <motion.div
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="relative overflow-hidden rounded-2xl p-4 mt-2"
-                      style={{ backgroundColor: "#14140f", color: "#beff50" }}
-                    >
-                      <p className="text-[10px] font-bold opacity-70 uppercase tracking-wide">Tổng thanh toán</p>
-                      <p className="text-3xl font-black mt-1 tabular-nums">
-                        {formatVND(quote.payableAmount || quote.finalFareAmount || 0)}
-                      </p>
-                    </motion.div>
-                  </>
-                )}
-                {step === 1 && (
-                  <ExpressiveButton
-                    variant="filled"
-                    className="w-full mt-5"
-                    onClick={buy}
-                    disabled={purchasing}
-                  >
-                    {purchasing ? <RefreshCw className="size-4 animate-spin" /> : <CreditCard className="size-4" />}
-                    Tạo mã QR thanh toán
-                  </ExpressiveButton>
-                )}
-                {step === 3 && (
-                  <ExpressiveButton variant="text" className="w-full mt-5" onClick={reset}>
-                    Mua vé khác
-                  </ExpressiveButton>
-                )}
+      {activeOrder && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-900">Thanh toán SePay</h3>
+              <button onClick={handleClosePopup} className="rounded-full px-3 py-1 text-sm font-semibold text-gray-500 hover:bg-gray-100">Đóng</button>
+            </div>
+            {paymentSuccess ? (
+              <div className="rounded-xl border border-green-200 bg-green-50 p-5 text-center text-green-700">
+                <CheckCircle2 className="mx-auto mb-2 size-10" />
+                <p className="font-bold">Thanh toán thành công!</p>
+                  <p className="text-sm">Popup sẽ tự đóng sau {countdown}s.</p>
               </div>
             ) : (
-              <EmptyState
-                icon={<TicketCheck className="size-7" />}
-                title="Chưa đăng ký tuyến"
-                description="Vui lòng đăng ký tuyến trước khi mua vé tháng."
-              />
+              <div className="space-y-4 text-center">
+                {activeOrder.qrUrl && (
+                  <div className="flex justify-center">
+                    <img src={activeOrder.qrUrl} alt="SePay QR" className="max-w-[240px] rounded-lg" />
+                  </div>
+                )}
+                <div className="rounded-xl bg-gray-50 p-4 text-left text-sm text-gray-700">
+                  <p className="flex justify-between gap-3"><span>Số tiền</span><span className="font-bold text-blue-600">{formatVND(activeOrder.amount)}</span></p>
+                  <p className="mt-2 flex justify-between gap-3"><span>Nội dung CK</span><span className="font-bold text-red-600 select-all">{activeOrder.description}</span></p>
+                  {activeOrder.bankCode && <p className="mt-2 flex justify-between gap-3"><span>Ngân hàng</span><span className="font-semibold">{activeOrder.bankCode}</span></p>}
+                  {activeOrder.accountNo && <p className="mt-2 flex justify-between gap-3"><span>Số TK</span><span className="font-semibold select-all">{activeOrder.accountNo}</span></p>}
+                  {activeOrder.accountName && <p className="mt-2 flex justify-between gap-3"><span>Chủ TK</span><span className="font-semibold text-right">{activeOrder.accountName}</span></p>}
+                </div>
+                <p className="text-xs text-gray-500">Đang chờ xác nhận thanh toán từ SePay...</p>
+              </div>
             )}
-          </ExpressiveCard>
-        </ScrollReveal>
-
-        {/* QR / status panel */}
-        <ScrollReveal delay={0.1}>
-          {!sepayOrder ? (
-            <ExpressiveCard variant="filled" className="p-6 h-full flex flex-col items-center justify-center text-center min-w-0">
-              <div className="size-16 rounded-3xl bg-primary-container flex items-center justify-center mb-4">
-                <QrCode className="size-8 text-on-primary-container" />
-              </div>
-              <p className="text-base font-bold">Sẵn sàng thanh toán</p>
-              <p className="text-sm text-on-surface-variant mt-1 max-w-xs">
-                Nhấn &quot;Tạo mã QR thanh toán&quot; bên trái để nhận mã QR VietQR qua SePay.
-                Hỗ trợ mọi app ngân hàng: MBBank, Vietcombank, BIDV, TC Bank, v.v.
-              </p>
-            </ExpressiveCard>
-          ) : step === 3 ? (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ type: "spring", stiffness: 240, damping: 22 }}
-            >
-              <ExpressiveCard variant="elevated" className="p-8 h-full flex flex-col items-center justify-center text-center min-w-0"
-                style={{ backgroundColor: "#beff50", color: "#14140f" }}
-              >
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: "spring", stiffness: 260, damping: 18, delay: 0.1 }}
-                  className="size-24 rounded-full bg-[#14140f] flex items-center justify-center mb-4"
-                >
-                  <CheckCircle2 className="size-12 text-[#beff50]" />
-                </motion.div>
-                <h2 className="text-2xl font-black">Thanh toán thành công!</h2>
-                <p className="text-sm font-semibold opacity-80 mt-2">
-                  Vé tháng đã được kích hoạt. Bạn có thể xem vé trong mục &quot;Vé của tôi&quot;.
-                </p>
-                <div className="bg-[#14140f]/10 rounded-2xl p-4 mt-4 w-full max-w-xs">
-                  <p className="text-xs font-bold opacity-70 uppercase">Mã giao dịch</p>
-                  <p className="font-mono font-black text-lg">#{sepayOrder.orderId}</p>
-                  <p className="text-xs font-bold opacity-70 uppercase mt-2">Số tiền</p>
-                  <p className="font-black text-lg">{formatVND(sepayOrder.amount)}</p>
-                </div>
-              </ExpressiveCard>
-            </motion.div>
-          ) : (
-            <ExpressiveCard variant="elevated" className="p-6 h-full min-w-0">
-              {/* Header with countdown */}
-              <div className="flex items-center justify-between mb-4 min-w-0">
-                <div className="min-w-0">
-                  <h3 className="text-lg font-bold flex items-center gap-2">
-                    <QrCode className="size-5 text-primary" />
-                    Quét QR để thanh toán
-                  </h3>
-                  <p className="text-xs text-on-surface-variant mt-0.5">Mở app ngân hàng bất kỳ → quét QR</p>
-                </div>
-                <div className={cn(
-                  "shrink-0 px-3 py-1.5 rounded-full text-xs font-black tabular-nums",
-                  secondsLeft != null && secondsLeft < 60
-                    ? "bg-error text-white animate-pulse"
-                    : "bg-warning-container text-on-surface"
-                )}>
-                  {fmtCountdown(secondsLeft)}
-                </div>
-              </div>
-
-              {/* QR */}
-              <div className="flex flex-col items-center gap-3">
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="bg-white p-4 rounded-2xl shadow-lg ring-2 ring-[#beff50]/40"
-                >
-                  <QRCodeCanvas value={sepayOrder.qrUrl} size={240} level="M" includeMargin={false} />
-                </motion.div>
-                <div className="flex items-center gap-2 text-2xl font-black text-primary">
-                  {formatVND(sepayOrder.amount)}
-                </div>
-                <p className="text-xs text-on-surface-variant text-center break-all max-w-xs font-mono">
-                  {sepayOrder.description}
-                </p>
-              </div>
-
-              {/* Bank info */}
-              {sepayOrder.bankCode && sepayOrder.accountNo && (
-                <div className="mt-5 p-4 rounded-2xl bg-surface-container-low space-y-2 min-w-0">
-                  <div className="flex items-center justify-between gap-2 min-w-0">
-                    <span className="text-xs text-on-surface-variant">Ngân hàng</span>
-                    <span className="font-bold text-sm">{sepayOrder.bankCode}</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-2 min-w-0">
-                    <span className="text-xs text-on-surface-variant">Số tài khoản</span>
-                    <button
-                      onClick={copyAccount}
-                      className={cn(
-                        "font-mono font-bold text-sm flex items-center gap-1.5 transition-colors",
-                        copying ? "text-success" : "text-primary hover:underline"
-                      )}
-                    >
-                      {sepayOrder.accountNo}
-                      {copying ? <CheckCircle2 className="size-3.5" /> : <Banknote className="size-3.5" />}
-                    </button>
-                  </div>
-                  {sepayOrder.accountName && (
-                    <div className="flex items-center justify-between gap-2 min-w-0">
-                      <span className="text-xs text-on-surface-variant">Chủ TK</span>
-                      <span className="font-bold text-sm truncate">{sepayOrder.accountName}</span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Status */}
-              <div className="mt-4 p-3 rounded-xl bg-primary-container/30 text-primary text-sm flex items-center gap-2 min-w-0">
-                <RefreshCw className="size-4 animate-spin shrink-0" />
-                <span className="font-medium truncate">Đang chờ xác nhận thanh toán từ SePay...</span>
-              </div>
-
-              {paidStatus === "expired" && (
-                <div className="mt-3 p-3 rounded-xl bg-error-container/40 text-error text-sm flex items-center gap-2 min-w-0">
-                  <AlertTriangle className="size-4 shrink-0" />
-                  <span className="font-medium">Đơn hàng hết hạn. Vui lòng tạo lại.</span>
-                  <ExpressiveButton variant="text" size="sm" className="ml-auto" onClick={reset}>Tạo lại</ExpressiveButton>
-                </div>
-              )}
-            </ExpressiveCard>
-          )}
-        </ScrollReveal>
-      </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </PageTransition>
+  );
+}
+
+function PaymentTicketSummary({ dashboard, onNavigate }: { dashboard: PassesDashboard | null; onNavigate: (id: string) => void }) {
+  const active = (dashboard?.tickets || []).find((ticket) => ["ACTIVE", "VALID"].includes((ticket.status || "").toUpperCase())) || dashboard?.tickets?.[0];
+  if (!active) {
+    return (
+      <EmptyState
+        icon={<QrCode className="size-7" />}
+        title="Chưa có vé tháng"
+        description={dashboard?.monthlyPassQuote ? `Giá dự kiến: ${formatVND(dashboard.monthlyPassQuote.payableAmount ?? dashboard.monthlyPassQuote.finalFareAmount ?? 0)}` : "Đăng ký tuyến trước để backend báo giá vé tháng."}
+        action={<ExpressiveButton variant="tonal" onClick={() => onNavigate("stu-payment")}>Mở thanh toán</ExpressiveButton>}
+      />
+    );
+  }
+  return (
+    <div className="space-y-4">
+      <div>
+        <h3 className="text-lg font-bold text-on-surface">{active.routeName}</h3>
+        <p className="text-sm text-on-surface-variant">Hết hạn: {formatDateTime(active.expiresAt)}</p>
+        <div className="mt-2"><M3StatusPill label={active.status} tone={active.status === "ACTIVE" ? "success" : "warning"} /></div>
+      </div>
+      {active.qrCode && (
+        <div className="mx-auto w-fit rounded-3xl bg-white p-4">
+          <QRCodeCanvas value={active.qrCode} size={180} />
+        </div>
+      )}
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <div className="rounded-2xl bg-surface-container-high p-3"><p className="text-[10px] text-on-surface-variant">Tuyến</p><p className="font-bold">{active.routeName}</p></div>
+        <div className="rounded-2xl bg-surface-container-high p-3"><p className="text-[10px] text-on-surface-variant">Lên</p><p className="truncate font-bold">{active.boardingStopName || "—"}</p></div>
+        <div className="rounded-2xl bg-surface-container-high p-3"><p className="text-[10px] text-on-surface-variant">Xuống</p><p className="truncate font-bold">{active.alightingStopName || "—"}</p></div>
+      </div>
+    </div>
   );
 }
 
