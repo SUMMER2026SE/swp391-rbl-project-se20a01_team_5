@@ -112,15 +112,54 @@ function ensureStyles() {
     }
     .unibus-journey-map .leaflet-popup-content {
       margin: 12px 14px;
-      font-family: inherit;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.35;
     }
     .unibus-journey-map .leaflet-popup-tip {
       background: #fff;
     }
     .unibus-journey-map .leaflet-container {
       background: #e8efec;
-      font-family: inherit;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       outline: none;
+    }
+    .unibus-map-popup {
+      min-width: 176px;
+      max-width: 260px;
+      color: #14140f;
+    }
+    .unibus-map-popup__eyebrow {
+      color: #66706b;
+      font-size: 11px;
+      font-weight: 650;
+      letter-spacing: 0;
+    }
+    .unibus-map-popup__title {
+      margin-top: 4px;
+      color: #14140f;
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1.3;
+    }
+    .unibus-map-popup__meta {
+      margin-top: 4px;
+      color: #66706b;
+      font-size: 11px;
+      font-weight: 450;
+      line-height: 1.35;
+    }
+    .unibus-map-popup__row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .unibus-map-popup__badge {
+      border-radius: 6px;
+      padding: 3px 7px;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1.2;
     }
     .unibus-map-marker {
       background: transparent !important;
@@ -181,16 +220,17 @@ function extraMarkerIcon(
   L: typeof import("leaflet"),
   tone: JourneyExtraMarker["tone"],
 ) {
-  const color = tone === "current" ? "#144fcc" : "#dc3f36";
+  const color = tone === "current" ? "#087f5b" : "#dc3f36";
+  const halo = tone === "current" ? "#BDFD4F" : "#fff";
   return L.divIcon({
     className: "unibus-map-marker",
     html: `
-      <div style="display:grid;width:26px;height:26px;place-items:center;border-radius:50%;background:#fff;border:3px solid ${color}">
+      <div style="display:grid;width:30px;height:30px;place-items:center;border-radius:50%;background:${halo};border:3px solid #fff">
         <span style="width:7px;height:7px;border-radius:50%;background:${color}"></span>
       </div>
     `,
-    iconSize: [26, 26],
-    iconAnchor: [13, 13],
+    iconSize: [30, 30],
+    iconAnchor: [15, 15],
   });
 }
 
@@ -375,10 +415,10 @@ export const JourneyMap = React.memo(function JourneyMap({
         title: stop.name,
       }).addTo(routeLayer);
       marker.bindPopup(`
-        <div style="min-width:170px">
-          <div style="font-size:11px;font-weight:700;color:#66706b">${isOrigin ? "Điểm lên xe" : isDestination ? "Điểm xuống xe" : "Trạm dừng"}</div>
-          <div style="margin-top:3px;font-size:14px;font-weight:800">${escapeHtml(stop.name)}</div>
-          <div style="margin-top:3px;font-size:11px;color:#66706b">${escapeHtml(stop.address || stop.code || "Đà Nẵng")}</div>
+        <div class="unibus-map-popup">
+          <div class="unibus-map-popup__eyebrow">${isOrigin ? "Điểm lên xe" : isDestination ? "Điểm xuống xe" : "Trạm dừng"}</div>
+          <div class="unibus-map-popup__title">${escapeHtml(stop.name)}</div>
+          <div class="unibus-map-popup__meta">${escapeHtml(stop.address || stop.code || "Đà Nẵng")}</div>
         </div>
       `);
       marker.on("click", () => onSelectStop?.(stop.id));
@@ -391,7 +431,9 @@ export const JourneyMap = React.memo(function JourneyMap({
         title: markerInfo.label,
       }).addTo(routeLayer);
       marker.bindPopup(`
-        <div style="font-size:14px;font-weight:800">${escapeHtml(markerInfo.label)}</div>
+        <div class="unibus-map-popup">
+          <div class="unibus-map-popup__title">${escapeHtml(markerInfo.label)}</div>
+        </div>
       `);
     });
 
@@ -462,12 +504,12 @@ export const JourneyMap = React.memo(function JourneyMap({
         title: `Xe ${bus.routeCode}`,
       }).addTo(vehicleLayer);
       marker.bindPopup(`
-        <div style="min-width:180px">
-          <div style="display:flex;align-items:center;gap:8px">
-            <span style="border-radius:5px;background:${color};padding:3px 7px;color:#fff;font-size:11px;font-weight:800">${escapeHtml(bus.routeCode)}</span>
-            <span style="font-size:12px;font-weight:700">${escapeHtml(bus.plate)}</span>
+        <div class="unibus-map-popup">
+          <div class="unibus-map-popup__row">
+            <span class="unibus-map-popup__badge" style="background:${color}">${escapeHtml(bus.routeCode)}</span>
+            <span class="unibus-map-popup__title" style="margin-top:0;font-size:12px">${escapeHtml(bus.plate)}</span>
           </div>
-          ${bus.etaMinutes != null ? `<div style="margin-top:8px;font-size:12px;color:#66706b">Đến trạm sau ${Math.max(0, bus.etaMinutes)} phút</div>` : ""}
+          ${bus.etaMinutes != null ? `<div class="unibus-map-popup__meta">Đến trạm sau ${Math.max(0, bus.etaMinutes)} phút</div>` : ""}
         </div>
       `);
       marker.on("click", () => onSelectBus?.(bus.id));

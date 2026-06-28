@@ -266,6 +266,27 @@ Run again after any backend edit.
 
 ## Follow-Up Work
 
+## 2026-06-28 Planner Result Card Follow-Up
+
+Scope:
+
+- Tightened `JourneyPlannerService` result quality after QA found options with total walking distance around 1km for the FPT Complex testcase.
+- `MAX_OPTIONS` is now 2 so the desktop planner behaves closer to Google Maps: show only the strongest alternatives, not every reachable combination.
+- Journey options are deduplicated by bus route sequence. For example, multiple `R17A > 16` variants with different boarding/alighting stops collapse into one best card.
+- Stop access walking is capped at 1200m per origin/destination leg, and total access walking is capped at 1600m. Do not hard-filter 900m routes: the FPT testcase can legitimately need around 1km total walking depending on selected gate/wall coordinate.
+- Backend and frontend rank by a journey score that penalizes walking over 800m, then total minutes/transfers/walk distance. This keeps reasonable alternatives above "technically reachable but annoying" variants without returning an empty result set.
+- The frontend safety gate now shows max 2 visible cards and dedupes by route sequence, but falls back to the best available options when every option exceeds the preferred walking threshold.
+- Result card behavior changed: clicking a card now only selects the option and redraws the map. The user enters the deep panel only through `Xem chi tiết`.
+- Result cards no longer show single-trip price and no longer render full leg sequence inline. Fare/payment context belongs to the registration/payment flow, not the compact planner result.
+- Leaflet popups now use UniBus map popup classes and app font stack to avoid the default Leaflet font/weight mismatch.
+- GPS/current-location is used for journey search coordinates but no longer rendered as a separate extra marker on the map. The green endpoint marker in a route preview represents the boarding stop, not the student's exact GPS point.
+- Browser geolocation now requests a fresh high-accuracy reading (`maximumAge: 0`) instead of accepting a cached position.
+
+Verification:
+
+- `frontend`: `npm run build` passed on 2026-06-28.
+- `backend`: Maven compile passed on 2026-06-28 using the local Maven cache path documented in the verification commands above.
+
 Highest priority:
 
 - For any fresh environment, apply V14/V15 then run official seed and `AuditDanangJourneyPlannerData.sql`.

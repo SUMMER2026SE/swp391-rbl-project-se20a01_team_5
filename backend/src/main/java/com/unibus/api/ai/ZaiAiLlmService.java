@@ -78,11 +78,12 @@ public class ZaiAiLlmService implements AiLlmService {
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                log.warn("Z.ai AI completion failed with HTTP {}", response.statusCode());
+                log.warn("Z.ai AI completion failed with HTTP {}: {}", response.statusCode(), truncate(response.body()));
                 return Optional.empty();
             }
             String text = parseResponse(response.body());
             if (text == null || text.isBlank()) {
+                log.warn("Z.ai AI completion returned an empty message: {}", truncate(response.body()));
                 return Optional.empty();
             }
             return Optional.of(new LlmResult(text.trim(), "zai", modelId));
@@ -97,8 +98,6 @@ public class ZaiAiLlmService implements AiLlmService {
                 "model", modelId,
                 "temperature", temperature,
                 "max_tokens", maxOutputTokens,
-                "enable_thinking", false,
-                "thinking", Map.of("type", "disabled"),
                 "messages", List.of(
                         Map.of("role", "system", "content", prompt.systemPrompt()),
                         Map.of("role", "user", "content", userPayload(prompt)))));
@@ -118,7 +117,37 @@ public class ZaiAiLlmService implements AiLlmService {
         JsonNode root = read(responseBody);
         JsonNode choices = root.path("choices");
         if (choices.isArray() && !choices.isEmpty()) {
-            return choices.get(0).path("message").path("content").asText("");
+            JsonNode first = choices.get(0);
+            String content = first.path("message").path("content").asText("");
+            if (!content.isBlank()) {
+                return content;
+            }
+            String reasoningContent = first.path("message").path("reasoning_content").asText("");
+            if (!reasoningContent.isBlank()) {
+                return reasoningContent;
+            }
+            String text = first.path("text").asText("");
+            if (!text.isBlank()) {
+                return text;
+            }
+        }
+        String outputText = root.path("output_text").asText("");
+        if (!outputText.isBlank()) {
+            return outputText;
+        }
+        JsonNode output = root.path("output");
+        if (output.isArray()) {
+            for (JsonNode item : output) {
+                JsonNode content = item.path("content");
+                if (content.isArray()) {
+                    for (JsonNode block : content) {
+                        String text = block.path("text").asText("");
+                        if (!text.isBlank()) {
+                            return text;
+                        }
+                    }
+                }
+            }
         }
         return "";
     }
@@ -187,5 +216,13 @@ public class ZaiAiLlmService implements AiLlmService {
         } catch (Exception exception) {
             throw new IllegalStateException("Unable to parse Z.ai payload", exception);
         }
+    }
+
+    private String truncate(String value) {
+        if (value == null || value.isBlank()) {
+            return "<empty>";
+        }
+        String singleLine = value.replaceAll("\\s+", " ").trim();
+        return singleLine.length() <= 800 ? singleLine : singleLine.substring(0, 800) + "...";
     }
 }
