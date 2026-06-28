@@ -40,6 +40,7 @@ import {
   type JourneyLegDTO,
   type JourneyOptionDTO,
   type JourneyStopDTO,
+  type LiveArrivalDTO,
   type PlaceSuggestionDTO,
   type RouteLookupDTO,
   type RouteMapPreviewDTO,
@@ -73,6 +74,8 @@ const DEFAULT_DESTINATION = "Bến xe Trung tâm Đà Nẵng";
 const CURRENT_LOCATION_LABEL = "Vị trí hiện tại";
 const PLANNER_STORAGE_KEY = "unibus.studentJourneyPlanner.v1";
 const LAST_REGISTERED_ROUTE_CONTEXT_KEY = "unibus.lastRegisteredRouteContext";
+const ROUTE_LOOKUP_CACHE_KEY = "unibus.routeLookup.cache.v1";
+const SELECTED_BUS_TRACKING_KEY = "unibus.selectedBusTracking.v1";
 const STUDENT_INK = "#14140f";
 const STUDENT_LIME = "#BDFD4F";
 const STUDENT_GREEN = "#087f5b";
@@ -88,6 +91,17 @@ function numeric(value: number | string | null | undefined) {
 
 function hasCoordinate(value: number | string | null | undefined) {
   return value !== undefined && value !== null && value !== "" && Number.isFinite(Number(value));
+}
+
+function pointDistanceMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
+  const earthRadiusMeters = 6371000;
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * earthRadiusMeters * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 }
 
 function coordinate(point: CoordinateDTO) {
@@ -115,6 +129,38 @@ function readPlannerStorage(): StoredPlannerState | null {
     return parsed;
   } catch {
     return null;
+  }
+}
+
+function readRouteCache() {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(ROUTE_LOOKUP_CACHE_KEY) || "[]") as RouteLookupDTO[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function storeSelectedBusTracking(arrival: LiveArrivalDTO, route: RouteMapPreviewDTO, stopId?: number) {
+  if (typeof window === "undefined") return;
+  const selectedStop = (route.stops || []).find((stop) => stop.stopId === stopId);
+  window.localStorage.setItem(SELECTED_BUS_TRACKING_KEY, JSON.stringify({
+    vehicleId: arrival.vehicleId,
+    routeId: route.routeId,
+    direction: route.direction,
+    stopId: stopId || arrival.targetStopId,
+    stopName: selectedStop?.stopName || arrival.targetStopName,
+    savedAt: new Date().toISOString(),
+  }));
+}
+
+function writeRouteCache(routes: RouteLookupDTO[]) {
+  if (typeof window === "undefined" || !routes.length) return;
+  try {
+    window.localStorage.setItem(ROUTE_LOOKUP_CACHE_KEY, JSON.stringify(routes));
+  } catch {
+    // Cache is only used to make lookup feel instant.
   }
 }
 
@@ -153,6 +199,24 @@ function timeLabel(value?: string) {
 function moneyLabel(value?: number | string) {
   const amount = numeric(value);
   return amount > 0 ? formatVND(amount) : "Theo tuyến";
+}
+
+function distanceLabel(meters?: number) {
+  const value = Math.max(0, Math.round(meters ?? 0));
+  return value >= 1000 ? `${(value / 1000).toFixed(2)} km` : `${value} m`;
+}
+
+function arrivalEtaLabel(arrival?: Pick<LiveArrivalDTO, "etaMinutes" | "status">) {
+  if (!arrival) return "Đang cập nhật";
+  if (arrival.status === "STOPPED_AT_STOP") return "Đang dừng";
+  const minutes = Math.max(0, Math.round(arrival.etaMinutes ?? 0));
+  return minutes <= 0 ? "Sắp đến" : `${minutes} phút`;
+}
+
+function arrivalStatusLabel(status?: string) {
+  if (status === "STOPPED_AT_STOP") return "Đang dừng ở trạm";
+  if (status === "SLOWING") return "Đang giảm tốc";
+  return "Đang chạy";
 }
 
 function routeCode(route?: Pick<RouteLookupDTO, "routeCode" | "routeId"> | RouteMapPreviewDTO | null) {
@@ -561,6 +625,12 @@ function RouteDetailPanel({
   infoTab,
   registering,
   actionError,
+  arrivals,
+  arrivalsLoading,
+  arrivalsError,
+  selectedStopId,
+  onStopSelect,
+  onArrivalSelect,
   onInfoTabChange,
   onBack,
   onDirectionChange,
@@ -570,6 +640,12 @@ function RouteDetailPanel({
   infoTab: RouteInfoTab;
   registering: boolean;
   actionError: string;
+  arrivals: LiveArrivalDTO[];
+  arrivalsLoading: boolean;
+  arrivalsError: string;
+  selectedStopId?: number;
+  onStopSelect: (stopId: number) => void;
+  onArrivalSelect: (arrival: LiveArrivalDTO) => void;
   onInfoTabChange: (tab: RouteInfoTab) => void;
   onBack: () => void;
   onDirectionChange: (direction: number) => void;
@@ -623,6 +699,43 @@ function RouteDetailPanel({
             );
           })}
         </div>
+        {selectedStopId ? (
+          <div className="mt-3 rounded-xl border border-outline-variant bg-surface p-3">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-on-surface-variant">Xe sắp đến trạm</p>
+                <p className="line-clamp-1 text-sm font-bold text-on-surface">
+                  {(preview.stops || []).find((stop) => stop.stopId === selectedStopId)?.stopName || "Trạm đã chọn"}
+                </p>
+              </div>
+              {arrivalsLoading ? <RefreshCw className="size-4 animate-spin text-on-surface-variant" /> : null}
+            </div>
+            {arrivalsError ? (
+              <p className="rounded-lg bg-error-container px-3 py-2 text-xs font-semibold text-on-error-container">{arrivalsError}</p>
+            ) : arrivals.length ? (
+              <div className="space-y-2">
+                {arrivals.slice(0, 3).map((arrival) => (
+                  <button key={arrival.vehicleId} type="button" onClick={() => onArrivalSelect(arrival)} className="grid w-full grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-lg bg-surface-container-low px-3 py-2 text-left text-sm transition-colors hover:bg-surface-container-high focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-md bg-[#05c46b] px-2 py-1 text-xs font-black text-white">{arrival.plateNumber || arrival.vehicleId}</span>
+                        <span className="text-xs font-semibold text-on-surface-variant">{numeric(arrival.speedKmh).toFixed(0)} km/h</span>
+                      </div>
+                      <p className="mt-1 text-xs text-on-surface-variant">{arrivalStatusLabel(arrival.status)}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-black text-[#05a86a]">{distanceLabel(arrival.distanceMeters)}</p>
+                      <p className="text-xs font-bold text-on-surface">{arrivalEtaLabel(arrival)}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-on-surface-variant">Chưa có xe giả lập. Kiểm tra backend đã restart và endpoint live-arrivals đã chạy.</p>
+            )}
+          </div>
+        ) : null}
+
         <div className="mt-3 grid grid-cols-2 gap-1 rounded-lg bg-surface-container-low p-1">
           {([
             { id: "stops", label: "Trạm dừng", icon: ListChecks },
@@ -652,7 +765,7 @@ function RouteDetailPanel({
         {infoTab === "stops" ? (
           <div className="space-y-0">
             {(preview.stops || []).map((stop, index, array) => (
-              <div key={`${stop.stopId}-${index}`} className="grid grid-cols-[28px_minmax(0,1fr)] gap-3">
+              <button key={`${stop.stopId}-${index}`} type="button" onClick={() => onStopSelect(stop.stopId)} className={cn("grid w-full grid-cols-[28px_minmax(0,1fr)] gap-3 rounded-lg text-left transition-colors hover:bg-surface-container-low", selectedStopId === stop.stopId && "bg-surface-container-low")}>
                 <div className="flex flex-col items-center">
                   <span
                     className={cn(
@@ -674,7 +787,7 @@ function RouteDetailPanel({
                     <p className="ml-13 mt-0.5 line-clamp-1 text-xs text-on-surface-variant">{stop.address}</p>
                   ) : null}
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         ) : (
@@ -871,7 +984,7 @@ function JourneyResultCard({
       }}
       role="button"
       tabIndex={0}
-      aria-selected={selected}
+      aria-pressed={selected}
       className={cn(
         "state-layer relative w-full cursor-pointer overflow-hidden rounded-xl border bg-surface px-4 py-3 text-left transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-on-surface/20",
         selected
@@ -1053,6 +1166,11 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
   const [routeInfoTab, setRouteInfoTab] = useState<RouteInfoTab>("stops");
   const [routeRegistering, setRouteRegistering] = useState(false);
   const [routeActionError, setRouteActionError] = useState("");
+  const [selectedLiveStopId, setSelectedLiveStopId] = useState<number | undefined>(undefined);
+  const [liveArrivals, setLiveArrivals] = useState<LiveArrivalDTO[]>([]);
+  const [liveArrivalsLoading, setLiveArrivalsLoading] = useState(false);
+  const [liveArrivalsError, setLiveArrivalsError] = useState("");
+
 
   const [originQuery, setOriginQuery] = useState(DEFAULT_ORIGIN);
   const [destinationQuery, setDestinationQuery] = useState(DEFAULT_DESTINATION);
@@ -1073,13 +1191,21 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
 
   const selectedJourney = journeys.find((item) => item.optionId === selectedId) || journeys[0] || null;
 
+
   useEffect(() => {
     let cancelled = false;
-    setRoutesLoading(true);
+    const cachedRoutes = readRouteCache();
+    if (cachedRoutes.length) {
+      setRoutes(cachedRoutes);
+      setRoutesLoading(false);
+    } else {
+      setRoutesLoading(true);
+    }
     transportApi.routes()
       .then((items) => {
         if (cancelled) return;
         setRoutes(items);
+        writeRouteCache(items);
         setRoutesError("");
       })
       .catch((error) => {
@@ -1109,6 +1235,7 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
         setRoutePreview(preview);
         setRouteDirection(preview.direction);
         setRouteInfoTab("stops");
+        setSelectedLiveStopId(preview.stops?.[0]?.stopId);
       })
       .catch((error) => {
         if (cancelled) return;
@@ -1122,6 +1249,40 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
       cancelled = true;
     };
   }, [routeDirection, selectedRoute]);
+
+  useEffect(() => {
+    const stopId = selectedLiveStopId || routePreview?.stops?.[0]?.stopId;
+    if (activeTab !== "lookup" || !routePreview || !stopId) {
+      setLiveArrivals([]);
+      setLiveArrivalsError("");
+      return;
+    }
+    let cancelled = false;
+    const loadLiveArrivals = async () => {
+      setLiveArrivalsLoading(true);
+      try {
+        const arrivals = await transportApi.liveArrivals(routePreview.routeId, stopId, routePreview.direction);
+        if (!cancelled) {
+          setLiveArrivals(arrivals);
+          setLiveArrivalsError("");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setLiveArrivals([]);
+          setLiveArrivalsError(error instanceof Error ? error.message : "Không tải được xe giả lập. Hãy restart backend.");
+        }
+      } finally {
+        if (!cancelled) setLiveArrivalsLoading(false);
+      }
+    };
+    void loadLiveArrivals();
+    const timer = window.setInterval(() => void loadLiveArrivals(), 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [activeTab, routePreview, selectedLiveStopId]);
+
 
   const loadSuggestions = useCallback(async (kind: PlaceKind, query: string) => {
     const trimmed = query.trim();
@@ -1429,6 +1590,30 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
   const mapColor = activeTab === "lookup"
     ? routeDirectionColor(routePreview)
     : selectedJourney?.routeBadges?.[0]?.colorHex || STUDENT_GREEN;
+  const userPoint = origin && hasCoordinate(origin.latitude) && hasCoordinate(origin.longitude)
+    ? { lat: numeric(origin.latitude), lng: numeric(origin.longitude) }
+    : null;
+  const nearestArrival = useMemo(() => {
+    const arrivalsWithCoords = liveArrivals.filter((arrival) => hasCoordinate(arrival.latitude) && hasCoordinate(arrival.longitude));
+    if (!arrivalsWithCoords.length) return null;
+    if (!userPoint) return arrivalsWithCoords[0];
+    return [...arrivalsWithCoords].sort((left, right) => (
+      pointDistanceMeters(userPoint, { lat: numeric(left.latitude), lng: numeric(left.longitude) })
+      - pointDistanceMeters(userPoint, { lat: numeric(right.latitude), lng: numeric(right.longitude) })
+    ))[0];
+  }, [liveArrivals, userPoint]);
+  const displayedLiveArrivals = nearestArrival ? [nearestArrival] : liveArrivals.slice(0, 1);
+  const liveMapBuses = useMemo(() => displayedLiveArrivals
+    .filter((arrival) => hasCoordinate(arrival.latitude) && hasCoordinate(arrival.longitude))
+    .map((arrival) => ({
+      id: arrival.vehicleId,
+      routeCode: arrival.routeCode || routeCode(routePreview),
+      routeColor: mapColor,
+      plate: arrival.plateNumber || arrival.vehicleId,
+      lat: numeric(arrival.latitude),
+      lng: numeric(arrival.longitude),
+      etaMinutes: arrival.etaMinutes,
+    })), [displayedLiveArrivals, mapColor, routePreview]);
 
   return (
     <motion.div
@@ -1463,12 +1648,24 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
                     infoTab={routeInfoTab}
                     registering={routeRegistering}
                     actionError={routeActionError}
+                    arrivals={displayedLiveArrivals}
+                    arrivalsLoading={liveArrivalsLoading}
+                    arrivalsError={liveArrivalsError}
+                    selectedStopId={selectedLiveStopId}
+                    onStopSelect={setSelectedLiveStopId}
+                    onArrivalSelect={(arrival) => {
+                      storeSelectedBusTracking(arrival, routePreview, selectedLiveStopId);
+                      onNavigate("stu-tracking");
+                    }}
                     onInfoTabChange={setRouteInfoTab}
                     onBack={() => {
                       setSelectedRoute(null);
                       setRoutePreview(null);
                       setRouteDirection(undefined);
                       setRouteActionError("");
+                      setSelectedLiveStopId(undefined);
+                      setLiveArrivals([]);
+                      setLiveArrivalsError("");
                     }}
                     onDirectionChange={setRouteDirection}
                     onRegister={() => void registerRoutePreview()}
@@ -1678,7 +1875,14 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
             <JourneyMap
               stops={mapStops}
               routeColor={mapColor}
-              buses={[]}
+              buses={liveMapBuses}
+              onSelectBus={(busId) => {
+                const arrival = displayedLiveArrivals.find((item) => item.vehicleId === busId);
+                if (arrival && routePreview) {
+                  storeSelectedBusTracking(arrival, routePreview, selectedLiveStopId);
+                  onNavigate("stu-tracking");
+                }
+              }}
               extraMarkers={mapExtraMarkers}
               polylines={mapPolylines}
               height="100%"

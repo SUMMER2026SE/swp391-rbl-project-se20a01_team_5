@@ -5,13 +5,19 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import com.unibus.api.common.ApiException;
+import com.unibus.api.payment.VNPayConfig;
+import com.unibus.api.payment.VNPayUtils;
 import com.unibus.api.security.CurrentUser;
+import com.unibus.api.ticketing.TicketingDtos.CreateVnpayPaymentRequest;
 import com.unibus.api.ticketing.TicketingDtos.JourneyOrderView;
 import com.unibus.api.ticketing.TicketingDtos.PassesDashboard;
 import com.unibus.api.ticketing.TicketingDtos.MonthlyPassQuote;
@@ -21,6 +27,7 @@ import com.unibus.api.ticketing.TicketingDtos.PurchaseMonthlyPassRequest;
 import com.unibus.api.ticketing.TicketingDtos.PurchaseSingleTripTicketRequest;
 import com.unibus.api.ticketing.TicketingDtos.SingleTripTicketView;
 import com.unibus.api.ticketing.TicketingDtos.TicketView;
+import com.unibus.api.ticketing.TicketingDtos.VnpayPaymentUrlView;
 import com.unibus.api.ticketing.TicketingRepository.ApprovedRegistration;
 import com.unibus.api.university.SubsidyService;
 
@@ -29,10 +36,12 @@ public class TicketingService {
 
     private final TicketingRepository ticketingRepository;
     private final SubsidyService subsidyService;
+    private final VNPayConfig vnPayConfig;
 
-    public TicketingService(TicketingRepository ticketingRepository, SubsidyService subsidyService) {
+    public TicketingService(TicketingRepository ticketingRepository, SubsidyService subsidyService, VNPayConfig vnPayConfig) {
         this.ticketingRepository = ticketingRepository;
         this.subsidyService = subsidyService;
+        this.vnPayConfig = vnPayConfig;
     }
 
     @Transactional(readOnly = true)
@@ -184,6 +193,70 @@ public class TicketingService {
         return ticketingRepository.findPayments(requireStudentCode(currentUser));
     }
 
+    @Transactional
+    public VnpayPaymentUrlView createVnpayPaymentUrl(CurrentUser currentUser,
+            CreateVnpayPaymentRequest request, String clientIp) {
+        String studentCode = requireStudentCode(currentUser);
+        ApprovedRegistration registration = ticketingRepository.approvedRegistration(studentCode)
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST,
+                        "Student must have an approved route registration"));
+        BigDecimal defaultAmount = ticketingRepository.monthlyFare(registration.routeId());
+        MonthlyPassQuote quote = subsidyService.quoteFor(currentUser, registration.routeId(),
+                registration.routeName(), defaultAmount);
+        ensurePurchasableQuote(quote);
+
+        BigDecimal amount = request != null && request.amount() != null && request.amount().compareTo(BigDecimal.ZERO) > 0
+                ? request.amount()
+                : quote.finalFareAmount();
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Payment amount must be greater than zero");
+        }
+
+        String transactionCode = "VNP" + UUID.randomUUID().toString().replace("-", "").substring(0, 24).toUpperCase();
+        PaymentView payment = ticketingRepository.createPendingVnpayPayment(studentCode, amount, transactionCode);
+        String paymentUrl = hasVnpayCredentials()
+                ? VNPayUtils.buildPaymentUrl(vnPayConfig, amount, transactionCode, clientIp)
+                : mockVnpayUrl(payment.paymentId(), transactionCode, amount);
+        return new VnpayPaymentUrlView(payment.paymentId(), transactionCode, amount, paymentUrl);
+    }
+
+    @Transactional
+    public PaymentView completeMockVnpayPayment(CurrentUser currentUser, Integer paymentId) {
+        String studentCode = requireStudentCode(currentUser);
+        ticketingRepository.findPaymentForStudent(paymentId, studentCode)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Payment not found"));
+        return ticketingRepository.markPaymentPaid(paymentId);
+    }
+
+    @Transactional
+    public PaymentView failMockVnpayPayment(CurrentUser currentUser, Integer paymentId) {
+        String studentCode = requireStudentCode(currentUser);
+        ticketingRepository.findPaymentForStudent(paymentId, studentCode)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Payment not found"));
+        return ticketingRepository.markPaymentFailed(paymentId);
+    }
+
+    @Transactional
+    public String handleVnpayReturn(Map<String, String> params) {
+        String transactionCode = params.get("vnp_TxnRef");
+        String responseCode = params.getOrDefault("vnp_ResponseCode", "99");
+        PaymentView payment = transactionCode == null || transactionCode.isBlank()
+                ? null
+                : ticketingRepository.findPaymentByTransactionCode(transactionCode).orElse(null);
+
+        boolean verified = hasVnpayCredentials() && VNPayUtils.verifyReturn(vnPayConfig, params);
+        boolean success = verified
+                && "00".equals(responseCode)
+                && "00".equals(params.getOrDefault("vnp_TransactionStatus", "00"));
+
+        if (payment != null) {
+            payment = success
+                    ? ticketingRepository.markPaymentPaid(payment.paymentId())
+                    : ticketingRepository.markPaymentFailed(payment.paymentId());
+        }
+        return paymentResultUrl(success, payment == null ? null : payment.paymentId(), transactionCode, responseCode);
+    }
+
     private String requireStudentCode(CurrentUser currentUser) {
         return ticketingRepository.studentCodeForUser(currentUser.userId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Student profile not found"));
@@ -201,6 +274,35 @@ public class TicketingService {
 
     private String label(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value.trim();
+    }
+
+    private boolean hasVnpayCredentials() {
+        return vnPayConfig.tmnCode() != null && !vnPayConfig.tmnCode().isBlank()
+                && vnPayConfig.hashSecret() != null && !vnPayConfig.hashSecret().isBlank();
+    }
+
+    private String mockVnpayUrl(Integer paymentId, String transactionCode, BigDecimal amount) {
+        return UriComponentsBuilder.fromUriString(vnPayConfig.frontendUrl())
+                .path("/student/payment/mock")
+                .queryParam("paymentId", paymentId)
+                .queryParam("txnRef", transactionCode)
+                .queryParam("amount", amount)
+                .build()
+                .toUriString();
+    }
+
+    private String paymentResultUrl(boolean success, Integer paymentId, String transactionCode, String responseCode) {
+        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(vnPayConfig.frontendUrl())
+                .path("/student/payment/result")
+                .queryParam("status", success ? "success" : "failed")
+                .queryParam("responseCode", responseCode == null || responseCode.isBlank() ? "99" : responseCode);
+        if (paymentId != null) {
+            builder.queryParam("paymentId", paymentId);
+        }
+        if (transactionCode != null && !transactionCode.isBlank()) {
+            builder.queryParam("txnRef", transactionCode);
+        }
+        return builder.build().toUriString();
     }
 
     private void ensurePurchasableQuote(MonthlyPassQuote quote) {

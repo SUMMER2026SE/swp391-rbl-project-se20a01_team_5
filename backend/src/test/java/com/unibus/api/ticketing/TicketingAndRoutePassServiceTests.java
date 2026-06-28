@@ -143,7 +143,7 @@ class TicketingAndRoutePassServiceTests {
     @Test
     void purchaseMonthlyPassCreatesPassPaymentInvoiceAndIsIdempotentForMonth() {
         TicketView ticket = ticketingService.purchaseMonthlyPass(currentUser,
-                new PurchaseMonthlyPassRequest(null, "BANK_TRANSFER"));
+                new PurchaseMonthlyPassRequest(null, "BANK_TRANSFER", null, null));
 
         assertThat(ticket.ticketType()).isEqualTo("MONTHLY");
         assertThat(ticket.routeId()).isEqualTo(routeA.getId());
@@ -158,7 +158,7 @@ class TicketingAndRoutePassServiceTests {
         assertTableCount("invoices", 1);
 
         TicketView sameTicket = ticketingService.purchaseMonthlyPass(currentUser,
-                new PurchaseMonthlyPassRequest(null, "BANK_TRANSFER"));
+                new PurchaseMonthlyPassRequest(null, "BANK_TRANSFER", null, null));
 
         assertThat(sameTicket.ticketId()).isEqualTo(ticket.ticketId());
         assertTableCount("monthly_passes", 1);
@@ -171,7 +171,7 @@ class TicketingAndRoutePassServiceTests {
         insertSubsidyPolicy("PERCENTAGE", "50", "60000");
 
         TicketView ticket = ticketingService.purchaseMonthlyPass(currentUser,
-                new PurchaseMonthlyPassRequest(null, "BANK_TRANSFER"));
+                new PurchaseMonthlyPassRequest(null, "BANK_TRANSFER", null, null));
 
         assertThat(ticket.originalFareAmount()).isEqualByComparingTo(new BigDecimal("120000"));
         assertThat(ticket.subsidyAmount()).isEqualByComparingTo(new BigDecimal("60000"));
@@ -195,7 +195,7 @@ class TicketingAndRoutePassServiceTests {
         insertSubsidyPolicy("PERCENTAGE", "100", null);
 
         TicketView ticket = ticketingService.purchaseMonthlyPass(currentUser,
-                new PurchaseMonthlyPassRequest(null, "BANK_TRANSFER"));
+                new PurchaseMonthlyPassRequest(null, "BANK_TRANSFER", null, null));
 
         assertThat(ticket.originalFareAmount()).isEqualByComparingTo(new BigDecimal("120000"));
         assertThat(ticket.subsidyAmount()).isEqualByComparingTo(new BigDecimal("120000"));
@@ -208,7 +208,7 @@ class TicketingAndRoutePassServiceTests {
 
     @Test
     void activeMonthlyPassBlocksDifferentRouteButAllowsSameRouteStopUpdate() {
-        ticketingService.purchaseMonthlyPass(currentUser, new PurchaseMonthlyPassRequest(null, "BANK_TRANSFER"));
+        ticketingService.purchaseMonthlyPass(currentUser, new PurchaseMonthlyPassRequest(null, "BANK_TRANSFER", null, null));
 
         assertThatThrownBy(() -> routeRegistrationService.change(currentUser, registration.registrationId(),
                 new RegistrationRequest(routeB.getId(), campus.getId(), station.getId(), null)))
@@ -385,3 +385,4 @@ class TicketingAndRoutePassServiceTests {
                 """);
     }
 }
+

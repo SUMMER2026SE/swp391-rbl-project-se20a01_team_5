@@ -31,6 +31,8 @@ class AiCopilotServiceTests {
         seedData();
         AiKnowledgeRepository knowledgeRepository = new AiKnowledgeRepository(jdbcTemplate);
         routeSuggestionService = new RouteSuggestionService(knowledgeRepository);
+        IntentRouter intentRouter = new IntentRouter();
+        FastReplyService fastReplyService = new FastReplyService(intentRouter);
         fakeProvider = "bedrock";
         AiLlmService fakeLlm = prompt -> Optional.of(new LlmResult(
                 "{\"message\":\"LLM đã chọn tuyến tốt nhất từ dữ liệu UniBus.\",\"advisoryType\":\"ROUTE_SUGGESTION\"}",
@@ -40,7 +42,9 @@ class AiCopilotServiceTests {
                 jdbcTemplate,
                 knowledgeRepository,
                 routeSuggestionService,
-                fakeLlm);
+                fakeLlm,
+                intentRouter,
+                fastReplyService);
     }
 
     @Test
@@ -99,7 +103,7 @@ class AiCopilotServiceTests {
     @Test
     void chatUsesLlmResponseAndPersistsBothTurns() {
         ChatResponse response = chatbotService.respond(1, new ChatRequest(
-                "Sáng nay tôi muốn tới trường, tuyến nào nhanh và rẻ nhất?",
+                "Sáng nay tôi muốn tới trường, hãy phân tích vì sao tuyến này tối ưu, rẻ và phù hợp nhất.",
                 Map.of(
                         "boardingStopId", 10,
                         "alightingStopId", 20,
@@ -118,10 +122,23 @@ class AiCopilotServiceTests {
         fakeProvider = "zai";
 
         ChatResponse response = chatbotService.respond(1, new ChatRequest(
-                "Gợi ý tuyến đi học giúp tôi",
+                "Phân tích tuyến đi học giúp tôi và giải thích vì sao nên chọn phương án đó.",
                 Map.of()));
 
         assertThat(response.mode()).isEqualTo("ZAI");
+    }
+
+    @Test
+    void smallTalkUsesFastReplyWithoutPersistingChatHistory() {
+        ChatResponse response = chatbotService.respond(1, new ChatRequest(
+                "xin chào",
+                Map.of()));
+
+        assertThat(response.mode()).isEqualTo("FAST_REPLY");
+        assertThat(response.advisoryType()).isEqualTo("SMALL_TALK");
+        assertThat(response.traceEvents()).isEmpty();
+        Integer turns = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM ai_chat_history", Integer.class);
+        assertThat(turns).isZero();
     }
 
     private void createTables() {
