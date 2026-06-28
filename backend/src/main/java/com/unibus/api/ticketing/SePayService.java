@@ -4,6 +4,7 @@ import com.unibus.api.user.model.UserRole;
 
 import java.math.BigDecimal;
 import java.sql.PreparedStatement;
+import java.sql.Types;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -140,9 +141,24 @@ public class SePayService {
         }
 
         // Check for an existing unpaid order with same student_code, ticket_type, route_id and total amount to avoid spamming
-        List<Map<String, Object>> existingOrders = jdbcTemplate.queryForList(
-                "SELECT id, total FROM tb_orders WHERE student_code = ? AND ticket_type = ? AND route_id IS NOT DISTINCT FROM ? AND payment_status = 'Unpaid' ORDER BY created_at DESC LIMIT 1",
-                studentCode, storedTicketType, routeId);
+        Integer existingOrderRouteId = routeId;
+        List<Map<String, Object>> existingOrders = jdbcTemplate.query(connection -> {
+            PreparedStatement statement = connection.prepareStatement(
+                    "SELECT id, total FROM tb_orders WHERE student_code = ? AND ticket_type = ? AND route_id IS NOT DISTINCT FROM ? AND payment_status = 'Unpaid' ORDER BY created_at DESC LIMIT 1");
+            statement.setString(1, studentCode);
+            statement.setString(2, storedTicketType);
+            if (existingOrderRouteId == null) {
+                statement.setNull(3, Types.INTEGER);
+            } else {
+                statement.setInt(3, existingOrderRouteId);
+            }
+            return statement;
+        }, (rs, rowNum) -> {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("id", rs.getLong("id"));
+            row.put("total", rs.getBigDecimal("total"));
+            return row;
+        });
 
         if (!existingOrders.isEmpty()) {
             Map<String, Object> existing = existingOrders.get(0);
@@ -174,7 +190,11 @@ public class SePayService {
                     new String[] { "id" });
             statement.setString(1, studentCode);
             statement.setString(2, storedTicketType);
-            statement.setObject(3, orderRouteId);
+            if (orderRouteId == null) {
+                statement.setNull(3, Types.INTEGER);
+            } else {
+                statement.setInt(3, orderRouteId);
+            }
             statement.setBigDecimal(4, amount);
             statement.setString(5, testOrder ? "Test UniBus" : orderName(ticketType));
             return statement;
