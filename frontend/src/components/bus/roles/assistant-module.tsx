@@ -102,7 +102,7 @@ type AssistantModuleProps = {
 export function AssistantModule({ activeId, onNavigate }: AssistantModuleProps) {
   const proto = useAssistantPrototypeData();
 
-  if (proto.loading) return <LoadingScreen label="Đang tải dữ liệu phụ xe..." />;
+  if (proto.loading || !proto.data) return <LoadingScreen label="Đang tải dữ liệu phụ xe..." />;
   if (proto.error) return <ErrorScreen message={proto.error} onRetry={proto.reload} />;
 
   const d = proto.data!;
@@ -1080,3 +1080,4 @@ function FallbackScreen({ activeId }: { activeId: string }) {
     />
   );
 }
+

@@ -46,6 +46,7 @@ export function AppShell({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [unread, setUnread] = useState<number | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarPreviewOpen, setSidebarPreviewOpen] = useState(false);
   const nav = NAV_CONFIG[role] ?? NAV_CONFIG.student;
   const groups = useMemo(() => {
     const map = new Map<string, NavItem[]>();
@@ -56,7 +57,6 @@ export function AppShell({
     return Array.from(map.entries());
   }, [nav]);
 
-  const currentNav = nav.find((n) => n.id === activeId) ?? nav[0];
   const notificationsNavId =
     role === "student" ? "stu-notifications"
     : role === "driver" ? "drv-notifications"
@@ -80,6 +80,13 @@ export function AppShell({
       ? { label: "Hồ sơ đang chờ duyệt", icon: Clock3 }
       : { label: "Xác minh sinh viên", icon: BadgeCheck };
   const VerificationMenuIcon = verificationMenu.icon;
+  const currentNav = nav.find((n) => n.id === activeId)
+    ?? (role === "student" && activeId === "stu-university"
+      ? { id: "stu-university", label: verificationMenu.label, icon: VerificationMenuIcon, group: "Tổng quan" }
+      : nav[0]);
+  const isStudentFindPage = role === "student" && activeId === "stu-find";
+  const sidebarVisible = !sidebarCollapsed || sidebarPreviewOpen;
+  const showSidebarHoverEdge = isStudentFindPage && sidebarCollapsed && !sidebarPreviewOpen;
   const [scrolled, setScrolled] = useState(false);
   const { scrollY } = useScroll();
   useMotionValueEvent(scrollY, "change", (y) => setScrolled(y > 20));
@@ -99,10 +106,12 @@ export function AppShell({
   }, [activeId]);
 
   useEffect(() => {
-    if (role === "student" && activeId === "stu-find") {
+    if (isStudentFindPage) {
       setSidebarCollapsed(true);
+    } else {
+      setSidebarPreviewOpen(false);
     }
-  }, [activeId, role]);
+  }, [isStudentFindPage]);
 
   // Listen for real-time notification read events from NotificationsScreen
   useEffect(() => {
@@ -116,8 +125,11 @@ export function AppShell({
   // Debounce navigation to prevent lag when user clicks rapidly.
   // Each new click cancels the previous pending navigation.
   const navTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewOpenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const goTo = (id: string) => {
     setMobileOpen(false);
+    setSidebarPreviewOpen(false);
     if (role === "student" && id === "stu-find") {
       setSidebarCollapsed(true);
     }
@@ -137,6 +149,8 @@ export function AppShell({
   useEffect(() => {
     return () => {
       if (navTimerRef.current) clearTimeout(navTimerRef.current);
+      if (previewOpenTimerRef.current) clearTimeout(previewOpenTimerRef.current);
+      if (previewCloseTimerRef.current) clearTimeout(previewCloseTimerRef.current);
     };
   }, []);
 
@@ -205,13 +219,47 @@ export function AppShell({
   return (
     <div className="flex min-h-screen w-full flex-col overflow-x-hidden bg-background" data-role-theme={role}>
       <motion.aside
-        animate={{ width: sidebarCollapsed ? 0 : 288 }}
+        animate={{ width: sidebarVisible ? 288 : 0 }}
         transition={{ type: "spring", stiffness: 400, damping: 32 }}
-        className="fixed left-0 top-0 z-40 hidden h-screen shrink-0 flex-col border-r border-outline-variant/40 bg-surface-container-low overflow-hidden lg:flex"
+        onMouseEnter={() => {
+          if (previewCloseTimerRef.current) clearTimeout(previewCloseTimerRef.current);
+        }}
+        onMouseLeave={() => {
+          if (isStudentFindPage && sidebarCollapsed) {
+            if (previewOpenTimerRef.current) clearTimeout(previewOpenTimerRef.current);
+            previewCloseTimerRef.current = setTimeout(() => setSidebarPreviewOpen(false), 140);
+          }
+        }}
+        className={cn(
+          "fixed left-0 z-[2300] hidden shrink-0 flex-col overflow-hidden border-r border-outline-variant/40 bg-surface-container-low lg:flex",
+          isStudentFindPage && sidebarCollapsed ? "top-16 h-[calc(100dvh-4rem)] rounded-tr-[24px]" : "top-0 h-screen",
+          sidebarVisible ? "pointer-events-auto" : "pointer-events-none",
+        )}
         style={{ width: 288 }}
       >
         {SidebarContent}
       </motion.aside>
+
+      {showSidebarHoverEdge ? (
+        <button
+          type="button"
+          aria-label="Mở nhanh menu"
+          onMouseEnter={() => {
+            if (previewCloseTimerRef.current) clearTimeout(previewCloseTimerRef.current);
+            if (previewOpenTimerRef.current) clearTimeout(previewOpenTimerRef.current);
+            previewOpenTimerRef.current = setTimeout(() => setSidebarPreviewOpen(true), 110);
+          }}
+          onMouseLeave={() => {
+            if (previewOpenTimerRef.current) clearTimeout(previewOpenTimerRef.current);
+          }}
+          onFocus={() => setSidebarPreviewOpen(true)}
+          onClick={() => setSidebarPreviewOpen(true)}
+          className="fixed left-0 top-20 z-[2290] hidden h-[calc(100dvh-6rem)] w-3 rounded-r-full bg-on-surface/10 transition-colors hover:bg-on-surface/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:block"
+        >
+          <span className="absolute left-1 top-1/2 h-16 w-1 -translate-y-1/2 rounded-full bg-[#beff50]" />
+          <span className="sr-only">Mở nhanh menu</span>
+        </button>
+      ) : null}
 
       <div
         className={cn(
@@ -251,7 +299,10 @@ export function AppShell({
           {/* Toggle sidebar button (desktop only) */}
           <button
             className="state-layer flex size-10 shrink-0 items-center justify-center rounded-full text-on-surface hidden lg:flex"
-            onClick={() => setSidebarCollapsed((v) => !v)}
+            onClick={() => {
+              setSidebarPreviewOpen(false);
+              setSidebarCollapsed((v) => !v);
+            }}
             aria-label={sidebarCollapsed ? "Mở sidebar" : "Đóng sidebar"}
             title={sidebarCollapsed ? "Mở sidebar" : "Đóng sidebar"}
           >

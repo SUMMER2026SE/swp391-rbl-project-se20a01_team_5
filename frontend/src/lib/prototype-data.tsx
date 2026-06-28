@@ -471,7 +471,7 @@ export function useDriverPrototypeData() {
   const trips = useApi(() => operationsApi.driverTrips(), undefined, []);
   const feedback = useApi(() => experienceApi.driverFeedback(), undefined, []);
   const notifications = useApi(() => notificationApi.mine(), undefined, []);
-  const profile = useApi(() => profileApi.me(), undefined, [], "student-profile");
+  const profile = useApi(() => profileApi.me(), undefined, [], "driver-profile");
 
   const mapped = (() => {
     if (!dashboard.raw) return null;
@@ -537,7 +537,7 @@ export function useAssistantPrototypeData() {
   const dashboard = useApi(() => experienceApi.assistantDashboard(), undefined, []);
   const trips = useApi(() => operationsApi.conductorTrips(), undefined, []);
   const notifications = useApi(() => notificationApi.mine(), undefined, []);
-  const profile = useApi(() => profileApi.me(), undefined, [], "student-profile");
+  const profile = useApi(() => profileApi.me(), undefined, [], "assistant-profile");
 
   const mapped = (() => {
     if (!dashboard.raw) return null;
@@ -644,7 +644,7 @@ export function useCoordinatorPrototypeData() {
 export function useAdminPrototypeData() {
   // Primary: aggregate admin stats endpoint (returns stats+routeMetrics+complaints+violations+fares)
   const stats = useApi(() => experienceApi.adminStats(), undefined, []);
-  const profile = useApi(() => profileApi.me(), undefined, [], "student-profile");
+  const profile = useApi(() => profileApi.me(), undefined, [], "admin-profile");
   // Audits are needed for the activity feed on Dashboard
   const audits = useApi(() => adminApi.auditLogs(), undefined, []);
 
@@ -856,3 +856,5 @@ export function ErrorBlock({ message, onRetry }: { message: string; onRetry?: ()
 export function isApiError(err: unknown): err is ApiError {
   return err instanceof ApiError;
 }
+
+

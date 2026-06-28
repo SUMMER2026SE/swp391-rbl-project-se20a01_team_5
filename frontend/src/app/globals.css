@@ -361,6 +361,17 @@
     box-shadow: 0 0 0 4px color-mix(in oklch, var(--m3-primary) 22%, transparent);
   }
 
+  @keyframes ai-model-online-ping {
+    75%, 100% {
+      opacity: 0;
+      transform: scale(2.35);
+    }
+  }
+
+  .ai-model-online-ping {
+    animation: ai-model-online-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+
   @keyframes ai-tool-thinking {
     0%, 100% {
       opacity: 0.72;
@@ -379,6 +390,7 @@
   @media (prefers-reduced-motion: reduce) {
     .thinking-dot,
     .ai-agent-glow,
+    .ai-model-online-ping,
     .ai-tool-thinking {
       animation: none;
     }

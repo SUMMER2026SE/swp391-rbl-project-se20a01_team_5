@@ -69,10 +69,20 @@ type StoredPlannerState = {
   updatedAt?: string;
 };
 
+type AssistantRoutePreviewState = {
+  routeId?: number | string;
+  routeCode?: string;
+  routeName?: string;
+  boardingStopId?: number;
+  alightingStopId?: number;
+};
+
 const DEFAULT_ORIGIN = "Đại học Việt Hàn";
 const DEFAULT_DESTINATION = "Bến xe Trung tâm Đà Nẵng";
 const CURRENT_LOCATION_LABEL = "Vị trí hiện tại";
 const PLANNER_STORAGE_KEY = "unibus.studentJourneyPlanner.v1";
+const ASSISTANT_ROUTE_PREVIEW_KEY = "unibus:assistant:route-preview";
+const ASSISTANT_ROUTE_PREVIEW_CONTEXT_KEY = "unibus:assistant:route-preview-context";
 const LAST_REGISTERED_ROUTE_CONTEXT_KEY = "unibus.lastRegisteredRouteContext";
 const ROUTE_LOOKUP_CACHE_KEY = "unibus.routeLookup.cache.v1";
 const SELECTED_BUS_TRACKING_KEY = "unibus.selectedBusTracking.v1";
@@ -173,6 +183,21 @@ function writePlannerStorage(state: StoredPlannerState) {
     );
   } catch {
     // Planner history is nice-to-have; avoid blocking the route search flow.
+  }
+}
+
+function readAssistantRoutePreview(): AssistantRoutePreviewState | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const routeId = window.sessionStorage.getItem(ASSISTANT_ROUTE_PREVIEW_KEY);
+    const rawContext = window.sessionStorage.getItem(ASSISTANT_ROUTE_PREVIEW_CONTEXT_KEY);
+    window.sessionStorage.removeItem(ASSISTANT_ROUTE_PREVIEW_KEY);
+    window.sessionStorage.removeItem(ASSISTANT_ROUTE_PREVIEW_CONTEXT_KEY);
+    const context = rawContext ? JSON.parse(rawContext) as AssistantRoutePreviewState : {};
+    const resolvedRouteId = context.routeId ?? routeId ?? undefined;
+    return resolvedRouteId ? { ...context, routeId: resolvedRouteId } : null;
+  } catch {
+    return null;
   }
 }
 
@@ -1170,7 +1195,7 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
   const [liveArrivals, setLiveArrivals] = useState<LiveArrivalDTO[]>([]);
   const [liveArrivalsLoading, setLiveArrivalsLoading] = useState(false);
   const [liveArrivalsError, setLiveArrivalsError] = useState("");
-
+  const [assistantPreview, setAssistantPreview] = useState<AssistantRoutePreviewState | null>(() => readAssistantRoutePreview());
 
   const [originQuery, setOriginQuery] = useState(DEFAULT_ORIGIN);
   const [destinationQuery, setDestinationQuery] = useState(DEFAULT_DESTINATION);
@@ -1220,6 +1245,60 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!assistantPreview || routesLoading) return;
+    const requestedRouteId = assistantPreview.routeId == null ? "" : String(assistantPreview.routeId);
+    const requestedRouteCode = (assistantPreview.routeCode || "").trim().toLowerCase();
+    const requestedRouteName = (assistantPreview.routeName || "").trim().toLowerCase();
+    const match = routes.find((route) => (
+      String(route.routeId) === requestedRouteId
+      || (!!requestedRouteCode && (route.routeCode || "").trim().toLowerCase() === requestedRouteCode)
+      || (!!requestedRouteName && route.routeName.trim().toLowerCase() === requestedRouteName)
+    ));
+
+    const fallbackRoute = requestedRouteId
+      ? {
+          routeId: Number(requestedRouteId),
+          routeCode: assistantPreview.routeCode,
+          routeName: assistantPreview.routeName || assistantPreview.routeCode || `Tuyến ${requestedRouteId}`,
+          colorHex: undefined,
+          distanceKm: undefined,
+          estimatedMinutes: undefined,
+          frequencyMin: undefined,
+          singleFare: undefined,
+          monthlyFare: undefined,
+          firstTrip: undefined,
+          lastTrip: undefined,
+          stopCount: undefined,
+          directions: [],
+          universityLinked: false,
+          interregional: false,
+          externalSource: undefined,
+        } satisfies RouteLookupDTO
+      : null;
+
+    if (!match && !fallbackRoute) {
+      if (routes.length) {
+        toast.error("Không tìm thấy tuyến từ gợi ý AI trong danh sách hiện tại.");
+        setAssistantPreview(null);
+      }
+      return;
+    }
+
+    const targetRoute = match || fallbackRoute;
+    if (!targetRoute) return;
+
+    setActiveTab("lookup");
+    setSelectedRoute(targetRoute);
+    setRouteDirection(targetRoute.directions?.[0] ?? 0);
+    setRoutePreview(null);
+    setRoutesError("");
+    setRouteActionError("");
+    setRouteQuery(targetRoute.routeCode || targetRoute.routeName);
+    setShowJourneyDetail(false);
+    setAssistantPreview(null);
+  }, [assistantPreview, routes, routesLoading]);
 
   useEffect(() => {
     if (!selectedRoute) {
@@ -1503,7 +1582,7 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
       }));
       await ctx.reload();
       toast.success("Đăng ký tuyến thành công.");
-      onNavigate("stu-payment");
+      onNavigate("stu-invoices");
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
         localStorage.setItem("unibus.paymentRouteId", String(action.routeId));
@@ -1515,7 +1594,7 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
           journeyOptionId: journey.optionId,
           savedAt: new Date().toISOString(),
         }));
-        onNavigate("stu-payment");
+        onNavigate("stu-invoices");
         return;
       }
       setInlineError(error instanceof Error ? error.message : "Không thể đăng ký tuyến.");
@@ -1553,7 +1632,7 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
       }));
       await ctx.reload();
       toast.success("Đăng ký tuyến thành công.");
-      onNavigate("stu-payment");
+      onNavigate("stu-invoices");
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
         localStorage.setItem("unibus.paymentRouteId", String(routePreview.routeId));
@@ -1565,7 +1644,7 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
           direction: routePreview.direction,
           savedAt: new Date().toISOString(),
         }));
-        onNavigate("stu-payment");
+        onNavigate("stu-invoices");
         return;
       }
       setRouteActionError(error instanceof Error ? error.message : "Không thể đăng ký tuyến.");
@@ -1622,7 +1701,7 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
       transition={{ duration: 0.22 }}
       className="min-w-0"
     >
-      <div className="grid h-[calc(100dvh-116px)] min-h-[680px] min-w-0 grid-cols-1 overflow-hidden rounded-xl border border-outline-variant bg-surface xl:grid-cols-[460px_minmax(0,1fr)]">
+      <div className="grid h-[calc(100dvh-128px)] min-h-[520px] min-w-0 grid-cols-1 overflow-hidden rounded-xl border border-outline-variant bg-surface xl:grid-cols-[460px_minmax(0,1fr)]">
         <aside className="relative z-[1000] flex min-h-0 flex-col border-r border-outline-variant bg-surface">
           <TopTabs
             active={activeTab}
