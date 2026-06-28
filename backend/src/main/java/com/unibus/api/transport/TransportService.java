@@ -1,7 +1,13 @@
 package com.unibus.api.transport;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
@@ -15,6 +21,12 @@ import org.springframework.transaction.annotation.Transactional;
 import com.unibus.api.common.ApiException;
 import com.unibus.api.security.CurrentUser;
 import com.unibus.api.transport.dto.TransportDtos.Eta;
+import com.unibus.api.transport.dto.TransportDtos.Coordinate;
+import com.unibus.api.transport.dto.TransportDtos.JourneyStop;
+import com.unibus.api.transport.dto.TransportDtos.MapPolyline;
+import com.unibus.api.transport.dto.TransportDtos.RouteDirectionSummary;
+import com.unibus.api.transport.dto.TransportDtos.RouteLookup;
+import com.unibus.api.transport.dto.TransportDtos.RouteMapPreview;
 import com.unibus.api.transport.dto.TransportDtos.RouteReference;
 import com.unibus.api.transport.dto.TransportDtos.RouteStopSummary;
 import com.unibus.api.transport.dto.TransportDtos.RouteSuggestion;
@@ -57,6 +69,163 @@ public class TransportService {
                 .map(stop -> toStopSummary(stop, linkedRouteIds))
                 .filter(stop -> !stop.routes().isEmpty())
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<RouteLookup> listRoutes(CurrentUser currentUser) {
+        Set<Integer> linkedRouteIds = subsidyService.activeLinkedRouteIds(currentUser);
+        List<RouteLookupRow> rows = jdbcTemplate.query("""
+                SELECT r.route_id, r.route_name, r.route_code, r.color_hex,
+                       r.distance_km, r.estimated_minutes, r.frequency_min,
+                       r.description, COALESCE(r.is_interregional, false) AS is_interregional,
+                       r.external_source,
+                       COUNT(rs.route_stop_id) AS stop_count
+                FROM routes r
+                JOIN route_stops rs ON rs.route_id = r.route_id
+                JOIN stops s ON s.stop_id = rs.stop_id
+                WHERE r.status = 'ACTIVE'
+                  AND s.status = 'ACTIVE'
+                  AND s.latitude IS NOT NULL
+                  AND s.longitude IS NOT NULL
+                  AND COALESCE(r.is_interregional, false) = false
+                  AND (
+                      r.external_source = 'BUSMAP_DN'
+                      OR NOT EXISTS (
+                          SELECT 1
+                          FROM routes official_routes
+                          WHERE official_routes.external_source = 'BUSMAP_DN'
+                            AND official_routes.status = 'ACTIVE'
+                      )
+                  )
+                GROUP BY r.route_id, r.route_name, r.route_code, r.color_hex,
+                         r.distance_km, r.estimated_minutes, r.frequency_min,
+                         r.description, r.is_interregional, r.external_source
+                ORDER BY r.route_code, r.route_name
+                """, (rs, rowNum) -> new RouteLookupRow(
+                        rs.getInt("route_id"),
+                        rs.getString("route_name"),
+                        rs.getString("route_code"),
+                        rs.getString("color_hex"),
+                        rs.getBigDecimal("distance_km"),
+                        (Integer) rs.getObject("estimated_minutes"),
+                        (Integer) rs.getObject("frequency_min"),
+                        rs.getString("description"),
+                        rs.getBoolean("is_interregional"),
+                        rs.getString("external_source"),
+                        rs.getInt("stop_count")));
+
+        return rows.stream()
+                .map(row -> {
+                    TripWindow window = operationWindow(row.routeId(), row.description());
+                    return new RouteLookup(
+                            row.routeId(),
+                            row.routeName(),
+                            row.routeCode(),
+                            colorForRoute(row.routeId(), row.colorHex()),
+                            row.distanceKm(),
+                            row.estimatedMinutes(),
+                            row.frequencyMin(),
+                            fare(row.routeId(), "SINGLE"),
+                            fare(row.routeId(), "MONTHLY"),
+                            window.firstTrip(),
+                            window.lastTrip(),
+                            row.stopCount(),
+                            availableDirections(row.routeId()).stream().map(RouteDirectionSummary::direction).toList(),
+                            linkedRouteIds.contains(row.routeId()),
+                            row.interregional(),
+                            row.externalSource());
+                })
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public RouteMapPreview getRoutePreview(CurrentUser currentUser, Integer routeId, Integer requestedDirection) {
+        Set<Integer> linkedRouteIds = subsidyService.activeLinkedRouteIds(currentUser);
+        BusRoute route = busRouteRepository.findById(routeId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Route not found"));
+        if (route.getStatus() != RouteStatus.ACTIVE) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Route is not active");
+        }
+
+        List<RouteDirectionSummary> directions = availableDirections(routeId);
+        if (directions.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Route does not have usable stop geometry");
+        }
+        int direction = directions.stream()
+                .map(RouteDirectionSummary::direction)
+                .filter(value -> value.equals(requestedDirection))
+                .findFirst()
+                .orElse(directions.get(0).direction());
+
+        List<RoutePathRow> rows = jdbcTemplate.query("""
+                SELECT rs.stop_order, COALESCE(rs.station_direction, 0) AS station_direction,
+                       rs.minutes_from_previous_stop, rs.path_points,
+                       s.stop_id, s.stop_name, s.address, s.latitude, s.longitude
+                FROM route_stops rs
+                JOIN stops s ON s.stop_id = rs.stop_id
+                WHERE rs.route_id = ?
+                  AND COALESCE(rs.station_direction, 0) = ?
+                  AND s.status = 'ACTIVE'
+                  AND s.latitude IS NOT NULL
+                  AND s.longitude IS NOT NULL
+                ORDER BY rs.stop_order
+                """, (rs, rowNum) -> new RoutePathRow(
+                        rs.getInt("stop_id"),
+                        rs.getString("stop_name"),
+                        rs.getString("address"),
+                        rs.getBigDecimal("latitude"),
+                        rs.getBigDecimal("longitude"),
+                        rs.getInt("stop_order"),
+                        rs.getInt("station_direction"),
+                        (Integer) rs.getObject("minutes_from_previous_stop"),
+                        rs.getString("path_points")), routeId, direction);
+
+        if (rows.size() < 2) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Route does not have enough stops to draw");
+        }
+
+        int eta = 0;
+        List<JourneyStop> stops = new ArrayList<>();
+        for (RoutePathRow row : rows) {
+            eta += Math.max(0, row.minutesFromPrevious() == null ? 0 : row.minutesFromPrevious());
+            stops.add(new JourneyStop(
+                    row.stopId(),
+                    row.stopName(),
+                    row.address(),
+                    row.latitude(),
+                    row.longitude(),
+                    row.stopOrder(),
+                    row.direction(),
+                    eta,
+                    false));
+        }
+
+        List<Coordinate> points = routeShape(rows);
+        List<MapPolyline> polylines = points.size() >= 2
+                ? List.of(new MapPolyline("route-" + routeId + "-" + direction, "BUS",
+                        colorForRoute(routeId, route.getColorHex()), points))
+                : List.of();
+        TripWindow window = operationWindow(routeId, route.getDescription());
+
+        return new RouteMapPreview(
+                route.getId(),
+                route.getRouteName(),
+                route.getRouteCode(),
+                colorForRoute(route.getId(), route.getColorHex()),
+                route.getDistanceKm(),
+                route.getEstimatedMinutes(),
+                route.getFrequencyMin(),
+                fare(routeId, "SINGLE"),
+                fare(routeId, "MONTHLY"),
+                window.firstTrip(),
+                window.lastTrip(),
+                linkedRouteIds.contains(routeId),
+                route.isInterregional(),
+                route.getExternalSource(),
+                direction,
+                directions,
+                stops,
+                polylines);
     }
 
     @Transactional(readOnly = true)
@@ -239,11 +408,149 @@ public class TransportService {
         }, routeId);
     }
 
+    private TripWindow operationWindow(Integer routeId, String description) {
+        TripWindow scheduled = tripWindow(routeId);
+        if (scheduled.firstTrip() != null || scheduled.lastTrip() != null) {
+            return scheduled;
+        }
+        return operationWindowFromDescription(description);
+    }
+
+    private TripWindow operationWindowFromDescription(String description) {
+        if (description == null || description.isBlank()) {
+            return new TripWindow(null, null);
+        }
+        String[] parts = description.split("\\|");
+        for (String part : parts) {
+            String trimmed = part.trim().toLowerCase(Locale.ROOT);
+            if (!trimmed.startsWith("operationtime=")) {
+                continue;
+            }
+            String[] bounds = trimmed.substring("operationtime=".length()).split("-");
+            if (bounds.length < 2) {
+                return new TripWindow(null, null);
+            }
+            return new TripWindow(normalizeTime(bounds[0]), normalizeTime(bounds[1]));
+        }
+        return new TripWindow(null, null);
+    }
+
+    private String normalizeTime(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return LocalTime.parse(value.trim()).toString().substring(0, 5);
+        } catch (Exception ignored) {
+            return value.trim();
+        }
+    }
+
     private String formatTime(LocalTime time) {
         return time == null ? null : time.toString().substring(0, 5);
     }
 
+    private List<RouteDirectionSummary> availableDirections(Integer routeId) {
+        List<DirectionStopRow> rows = jdbcTemplate.query("""
+                SELECT COALESCE(rs.station_direction, 0) AS station_direction,
+                       rs.stop_order, s.stop_name
+                FROM route_stops rs
+                JOIN stops s ON s.stop_id = rs.stop_id
+                WHERE rs.route_id = ?
+                  AND s.status = 'ACTIVE'
+                  AND s.latitude IS NOT NULL
+                  AND s.longitude IS NOT NULL
+                ORDER BY COALESCE(rs.station_direction, 0), rs.stop_order
+                """, (rs, rowNum) -> new DirectionStopRow(
+                        rs.getInt("station_direction"),
+                        rs.getInt("stop_order"),
+                        rs.getString("stop_name")), routeId);
+        Map<Integer, List<DirectionStopRow>> grouped = new LinkedHashMap<>();
+        rows.forEach(row -> grouped.computeIfAbsent(row.direction(), ignored -> new ArrayList<>()).add(row));
+        return grouped.entrySet().stream()
+                .filter(entry -> entry.getValue().size() >= 2)
+                .map(entry -> {
+                    List<DirectionStopRow> group = entry.getValue().stream()
+                            .sorted(Comparator.comparingInt(DirectionStopRow::stopOrder))
+                            .toList();
+                    return new RouteDirectionSummary(
+                            entry.getKey(),
+                            group.size(),
+                            group.get(0).stopName(),
+                            group.get(group.size() - 1).stopName());
+                })
+                .toList();
+    }
+
+    private List<Coordinate> routeShape(List<RoutePathRow> rows) {
+        List<Coordinate> points = new ArrayList<>();
+        for (int i = 0; i < rows.size(); i++) {
+            RoutePathRow row = rows.get(i);
+            if (i > 0) {
+                parsePathPoints(row.pathPoints(), points);
+            }
+            addPoint(points, row.latitude().doubleValue(), row.longitude().doubleValue());
+        }
+        if (points.size() < 2) {
+            points.clear();
+            rows.forEach(row -> addPoint(points, row.latitude().doubleValue(), row.longitude().doubleValue()));
+        }
+        return points;
+    }
+
+    private void parsePathPoints(String pathPoints, List<Coordinate> points) {
+        if (pathPoints == null || pathPoints.isBlank()) {
+            return;
+        }
+        String[] pairs = pathPoints.trim().split("\\s+");
+        for (String pair : pairs) {
+            String[] lngLat = pair.split(",");
+            if (lngLat.length != 2) {
+                continue;
+            }
+            try {
+                double lng = Double.parseDouble(lngLat[0]);
+                double lat = Double.parseDouble(lngLat[1]);
+                addPoint(points, lat, lng);
+            } catch (NumberFormatException ignored) {
+                // Source shapes can contain occasional malformed points; skip them.
+            }
+        }
+    }
+
+    private void addPoint(List<Coordinate> points, double lat, double lng) {
+        if (Double.isNaN(lat) || Double.isNaN(lng)) {
+            return;
+        }
+        Coordinate next = new Coordinate(PlaceService.bd(lat), PlaceService.bd(lng));
+        if (points.isEmpty() || !points.get(points.size() - 1).equals(next)) {
+            points.add(next);
+        }
+    }
+
+    private String colorForRoute(Integer routeId, String colorHex) {
+        if (colorHex != null && !colorHex.isBlank()) {
+            return colorHex;
+        }
+        String[] palette = {"#0f8f78", "#2563eb", "#dc2626", "#f59e0b", "#7c3aed", "#0891b2"};
+        return palette[Math.abs(routeId == null ? 0 : routeId) % palette.length];
+    }
+
     private record TripWindow(String firstTrip, String lastTrip) {
+    }
+
+    private record RouteLookupRow(Integer routeId, String routeName, String routeCode,
+            String colorHex, BigDecimal distanceKm, Integer estimatedMinutes,
+            Integer frequencyMin, String description, boolean interregional,
+            String externalSource, Integer stopCount) {
+    }
+
+    private record RoutePathRow(Integer stopId, String stopName, String address,
+            BigDecimal latitude, BigDecimal longitude, Integer stopOrder, Integer direction,
+            Integer minutesFromPrevious, String pathPoints) {
+    }
+
+    private record DirectionStopRow(Integer direction, Integer stopOrder, String stopName) {
     }
 
     private Stop requireActiveStop(Integer stopId) {

@@ -1,6 +1,6 @@
 "use client";
 
-export const API_BASE = "/api/v1";
+export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "/api/v1";
 
 const ACCESS_TOKEN_KEY = "access_token";
 const REFRESH_TOKEN_KEY = "refresh_token";
@@ -272,6 +272,32 @@ export interface RouteSuggestionDTO {
   }[];
 }
 
+export interface RouteDirectionDTO {
+  direction: number;
+  stopCount: number;
+  firstStopName?: string;
+  lastStopName?: string;
+}
+
+export interface RouteLookupDTO {
+  routeId: number;
+  routeCode?: string;
+  routeName: string;
+  colorHex?: string;
+  distanceKm?: number | string;
+  estimatedMinutes?: number;
+  frequencyMin?: number;
+  singleFare?: number | string;
+  monthlyFare?: number | string;
+  firstTrip?: string;
+  lastTrip?: string;
+  stopCount?: number;
+  directions?: number[];
+  universityLinked?: boolean;
+  interregional?: boolean;
+  externalSource?: string;
+}
+
 export interface EtaDTO {
   tripId?: number;
   busId?: number;
@@ -279,10 +305,182 @@ export interface EtaDTO {
   estimatedArrivalAt?: string;
   actualArrivalAt?: string;
   updatedAt?: string;
+  // UX refactor extensions — backend may return these for richer journey UX.
+  // Marked optional so existing callers don't break if backend omits them.
+  busPlate?: string;
+  driverName?: string;
+  occupancy?: number;
+  capacity?: number;
+  speedKmh?: number;
+}
+
+export interface CoordinateDTO {
+  latitude?: number | string;
+  longitude?: number | string;
+}
+
+export interface PlaceSuggestionDTO {
+  id: string;
+  type: "STOP" | "ADDRESS" | string;
+  label: string;
+  address?: string;
+  latitude?: number | string;
+  longitude?: number | string;
+  stopId?: number;
+  distanceMeters?: number;
+  routes?: { routeId: number; routeName: string; routeCode?: string; colorHex?: string }[];
+}
+
+export interface JourneyPlacePointDTO {
+  placeId?: string;
+  stopId?: number;
+  label?: string;
+  latitude?: number | string;
+  longitude?: number | string;
+}
+
+export interface JourneySearchRequestDTO {
+  origin: JourneyPlacePointDTO;
+  destination: JourneyPlacePointDTO;
+  maxBusLegs?: number;
+  departAt?: string;
+}
+
+export interface JourneyStopDTO {
+  stopId: number;
+  stopName: string;
+  address?: string;
+  latitude?: number | string;
+  longitude?: number | string;
+  stopOrder?: number;
+  stationDirection?: number;
+  etaMinutes?: number;
+  transfer?: boolean;
+}
+
+export interface JourneyLegDTO {
+  legId: string;
+  mode: "WALK" | "BUS" | string;
+  routeId?: number;
+  routeCode?: string;
+  routeName?: string;
+  colorHex?: string;
+  fromStopId?: number;
+  fromStopName?: string;
+  toStopId?: number;
+  toStopName?: string;
+  stopCount?: number;
+  durationMinutes?: number;
+  waitMinutes?: number;
+  distanceKm?: number | string;
+  fare?: number | string;
+  nextDepartureAt?: string;
+  estimatedArrivalAt?: string;
+  stops?: JourneyStopDTO[];
+  shape?: CoordinateDTO[];
+  universityLinked?: boolean;
+}
+
+export interface JourneyOptionDTO {
+  optionId: string;
+  summary: {
+    totalMinutes: number;
+    walkMinutes?: number;
+    waitMinutes?: number;
+    walkMeters?: number | string;
+    busDistanceKm?: number | string;
+    transferCount: number;
+    singleFare?: number | string;
+    monthlyFare?: number | string;
+    firstEtaText?: string;
+    confidence?: string;
+  };
+  legs: JourneyLegDTO[];
+  routeBadges?: { routeId: number; routeName: string; routeCode?: string; colorHex?: string }[];
+  primaryAction?: {
+    type: string;
+    label: string;
+    enabled: boolean;
+    reason?: string;
+    routeId?: number;
+    boardingStopId?: number;
+    alightingStopId?: number;
+  };
+  secondaryActions?: {
+    type: string;
+    label: string;
+    enabled: boolean;
+    reason?: string;
+    routeId?: number;
+    boardingStopId?: number;
+    alightingStopId?: number;
+  }[];
+  polylines?: { legId: string; mode: string; colorHex?: string; points: CoordinateDTO[] }[];
+  stops?: JourneyStopDTO[];
+}
+
+export interface JourneyTrackingSnapshotDTO {
+  journeyId: string;
+  updatedAt?: string;
+  vehicles?: {
+    vehicleId: string;
+    plateNumber?: string;
+    routeId?: number;
+    routeCode?: string;
+    latitude?: number | string;
+    longitude?: number | string;
+    speedKmh?: number | string;
+    occupancy?: number;
+    capacity?: number;
+    nextStopId?: number;
+    nextStopName?: string;
+    etaMinutes?: number;
+  }[];
+  stopEtas?: {
+    stopId: number;
+    stopName: string;
+    routeId?: number;
+    routeCode?: string;
+    estimatedArrivalAt?: string;
+    minutesAway?: number;
+  }[];
+  polylines?: { legId: string; mode: string; colorHex?: string; points: CoordinateDTO[] }[];
+}
+
+export interface RouteMapPreviewDTO {
+  routeId: number;
+  routeCode?: string;
+  routeName: string;
+  colorHex?: string;
+  distanceKm?: number | string;
+  estimatedMinutes?: number;
+  frequencyMin?: number;
+  singleFare?: number | string;
+  monthlyFare?: number | string;
+  firstTrip?: string;
+  lastTrip?: string;
+  universityLinked?: boolean;
+  interregional?: boolean;
+  externalSource?: string;
+  direction: number;
+  directions?: RouteDirectionDTO[];
+  stops?: JourneyStopDTO[];
+  polylines?: { legId: string; mode: string; colorHex?: string; points: CoordinateDTO[] }[];
 }
 
 export const transportApi = {
   stops: () => apiFetch.get<StopDTO[]>("/stops"),
+  routes: () => apiFetch.get<RouteLookupDTO[]>("/routes"),
+  routePreview: (routeId: number | string, direction?: number) =>
+    apiFetch.get<RouteMapPreviewDTO>(`/routes/${routeId}/preview`, { direction }),
+  searchPlaces: (q: string, lat?: number, lng?: number, limit = 8) =>
+    apiFetch.get<PlaceSuggestionDTO[]>("/places/search", { q, lat, lng, limit }),
+  reversePlace: (lat: number, lng: number) =>
+    apiFetch.get<{ label: string; address?: string; latitude?: number | string; longitude?: number | string; nearestStopId?: number; nearestStopName?: string; distanceMeters?: number }>("/places/reverse", { lat, lng }),
+  searchJourneys: (data: JourneySearchRequestDTO) =>
+    apiFetch.post<JourneyOptionDTO[]>("/journeys/search", data),
+  trackJourney: (journeyId: string) =>
+    apiFetch.get<JourneyTrackingSnapshotDTO>(`/tracking/journeys/${encodeURIComponent(journeyId)}`),
   searchRoutes: (boardingStopId: number | string, alightingStopId: number | string) =>
     apiFetch.get<RouteSuggestionDTO[]>("/routes/search", { boardingStopId, alightingStopId }),
   route: (routeId: number | string) => apiFetch.get<RouteSuggestionDTO>(`/routes/${routeId}`),
@@ -419,6 +617,7 @@ export const studentApi = {
     return apiFetch.form<VerificationView>("/students/me/verification", form);
   },
   currentRegistration: () => apiFetch.get<RegistrationDTO>("/students/me/route-registrations/current"),
+  registrations: () => apiFetch.get<RegistrationDTO[]>("/students/me/route-registrations"),
   registerRoute: (data: { routeId: number; boardingStopId: number; alightingStopId: number; effectiveDate?: string }) =>
     apiFetch.post<RegistrationDTO>("/students/me/route-registrations", data),
   updateRegistration: (registrationId: number, data: { routeId: number; boardingStopId: number; alightingStopId: number; effectiveDate?: string }) =>
@@ -426,11 +625,43 @@ export const studentApi = {
   cancelRegistration: (registrationId: number, reason?: string) =>
     apiFetch.delete<void>(`/students/me/route-registrations/${registrationId}`, reason ? { reason } : undefined),
   tickets: () => apiFetch.get<PassesDashboard>("/students/me/tickets"),
-  purchaseMonthlyPass: (method = "E_WALLET") =>
-    apiFetch.post<TicketView>("/students/me/tickets/monthly-pass", { method }),
+  purchaseMonthlyPass: (method = "E_WALLET", routeId?: number) =>
+    apiFetch.post<TicketView>("/students/me/tickets/monthly-pass", { method, routeId }),
+  purchaseJourneyMonthlyPass: (data: {
+    originLabel: string;
+    destinationLabel: string;
+    method?: string;
+    legs: { routeId: number; boardingStopId?: number; alightingStopId?: number; legOrder?: number }[];
+  }) =>
+    apiFetch.post<{
+      journeyOrderId: number;
+      originLabel: string;
+      destinationLabel: string;
+      totalAmount: number | string;
+      subsidyAmount: number | string;
+      finalAmount: number | string;
+      qrCode: string;
+      status: string;
+      purchasedAt?: string;
+      items?: {
+        itemId: number;
+        monthlyPassId: number;
+        routeId: number;
+        routeName: string;
+        legOrder: number;
+        boardingStopId?: number;
+        boardingStopName?: string;
+        alightingStopId?: number;
+        alightingStopName?: string;
+        originalAmount?: number | string;
+        subsidyAmount?: number | string;
+        finalAmount?: number | string;
+      }[];
+    }>("/students/me/tickets/journey-monthly-pass", data),
   payments: () => apiFetch.get<PaymentView[]>("/students/me/payments"),
-  createSePayOrder: (ticketType: string) => apiFetch.post<{ orderId: number; qrUrl: string; amount: number; description: string; bankCode: string; accountNo: string; accountName: string }>("/students/me/payments/sepay/order", { ticketType }),
-  getSePayOrderStatus: (orderId: number) => apiFetch.get<{ orderId: number; ticketType: string; total: number; amount?: number; description?: string; qrUrl?: string; bankCode?: string; accountNo?: string; accountName?: string; status: string; paid: boolean; paidAt?: string }>(`/students/me/payments/sepay/order/${orderId}/status`),
+  createSePayOrder: (ticketType: string, routeId?: number) =>
+    apiFetch.post<{ orderId: number; routeId?: number; routeName?: string; qrUrl: string; amount: number; description: string; bankCode: string; accountNo: string; accountName: string }>("/students/me/payments/sepay/order", { ticketType, routeId }),
+  getSePayOrderStatus: (orderId: number) => apiFetch.get<{ orderId: number; ticketType: string; routeId?: number; total: number; amount?: number; description?: string; qrUrl?: string; bankCode?: string; accountNo?: string; accountName?: string; status: string; paid: boolean; paidAt?: string }>(`/students/me/payments/sepay/order/${orderId}/status`),
   travelHistory: (page = 0, size = 20) => apiFetch.get<TravelHistoryView[]>("/students/me/travel-history", { page, size }),
 };
 
@@ -521,6 +752,85 @@ export interface ExperienceRouteCard {
   lastTrip?: string;
   universityLinked?: boolean;
   stops?: ExperienceStopCard[];
+}
+
+export interface AiAction {
+  type: string;
+  label: string;
+  routeId?: number;
+  boardingStopId?: number;
+  alightingStopId?: number;
+}
+
+export interface AiSource {
+  type: string;
+  label: string;
+  detail?: string;
+}
+
+export interface AiTraceEvent {
+  type: "tool.started" | "tool.completed" | string;
+  tool?: string;
+  label: string;
+  detail?: string;
+  status?: string;
+  elapsedMs?: number;
+}
+
+export interface AiProviderStatus {
+  provider?: string;
+  modelId?: string;
+  status?: string;
+  errorCode?: string;
+  message?: string;
+}
+
+export interface AiRouteSuggestionCard {
+  routeId: number;
+  routeCode?: string;
+  routeName: string;
+  score?: number;
+  confidence?: number;
+  reasons?: string[];
+  stops?: {
+    stopId: number;
+    stopCode?: string;
+    stopName: string;
+    stopOrder: number;
+    minutesFromPreviousStop?: number;
+  }[];
+  nextDepartures?: string[];
+  singleFare?: number;
+  monthlyFare?: number;
+  subsidyAmount?: number;
+  finalFare?: number;
+  actions?: AiAction[];
+}
+
+export interface AiChatResponse {
+  message: string;
+  mode: "FAST_REPLY" | "TOOL_ASSISTED" | "ZAI" | "BEDROCK" | "PROVIDER_UNAVAILABLE" | "FALLBACK" | string;
+  advisoryType: string;
+  routeSuggestions?: AiRouteSuggestionCard[];
+  actions?: AiAction[];
+  sources?: AiSource[];
+  sessionId?: string;
+  traceEvents?: AiTraceEvent[];
+  providerStatus?: AiProviderStatus;
+}
+
+export interface AiChatStreamEvent {
+  type: string;
+  message?: string;
+  delta?: string;
+  mode?: AiChatResponse["mode"];
+  advisoryType?: string;
+  routeSuggestions?: AiRouteSuggestionCard[];
+  actions?: AiAction[];
+  sources?: AiSource[];
+  traceEvents?: AiTraceEvent[];
+  providerStatus?: AiProviderStatus;
+  sessionId?: string;
 }
 
 export interface ExperienceRegistrationCard {
@@ -731,9 +1041,95 @@ export interface CoordinatorUniversityRouteMetric {
   assignedConductors: number;
 }
 
+type AssistantChatPayload = {
+  message: string;
+  context?: {
+    boardingStopId?: number;
+    alightingStopId?: number;
+    preferredDepartureTime?: string;
+    preferences?: string[];
+    conversationHistory?: {
+      role: "user" | "assistant";
+      content: string;
+    }[];
+  };
+};
+
+function parseSseChunk(chunk: string): AiChatStreamEvent | null {
+  const lines = chunk.split(/\r?\n/);
+  let eventName = "message";
+  const dataLines: string[] = [];
+  for (const line of lines) {
+    if (line.startsWith("event:")) {
+      eventName = line.slice(6).trim();
+    } else if (line.startsWith("data:")) {
+      dataLines.push(line.slice(5).trimStart());
+    }
+  }
+  if (!dataLines.length) return null;
+  try {
+    const parsed = JSON.parse(dataLines.join("\n")) as AiChatStreamEvent;
+    return { ...parsed, type: parsed.type || eventName };
+  } catch {
+    return { type: eventName, delta: dataLines.join("\n") };
+  }
+}
+
+async function streamAssistantChat(
+  data: AssistantChatPayload,
+  onEvent: (event: AiChatStreamEvent) => void,
+  signal?: AbortSignal
+) {
+  const token = getAccessToken();
+  const res = await fetch(`${API_BASE}/students/me/assistant-chat/stream`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(data),
+    signal,
+  });
+  if (!res.ok || !res.body) {
+    const payload = await readPayload(res);
+    throw new ApiError(
+      res.status,
+      payload?.message || payload?.error || res.statusText || "AI stream failed",
+      payload?.data
+    );
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let match = buffer.match(/\r?\n\r?\n/);
+    while (match?.index != null) {
+      const raw = buffer.slice(0, match.index).trim();
+      buffer = buffer.slice(match.index + match[0].length);
+      const event = raw ? parseSseChunk(raw) : null;
+      if (event) onEvent(event);
+      match = buffer.match(/\r?\n\r?\n/);
+    }
+  }
+  const tail = buffer.trim();
+  const event = tail ? parseSseChunk(tail) : null;
+  if (event) onEvent(event);
+}
+
 export const experienceApi = {
   studentDashboard: () => apiFetch.get<StudentDashboardView>("/students/me/dashboard"),
   studentRouteSuggestions: () => apiFetch.get<ExperienceRouteCard[]>("/students/me/route-suggestions"),
+  postRouteSuggestions: (data: {
+    boardingStopId?: number;
+    alightingStopId?: number;
+    preferredDepartureTime?: string;
+    preferences?: string[];
+    naturalLanguageQuery?: string;
+  }) => apiFetch.post<AiRouteSuggestionCard[]>("/students/me/route-suggestions", data),
   studentLostItems: () => apiFetch.get<ExperienceLostItemCard[]>("/students/me/lost-items"),
   createStudentLostItem: (data: { itemDescription: string; tripId?: number }) =>
     apiFetch.post<ExperienceLostItemCard>("/students/me/lost-items", data),
@@ -741,6 +1137,8 @@ export const experienceApi = {
   createStudentSupportTicket: (data: { title: string; content: string; supportType?: string }) =>
     apiFetch.post<ExperienceSupportTicketCard>("/students/me/support-tickets", data),
   studentAssistantChat: () => apiFetch.get<{ chatHistoryId: number; role: string; content: string; sentAt?: string }[]>("/students/me/assistant-chat"),
+  sendAssistantChat: (data: AssistantChatPayload) => apiFetch.post<AiChatResponse>("/students/me/assistant-chat", data),
+  streamAssistantChat,
   driverDashboard: () => apiFetch.get<DriverDashboardView>("/driver/dashboard"),
   driverFeedback: () => apiFetch.get<ExperienceFeedbackCard[]>("/driver/feedback"),
   assistantDashboard: () => apiFetch.get<AssistantDashboardView>("/conductor/dashboard"),

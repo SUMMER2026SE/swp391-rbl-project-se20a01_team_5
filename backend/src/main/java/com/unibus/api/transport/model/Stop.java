@@ -42,6 +42,15 @@ public class Stop {
     @Column(name = "has_shelter", nullable = false)
     private boolean hasShelter;
 
+    @Column(name = "external_source", length = 40)
+    private String externalSource;
+
+    @Column(name = "external_stop_id", length = 80)
+    private String externalStopId;
+
+    @Column(name = "source_updated_at")
+    private OffsetDateTime sourceUpdatedAt;
+
     @Column(length = 500)
     private String description;
 

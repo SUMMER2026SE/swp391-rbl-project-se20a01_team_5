@@ -55,16 +55,31 @@ public class RouteRegistrationService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "No active route registration found"));
     }
 
+    @Transactional(readOnly = true)
+    public List<Registration> listActive(CurrentUser currentUser) {
+        Student student = findStudent(currentUser);
+        return routeRegistrationRepository
+                .findByStudentStudentCodeAndStatusInOrderByRegisteredAtDesc(
+                        student.getStudentCode(), ACTIVE_STATUSES)
+                .stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
     @Transactional
     public Registration register(CurrentUser currentUser, RegistrationRequest request) {
         requireVerifiedStudent(currentUser);
         Student student = findStudent(currentUser);
-        if (routeRegistrationRepository.findFirstByStudentStudentCodeAndStatusInOrderByRegisteredAtDesc(
-                student.getStudentCode(), ACTIVE_STATUSES).isPresent()) {
-            throw new ApiException(HttpStatus.CONFLICT, "Student already has an active route registration");
-        }
         RouteSelection selection = transportService.requireValidSelection(
                 currentUser, request.routeId(), request.boardingStopId(), request.alightingStopId());
+        if (routeRegistrationRepository.existsByStudentStudentCodeAndRouteIdAndBoardingStopIdAndAlightingStopIdAndStatusIn(
+                student.getStudentCode(),
+                selection.route().getId(),
+                selection.boardingStop().getId(),
+                selection.alightingStop().getId(),
+                ACTIVE_STATUSES)) {
+            throw new ApiException(HttpStatus.CONFLICT, "Student already registered this route and stop pair");
+        }
         return toResponse(saveRegistration(student, selection, request.effectiveDate(), null));
     }
 

@@ -496,8 +496,7 @@ public class ExperienceRepository {
     }
 
     private List<RouteCard> routeCards(Integer universityId) {
-        List<Integer> routeIds = new ArrayList<>();
-        List<Object[]> rows = jdbcTemplate.query("""
+        List<RouteCore> routeRows = jdbcTemplate.query("""
                 SELECT r.route_id, r.route_code, r.route_name, r.distance_km, r.estimated_minutes,
                        r.frequency_min, r.color_hex,
                        first_stop.stop_name AS from_stop_name,
@@ -533,50 +532,74 @@ public class ExperienceRepository {
                 ) last_stop ON TRUE
                 WHERE r.status = 'ACTIVE'
                 ORDER BY COALESCE(r.route_code, r.route_name)
-                """, (rs, rowNum) -> {
+                """, (rs, rowNum) -> new RouteCore(
+                        rs.getInt("route_id"),
+                        rs.getString("route_code"),
+                        rs.getString("route_name"),
+                        rs.getBigDecimal("distance_km"),
+                        (Integer) rs.getObject("estimated_minutes"),
+                        (Integer) rs.getObject("frequency_min"),
+                        rs.getBigDecimal("single_fare"),
+                        rs.getBigDecimal("monthly_fare"),
+                        rs.getString("color_hex"),
+                        timeText(rs.getTime("first_trip")),
+                        timeText(rs.getTime("last_trip")),
+                        rs.getBoolean("university_linked")), universityId, universityId);
+        if (routeRows.isEmpty()) {
+            return List.of();
+        }
+
+        List<RouteCore> visibleRows = routeRows;
+        if (universityId != null) {
+            List<RouteCore> linked = routeRows.stream().filter(RouteCore::universityLinked).toList();
+            if (!linked.isEmpty()) {
+                visibleRows = linked;
+            }
+        }
+
+        Map<Integer, List<StopCard>> stopsByRoute = new HashMap<>();
+        jdbcTemplate.query("""
+                SELECT rs.route_id, s.stop_id, s.stop_code, s.stop_name, s.address, s.longitude, s.latitude, s.has_shelter
+                FROM route_stops rs
+                JOIN stops s ON s.stop_id = rs.stop_id
+                JOIN routes r ON r.route_id = rs.route_id
+                WHERE r.status = 'ACTIVE'
+                  AND s.status = 'ACTIVE'
+                ORDER BY rs.route_id, rs.stop_order
+                """, rs -> {
                     Integer routeId = rs.getInt("route_id");
-                    routeIds.add(routeId);
-                    return new Object[] {
-                            routeId,
-                            rs.getString("route_code"),
-                            rs.getString("route_name"),
-                            rs.getString("from_stop_name"),
-                            rs.getString("to_stop_name"),
-                            rs.getBigDecimal("distance_km"),
-                            (Integer) rs.getObject("estimated_minutes"),
-                            (Integer) rs.getObject("frequency_min"),
-                            rs.getBigDecimal("single_fare"),
-                            rs.getBigDecimal("monthly_fare"),
-                            rs.getString("color_hex"),
-                            timeText(rs.getTime("first_trip")),
-                            timeText(rs.getTime("last_trip")),
-                            rs.getBoolean("university_linked")
-                    };
-                }, universityId, universityId);
-        Map<Integer, List<StopCard>> stopsByRoute = stopsForRoutes(routeIds);
-        List<RouteCard> base = rows.stream().map(row -> new RouteCard(
-                (Integer) row[0],
-                (String) row[1],
-                (String) row[2],
-                (String) row[3],
-                (String) row[4],
-                (BigDecimal) row[5],
-                (Integer) row[6],
-                (Integer) row[7],
-                (BigDecimal) row[8],
-                (BigDecimal) row[9],
-                (String) row[10],
-                (String) row[11],
-                (String) row[12],
-                (Boolean) row[13],
-                stopsByRoute.getOrDefault((Integer) row[0], List.of()))).toList();
+                    stopsByRoute.computeIfAbsent(routeId, ignored -> new java.util.ArrayList<>())
+                            .add(mapStop(rs, false));
+                });
+
+        List<RouteCard> base = visibleRows.stream()
+                .map(route -> {
+                    List<StopCard> stops = stopsByRoute.getOrDefault(route.routeId(), List.of());
+                    String fromStopName = stops.isEmpty() ? null : stops.get(0).stopName();
+                    String toStopName = stops.isEmpty() ? null : stops.get(stops.size() - 1).stopName();
+                    return new RouteCard(
+                            route.routeId(),
+                            route.routeCode(),
+                            route.routeName(),
+                            fromStopName,
+                            toStopName,
+                            route.distanceKm(),
+                            route.estimatedMinutes(),
+                            route.frequencyMin(),
+                            route.singleFare(),
+                            route.monthlyFare(),
+                            route.colorHex(),
+                            route.firstTrip(),
+                            route.lastTrip(),
+                            route.universityLinked(),
+                            stops);
+                })
+                .toList();
         if (universityId == null) return base;
-        List<RouteCard> linked = base.stream().filter(RouteCard::universityLinked).toList();
-        return linked.isEmpty() ? base : linked;
+        return base;
     }
 
     private List<StopCard> stopCards(Integer universityId) {
-        List<Integer> stopIds = new ArrayList<>();
         List<StopCard> stops = jdbcTemplate.query("""
                 SELECT DISTINCT s.stop_id, s.stop_code, s.stop_name, s.address, s.longitude, s.latitude, s.has_shelter
                 FROM stops s
@@ -586,68 +609,42 @@ public class ExperienceRepository {
                 WHERE s.status = 'ACTIVE'
                   AND (?::integer IS NULL OR ru.university_id = ?)
                 ORDER BY s.stop_name
-                """, (rs, rowNum) -> {
-                    Integer stopId = rs.getInt("stop_id");
-                    stopIds.add(stopId);
-                    return new StopCard(
-                            stopId,
-                            rs.getString("stop_code"),
-                            rs.getString("stop_name"),
-                            rs.getString("address"),
-                            rs.getBigDecimal("longitude"),
-                            rs.getBigDecimal("latitude"),
-                            rs.getBoolean("has_shelter"),
-                            List.of());
-                }, universityId, universityId);
-        Map<Integer, List<RouteBadge>> routesByStop = routesForStops(stopIds);
-        return stops.stream().map(stop -> new StopCard(
-                stop.stopId(),
-                stop.stopCode(),
-                stop.stopName(),
-                stop.address(),
-                stop.longitude(),
-                stop.latitude(),
-                stop.hasShelter(),
-                routesByStop.getOrDefault(stop.stopId(), List.of()))).toList();
-    }
+                """, (rs, rowNum) -> mapStop(rs, false), universityId, universityId);
+        if (stops.isEmpty()) {
+            return stops;
+        }
 
-    private Map<Integer, List<StopCard>> stopsForRoutes(List<Integer> routeIds) {
-        if (routeIds.isEmpty()) return Map.of();
-        Map<Integer, List<StopCard>> stopsByRoute = new HashMap<>();
-        String placeholders = String.join(",", routeIds.stream().map(id -> "?").toList());
-        jdbcTemplate.query("""
-                SELECT rs.route_id, s.stop_id, s.stop_code, s.stop_name, s.address, s.longitude, s.latitude, s.has_shelter
-                FROM route_stops rs
-                JOIN stops s ON s.stop_id = rs.stop_id
-                WHERE rs.route_id IN (%s)
-                ORDER BY rs.route_id, rs.stop_order
-                """.formatted(placeholders), rs -> {
-                    Integer routeId = rs.getInt("route_id");
-                    stopsByRoute.computeIfAbsent(routeId, key -> new ArrayList<>()).add(mapStop(rs, false));
-                }, routeIds.toArray());
-        return stopsByRoute;
-    }
-
-    private Map<Integer, List<RouteBadge>> routesForStops(List<Integer> stopIds) {
-        if (stopIds.isEmpty()) return Map.of();
         Map<Integer, List<RouteBadge>> routesByStop = new HashMap<>();
-        String placeholders = String.join(",", stopIds.stream().map(id -> "?").toList());
         jdbcTemplate.query("""
-                SELECT rs.stop_id, r.route_id, r.route_code, r.route_name, r.color_hex
-                FROM route_stops rs
-                JOIN routes r ON r.route_id = rs.route_id
-                WHERE rs.stop_id IN (%s)
-                  AND r.status = 'ACTIVE'
-                ORDER BY rs.stop_id, COALESCE(r.route_code, r.route_name)
-                """.formatted(placeholders), rs -> {
+                SELECT DISTINCT s.stop_id, r.route_id, r.route_code, r.route_name, r.color_hex
+                FROM stops s
+                JOIN route_stops rs ON rs.stop_id = s.stop_id
+                JOIN routes r ON r.route_id = rs.route_id AND r.status = 'ACTIVE'
+                LEFT JOIN route_universities ru ON ru.route_id = r.route_id AND ru.status = 'ACTIVE'
+                WHERE s.status = 'ACTIVE'
+                  AND (?::integer IS NULL OR ru.university_id = ?)
+                ORDER BY s.stop_id, r.route_code NULLS LAST, r.route_name
+                """, rs -> {
                     Integer stopId = rs.getInt("stop_id");
-                    routesByStop.computeIfAbsent(stopId, key -> new ArrayList<>()).add(new RouteBadge(
-                            rs.getInt("route_id"),
-                            rs.getString("route_code"),
-                            rs.getString("route_name"),
-                            rs.getString("color_hex")));
-                }, stopIds.toArray());
-        return routesByStop;
+                    routesByStop.computeIfAbsent(stopId, ignored -> new java.util.ArrayList<>())
+                            .add(new RouteBadge(
+                                    rs.getInt("route_id"),
+                                    rs.getString("route_code"),
+                                    rs.getString("route_name"),
+                                    rs.getString("color_hex")));
+                }, universityId, universityId);
+
+        return stops.stream()
+                .map(stop -> new StopCard(
+                        stop.stopId(),
+                        stop.stopCode(),
+                        stop.stopName(),
+                        stop.address(),
+                        stop.longitude(),
+                        stop.latitude(),
+                        stop.hasShelter(),
+                        routesByStop.getOrDefault(stop.stopId(), List.of())))
+                .toList();
     }
 
     private List<StopCard> stopsForRoute(Integer routeId) {
@@ -1105,6 +1102,21 @@ public class ExperienceRepository {
 
     private OffsetDateTime toOffset(Timestamp timestamp) {
         return timestamp == null ? null : timestamp.toInstant().atOffset(ZoneOffset.UTC);
+    }
+
+    private record RouteCore(
+            Integer routeId,
+            String routeCode,
+            String routeName,
+            BigDecimal distanceKm,
+            Integer estimatedMinutes,
+            Integer frequencyMin,
+            BigDecimal singleFare,
+            BigDecimal monthlyFare,
+            String colorHex,
+            String firstTrip,
+            String lastTrip,
+            boolean universityLinked) {
     }
 
     // =========================================================================

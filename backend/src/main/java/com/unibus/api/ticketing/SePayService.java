@@ -63,6 +63,11 @@ public class SePayService {
 
     @Transactional
     public Map<String, Object> createOrder(CurrentUser currentUser, String ticketType) {
+        return createOrder(currentUser, ticketType, null);
+    }
+
+    @Transactional
+    public Map<String, Object> createOrder(CurrentUser currentUser, String ticketType, Integer requestedRouteId) {
         String studentCode = ticketingRepository.studentCodeForUser(currentUser.userId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Student profile not found"));
 
@@ -71,6 +76,7 @@ public class SePayService {
             throw new ApiException(HttpStatus.FORBIDDEN, "Test payment is not enabled for this user");
         }
         String storedTicketType = testOrder ? "single" : ticketType.toLowerCase();
+        ApprovedRegistration registration = null;
         Integer routeId = null;
         BigDecimal amount;
         BigDecimal originalFare;
@@ -84,7 +90,7 @@ public class SePayService {
             originalFare = amount;
             finalAmount = amount;
         } else {
-            ApprovedRegistration registration = ticketingRepository.approvedRegistration(studentCode)
+            registration = ticketingRepository.approvedRegistration(studentCode, requestedRouteId)
                     .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Student must have an approved route registration"));
             routeId = registration.routeId();
 
@@ -147,17 +153,8 @@ public class SePayService {
                 String description = "DH" + orderId;
                 String qrUrl = String.format("https://qr.sepay.vn/img?bank=%s&acc=%s&template=%s&amount=%s&des=%s",
                         bankCode, accountNo, qrTemplate, amount.toPlainString(), description);
-                return Map.of(
-                    "orderId", orderId,
-                    "studentCode", studentCode,
-                    "ticketType", testOrder ? "test" : storedTicketType,
-                    "amount", amount,
-                    "description", description,
-                    "qrUrl", qrUrl,
-                    "bankCode", bankCode,
-                    "accountNo", accountNo,
-                    "accountName", accountName
-                );
+                return orderResponse(orderId, studentCode, testOrder ? "test" : storedTicketType, routeId,
+                        registration == null ? null : registration.routeName(), amount, description, qrUrl);
             }
         }
 
@@ -185,17 +182,32 @@ public class SePayService {
         String qrUrl = String.format("https://qr.sepay.vn/img?bank=%s&acc=%s&template=%s&amount=%s&des=%s",
                 bankCode, accountNo, qrTemplate, amount.toPlainString(), description);
 
-        return Map.of(
-            "orderId", orderId,
-            "studentCode", studentCode,
-            "ticketType", testOrder ? "test" : storedTicketType,
-            "amount", amount,
-            "description", description,
-            "qrUrl", qrUrl,
-            "bankCode", bankCode,
-            "accountNo", accountNo,
-            "accountName", accountName
-        );
+        return orderResponse(orderId, studentCode, testOrder ? "test" : storedTicketType, routeId,
+                registration == null ? null : registration.routeName(), amount, description, qrUrl);
+    }
+
+    private Map<String, Object> orderResponse(
+            long orderId,
+            String studentCode,
+            String ticketType,
+            Integer routeId,
+            String routeName,
+            BigDecimal amount,
+            String description,
+            String qrUrl) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("orderId", orderId);
+        response.put("studentCode", studentCode);
+        response.put("ticketType", ticketType.toLowerCase());
+        response.put("routeId", routeId);
+        response.put("routeName", routeName);
+        response.put("amount", amount);
+        response.put("description", description);
+        response.put("qrUrl", qrUrl);
+        response.put("bankCode", bankCode);
+        response.put("accountNo", accountNo);
+        response.put("accountName", accountName);
+        return response;
     }
 
 
@@ -212,7 +224,7 @@ public class SePayService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Student profile not found"));
 
         List<Map<String, Object>> orders = jdbcTemplate.queryForList(
-                "SELECT id, student_code, ticket_type, total, payment_status, paid_at FROM tb_orders WHERE id = ? AND student_code = ?",
+                "SELECT id, student_code, ticket_type, route_id, total, payment_status, paid_at FROM tb_orders WHERE id = ? AND student_code = ?",
                 orderId, studentCode);
 
         if (orders.isEmpty()) {
@@ -228,6 +240,7 @@ public class SePayService {
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("orderId", id);
         response.put("ticketType", order.get("ticket_type"));
+        response.put("routeId", order.get("route_id"));
         response.put("total", total);
         response.put("amount", total);
         response.put("description", description);

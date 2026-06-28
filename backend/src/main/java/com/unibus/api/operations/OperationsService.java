@@ -238,6 +238,11 @@ public class OperationsService {
             return scanMonthlyPass(monthlyTicket, trip, conductorStaffId);
         }
 
+        ConductorTicketView journeyTicket = operationsRepository.findJourneyMonthlyTicketByQr(qrCode, trip.routeId()).orElse(null);
+        if (journeyTicket != null) {
+            return scanMonthlyPass(journeyTicket, trip, conductorStaffId);
+        }
+
         ConductorTicketView singleTicket = operationsRepository.findSingleTicketByQr(qrCode).orElse(null);
         if (singleTicket != null) {
             return scanSingleTripTicket(singleTicket, trip, conductorStaffId);

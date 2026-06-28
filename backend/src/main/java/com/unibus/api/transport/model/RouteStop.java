@@ -38,4 +38,13 @@ public class RouteStop {
 
     @Column(name = "minutes_from_previous_stop")
     private Integer minutesFromPreviousStop;
+
+    @Column(name = "station_direction", nullable = false)
+    private Integer stationDirection = 0;
+
+    @Column(name = "path_points")
+    private String pathPoints;
+
+    @Column(name = "distance_from_previous_m")
+    private java.math.BigDecimal distanceFromPreviousMeters;
 }

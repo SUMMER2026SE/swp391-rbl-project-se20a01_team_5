@@ -1,0 +1,80 @@
+package com.unibus.api.ai;
+
+import java.text.Normalizer;
+import java.util.Locale;
+
+import org.springframework.stereotype.Service;
+
+@Service
+public class IntentRouter {
+
+    public AiIntent detect(String message) {
+        String normalized = normalize(message);
+        if (normalized.isBlank()) {
+            return AiIntent.OTHER;
+        }
+        if (containsAny(normalized, "tuyen", "duong", "di toi", "di den", "goi y", "nhanh", "re")
+                || (normalized.contains("di tu") && normalized.contains("den"))) {
+            return AiIntent.ROUTE_SUGGESTION;
+        }
+        if (containsAny(normalized, "gia", "bao nhieu tien", "ve thang", "ve le")) {
+            return AiIntent.FARE_LOOKUP;
+        }
+        if (containsAny(normalized, "lich", "may gio", "eta", "chuyen")) {
+            return AiIntent.SCHEDULE_LOOKUP;
+        }
+        if (containsAny(normalized, "thanh toan", "sepay", "qr", "mua ve")) {
+            return AiIntent.PAYMENT_LOOKUP;
+        }
+        if (containsAny(normalized, "xac minh", "truong cua toi", "mssv")) {
+            return AiIntent.VERIFICATION;
+        }
+        if (isSmallTalk(message)) {
+            return AiIntent.SMALL_TALK;
+        }
+        if (containsAny(normalized, "giup", "help", "ho tro")) {
+            return AiIntent.HELP;
+        }
+        return AiIntent.OTHER;
+    }
+
+    public boolean isSmallTalk(String message) {
+        String normalized = normalize(message);
+        if (normalized.length() > 120) {
+            return false;
+        }
+        return containsAny(normalized,
+                "xin chao",
+                "hello",
+                "hi",
+                "chao",
+                "ban khoe khong",
+                "khoe khong",
+                "cam on",
+                "thanks",
+                "thank you",
+                "ban la ai",
+                "ten gi",
+                "ok",
+                "oke");
+    }
+
+    public String normalize(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        String lower = value.toLowerCase(Locale.ROOT).replace('đ', 'd');
+        String withoutAccent = Normalizer.normalize(lower, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "");
+        return withoutAccent.replaceAll("[^a-z0-9]+", " ").trim();
+    }
+
+    private boolean containsAny(String text, String... needles) {
+        for (String needle : needles) {
+            if (text.contains(needle)) {
+                return true;
+            }
+        }
+        return false;
+    }
+}
