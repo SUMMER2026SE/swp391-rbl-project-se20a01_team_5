@@ -116,10 +116,6 @@ public class SePayService {
                 if (SubsidyService.STATUS_NO_UNIVERSITY.equals(quote.subsidyStatus())) {
                     throw new ApiException(HttpStatus.CONFLICT, "Student university is not linked to a partner university yet");
                 }
-                if (SubsidyService.STATUS_ROUTE_NOT_LINKED.equals(quote.subsidyStatus())) {
-                    throw new ApiException(HttpStatus.FORBIDDEN, "Route is not configured for the student's university");
-                }
-
                 amount = quote.finalFareAmount();
                 originalFare = quote.originalFareAmount();
                 subsidyAmount = quote.subsidyAmount();
@@ -142,7 +138,7 @@ public class SePayService {
 
         // Check for an existing unpaid order with same student_code, ticket_type, route_id and total amount to avoid spamming
         List<Map<String, Object>> existingOrders = jdbcTemplate.queryForList(
-                "SELECT id, total FROM tb_orders WHERE student_code = ? AND ticket_type = ? AND route_id IS NOT DISTINCT FROM ? AND payment_status = 'Unpaid' ORDER BY created_at DESC LIMIT 1",
+                "SELECT id, total FROM tb_orders WHERE student_code = ? AND ticket_type = ? AND route_id IS NOT DISTINCT FROM ? AND LOWER(payment_status) = 'unpaid' ORDER BY created_at DESC LIMIT 1",
                 studentCode, storedTicketType, routeId);
 
         if (!existingOrders.isEmpty()) {
@@ -159,16 +155,30 @@ public class SePayService {
         }
 
         Integer orderRouteId = routeId;
+        String orderMode = "single-route";
+        String ticketPeriod = "single".equalsIgnoreCase(storedTicketType) ? "day" : "month";
+        String originLabel = registration == null ? null : registration.boardingStopName();
+        String destinationLabel = registration == null ? null : registration.alightingStopName();
+        BigDecimal orderOriginalAmount = originalFare == null ? amount : originalFare;
+        BigDecimal orderSubsidyAmount = subsidyAmount == null ? BigDecimal.ZERO : subsidyAmount;
+        BigDecimal orderFinalAmount = finalAmount == null ? amount : finalAmount;
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update(connection -> {
             PreparedStatement statement = connection.prepareStatement(
-                    "INSERT INTO tb_orders (student_code, ticket_type, route_id, total, payment_status, name) VALUES (?, ?, ?, ?, 'Unpaid', ?)",
+                    "INSERT INTO tb_orders (student_code, ticket_type, route_id, total, payment_status, name, order_mode, ticket_period, origin_label, destination_label, original_amount, subsidy_amount, final_amount) VALUES (?, ?, ?, ?, 'Unpaid', ?, ?, ?, ?, ?, ?, ?, ?)",
                     new String[] { "id" });
             statement.setString(1, studentCode);
             statement.setString(2, storedTicketType);
             statement.setObject(3, orderRouteId);
             statement.setBigDecimal(4, amount);
             statement.setString(5, testOrder ? "Test UniBus" : orderName(ticketType));
+            statement.setString(6, orderMode);
+            statement.setString(7, ticketPeriod);
+            statement.setString(8, originLabel);
+            statement.setString(9, destinationLabel);
+            statement.setBigDecimal(10, orderOriginalAmount);
+            statement.setBigDecimal(11, orderSubsidyAmount);
+            statement.setBigDecimal(12, orderFinalAmount);
             return statement;
         }, keyHolder);
 
@@ -509,3 +519,4 @@ public class SePayService {
         }
     }
 }
+

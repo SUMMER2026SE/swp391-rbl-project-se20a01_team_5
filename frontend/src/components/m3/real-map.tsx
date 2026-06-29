@@ -31,6 +31,7 @@ export interface RealMapProps {
   nextStopIndex?: number;
   className?: string;
   height?: number;
+  scrollWheelZoom?: boolean;
 }
 
 function makeStopIcon(Lmod: typeof import("leaflet"), color: string, label?: string, isEnd = false) {
@@ -91,6 +92,7 @@ export const RealMap = React.memo(function RealMap({
   nextStopIndex = 1,
   className,
   height = 360,
+  scrollWheelZoom = true,
 }: RealMapProps) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const mapRef = React.useRef<any>(null);
@@ -101,6 +103,7 @@ export const RealMap = React.memo(function RealMap({
   // Init map once (dynamic load Leaflet to avoid SSR window error)
   React.useEffect(() => {
     let cancelled = false;
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null;
     loadLeaflet().then((Lmod) => {
       if (cancelled || !containerRef.current || mapRef.current) return;
       const map = Lmod.map(containerRef.current, {
@@ -118,10 +121,15 @@ export const RealMap = React.memo(function RealMap({
       Lmod.control.zoom({ position: "bottomright" }).addTo(map);
       mapRef.current = map;
       mapRef.current._L = Lmod; // stash for later effects
-      const t = setTimeout(() => map.invalidateSize(), 250);
+      resizeTimer = setTimeout(() => {
+        if (!cancelled && mapRef.current === map && containerRef.current) {
+          map.invalidateSize();
+        }
+      }, 250);
     });
     return () => {
       cancelled = true;
+      if (resizeTimer) window.clearTimeout(resizeTimer);
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
@@ -129,6 +137,16 @@ export const RealMap = React.memo(function RealMap({
       }
     };
   }, []);
+
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (scrollWheelZoom) {
+      map.scrollWheelZoom.enable();
+    } else {
+      map.scrollWheelZoom.disable();
+    }
+  }, [scrollWheelZoom]);
 
   // Add stop markers + route polyline when stops change
   React.useEffect(() => {

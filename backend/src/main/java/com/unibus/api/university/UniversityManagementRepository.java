@@ -555,8 +555,13 @@ public class UniversityManagementRepository {
     public UniversityStatsView stats(Integer universityId) {
         UniversityStatsBase base = jdbcTemplate.queryForObject("""
                 SELECT u.university_id, u.name,
-                       COUNT(DISTINCT r.roster_id) FILTER (WHERE r.status = 'ACTIVE') AS active_roster_students,
-                       COUNT(DISTINCT r.roster_id) FILTER (WHERE r.matched_user_id IS NOT NULL) AS matched_students,
+                       COUNT(DISTINCT s.student_code) FILTER (
+                           WHERE o.id IS NOT NULL
+                              OR mp.monthly_pass_id IS NOT NULL
+                              OR st.single_trip_ticket_id IS NOT NULL
+                              OR th.travel_history_id IS NOT NULL
+                       ) AS active_roster_students,
+                       COUNT(DISTINCT s.student_code) AS matched_students,
                        COUNT(DISTINCT d.university_domain_id) FILTER (WHERE d.status = 'ACTIVE') AS active_domains,
                        COUNT(DISTINCT c.campus_id) FILTER (WHERE c.status = 'ACTIVE') AS active_campuses,
                        COUNT(DISTINCT ru.route_university_id) FILTER (WHERE ru.status = 'ACTIVE') AS active_routes,
@@ -571,6 +576,9 @@ public class UniversityManagementRepository {
                 LEFT JOIN subsidy_policies sp ON sp.university_id = u.university_id
                 LEFT JOIN students s ON s.university_id = u.university_id
                 LEFT JOIN monthly_passes mp ON mp.student_code = s.student_code
+                LEFT JOIN single_trip_tickets st ON st.student_code = s.student_code
+                LEFT JOIN travel_history th ON th.student_code = s.student_code
+                LEFT JOIN tb_orders o ON o.student_code = s.student_code
                 WHERE u.university_id = ?
                 GROUP BY u.university_id, u.name
                 """, (rs, rowNum) -> new UniversityStatsBase(
@@ -688,26 +696,55 @@ public class UniversityManagementRepository {
 
     public ReconciliationView reconciliation(Integer universityId, LocalDate from, LocalDate to) {
         return jdbcTemplate.queryForObject("""
+                WITH order_rollup AS (
+                    SELECT s.university_id,
+                           COUNT(o.id) AS total_orders,
+                           COUNT(*) FILTER (WHERE o.order_mode = 'journey-combo') AS journey_orders,
+                           COUNT(*) FILTER (WHERE o.ticket_period = 'day') AS day_tickets,
+                           COUNT(*) FILTER (WHERE o.ticket_period = 'month') AS monthly_order_count,
+                           COALESCE(SUM(CASE WHEN o.original_amount > 0 THEN o.original_amount ELSE o.total END), 0) AS original_amount,
+                           COALESCE(SUM(o.subsidy_amount), 0) AS subsidy_amount,
+                           COALESCE(SUM(CASE WHEN o.final_amount > 0 THEN o.final_amount WHEN o.original_amount > 0 AND o.subsidy_amount >= o.original_amount THEN 0 ELSE o.total END), 0) AS final_amount
+                    FROM tb_orders o
+                    JOIN students s ON s.student_code = o.student_code
+                    WHERE o.created_at::date BETWEEN ? AND ?
+                      AND LOWER(o.payment_status) = 'paid'
+                    GROUP BY s.university_id
+                ), pass_rollup AS (
+                    SELECT s.university_id,
+                           COUNT(mp.monthly_pass_id) AS monthly_passes,
+                           COALESCE(SUM(mp.original_fare_amount), 0) AS original_amount,
+                           COALESCE(SUM(mp.subsidy_amount), 0) AS subsidy_amount,
+                           COALESCE(SUM(mp.final_fare_amount), 0) AS final_amount
+                    FROM monthly_passes mp
+                    JOIN students s ON s.student_code = mp.student_code
+                    WHERE mp.purchased_at::date BETWEEN ? AND ?
+                    GROUP BY s.university_id
+                )
                 SELECT u.university_id, u.name,
-                       COALESCE(SUM(mp.original_fare_amount), 0) AS total_original_amount,
-                       COALESCE(SUM(mp.subsidy_amount), 0) AS total_subsidy_amount,
-                       COALESCE(SUM(mp.final_fare_amount), 0) AS total_final_amount,
-                       COUNT(mp.monthly_pass_id) AS monthly_passes
+                       COALESCE(NULLIF(o.original_amount, 0), p.original_amount, 0) AS total_original_amount,
+                       COALESCE(NULLIF(o.subsidy_amount, 0), p.subsidy_amount, 0) AS total_subsidy_amount,
+                       COALESCE(NULLIF(o.final_amount, 0), p.final_amount, 0) AS total_final_amount,
+                       COALESCE(o.total_orders, 0) AS total_orders,
+                       COALESCE(o.journey_orders, 0) AS journey_orders,
+                       COALESCE(o.day_tickets, 0) AS day_tickets,
+                       COALESCE(p.monthly_passes, o.monthly_order_count, 0) AS monthly_passes
                 FROM universities u
-                LEFT JOIN students s ON s.university_id = u.university_id
-                LEFT JOIN monthly_passes mp ON mp.student_code = s.student_code
-                   AND mp.purchased_at::date BETWEEN ? AND ?
+                LEFT JOIN order_rollup o ON o.university_id = u.university_id
+                LEFT JOIN pass_rollup p ON p.university_id = u.university_id
                 WHERE u.university_id = ?
-                GROUP BY u.university_id, u.name
                 """, (rs, rowNum) -> new ReconciliationView(
                         rs.getInt("university_id"),
                         rs.getString("name"),
                         rs.getBigDecimal("total_original_amount"),
                         rs.getBigDecimal("total_subsidy_amount"),
                         rs.getBigDecimal("total_final_amount"),
+                        rs.getInt("total_orders"),
+                        rs.getInt("journey_orders"),
+                        rs.getInt("day_tickets"),
                         rs.getInt("monthly_passes"),
                         from,
-                        to), from, to, universityId);
+                        to), from, to, from, to, universityId);
     }
 
     public List<PaymentTransactionView> paymentTransactions(Integer universityId) {
@@ -726,9 +763,18 @@ public class UniversityManagementRepository {
                        s.university_id,
                        uni.name AS university_name,
                        o.ticket_type,
+                       o.order_mode,
+                       o.ticket_period,
+                       o.origin_label,
+                       o.destination_label,
+                       o.legs_json::text AS legs_json,
+                       CASE WHEN jsonb_typeof(o.legs_json) = 'array' THEN jsonb_array_length(o.legs_json) ELSE 0 END AS legs_count,
                        o.route_id,
                        r.route_name,
                        o.total AS order_total,
+                       CASE WHEN o.original_amount > 0 THEN o.original_amount ELSE o.total END AS original_amount,
+                       o.subsidy_amount,
+                       CASE WHEN o.final_amount > 0 THEN o.final_amount WHEN o.original_amount > 0 AND o.subsidy_amount >= o.original_amount THEN 0 ELSE o.total END AS final_amount,
                        o.payment_status,
                        tx.gateway,
                        COALESCE(tx.amount_in, 0) AS amount_in,
@@ -765,9 +811,18 @@ public class UniversityManagementRepository {
                         (Integer) rs.getObject("university_id"),
                         rs.getString("university_name"),
                         rs.getString("ticket_type"),
+                        rs.getString("order_mode"),
+                        rs.getString("ticket_period"),
+                        rs.getString("origin_label"),
+                        rs.getString("destination_label"),
+                        rs.getString("legs_json"),
+                        rs.getInt("legs_count"),
                         (Integer) rs.getObject("route_id"),
                         rs.getString("route_name"),
                         rs.getBigDecimal("order_total"),
+                        rs.getBigDecimal("original_amount"),
+                        rs.getBigDecimal("subsidy_amount"),
+                        rs.getBigDecimal("final_amount"),
                         rs.getString("payment_status"),
                         rs.getString("gateway"),
                         rs.getBigDecimal("amount_in"),

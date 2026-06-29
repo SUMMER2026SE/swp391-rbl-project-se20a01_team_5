@@ -68,10 +68,20 @@ type StoredPlannerState = {
   updatedAt?: string;
 };
 
+type AssistantRoutePreviewState = {
+  routeId?: number | string;
+  routeCode?: string;
+  routeName?: string;
+  boardingStopId?: number;
+  alightingStopId?: number;
+};
+
 const DEFAULT_ORIGIN = "Đại học Việt Hàn";
 const DEFAULT_DESTINATION = "Bến xe Trung tâm Đà Nẵng";
 const CURRENT_LOCATION_LABEL = "Vị trí hiện tại";
 const PLANNER_STORAGE_KEY = "unibus.studentJourneyPlanner.v1";
+const ASSISTANT_ROUTE_PREVIEW_KEY = "unibus:assistant:route-preview";
+const ASSISTANT_ROUTE_PREVIEW_CONTEXT_KEY = "unibus:assistant:route-preview-context";
 const LAST_REGISTERED_ROUTE_CONTEXT_KEY = "unibus.lastRegisteredRouteContext";
 const STUDENT_INK = "#14140f";
 const STUDENT_LIME = "#BDFD4F";
@@ -127,6 +137,21 @@ function writePlannerStorage(state: StoredPlannerState) {
     );
   } catch {
     // Planner history is nice-to-have; avoid blocking the route search flow.
+  }
+}
+
+function readAssistantRoutePreview(): AssistantRoutePreviewState | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const routeId = window.sessionStorage.getItem(ASSISTANT_ROUTE_PREVIEW_KEY);
+    const rawContext = window.sessionStorage.getItem(ASSISTANT_ROUTE_PREVIEW_CONTEXT_KEY);
+    window.sessionStorage.removeItem(ASSISTANT_ROUTE_PREVIEW_KEY);
+    window.sessionStorage.removeItem(ASSISTANT_ROUTE_PREVIEW_CONTEXT_KEY);
+    const context = rawContext ? JSON.parse(rawContext) as AssistantRoutePreviewState : {};
+    const resolvedRouteId = context.routeId ?? routeId ?? undefined;
+    return resolvedRouteId ? { ...context, routeId: resolvedRouteId } : null;
+  } catch {
+    return null;
   }
 }
 
@@ -221,20 +246,7 @@ function normalizeJourneyResults(options: JourneyOptionDTO[]) {
     const signature = journeyResultSignature(option);
     if (!bestByRouteSequence.has(signature)) bestByRouteSequence.set(signature, option);
   });
-  const distinct = Array.from(bestByRouteSequence.values());
-  const direct = distinct
-    .filter((option) => !numeric(option.summary.transferCount))
-    .slice(0, MAX_JOURNEY_RESULT_CARDS);
-  if (direct.length >= MAX_JOURNEY_RESULT_CARDS) return direct;
-  if (direct.length) {
-    const bestDirect = direct[0];
-    const strongTransfer = distinct.find((option) => (
-      numeric(option.summary.transferCount) > 0
-      && journeyResultScore(option) + 18 < journeyResultScore(bestDirect)
-    ));
-    return strongTransfer ? [...direct, strongTransfer].slice(0, MAX_JOURNEY_RESULT_CARDS) : direct;
-  }
-  return distinct.slice(0, MAX_JOURNEY_RESULT_CARDS);
+  return Array.from(bestByRouteSequence.values()).slice(0, MAX_JOURNEY_RESULT_CARDS);
 }
 
 function journeyResultScore(option: JourneyOptionDTO) {
@@ -475,6 +487,7 @@ function SearchField({
   );
 }
 
+
 function TopTabs({
   active,
   onChange,
@@ -487,33 +500,34 @@ function TopTabs({
     { id: "planner", label: "Tìm đường", icon: MapIcon },
   ];
   return (
-    <div className="grid grid-cols-2 border-b border-outline-variant bg-surface">
-      {tabs.map((tab) => {
-        const Icon = tab.icon;
-        const selected = active === tab.id;
-        return (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => onChange(tab.id)}
-            className={cn(
-              "relative flex h-14 cursor-pointer items-center justify-center gap-2 text-sm font-bold uppercase transition-colors focus-visible:bg-surface-container-low focus-visible:outline-none",
-              selected ? "text-on-surface" : "text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface",
-            )}
-          >
-            <Icon className={cn("size-5", selected && "text-on-surface")} />
-            {tab.label}
-            {selected ? (
-              <motion.span
-                layoutId="student-planner-tab"
-                className="absolute inset-x-8 bottom-0 h-1 rounded-t-full"
-                style={{ backgroundColor: STUDENT_LIME }}
-                transition={{ type: "spring", stiffness: 420, damping: 34 }}
-              />
-            ) : null}
-          </button>
-        );
-      })}
+    <div className="border-b border-[#111111]/10 bg-[#FAF8F2] px-5 pt-4">
+      <div className="grid grid-cols-2 gap-6">
+        {tabs.map((tab) => {
+          const Icon = tab.icon;
+          const selected = active === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => onChange(tab.id)}
+              className={cn(
+                "relative flex h-12 cursor-pointer items-center justify-center gap-2 text-[13px] font-semibold uppercase tracking-[0.04em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+                selected ? "text-[#111111]" : "text-[#6B6B6B] hover:text-[#111111]",
+              )}
+            >
+              <Icon className={cn("size-4", selected ? "text-[#111111]" : "text-[#6B6B6B]")} strokeWidth={2.2} />
+              {tab.label}
+              {selected ? (
+                <motion.span
+                  layoutId="student-planner-tab"
+                  className="absolute inset-x-6 bottom-0 h-[3px] rounded-t-full bg-[#BDFD4F]"
+                  transition={{ type: "spring", stiffness: 420, damping: 34 }}
+                />
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -796,39 +810,35 @@ function legSubtitle(leg: JourneyLegDTO) {
   return `${distance} · ${leg.fromStopName || "Điểm đi"} → ${leg.toStopName || "điểm đến"}`;
 }
 
+
 function RouteSequence({ option, compact = false }: { option: JourneyOptionDTO; compact?: boolean }) {
   return (
-    <div className={cn("grid", compact ? "gap-1.5" : "gap-2")}>
-      {option.legs.map((leg) => (
-        <div
-          key={leg.legId}
-          className={cn(
-            "flex min-w-0 items-start gap-2",
-            !compact && "rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2.5",
-          )}
-        >
-          {leg.mode === "BUS" ? (
-            <span
-              className="mt-0.5 inline-flex h-6 min-w-9 shrink-0 items-center justify-center rounded-full px-2 text-[11px] font-bold text-white"
-              style={{ backgroundColor: leg.colorHex || STUDENT_GREEN }}
-            >
-              {leg.routeCode || "BUS"}
-            </span>
-          ) : (
-            <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full border border-outline-variant bg-surface">
-              <Footprints className="size-3.5 text-on-surface-variant" />
-            </span>
-          )}
-          <span className="min-w-0">
-            <span className={cn("block font-bold text-on-surface", compact ? "text-xs" : "text-sm")}>
-              {legTitle(leg)}
-            </span>
-            <span className={cn("block text-on-surface-variant", compact ? "text-[11px]" : "text-xs")}>
-              {legSubtitle(leg)}
-            </span>
-          </span>
-        </div>
-      ))}
+    <div className="space-y-0">
+      {option.legs.map((leg, index) => {
+        const isBus = leg.mode === "BUS";
+        return (
+          <div key={leg.legId} className="grid grid-cols-[30px_minmax(0,1fr)] gap-3">
+            <div className="flex flex-col items-center">
+              <span className={cn("z-10 grid size-7 place-items-center rounded-full border bg-white", isBus ? "border-[#144FCC] text-[#144FCC]" : "border-[#18A558] text-[#18A558]")}>{isBus ? <Bus className="size-3.5" /> : <Footprints className="size-3.5" />}</span>
+              {index < option.legs.length - 1 ? <span className="h-12 w-px bg-[#111111]/12" /> : null}
+            </div>
+            <div className={cn("pb-4", index === option.legs.length - 1 && "pb-0")}>
+              <div className="rounded-2xl bg-white/75 px-3 py-3 ring-1 ring-[#111111]/8">
+                <div className="flex min-w-0 items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex min-w-0 items-center gap-2">
+                      {isBus ? <span className="inline-flex h-6 min-w-10 shrink-0 items-center justify-center rounded-full px-2 text-[11px] font-semibold text-white" style={{ backgroundColor: leg.colorHex || "#144FCC" }}>{leg.routeCode || "BUS"}</span> : null}
+                      <p className={cn("truncate font-semibold text-[#111111]", compact ? "text-xs" : "text-sm")}>{legTitle(leg)}</p>
+                    </div>
+                    <p className={cn("mt-1 line-clamp-2 text-[#6B6B6B]", compact ? "text-[11px]" : "text-xs")}>{legSubtitle(leg)}</p>
+                  </div>
+                  {isBus && leg.stops?.length ? <CircleDot className="mt-1 size-4 shrink-0 text-[#6B6B6B]" /> : null}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -861,6 +871,7 @@ function LegStopsPreview({ leg }: { leg: JourneyLegDTO }) {
   );
 }
 
+
 function JourneyResultCard({
   option,
   index,
@@ -878,10 +889,9 @@ function JourneyResultCard({
   const window = resultWindow(option);
   const walkMinutes = Math.max(1, Math.round(numeric(option.summary.walkMinutes)));
   const waitMinutes = Math.max(0, Math.round(numeric(option.summary.waitMinutes)));
-  const waitText = waitMinutes <= 1 ? "Xe sắp tới" : `Chờ ${waitMinutes} phút`;
-  const transferText = option.summary.transferCount
-    ? `${option.summary.transferCount} lần chuyển`
-    : "Đi thẳng";
+  const transferCount = option.summary.transferCount || Math.max(0, badges.length - 1);
+  const transferText = transferCount ? `${transferCount} lần chuyển tuyến` : "Đi thẳng";
+  const fareLabel = transferCount || badges.length > 1 ? "Tổng vé lượt tham khảo" : "Vé lượt tham khảo";
   return (
     <motion.article
       layout
@@ -897,84 +907,40 @@ function JourneyResultCard({
       }}
       role="button"
       tabIndex={0}
-      aria-selected={selected}
+      aria-pressed={selected}
       className={cn(
-        "state-layer relative w-full cursor-pointer overflow-hidden rounded-xl border bg-surface px-4 py-3 text-left transition-[background-color,border-color,box-shadow,transform] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-on-surface/20",
-        selected
-          ? "border-on-surface/20 bg-surface-container-low"
-          : "border-outline-variant/70 hover:border-outline/70 hover:bg-surface-container-low",
+        "relative w-full cursor-pointer overflow-hidden rounded-[22px] border bg-white/82 p-4 text-left transition-[background-color,border-color,box-shadow,transform] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
+        selected ? "border-[#111111]/18 shadow-[0_14px_34px_rgba(17,17,17,0.08)]" : "border-[#111111]/10 hover:border-[#111111]/18 hover:bg-white",
       )}
     >
-      {selected ? (
-        <motion.span
-          layoutId="selected-journey-accent"
-          className="pointer-events-none absolute inset-0 rounded-xl ring-1 ring-inset ring-on-surface/15"
-          transition={{ type: "spring", stiffness: 420, damping: 34 }}
-        />
-      ) : null}
-      <div className="relative flex items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-0.5 scrollbar-soft">
-            <BusFront className="size-4 shrink-0 text-on-surface-variant" />
+          <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-1 scrollbar-soft">
             {badges.map((badge, badgeIndex) => (
               <React.Fragment key={`${option.optionId}-${badge.routeId}`}>
-                <span
-                  className="inline-flex h-7 min-w-11 shrink-0 items-center justify-center rounded-full px-3 text-xs font-bold text-white"
-                  style={{ backgroundColor: badge.colorHex || STUDENT_GREEN }}
-                >
-                  {badge.routeCode || badge.routeId}
-                </span>
-                {badgeIndex < badges.length - 1 ? (
-                  <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-on-surface-variant">
-                    <ArrowRight className="size-3" />
-                    Chuyển
-                  </span>
-                ) : null}
+                <span className="inline-flex h-7 min-w-10 shrink-0 items-center justify-center rounded-full px-3 text-xs font-semibold text-white" style={{ backgroundColor: badge.colorHex || "#144FCC" }}>{badge.routeCode || badge.routeId}</span>
+                {badgeIndex < badges.length - 1 ? <ArrowRight className="size-3.5 shrink-0 text-[#6B6B6B]" /> : null}
               </React.Fragment>
             ))}
           </div>
-
-          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-medium text-on-surface-variant">
-            <span className="inline-flex items-center gap-1.5 tabular-nums">
-              <Clock3 className="size-3.5 shrink-0" />
-              {window.departure} - {window.arrival}
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <Route className="size-3.5 shrink-0" />
-              {transferText}
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <Footprints className="size-3.5 shrink-0" />
-              Đi bộ {walkMinutes} phút
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <RefreshCw className="size-3.5 shrink-0" />
-              {waitText}
-            </span>
-          </div>
+          <div className="mt-3 flex items-baseline gap-2 text-[#111111]"><p className="text-lg font-semibold tabular-nums">{window.departure} → {window.arrival}</p><span className="text-sm font-medium text-[#6B6B6B]">· {durationLabel(option.summary.totalMinutes)}</span></div>
+          <p className="mt-1 text-sm font-medium text-[#6B6B6B]">{transferText}</p>
+          <div className="mt-3 grid grid-cols-1 gap-1.5 text-xs text-[#6B6B6B]"><p><span className="font-semibold text-[#111111]">{fareLabel}:</span> {moneyLabel(option.summary.singleFare)}</p>{option.summary.monthlyFare != null ? <p><span className="font-semibold text-[#111111]">Vé tháng:</span> {moneyLabel(option.summary.monthlyFare)}/tháng</p> : null}</div>
         </div>
-
-        <div className="flex shrink-0 flex-col items-end gap-2 text-right">
-          <div>
-            <p className="text-[11px] font-semibold leading-none text-on-surface-variant">Tổng</p>
-            <p className="mt-1 whitespace-nowrap text-lg font-bold tabular-nums leading-none text-on-surface">
-              {durationLabel(option.summary.totalMinutes)}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              onDetails();
-            }}
-            className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg bg-[#14140f] px-3 text-xs font-bold text-[#BDFD4F] transition-colors hover:bg-[#14140f]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          >
-            Xem chi tiết
-            <ArrowRight className="size-3.5" />
-          </button>
-        </div>
+        <button type="button" onClick={(event) => { event.stopPropagation(); onDetails(); }} className="inline-flex h-10 shrink-0 cursor-pointer items-center gap-1.5 rounded-full bg-[#111111] px-4 text-xs font-semibold text-[#BDFD4F] transition-all hover:bg-[#222222] hover:shadow-[0_0_0_4px_rgba(189,253,79,0.18)] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">Chi tiết<ArrowRight className="size-3.5" /></button>
       </div>
+      <div className="mt-4 grid grid-cols-3 gap-2"><MiniStat icon={Footprints} label="Đi bộ" value={`${walkMinutes} phút`} tone="green" /><MiniStat icon={RefreshCw} label="Chờ xe" value={`${waitMinutes} phút`} tone="orange" /><MiniStat icon={BusFront} label="Bus" value={`${badges.length || 1} tuyến`} tone="blue" /></div>
     </motion.article>
+  );
+}
+
+function MiniStat({ icon: Icon, label, value, tone }: { icon: React.ElementType; label: string; value: string; tone: "green" | "orange" | "blue" }) {
+  const styles = { green: "bg-[#E8F8E8] text-[#168A3A]", orange: "bg-[#FFF2DC] text-[#B46A00]", blue: "bg-[#E9F0FF] text-[#144FCC]" }[tone];
+  return (
+    <div aria-label={`${label}: ${value}`} className="flex min-w-0 items-center gap-2 rounded-xl bg-[#FAF8F2] px-2.5 py-2 ring-1 ring-[#111111]/7">
+      <span className={cn("grid size-7 shrink-0 place-items-center rounded-full", styles)}><Icon className="size-3.5" /></span>
+      <p className="min-w-0 truncate text-xs font-semibold text-[#111111]">{value}</p>
+    </div>
   );
 }
 
@@ -990,67 +956,112 @@ function JourneyPlanDetailPanel({
   onRegister: () => void;
 }) {
   const busLegs = optionBusLegs(option);
+  const badges = optionBadges(option);
   const window = resultWindow(option);
   const action = option.primaryAction;
+  const transferCount = option.summary.transferCount || Math.max(0, badges.length - 1);
+  const fareLabel = transferCount || badges.length > 1 ? "Tổng vé lượt tham khảo" : "Vé lượt tham khảo";
+  const walkMinutes = Math.max(1, Math.round(numeric(option.summary.walkMinutes)));
+  const waitMinutes = Math.max(0, Math.round(numeric(option.summary.waitMinutes)));
+  const availabilityTitle = action?.enabled
+    ? action.subsidyEligible
+      ? "Được trường hỗ trợ phí"
+      : "Không được trường hỗ trợ phí"
+    : "Không thể đăng ký tuyến này";
+  const availabilityBody = action?.enabled
+    ? action.subsidyEligible
+      ? "Bạn có thể đăng ký tuyến và mua vé theo chính sách của trường."
+      : "Tuyến này chưa thuộc chương trình hỗ trợ phí của trường bạn. Bạn vẫn có thể đăng ký và mua vé với giá thường."
+    : action?.availabilityMessage || action?.reason || "Tuyến hiện chưa đủ điều kiện đăng ký.";
+  const alertTone = action?.enabled
+    ? action.subsidyEligible
+      ? "border-[#1F9D55]/20 bg-[#ECFDF3] text-[#146C3A]"
+      : "border-[#F59E0B]/25 bg-[#FFF7E8] text-[#92400E]"
+    : "border-[#EF4444]/20 bg-[#FEF2F2] text-[#991B1B]";
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="border-b border-outline-variant px-4 py-3">
+    <div className="flex min-h-0 flex-1 flex-col bg-[#FAF8F2]">
+      <div className="border-b border-[#111111]/10 bg-white/80 px-5 py-4">
         <button
           type="button"
           onClick={onBack}
-          className="mb-3 inline-flex h-9 cursor-pointer items-center gap-2 rounded-md px-1 text-sm font-bold text-on-surface-variant transition-colors hover:text-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className="mb-4 inline-flex h-9 cursor-pointer items-center gap-2 rounded-full px-2 text-sm font-semibold text-[#6B6B6B] transition-colors hover:bg-[#F8F6EF] hover:text-[#111111] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
           <ArrowLeft className="size-4" />
           Kết quả tìm đường
         </button>
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h2 className="text-lg font-bold tabular-nums text-on-surface">
-              {window.departure} - {window.arrival}
-            </h2>
-            <p className="mt-1 text-sm font-medium text-on-surface-variant">
-              {option.summary.transferCount
-                ? `${option.summary.transferCount} lần chuyển tuyến`
-                : "Đi thẳng, không chuyển tuyến"}
-            </p>
+        <div className="rounded-[22px] border border-[#111111]/10 bg-white p-4 shadow-[0_12px_28px_rgba(17,17,17,0.06)]">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-1 scrollbar-soft">
+                {badges.map((badge, badgeIndex) => (
+                  <React.Fragment key={`${option.optionId}-detail-${badge.routeId}`}>
+                    <span className="inline-flex h-7 min-w-10 shrink-0 items-center justify-center rounded-full px-3 text-xs font-semibold text-white" style={{ backgroundColor: badge.colorHex || "#144FCC" }}>
+                      {badge.routeCode || badge.routeId}
+                    </span>
+                    {badgeIndex < badges.length - 1 ? <ArrowRight className="size-3.5 shrink-0 text-[#6B6B6B]" /> : null}
+                  </React.Fragment>
+                ))}
+              </div>
+              <h2 className="mt-3 text-xl font-semibold tabular-nums text-[#111111]">
+                {window.departure} → {window.arrival}
+              </h2>
+              <p className="mt-1 text-sm font-medium text-[#6B6B6B]">
+                {durationLabel(option.summary.totalMinutes)} · {transferCount ? `${transferCount} lần chuyển tuyến` : "Đi thẳng"}
+              </p>
+            </div>
+            <div className="shrink-0 rounded-2xl bg-[#F8F6EF] px-3 py-2 text-right ring-1 ring-[#111111]/7">
+              <p className="text-[11px] font-medium text-[#6B6B6B]">Tổng thời gian</p>
+              <p className="text-lg font-semibold tabular-nums text-[#111111]">{durationLabel(option.summary.totalMinutes)}</p>
+            </div>
           </div>
-          <div className="shrink-0 text-right">
-            <p className="text-xl font-bold tabular-nums text-on-surface">{option.summary.totalMinutes} phút</p>
-            <p className="mt-0.5 text-sm font-semibold text-on-surface">{moneyLabel(option.summary.singleFare)}</p>
+          <div className="mt-4 grid grid-cols-1 gap-1.5 text-sm text-[#6B6B6B]">
+            <p><span className="font-semibold text-[#111111]">{fareLabel}:</span> {moneyLabel(option.summary.singleFare)}</p>
+            {option.summary.monthlyFare != null ? <p><span className="font-semibold text-[#111111]">Vé tháng:</span> {moneyLabel(option.summary.monthlyFare)}/tháng</p> : null}
           </div>
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4 scrollbar-soft">
+      <div className="min-h-0 flex-1 overflow-y-auto p-5 scrollbar-soft">
         <div className="grid grid-cols-3 gap-2">
-          <InfoPill label="Đi bộ" value={`${Math.max(1, Math.round(numeric(option.summary.walkMinutes)))} phút`} />
-          <InfoPill label="Chờ xe" value={`${option.summary.waitMinutes || 0} phút`} />
-          <InfoPill label="Bus" value={`${busLegs.length} tuyến`} />
+          <MiniStat icon={Footprints} label="Đi bộ" value={`${walkMinutes} phút`} tone="green" />
+          <MiniStat icon={RefreshCw} label="Chờ xe" value={`${waitMinutes} phút`} tone="orange" />
+          <MiniStat icon={BusFront} label="Bus" value={`${busLegs.length || 1} tuyến`} tone="blue" />
         </div>
 
-        <div className="mt-4">
-          <p className="mb-2 text-xs font-bold uppercase text-on-surface-variant">Các bước di chuyển</p>
+        <div className={cn("mt-4 rounded-[20px] border px-4 py-3", alertTone)}>
+          <p className="text-sm font-semibold">{availabilityTitle}</p>
+          <p className="mt-1 text-xs leading-5 opacity-90">{availabilityBody}</p>
+        </div>
+
+        {transferCount > 0 || busLegs.length > 1 ? (
+          <div className="mt-3 rounded-[18px] border border-[#144FCC]/15 bg-[#EFF5FF] px-4 py-3 text-xs leading-5 text-[#24457A]">
+            Hành trình có chuyển tuyến. UniBus sẽ đăng ký tuyến chính trước; các tuyến còn lại dùng để tham khảo lộ trình.
+          </div>
+        ) : null}
+
+        <div className="mt-5">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[#6B6B6B]">Chi tiết cách đi</p>
           <RouteSequence option={option} />
         </div>
 
-        <div className="mt-4 space-y-2">
-          <p className="text-xs font-bold uppercase text-on-surface-variant">Điểm lên/xuống</p>
+        <div className="mt-5 space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6B6B6B]">Các trạm đi qua</p>
           {busLegs.map((leg) => (
-            <div key={`${option.optionId}-${leg.legId}`} className="rounded-lg border border-outline-variant bg-surface px-3 py-3">
+            <div key={`${option.optionId}-${leg.legId}`} className="rounded-[20px] border border-[#111111]/10 bg-white px-4 py-4 shadow-[0_10px_24px_rgba(17,17,17,0.04)]">
               <div className="flex items-center gap-2">
                 <span
-                  className="inline-flex h-7 min-w-10 items-center justify-center rounded-full px-2 text-xs font-bold text-white"
+                  className="inline-flex h-7 min-w-10 items-center justify-center rounded-full px-2 text-xs font-semibold text-white"
                   style={{ backgroundColor: leg.colorHex || STUDENT_GREEN }}
                 >
                   {leg.routeCode || "BUS"}
                 </span>
-                <span className="min-w-0 truncate text-sm font-semibold text-on-surface">
+                <span className="min-w-0 truncate text-sm font-semibold text-[#111111]">
                   {leg.routeName || `Tuyến ${leg.routeCode}`}
                 </span>
               </div>
-              <p className="mt-2 text-xs leading-5 text-on-surface-variant">
-                Lên tại <strong className="text-on-surface">{leg.fromStopName || "trạm đầu"}</strong>, xuống tại{" "}
-                <strong className="text-on-surface">{leg.toStopName || "trạm cuối"}</strong>.
+              <p className="mt-2 text-xs leading-5 text-[#6B6B6B]">
+                Lên tại <strong className="font-semibold text-[#111111]">{leg.fromStopName || "trạm đầu"}</strong>, xuống tại{" "}
+                <strong className="font-semibold text-[#111111]">{leg.toStopName || "trạm cuối"}</strong>.
               </p>
               <LegStopsPreview leg={leg} />
             </div>
@@ -1058,19 +1069,15 @@ function JourneyPlanDetailPanel({
         </div>
       </div>
 
-      <div className="border-t border-outline-variant bg-surface px-4 py-3">
-        {!action?.enabled && action?.reason ? (
-          <p className="mb-2 text-xs font-semibold text-error">{action.reason}</p>
-        ) : null}
+      <div className="border-t border-[#111111]/10 bg-white/90 px-5 py-4">
         <button
           type="button"
           onClick={onRegister}
           disabled={registering || !action?.enabled}
-          className="inline-flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-xl px-5 text-sm font-bold transition-[opacity,transform] hover:opacity-90 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45"
-          style={{ backgroundColor: STUDENT_INK, color: STUDENT_LIME }}
+          className="inline-flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-[#111111] px-5 text-sm font-semibold text-[#BDFD4F] transition-all hover:bg-[#222222] hover:shadow-[0_0_0_4px_rgba(189,253,79,0.18)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45"
         >
           {registering ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
-          Đăng ký
+          Đăng ký tuyến & chọn vé
         </button>
       </div>
     </div>
@@ -1099,6 +1106,7 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
   const [routeInfoTab, setRouteInfoTab] = useState<RouteInfoTab>("stops");
   const [routeRegistering, setRouteRegistering] = useState(false);
   const [routeActionError, setRouteActionError] = useState("");
+  const [assistantPreview, setAssistantPreview] = useState<AssistantRoutePreviewState | null>(() => readAssistantRoutePreview());
 
   const [originQuery, setOriginQuery] = useState(DEFAULT_ORIGIN);
   const [destinationQuery, setDestinationQuery] = useState(DEFAULT_DESTINATION);
@@ -1140,6 +1148,60 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!assistantPreview || routesLoading) return;
+    const requestedRouteId = assistantPreview.routeId == null ? "" : String(assistantPreview.routeId);
+    const requestedRouteCode = (assistantPreview.routeCode || "").trim().toLowerCase();
+    const requestedRouteName = (assistantPreview.routeName || "").trim().toLowerCase();
+    const match = routes.find((route) => (
+      String(route.routeId) === requestedRouteId
+      || (!!requestedRouteCode && (route.routeCode || "").trim().toLowerCase() === requestedRouteCode)
+      || (!!requestedRouteName && route.routeName.trim().toLowerCase() === requestedRouteName)
+    ));
+
+    const fallbackRoute = requestedRouteId
+      ? {
+          routeId: Number(requestedRouteId),
+          routeCode: assistantPreview.routeCode,
+          routeName: assistantPreview.routeName || assistantPreview.routeCode || `Tuyến ${requestedRouteId}`,
+          colorHex: undefined,
+          distanceKm: undefined,
+          estimatedMinutes: undefined,
+          frequencyMin: undefined,
+          singleFare: undefined,
+          monthlyFare: undefined,
+          firstTrip: undefined,
+          lastTrip: undefined,
+          stopCount: undefined,
+          directions: [],
+          universityLinked: false,
+          interregional: false,
+          externalSource: undefined,
+        } satisfies RouteLookupDTO
+      : null;
+
+    if (!match && !fallbackRoute) {
+      if (routes.length) {
+        toast.error("Không tìm thấy tuyến từ gợi ý AI trong danh sách hiện tại.");
+        setAssistantPreview(null);
+      }
+      return;
+    }
+
+    const targetRoute = match || fallbackRoute;
+    if (!targetRoute) return;
+
+    setActiveTab("lookup");
+    setSelectedRoute(targetRoute);
+    setRouteDirection(targetRoute.directions?.[0] ?? 0);
+    setRoutePreview(null);
+    setRoutesError("");
+    setRouteActionError("");
+    setRouteQuery(targetRoute.routeCode || targetRoute.routeName);
+    setShowJourneyDetail(false);
+    setAssistantPreview(null);
+  }, [assistantPreview, routes, routesLoading]);
 
   useEffect(() => {
     if (!selectedRoute) {
@@ -1366,7 +1428,7 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
     const journey = selectedJourney;
     const action = journey?.primaryAction;
     if (!journey || !action?.enabled || !action.routeId || !action.boardingStopId || !action.alightingStopId) {
-      setInlineError(action?.reason || "Hành trình này chưa đủ điều kiện đăng ký.");
+      setInlineError(action?.availabilityMessage || action?.reason || "Hành trình này chưa đủ điều kiện đăng ký.");
       return;
     }
     setRegistering(true);
@@ -1388,7 +1450,7 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
       }));
       await ctx.reload();
       toast.success("Đăng ký tuyến thành công.");
-      onNavigate("stu-payment");
+      onNavigate("stu-invoices");
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
         localStorage.setItem("unibus.paymentRouteId", String(action.routeId));
@@ -1400,7 +1462,7 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
           journeyOptionId: journey.optionId,
           savedAt: new Date().toISOString(),
         }));
-        onNavigate("stu-payment");
+        onNavigate("stu-invoices");
         return;
       }
       setInlineError(error instanceof Error ? error.message : "Không thể đăng ký tuyến.");
@@ -1438,7 +1500,7 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
       }));
       await ctx.reload();
       toast.success("Đăng ký tuyến thành công.");
-      onNavigate("stu-payment");
+      onNavigate("stu-invoices");
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
         localStorage.setItem("unibus.paymentRouteId", String(routePreview.routeId));
@@ -1450,7 +1512,7 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
           direction: routePreview.direction,
           savedAt: new Date().toISOString(),
         }));
-        onNavigate("stu-payment");
+        onNavigate("stu-invoices");
         return;
       }
       setRouteActionError(error instanceof Error ? error.message : "Không thể đăng ký tuyến.");
@@ -1479,10 +1541,10 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.22 }}
-      className="min-w-0"
+      className="min-w-0 rounded-[28px] bg-[#F8F6EF] p-4 md:p-6"
     >
-      <div className="grid h-[calc(100dvh-116px)] min-h-[680px] min-w-0 grid-cols-1 overflow-hidden rounded-xl border border-outline-variant bg-surface xl:grid-cols-[460px_minmax(0,1fr)]">
-        <aside className="relative z-[1000] flex min-h-0 flex-col border-r border-outline-variant bg-surface">
+      <div className="grid h-[calc(100dvh-152px)] min-h-[560px] min-w-0 grid-cols-1 overflow-hidden rounded-[24px] border border-[#111111]/10 bg-[#FAF8F2] shadow-[0_18px_50px_rgba(17,17,17,0.08)] xl:grid-cols-[410px_minmax(0,1fr)]">
+        <aside className="relative z-[1000] flex min-h-0 flex-col border-r border-[#111111]/10 bg-[#FAF8F2]">
           <TopTabs
             active={activeTab}
             onChange={(tab) => {
@@ -1717,8 +1779,8 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
           </AnimatePresence>
         </aside>
 
-        <section className="grid min-h-0 min-w-0 bg-surface-container">
-          <div className="relative min-h-0">
+        <section className="grid min-h-0 min-w-0 bg-[#F8F6EF] p-4">
+          <div className="relative min-h-0 overflow-hidden rounded-[24px] border border-[#111111]/10 bg-white shadow-[0_12px_36px_rgba(17,17,17,0.06)]">
             <JourneyMap
               stops={mapStops}
               routeColor={mapColor}
@@ -1727,15 +1789,36 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
               height="100%"
               animateCamera
               allowFallbackPolyline={false}
+              scrollWheelZoom={false}
             />
             {routePreviewLoading ? (
-              <div className="pointer-events-none absolute left-4 top-4 z-[500] rounded-lg border border-outline-variant bg-surface px-3 py-2 text-xs font-bold text-on-surface">
+              <div className="pointer-events-none absolute left-4 top-4 z-[500] rounded-2xl border border-[#111111]/10 bg-white/92 px-3 py-2 text-xs font-semibold text-[#111111] shadow-[0_8px_24px_rgba(17,17,17,0.08)]">
                 Đang dựng tuyến...
               </div>
             ) : null}
+            <div className="pointer-events-none absolute bottom-4 left-4 z-[500] rounded-xl border border-[#111111]/10 bg-white/92 p-3 text-xs text-[#111111] shadow-[0_12px_30px_rgba(17,17,17,0.10)] backdrop-blur">
+              <p className="mb-2 font-semibold">Chú giải bản đồ</p>
+              <div className="space-y-1.5 text-[#6B6B6B]">
+                <MapLegendItem className="bg-[#1F9D55]" label="Điểm xuất phát" />
+                <MapLegendItem className="bg-[#EF4444]" label="Điểm đến" />
+                <MapLegendItem className="bg-[#144FCC]" label="Tuyến xe buýt" />
+                <MapLegendItem className="bg-[#F59E0B]" label="Đi bộ" />
+                <MapLegendItem className="border border-[#144FCC] bg-white" label="Điểm dừng" />
+              </div>
+            </div>
           </div>
         </section>
       </div>
     </motion.div>
+  );
+}
+
+
+function MapLegendItem({ className, label }: { className: string; label: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className={cn("size-2.5 rounded-full", className)} />
+      <span>{label}</span>
+    </div>
   );
 }

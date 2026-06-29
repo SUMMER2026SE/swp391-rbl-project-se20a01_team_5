@@ -80,6 +80,14 @@ public class TransportController {
         return ApiResponse.ok("Journey tracking retrieved", journeyTrackingService.snapshot(journeyId));
     }
 
+    @GetMapping("/tracking/routes/{routeId}")
+    ApiResponse<JourneyTrackingSnapshot> trackRoute(
+            @PathVariable Integer routeId,
+            @RequestParam(required = false) Integer boardingStopId,
+            @RequestParam(required = false) Integer alightingStopId) {
+        return ApiResponse.ok("Route tracking retrieved", journeyTrackingService.routeSnapshot(routeId, boardingStopId, alightingStopId));
+    }
+
     @GetMapping("/routes/search")
     ApiResponse<List<RouteSuggestion>> searchRoutes(
             @AuthenticationPrincipal CurrentUser currentUser,

@@ -192,25 +192,7 @@ public class JourneyPlannerService {
         options.stream()
                 .sorted(journeyComparator())
                 .forEach(option -> bestByRouteSequence.putIfAbsent(journeySignature(option), option));
-        List<JourneyOption> distinct = bestByRouteSequence.values().stream().toList();
-        List<JourneyOption> direct = distinct.stream()
-                .filter(option -> option.summary().transferCount() == null || option.summary().transferCount() == 0)
-                .limit(MAX_OPTIONS)
-                .toList();
-        if (direct.size() >= MAX_OPTIONS) {
-            return direct;
-        }
-        if (!direct.isEmpty()) {
-            JourneyOption bestDirect = direct.get(0);
-            List<JourneyOption> result = new ArrayList<>(direct);
-            distinct.stream()
-                    .filter(option -> option.summary().transferCount() != null && option.summary().transferCount() > 0)
-                    .filter(option -> journeyScore(option) + 18 < journeyScore(bestDirect))
-                    .findFirst()
-                    .ifPresent(result::add);
-            return result.stream().limit(MAX_OPTIONS).toList();
-        }
-        return distinct.stream().limit(MAX_OPTIONS).toList();
+        return bestByRouteSequence.values().stream().limit(MAX_OPTIONS).toList();
     }
 
     private Comparator<JourneyOption> journeyComparator() {
@@ -462,12 +444,16 @@ public class JourneyPlannerService {
         if (firstEligible.isPresent()) {
             Segment segment = firstEligible.get();
             return new JourneyAction("REGISTER_ROUTE", "Đăng ký tuyến " + segment.line().routeCode(),
-                    true, null, segment.line().routeId(), segment.from().stop().stopId(), segment.to().stop().stopId());
+                    true, null, segment.line().routeId(), segment.from().stop().stopId(), segment.to().stop().stopId(),
+                    true, true, true, "SUBSIDY_ELIGIBLE",
+                    "Tuyến thuộc chương trình hỗ trợ phí của trường. Có thể áp dụng hỗ trợ phí nếu đủ điều kiện.");
         }
         Segment first = busSegments.get(0);
-        return new JourneyAction("REGISTER_ROUTE", "Tuyến chưa liên kết trường", false,
-                "Hành trình này dùng tuyến chưa được trường của bạn liên kết để mua UniPass.",
-                first.line().routeId(), first.from().stop().stopId(), first.to().stop().stopId());
+        return new JourneyAction("REGISTER_ROUTE", "Đăng ký tuyến này", true,
+                null,
+                first.line().routeId(), first.from().stop().stopId(), first.to().stop().stopId(),
+                false, false, true, "FULL_PRICE_ALLOWED",
+                "Tuyến này chưa thuộc chương trình hỗ trợ phí của trường bạn. Bạn vẫn có thể mua với giá thường.");
     }
 
     private List<JourneyStop> compactStops(List<JourneyStop> stops) {
@@ -807,3 +793,4 @@ public class JourneyPlannerService {
             BigDecimal singleFare, BigDecimal monthlyFare) {
     }
 }
+
