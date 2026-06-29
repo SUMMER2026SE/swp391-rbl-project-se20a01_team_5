@@ -1017,6 +1017,15 @@ function JourneyPlanDetailPanel({
   const busLegs = optionBusLegs(option);
   const window = resultWindow(option);
   const action = option.primaryAction;
+  const actionBadge = action?.enabled
+    ? action.subsidyEligible
+      ? "Được hỗ trợ phí"
+      : action.fullPriceAllowed
+        ? "Giá thường"
+        : null
+    : "Tuyến không khả dụng";
+  const actionMessage = action?.availabilityMessage || action?.reason || null;
+  const actionLabel = action?.enabled ? "Đăng ký tuyến này" : action?.label || "Đăng ký tuyến";
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="border-b border-outline-variant px-4 py-3">
@@ -1053,6 +1062,11 @@ function JourneyPlanDetailPanel({
           <InfoPill label="Bus" value={`${busLegs.length} tuyến`} />
         </div>
 
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <InfoPill label="Vé lượt tham khảo" value={moneyLabel(option.summary.singleFare)} />
+          <InfoPill label="Vé tháng" value={`${moneyLabel(option.summary.monthlyFare)}/tháng`} />
+        </div>
+
         <div className="mt-4">
           <p className="mb-2 text-xs font-bold uppercase text-on-surface-variant">Các bước di chuyển</p>
           <RouteSequence option={option} />
@@ -1084,8 +1098,27 @@ function JourneyPlanDetailPanel({
       </div>
 
       <div className="border-t border-outline-variant bg-surface px-4 py-3">
-        {!action?.enabled && action?.reason ? (
-          <p className="mb-2 text-xs font-semibold text-error">{action.reason}</p>
+        {actionBadge || actionMessage ? (
+          <div className="mb-2 rounded-xl border border-outline-variant bg-surface-container-low px-3 py-2">
+            {actionBadge ? (
+              <span
+                className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                  action?.enabled
+                    ? action.subsidyEligible
+                      ? "bg-secondary-container text-on-secondary-container"
+                      : "bg-tertiary-container text-on-tertiary-container"
+                    : "bg-error-container text-on-error-container"
+                }`}
+              >
+                {actionBadge}
+              </span>
+            ) : null}
+            {actionMessage ? (
+              <p className={`mt-1 text-xs font-medium ${action?.enabled ? "text-on-surface-variant" : "text-error"}`}>
+                {actionMessage}
+              </p>
+            ) : null}
+          </div>
         ) : null}
         <button
           type="button"
@@ -1095,7 +1128,7 @@ function JourneyPlanDetailPanel({
           style={{ backgroundColor: STUDENT_INK, color: STUDENT_LIME }}
         >
           {registering ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
-          Đăng ký
+          {actionLabel}
         </button>
       </div>
     </div>
@@ -1446,7 +1479,7 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
     const journey = selectedJourney;
     const action = journey?.primaryAction;
     if (!journey || !action?.enabled || !action.routeId || !action.boardingStopId || !action.alightingStopId) {
-      setInlineError(action?.reason || "Hành trình này chưa đủ điều kiện đăng ký.");
+      setInlineError(action?.availabilityMessage || action?.reason || "Hành trình này chưa đủ điều kiện đăng ký.");
       return;
     }
     setRegistering(true);
@@ -1819,3 +1852,4 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
     </motion.div>
   );
 }
+

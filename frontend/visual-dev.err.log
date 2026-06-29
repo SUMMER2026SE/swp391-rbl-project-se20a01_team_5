@@ -1,0 +1,1171 @@
+[browser] The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[browser] The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[browser] The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[browser] The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+⨯ ./src/lib/api/client.ts:392:8
+Expected '{', got 'interface'
+  [90m390 |[0m }
+  [90m391 |[0m
+[31m[1m>[0m [90m392 |[0m [36mexport[0m [36minterface[0m [33mJourneyOptionDTO[0m {
+  [90m    |[0m        [31m[1m^^^^^^^^^[0m
+  [90m393 |[0m   optionId: string;
+  [90m394 |[0m   summary: {
+  [90m395 |[0m     totalMinutes: number;
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/lib/api/client.ts [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/lib/api/client.ts [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+⨯ ./src/lib/api/client.ts:392:8
+Expected '{', got 'interface'
+  [90m390 |[0m }
+  [90m391 |[0m
+[31m[1m>[0m [90m392 |[0m [36mexport[0m [36minterface[0m [33mJourneyOptionDTO[0m {
+  [90m    |[0m        [31m[1m^^^^^^^^^[0m
+  [90m393 |[0m   optionId: string;
+  [90m394 |[0m   summary: {
+  [90m395 |[0m     totalMinutes: number;
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/lib/api/client.ts [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/lib/api/client.ts [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+[browser] Uncaught Error: ./src/lib/api/client.ts:392:8
+Expected '{', got 'interface'
+  390 | }
+  391 |
+> 392 | export interface JourneyOptionDTO {
+      |        ^^^^^^^^^
+  393 |   optionId: string;
+  394 |   summary: {
+  395 |     totalMinutes: number;
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/lib/api/client.ts [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/lib/api/client.ts [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+    at <unknown> (Error: ./src/lib/api/client.ts:392:8)
+    at <unknown> (Error: (./src/lib/api/client.ts:392:8)
+⨯ ./src/components/bus/roles/assistant-module.tsx:400:15
+Expected '</', got ':'
+  [90m398 |[0m                 ))}
+  [90m399 |[0m               </div>
+[31m[1m>[0m [90m400 |[0m             ) : [36mnull[0m}
+  [90m    |[0m               [31m[1m^[0m
+  [90m401 |[0m           </[33mSection[0m>
+  [90m402 |[0m         </[33mScrollReveal[0m>
+  [90m403 |[0m
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+⨯ ./src/components/bus/roles/assistant-module.tsx:400:15
+Expected '</', got ':'
+  [90m398 |[0m                 ))}
+  [90m399 |[0m               </div>
+[31m[1m>[0m [90m400 |[0m             ) : [36mnull[0m}
+  [90m    |[0m               [31m[1m^[0m
+  [90m401 |[0m           </[33mSection[0m>
+  [90m402 |[0m         </[33mScrollReveal[0m>
+  [90m403 |[0m
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+⨯ ./src/components/bus/roles/assistant-module.tsx:400:15
+Expected '</', got ':'
+  [90m398 |[0m                 ))}
+  [90m399 |[0m               </div>
+[31m[1m>[0m [90m400 |[0m             ) : [36mnull[0m}
+  [90m    |[0m               [31m[1m^[0m
+  [90m401 |[0m           </[33mSection[0m>
+  [90m402 |[0m         </[33mScrollReveal[0m>
+  [90m403 |[0m
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+[browser] Uncaught Error: ./src/components/bus/roles/assistant-module.tsx:400:15
+Expected '</', got ':'
+  398 |                 ))}
+  399 |               </div>
+> 400 |             ) : null}
+      |               ^
+  401 |           </Section>
+  402 |         </ScrollReveal>
+  403 |
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+    at <unknown> (Error: ./src/components/bus/roles/assistant-module.tsx:400:15)
+    at <unknown> (Error: (./src/components/bus/roles/assistant-module.tsx:400:15)
+[browser] ./src/components/bus/roles/assistant-module.tsx:400:15
+Expected '</', got ':'
+  398 |                 ))}
+  399 |               </div>
+> 400 |             ) : null}
+      |               ^
+  401 |           </Section>
+  402 |         </ScrollReveal>
+  403 |
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/components/bus/roles/assistant-module.tsx:400:15
+Expected '</', got ':'
+  398 |                 ))}
+  399 |               </div>
+> 400 |             ) : null}
+      |               ^
+  401 |           </Section>
+  402 |         </ScrollReveal>
+  403 |
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/components/bus/roles/assistant-module.tsx:400:15
+Expected '</', got ':'
+  398 |                 ))}
+  399 |               </div>
+> 400 |             ) : null}
+      |               ^
+  401 |           </Section>
+  402 |         </ScrollReveal>
+  403 |
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/components/bus/roles/assistant-module.tsx:400:15
+Expected '</', got ':'
+  398 |                 ))}
+  399 |               </div>
+> 400 |             ) : null}
+      |               ^
+  401 |           </Section>
+  402 |         </ScrollReveal>
+  403 |
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/components/bus/roles/assistant-module.tsx:400:15
+Expected '</', got ':'
+  398 |                 ))}
+  399 |               </div>
+> 400 |             ) : null}
+      |               ^
+  401 |           </Section>
+  402 |         </ScrollReveal>
+  403 |
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/components/bus/roles/assistant-module.tsx:400:15
+Expected '</', got ':'
+  398 |                 ))}
+  399 |               </div>
+> 400 |             ) : null}
+      |               ^
+  401 |           </Section>
+  402 |         </ScrollReveal>
+  403 |
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/components/bus/roles/assistant-module.tsx:400:15
+Expected '</', got ':'
+  398 |                 ))}
+  399 |               </div>
+> 400 |             ) : null}
+      |               ^
+  401 |           </Section>
+  402 |         </ScrollReveal>
+  403 |
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/components/bus/roles/assistant-module.tsx:433:15
+Expected '</', got ':'
+  431 |                 ))}
+  432 |               </div>
+> 433 |             ) : null}
+      |               ^
+  434 |           </Section>
+  435 |         </ScrollReveal>
+  436 |
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/components/bus/roles/assistant-module.tsx:433:15
+Expected '</', got ':'
+  431 |                 ))}
+  432 |               </div>
+> 433 |             ) : null}
+      |               ^
+  434 |           </Section>
+  435 |         </ScrollReveal>
+  436 |
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/components/bus/roles/assistant-module.tsx:433:15
+Expected '</', got ':'
+  431 |                 ))}
+  432 |               </div>
+> 433 |             ) : null}
+      |               ^
+  434 |           </Section>
+  435 |         </ScrollReveal>
+  436 |
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/components/bus/roles/assistant-module.tsx:433:15
+Expected '</', got ':'
+  431 |                 ))}
+  432 |               </div>
+> 433 |             ) : null}
+      |               ^
+  434 |           </Section>
+  435 |         </ScrollReveal>
+  436 |
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/components/bus/roles/assistant-module.tsx:433:15
+Expected '</', got ':'
+  431 |                 ))}
+  432 |               </div>
+> 433 |             ) : null}
+      |               ^
+  434 |           </Section>
+  435 |         </ScrollReveal>
+  436 |
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/components/bus/roles/assistant-module.tsx:455:15
+Expected '</', got ':'
+  453 |                 ))}
+  454 |               </div>
+> 455 |             ) : null}
+      |               ^
+  456 |           </Section>
+  457 |         </ScrollReveal>
+  458 |
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/components/bus/roles/assistant-module.tsx:454:15
+Expected '</', got ':'
+  452 |                 ))}
+  453 |               </div>
+> 454 |             ) : null}
+      |               ^
+  455 |           </Section>
+  456 |         </ScrollReveal>
+  457 |
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/components/bus/roles/assistant-module.tsx:454:15
+Expected '</', got ':'
+  452 |                 ))}
+  453 |               </div>
+> 454 |             ) : null}
+      |               ^
+  455 |           </Section>
+  456 |         </ScrollReveal>
+  457 |
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/components/bus/roles/assistant-module.tsx:432:15
+Expected '</', got ':'
+  430 |                 ))}
+  431 |               </div>
+> 432 |             ) : null}
+      |               ^
+  433 |           </Section>
+  434 |         </ScrollReveal>
+  435 |
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/components/bus/roles/assistant-module.tsx:432:15
+Expected '</', got ':'
+  430 |                 ))}
+  431 |               </div>
+> 432 |             ) : null}
+      |               ^
+  433 |           </Section>
+  434 |         </ScrollReveal>
+  435 |
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/components/bus/roles/assistant-module.tsx:432:15
+Expected '</', got ':'
+  430 |                 ))}
+  431 |               </div>
+> 432 |             ) : null}
+      |               ^
+  433 |           </Section>
+  434 |         </ScrollReveal>
+  435 |
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/components/bus/roles/assistant-module.tsx:432:15
+Expected '</', got ':'
+  430 |                 ))}
+  431 |               </div>
+> 432 |             ) : null}
+      |               ^
+  433 |           </Section>
+  434 |         </ScrollReveal>
+  435 |
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/components/bus/roles/assistant-module.tsx:676:13
+Expected '</', got ':'
+  674 |               />
+  675 |             </ExpressiveCard>
+> 676 |           ) : null}
+      |             ^
+  677 |         </ScrollReveal>
+  678 |       </div>
+  679 |
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/components/bus/roles/assistant-module.tsx:817:25
+Expected '</', got ':'
+  815 |                       {l.description && l.description !== l.item && (
+  816 |                         <p className="text-xs mt-1 line-clamp-2">{l.description}</p>
+> 817 |                       ) : null}
+      |                         ^
+  818 |                     </div>
+  819 |                   </div>
+  820 |                   <M3StatusPill label={l.status} tone={l.status === "returned" ? "success...
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/assistant-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/lib/api/client.ts:392:8
+Expected '{', got 'interface'
+  390 | }
+  391 |
+> 392 | export interface JourneyOptionDTO {
+      |        ^^^^^^^^^
+  393 |   optionId: string;
+  394 |   summary: {
+  395 |     totalMinutes: number;
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/lib/api/client.ts [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/lib/api/client.ts [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/lib/api/client.ts:392:8
+Expected '{', got 'interface'
+  390 | }
+  391 |
+> 392 | export interface JourneyOptionDTO {
+      |        ^^^^^^^^^
+  393 |   optionId: string;
+  394 |   summary: {
+  395 |     totalMinutes: number;
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/lib/api/client.ts [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/lib/api/client.ts [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/lib/api/client.ts:392:8
+Expected '{', got 'interface'
+  390 | }
+  391 |
+> 392 | export interface JourneyOptionDTO {
+      |        ^^^^^^^^^
+  393 |   optionId: string;
+  394 |   summary: {
+  395 |     totalMinutes: number;
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/lib/api/client.ts [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/lib/api/client.ts [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/lib/api/client.ts:392:8
+Expected '{', got 'interface'
+  390 | }
+  391 |
+> 392 | export interface JourneyOptionDTO {
+      |        ^^^^^^^^^
+  393 |   optionId: string;
+  394 |   summary: {
+  395 |     totalMinutes: number;
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/lib/api/client.ts [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/lib/api/client.ts [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/lib/api/client.ts:392:8
+Expected '{', got 'interface'
+  390 | }
+  391 |
+> 392 | export interface JourneyOptionDTO {
+      |        ^^^^^^^^^
+  393 |   optionId: string;
+  394 |   summary: {
+  395 |     totalMinutes: number;
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/lib/api/client.ts [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/lib/api/client.ts [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/lib/api/client.ts:392:8
+Expected '{', got 'interface'
+  390 | }
+  391 |
+> 392 | export interface JourneyOptionDTO {
+      |        ^^^^^^^^^
+  393 |   optionId: string;
+  394 |   summary: {
+  395 |     totalMinutes: number;
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/lib/api/client.ts [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/lib/api/client.ts [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/lib/api/client.ts:392:8
+Expected '{', got 'interface'
+  390 | }
+  391 |
+> 392 | export interface JourneyOptionDTO {
+      |        ^^^^^^^^^
+  393 |   optionId: string;
+  394 |   summary: {
+  395 |     totalMinutes: number;
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/lib/api/client.ts [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/lib/api/client.ts [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/lib/api/client.ts:392:8
+Expected '{', got 'interface'
+  390 | }
+  391 |
+> 392 | export interface JourneyOptionDTO {
+      |        ^^^^^^^^^
+  393 |   optionId: string;
+  394 |   summary: {
+  395 |     totalMinutes: number;
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/lib/api/client.ts [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/lib/api/client.ts [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/lib/api/client.ts:392:8
+Expected '{', got 'interface'
+  390 | }
+  391 |
+> 392 | export interface JourneyOptionDTO {
+      |        ^^^^^^^^^
+  393 |   optionId: string;
+  394 |   summary: {
+  395 |     totalMinutes: number;
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/lib/api/client.ts [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/lib/api/client.ts [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] Encountered two children with the same key, `null`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. 
+[browser] The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[browser] The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[browser] The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[browser] The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[browser] The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[browser] The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[browser] The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[browser] The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+⨯ ./src/lib/api/client.ts:712:101
+Unexpected token `no substitution template literal`. Expected identifier, string literal, numeric literal or [ for the computed key
+  [90m710 |[0m ...
+  [90m711 |[0m ...
+[31m[1m>[0m [90m712 |[0m ...[32mnts/me/payments"),[0m
+  [90m    |[0m    [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m713 |[0m ...
+  [90m    |[0m    [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m714 |[0m ...[32m string; accountName: string }>("/students/me/payments/sepay/order", { ticketType, rou...[0m
+  [90m    |[0m    [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m715 |[0m ...[32mon?: string; qrUrl?: string; bankCode?: string; accountNo?: string; accountName?: stri...[0m
+  [90m    |[0m    [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m716 |[0m ...
+  [90m717 |[0m ...
+  [90m718 |[0m ...
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/lib/api/client.ts [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/lib/api/client.ts [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+⨯ ./src/lib/api/client.ts:712:101
+Unexpected token `no substitution template literal`. Expected identifier, string literal, numeric literal or [ for the computed key
+  [90m710 |[0m ...
+  [90m711 |[0m ...
+[31m[1m>[0m [90m712 |[0m ...[32mnts/me/payments"),[0m
+  [90m    |[0m    [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m713 |[0m ...
+  [90m    |[0m    [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m714 |[0m ...[32m string; accountName: string }>("/students/me/payments/sepay/order", { ticketType, rou...[0m
+  [90m    |[0m    [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m715 |[0m ...[32mon?: string; qrUrl?: string; bankCode?: string; accountNo?: string; accountName?: stri...[0m
+  [90m    |[0m    [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m716 |[0m ...
+  [90m717 |[0m ...
+  [90m718 |[0m ...
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/lib/api/client.ts [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/lib/api/client.ts [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+[browser] Uncaught Error: ./src/lib/api/client.ts:712:101
+Unexpected token `no substitution template literal`. Expected identifier, string literal, numeric literal or [ for the computed key
+  710 | ...
+  711 | ...
+> 712 | ...nts/me/payments"),
+      |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 713 | ...
+      |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 714 | ... string; accountName: string }>("/students/me/payments/sepay/order", { ticketType, rou...
+      |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 715 | ...on?: string; qrUrl?: string; bankCode?: string; accountNo?: string; accountName?: stri...
+      |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  716 | ...
+  717 | ...
+  718 | ...
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/lib/api/client.ts [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/lib/api/client.ts [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+    at <unknown> (Error: ./src/lib/api/client.ts:712:101)
+    at <unknown> (Error: (./src/lib/api/client.ts:712:101)
+⨯ ./src/components/bus/roles/student-module.tsx:4939:20
+Expected ',', got ';'
+  [90m4937 |[0m   [36mconst[0m [ticketKind, setTicketKind] = useState<[32m"MONTHLY"[0m | [32m"SINGLE"[0m>([32m"MONTHLY"[0m);
+  [90m4938 |[0m   [36mconst[0m [sepayOrder, setSepayOrder] = useState<{
+[31m[1m>[0m [90m4939 |[0m     orderId: number;
+  [90m     |[0m                    [31m[1m^[0m
+  [90m4940 |[0m     routeId?: number;
+  [90m4941 |[0m     routeName?: string;
+  [90m4942 |[0m     qrUrl: string;
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/student-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/student-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+⨯ ./src/components/bus/roles/student-module.tsx:4939:20
+Expected ',', got ';'
+  [90m4937 |[0m   [36mconst[0m [ticketKind, setTicketKind] = useState<[32m"MONTHLY"[0m | [32m"SINGLE"[0m>([32m"MONTHLY"[0m);
+  [90m4938 |[0m   [36mconst[0m [sepayOrder, setSepayOrder] = useState<{
+[31m[1m>[0m [90m4939 |[0m     orderId: number;
+  [90m     |[0m                    [31m[1m^[0m
+  [90m4940 |[0m     routeId?: number;
+  [90m4941 |[0m     routeName?: string;
+  [90m4942 |[0m     qrUrl: string;
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/student-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/student-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+⨯ ./src/components/bus/roles/student-module.tsx:4939:20
+Expected ',', got ';'
+  [90m4937 |[0m   [36mconst[0m [ticketKind, setTicketKind] = useState<[32m"MONTHLY"[0m | [32m"SINGLE"[0m>([32m"MONTHLY"[0m);
+  [90m4938 |[0m   [36mconst[0m [sepayOrder, setSepayOrder] = useState<{
+[31m[1m>[0m [90m4939 |[0m     orderId: number;
+  [90m     |[0m                    [31m[1m^[0m
+  [90m4940 |[0m     routeId?: number;
+  [90m4941 |[0m     routeName?: string;
+  [90m4942 |[0m     qrUrl: string;
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/student-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/student-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+[browser] Uncaught Error: ./src/components/bus/roles/student-module.tsx:4939:20
+Expected ',', got ';'
+  4937 |   const [ticketKind, setTicketKind] = useState<"MONTHLY" | "SINGLE">("MONTHLY");
+  4938 |   const [sepayOrder, setSepayOrder] = useState<{
+> 4939 |     orderId: number;
+       |                    ^
+  4940 |     routeId?: number;
+  4941 |     routeName?: string;
+  4942 |     qrUrl: string;
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/student-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/student-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+    at <unknown> (Error: ./src/components/bus/roles/student-module.tsx:4939:20)
+    at <unknown> (Error: (./src/components/bus/roles/student-module.tsx:4939:20)
+⨯ ./src/components/bus/roles/student-module.tsx:5002:101
+Expected ';', '}' or <eof>
+  [90m5000 |[0m ...[33mring[0m(route.id ?? route.routeId) === selectedRouteId);
+  [90m5001 |[0m ...electedRoute?.fare ?? [35m0[0m);
+[31m[1m>[0m [90m5002 |[0m ...re ?? selectedRoute?.monthlyPass ?? [35m0[0m);[32m`r`[0mn  [36mconst[0m monthlyOriginal = [33mNumber[0m(quote?.or...
+  [90m     |[0m                                              [31m[1m^[0m
+  [90m5003 |[0m ...;
+  [90m5004 |[0m ...e?.finalFareAmount ?? monthlyOriginal);
+  [90m5005 |[0m ...
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/student-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/student-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+⨯ ./src/components/bus/roles/student-module.tsx:5002:101
+Expected ';', '}' or <eof>
+  [90m5000 |[0m ...[33mring[0m(route.id ?? route.routeId) === selectedRouteId);
+  [90m5001 |[0m ...electedRoute?.fare ?? [35m0[0m);
+[31m[1m>[0m [90m5002 |[0m ...re ?? selectedRoute?.monthlyPass ?? [35m0[0m);[32m`r`[0mn  [36mconst[0m monthlyOriginal = [33mNumber[0m(quote?.or...
+  [90m     |[0m                                              [31m[1m^[0m
+  [90m5003 |[0m ...;
+  [90m5004 |[0m ...e?.finalFareAmount ?? monthlyOriginal);
+  [90m5005 |[0m ...
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/student-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/student-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+⨯ ./src/components/bus/roles/student-module.tsx:5002:101
+Expected ';', '}' or <eof>
+  [90m5000 |[0m ...[33mring[0m(route.id ?? route.routeId) === selectedRouteId);
+  [90m5001 |[0m ...electedRoute?.fare ?? [35m0[0m);
+[31m[1m>[0m [90m5002 |[0m ...re ?? selectedRoute?.monthlyPass ?? [35m0[0m);[32m`r`[0mn  [36mconst[0m monthlyOriginal = [33mNumber[0m(quote?.or...
+  [90m     |[0m                                              [31m[1m^[0m
+  [90m5003 |[0m ...;
+  [90m5004 |[0m ...e?.finalFareAmount ?? monthlyOriginal);
+  [90m5005 |[0m ...
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/student-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/student-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+[browser] Uncaught Error: ./src/components/bus/roles/student-module.tsx:5002:101
+Expected ';', '}' or <eof>
+  5000 | ...ring(route.id ?? route.routeId) === selectedRouteId);
+  5001 | ...electedRoute?.fare ?? 0);
+> 5002 | ...re ?? selectedRoute?.monthlyPass ?? 0);`r`n  const monthlyOriginal = Number(quote?.or...
+       |                                              ^
+  5003 | ...;
+  5004 | ...e?.finalFareAmount ?? monthlyOriginal);
+  5005 | ...
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/student-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/student-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+    at <unknown> (Error: ./src/components/bus/roles/student-module.tsx:5002:101)
+    at <unknown> (Error: (./src/components/bus/roles/student-module.tsx:5002:101)

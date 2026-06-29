@@ -462,12 +462,16 @@ public class JourneyPlannerService {
         if (firstEligible.isPresent()) {
             Segment segment = firstEligible.get();
             return new JourneyAction("REGISTER_ROUTE", "Đăng ký tuyến " + segment.line().routeCode(),
-                    true, null, segment.line().routeId(), segment.from().stop().stopId(), segment.to().stop().stopId());
+                    true, null, segment.line().routeId(), segment.from().stop().stopId(), segment.to().stop().stopId(),
+                    true, true, true, "SUBSIDY_ELIGIBLE",
+                    "Tuyến thuộc chương trình hỗ trợ phí của trường. Có thể áp dụng hỗ trợ phí nếu đủ điều kiện.");
         }
         Segment first = busSegments.get(0);
-        return new JourneyAction("REGISTER_ROUTE", "Tuyến chưa liên kết trường", false,
-                "Hành trình này dùng tuyến chưa được trường của bạn liên kết để mua UniPass.",
-                first.line().routeId(), first.from().stop().stopId(), first.to().stop().stopId());
+        return new JourneyAction("REGISTER_ROUTE", "Đăng ký tuyến này", true,
+                null,
+                first.line().routeId(), first.from().stop().stopId(), first.to().stop().stopId(),
+                false, false, true, "FULL_PRICE_ALLOWED",
+                "Tuyến này chưa thuộc chương trình hỗ trợ phí của trường bạn. Bạn vẫn có thể mua với giá thường.");
     }
 
     private List<JourneyStop> compactStops(List<JourneyStop> stops) {
@@ -807,3 +811,4 @@ public class JourneyPlannerService {
             BigDecimal singleFare, BigDecimal monthlyFare) {
     }
 }
+

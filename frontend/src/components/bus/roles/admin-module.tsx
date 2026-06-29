@@ -135,6 +135,8 @@ import {
 } from "@/lib/prototype-data";
 import {
   adminApi,
+  isPaidStatus,
+  isUnpaidStatus,
   experienceApi,
   notificationApi,
   type AdminUserView,
@@ -154,6 +156,36 @@ type AdminModuleProps = {
   activeId: string;
   onNavigate: (id: string) => void;
 };
+
+const paymentFinalAmount = (payment: PaymentTransactionView) => {
+  if (payment.finalAmount != null) {
+    if (payment.finalAmount > 0) return payment.finalAmount;
+    const original = payment.originalAmount ?? payment.orderTotal ?? 0;
+    const subsidy = payment.subsidyAmount ?? 0;
+    if (original > 0 && subsidy >= original) return 0;
+    if (!isPaidStatus(payment.paymentStatus) && !isUnpaidStatus(payment.paymentStatus)) return payment.finalAmount;
+  }
+  return payment.orderTotal ?? payment.amountIn ?? 0;
+};
+
+const paymentOriginalAmount = (payment: PaymentTransactionView) =>
+  payment.originalAmount ?? payment.orderTotal ?? payment.amountIn ?? 0;
+
+const paymentModeLabel = (payment: PaymentTransactionView) => {
+  if (payment.orderMode === "journey-combo") return "Combo nhiều chặng";
+  if (payment.ticketPeriod === "day" || payment.ticketType === "single") return "Vé ngày";
+  return "Vé tháng";
+};
+
+const paymentPeriodLabel = (payment: PaymentTransactionView) => {
+  if (payment.ticketType === "single" || payment.ticketPeriod === "day") return "day";
+  return payment.ticketPeriod || "month";
+};
+
+const paymentJourneyLabel = (payment: PaymentTransactionView) =>
+  payment.originLabel && payment.destinationLabel
+    ? `${payment.originLabel} → ${payment.destinationLabel}`
+    : payment.routeName || payment.ticketType || "—";
 
 export function AdminModule({ activeId, onNavigate }: AdminModuleProps) {
   const proto = useAdminPrototypeData();
@@ -1319,9 +1351,9 @@ function VerificationsScreen({ ctx }: { ctx: Ctx }) {
 function TransactionsScreen() {
   const payments = useAdminPayments();
   const rows = payments.raw || [];
-  const paidRows = rows.filter((row) => row.paymentStatus === "PAID");
-  const totalPaid = paidRows.reduce((sum, row) => sum + (row.orderTotal || row.amountIn || 0), 0);
-  const pendingRows = rows.filter((row) => row.paymentStatus !== "PAID").length;
+  const paidRows = rows.filter((row) => isPaidStatus(row.paymentStatus));
+  const totalPaid = paidRows.reduce((sum, row) => sum + paymentFinalAmount(row), 0);
+  const pendingRows = rows.filter((row) => !isPaidStatus(row.paymentStatus)).length;
 
   return (
     <PageTransition className="space-y-6 min-w-0">
@@ -1356,8 +1388,8 @@ function TransactionsScreen() {
               <TableRow>
                 <TableHead>Sinh viên</TableHead>
                 <TableHead>Trường</TableHead>
-                <TableHead>Vé/Tuyến</TableHead>
-                <TableHead className="text-right">Số tiền</TableHead>
+                <TableHead>Loại/Chặng</TableHead>
+                <TableHead className="text-right">Gốc / Trả</TableHead>
                 <TableHead>Trạng thái</TableHead>
                 <TableHead>Ngày</TableHead>
               </TableRow>
@@ -1370,12 +1402,13 @@ function TransactionsScreen() {
                     {p.referenceNumber && <p className="text-[11px] text-on-surface-variant">{p.referenceNumber}</p>}
                   </TableCell>
                   <TableCell className="truncate text-xs">{p.universityName || "—"}</TableCell>
-                  <TableCell className="truncate text-xs">{p.routeName || p.ticketType || "—"}</TableCell>
+                  <TableCell className="truncate text-xs">{paymentModeLabel(p)}<div className="text-[10px] text-on-surface-variant truncate">{paymentJourneyLabel(p)}</div></TableCell>
                   <TableCell className="text-right font-bold tabular-nums">
-                    {formatVND(p.orderTotal || p.amountIn || 0)}
+                    <div>{formatVND(paymentOriginalAmount(p))}</div>
+                    <div className="text-[10px] text-on-surface-variant">→ {formatVND(paymentFinalAmount(p))}</div>
                   </TableCell>
                   <TableCell>
-                    <M3StatusPill label={p.paymentStatus || "—"} tone={p.paymentStatus === "PAID" ? "success" : "warning"} />
+                    <M3StatusPill label={p.paymentStatus || "—"} tone={isPaidStatus(p.paymentStatus) ? "success" : "warning"} />
                   </TableCell>
                   <TableCell className="text-xs whitespace-nowrap">{formatDateTime(p.paidAt || p.transactionDate || p.createdAt)}</TableCell>
                 </TableRow>
