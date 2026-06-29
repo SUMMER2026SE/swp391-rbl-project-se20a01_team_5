@@ -2209,7 +2209,8 @@ function TrackingScreen({ ctx }: { ctx: Ctx }) {
       // Fallback to registered route below.
     }
     const registration = ctx.registration;
-    if (registration?.routeId && registration.boardingStopId) {
+    const hasPaidTicket = Boolean(ctx.activeTicket || ctx.raw?.passes?.data?.tickets?.length);
+    if (hasPaidTicket && registration?.routeId && registration.boardingStopId) {
       setSelected({
         routeId: Number(registration.routeId),
         stopId: Number(registration.boardingStopId),
@@ -2255,7 +2256,18 @@ function TrackingScreen({ ctx }: { ctx: Ctx }) {
       setLoading(true);
       try {
         const data = await transportApi.liveArrivals(routeId, stopId, direction);
-        if (!cancelled) { setArrivals(data); setError(""); }
+        if (!cancelled) {
+          setArrivals(data);
+          setError("");
+          if (!selected.vehicleId && data[0]?.vehicleId) {
+            setSelected((current) => {
+              if (!current || current.vehicleId) return current;
+              const next = { ...current, vehicleId: data[0].vehicleId, savedAt: new Date().toISOString() };
+              window.localStorage.setItem(SELECTED_BUS_TRACKING_KEY, JSON.stringify(next));
+              return next;
+            });
+          }
+        }
       } catch (err) {
         if (!cancelled) { setArrivals([]); setError(err instanceof Error ? err.message : "Không tải được xe đang theo dõi"); }
       } finally {
@@ -2265,10 +2277,10 @@ function TrackingScreen({ ctx }: { ctx: Ctx }) {
     void load();
     const timer = window.setInterval(() => void load(), 5000);
     return () => { cancelled = true; window.clearInterval(timer); };
-  }, [selected?.routeId, selected?.stopId, selected?.direction]);
+  }, [selected?.routeId, selected?.stopId, selected?.direction, selected?.vehicleId]);
 
   const tracked = selected?.vehicleId
-    ? arrivals.find((arrival) => arrival.vehicleId === selected.vehicleId) || arrivals[0] || null
+    ? arrivals.find((arrival) => arrival.vehicleId === selected.vehicleId) || null
     : arrivals[0] || null;
   const mapStops = (preview?.stops || [])
     .filter((stop) => stop.latitude && stop.longitude)
@@ -2366,6 +2378,13 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
 
   const reg = ctx.registration;
   const activeRegistrations = registrations.length ? registrations : reg ? [reg] : [];
+  const paidTickets = [
+    ...(ctx.activeTicket ? [ctx.activeTicket] : []),
+    ...((ctx.raw.passes?.data?.tickets || []) as TicketView[]),
+  ];
+  const hasPaidTicketForRoute = (routeId: number | string) => paidTickets.some((ticket: any) =>
+    String(ticket.routeId) === String(routeId) && ["ACTIVE", "VALID", "UNUSED"].includes(String(ticket.status || "").toUpperCase())
+  );
 
   const loadRegistrations = useCallback(async () => {
     try {
@@ -2434,6 +2453,7 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
         <StaggerGroup className="grid gap-4 lg:grid-cols-2 min-w-0">
           {activeRegistrations.map((item: RegistrationDTO) => {
             const regRoute = ctx.routes.find((r) => r.id === String(item.routeId));
+            const isPaid = hasPaidTicketForRoute(item.routeId);
             return (
               <StaggerItem key={item.registrationId}>
                 <motion.div
@@ -2470,6 +2490,11 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
                           whileTap={{ scale: 0.97 }}
                           transition={{ type: "spring", stiffness: 400, damping: 22 }}
                           onClick={() => {
+                            if (!isPaid) {
+                              localStorage.setItem("unibus.paymentRouteId", String(item.routeId));
+                              onNavigate("stu-payment");
+                              return;
+                            }
                             window.localStorage.setItem(SELECTED_BUS_TRACKING_KEY, JSON.stringify({
                               routeId: Number(item.routeId),
                               stopId: item.boardingStopId ? Number(item.boardingStopId) : undefined,
@@ -2480,8 +2505,8 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
                           }}
                           className="inline-flex items-center gap-1.5 h-10 px-5 rounded-full bg-[#14140f] text-[#beff50] text-sm font-bold"
                         >
-                          <Navigation className="size-4" />
-                          Theo dõi xe
+                          {isPaid ? <Navigation className="size-4" /> : <CreditCard className="size-4" />}
+                          {isPaid ? "Theo dõi xe" : "Thanh toán"}
                         </motion.button>
                         <motion.button
                           whileHover={{ y: -2 }}
