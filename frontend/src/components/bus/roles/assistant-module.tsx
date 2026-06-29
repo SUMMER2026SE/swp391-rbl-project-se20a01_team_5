@@ -90,6 +90,8 @@ import {
   type ConductorTicketView,
   type TicketScanResult,
   type ExperienceDashboardStat,
+  conductorApi,
+  type ConductorContactView,
 } from "@/lib/api/client";
 
 type AssistantModuleProps = {
@@ -430,7 +432,7 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
     if (!tripId && ctx.conductorTrips.length > 0) {
       setTripId(ctx.conductorTrips[0].tripId);
     }
-  }, [ctx.conductorTrips]);
+  }, [ctx.conductorTrips, tripId]);
 
   const loadTickets = useCallback(async () => {
     if (!tripId) return;
@@ -770,7 +772,7 @@ function AssistantIncident({ ctx }: { ctx: Ctx }) {
 
   useEffect(() => {
     if (!tripId && ctx.conductorTrips.length > 0) setTripId(ctx.conductorTrips[0].tripId);
-  }, [ctx.conductorTrips]);
+  }, [ctx.conductorTrips, tripId]);
 
   const submit = async () => {
     if (!tripId || !description.trim()) {
@@ -878,98 +880,134 @@ function AssistantIncident({ ctx }: { ctx: Ctx }) {
 // Screen 6: Contact
 // =============================================================================
 function AssistantContact({ ctx }: { ctx: Ctx }) {
+  const [contact, setContact] = useState<ConductorContactView | null>(null);
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
-  const [sent, setSent] = useState<{ role: "user" | "dispatch"; text: string; time: string }[]>([]);
+
+  const loadContact = useCallback(async () => {
+    try {
+      const data = await conductorApi.contact();
+      setContact(data);
+    } catch (err: any) {
+      toast.error(err.message || "Không tải được liên hệ phụ xe");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadContact();
+    const timer = window.setInterval(loadContact, 4000);
+    return () => window.clearInterval(timer);
+  }, [loadContact]);
 
   const send = async () => {
     if (!message.trim() || sending) return;
-    const m = { role: "user" as const, text: message.trim(), time: new Date().toISOString() };
-    setSent((s) => [...s, m]);
-    setMessage("");
-    setSending(true);
-    setTimeout(() => {
-      setSent((s) => [...s, { role: "dispatch", text: "Đã tiếp nhận. Đội điều phối sẽ phản hồi.", time: new Date().toISOString() }]);
+    try {
+      setSending(true);
+      await conductorApi.sendMessage({
+        tripId: contact?.activeTripId,
+        recipientType: "DISPATCHER",
+        content: message.trim(),
+      });
+      setMessage("");
+      await loadContact();
+    } catch (err: any) {
+      toast.error(err.message || "Không gửi được tin nhắn");
+    } finally {
       setSending(false);
-    }, 1000);
+    }
   };
+
+  const messages = contact?.messages ?? [];
+  const contacts = contact?.contacts?.length ? contact.contacts : [];
+  const dispatcher = contacts.find((c) => c.role === "DISPATCHER");
+  const driver = contacts.find((c) => c.role === "DRIVER");
 
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Liên hệ"
-        description="Liên hệ điều phối viên và bộ phận hỗ trợ."
+        description="Trao đổi nội bộ với tài xế và điều phối viên theo chuyến đang chạy."
         icon={<Phone className="size-7" />}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
         <ScrollReveal>
-          <Section title="Danh bạ">
+          <Section title="Danh bạ chuyến xe">
             <div className="space-y-3">
               <ExpressiveCard variant="elevated" className="p-4 min-w-0">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="size-12 shrink-0 rounded-2xl bg-[#beff50] text-[#14140f] flex items-center justify-center font-black">
-                    ĐP
+                    TX
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs text-on-surface-variant">Điều phối viên</p>
-                    <p className="font-bold truncate">Phạm Quốc Bảo</p>
-                    <p className="text-xs text-on-surface-variant">0933 444 555</p>
+                    <p className="text-xs text-on-surface-variant">Tài xế</p>
+                    <p className="font-bold truncate">{driver?.name || contact?.driverName || "Chưa có tài xế"}</p>
+                    <p className="text-xs text-on-surface-variant">{driver?.phoneNumber || contact?.driverPhone || "Chưa có số điện thoại"}</p>
                   </div>
-                  <a href="tel:0933444555" className="shrink-0">
-                    <ExpressiveButton variant="tonal" size="icon-sm">
-                      <PhoneCall className="size-4" />
-                    </ExpressiveButton>
-                  </a>
+                  {(driver?.phoneNumber || contact?.driverPhone) && (
+                    <a href={`tel:${driver?.phoneNumber || contact?.driverPhone}`} className="shrink-0">
+                      <ExpressiveButton variant="tonal" size="icon-sm"><PhoneCall className="size-4" /></ExpressiveButton>
+                    </a>
+                  )}
                 </div>
               </ExpressiveCard>
               <ExpressiveCard variant="elevated" className="p-4 min-w-0">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="size-12 shrink-0 rounded-2xl bg-[#dc2626] text-white flex items-center justify-center font-black">
-                    EM
+                  <div className="size-12 shrink-0 rounded-2xl bg-[#2563eb] text-white flex items-center justify-center font-black">
+                    ĐP
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs text-on-surface-variant">Khẩn cấp</p>
-                    <p className="font-bold truncate">Tổng đài hỗ trợ</p>
-                    <p className="text-xs text-on-surface-variant">1900 1234</p>
+                    <p className="text-xs text-on-surface-variant">Điều phối viên</p>
+                    <p className="font-bold truncate">{dispatcher?.name || "Chưa có điều phối"}</p>
+                    <p className="text-xs text-on-surface-variant">{dispatcher?.phoneNumber || "Chưa có số điện thoại"}</p>
                   </div>
-                  <a href="tel:19001234" className="shrink-0">
-                    <ExpressiveButton variant="tonal" size="icon-sm">
-                      <PhoneCall className="size-4" />
-                    </ExpressiveButton>
-                  </a>
+                  {dispatcher?.phoneNumber && (
+                    <a href={`tel:${dispatcher.phoneNumber}`} className="shrink-0">
+                      <ExpressiveButton variant="tonal" size="icon-sm"><PhoneCall className="size-4" /></ExpressiveButton>
+                    </a>
+                  )}
                 </div>
+              </ExpressiveCard>
+              <ExpressiveCard variant="filled" className="p-4">
+                <p className="text-xs text-on-surface-variant">Chuyến đang liên hệ</p>
+                <p className="font-bold">{contact?.routeName || ctx.activeTrip?.routeName || "Chưa có chuyến đang chạy"}</p>
               </ExpressiveCard>
             </div>
           </Section>
         </ScrollReveal>
 
         <ScrollReveal delay={0.1}>
-          <ExpressiveCard variant="elevated" className="flex flex-col h-[400px] min-w-0">
+          <ExpressiveCard variant="elevated" className="flex flex-col h-[460px] min-w-0">
             <div className="p-4 border-b-2 border-outline-variant">
               <h3 className="font-bold flex items-center gap-2">
                 <MessageSquare className="size-4" />
-                Nhắn tin điều phối
+                Chat nội bộ
               </h3>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-2 min-w-0">
-              {sent.length === 0 && (
-                <p className="text-sm text-on-surface-variant text-center mt-8">
-                  Gửi tin nhắn khi cần hỗ trợ.
-                </p>
+              {loading && <p className="text-sm text-on-surface-variant text-center mt-8">Đang tải tin nhắn...</p>}
+              {!loading && messages.length === 0 && (
+                <p className="text-sm text-on-surface-variant text-center mt-8">Gửi tin nhắn khi cần hỗ trợ.</p>
               )}
-              {sent.map((m, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className={cn("flex max-w-[85%]", m.role === "user" && "ml-auto justify-end")}
-                >
-                  <div className={cn("px-3 py-2 rounded-2xl text-sm", m.role === "user" ? "bg-primary text-on-primary" : "bg-surface-container-high")}>
-                    {m.text}
-                  </div>
-                </motion.div>
-              ))}
+              {messages.map((m) => {
+                const isMe = m.senderName !== dispatcher?.name && m.senderName !== driver?.name;
+                return (
+                  <motion.div
+                    key={m.messageId}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={cn("flex max-w-[85%]", isMe && "ml-auto justify-end")}
+                  >
+                    <div className={cn("px-3 py-2 rounded-2xl text-sm min-w-0", isMe ? "bg-primary text-on-primary" : "bg-surface-container-high")}>
+                      <p className="text-[10px] opacity-70 mb-1 truncate">{m.senderName}</p>
+                      <p className="break-words">{m.content}</p>
+                    </div>
+                  </motion.div>
+                );
+              })}
             </div>
             <div className="p-3 border-t-2 border-outline-variant flex gap-2 min-w-0">
               <Input
@@ -981,7 +1019,7 @@ function AssistantContact({ ctx }: { ctx: Ctx }) {
                 className="flex-1 min-w-0"
               />
               <ExpressiveButton variant="filled" size="icon" onClick={send} disabled={sending || !message.trim()}>
-                <Send className="size-4" />
+                {sending ? <RefreshCw className="size-4 animate-spin" /> : <Send className="size-4" />}
               </ExpressiveButton>
             </div>
           </ExpressiveCard>

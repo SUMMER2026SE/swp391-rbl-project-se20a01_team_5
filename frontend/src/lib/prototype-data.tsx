@@ -97,6 +97,8 @@ function str(v: unknown, fallback = ""): string {
   return v == null ? fallback : String(v);
 }
 
+const apiCache = new Map<string, unknown>();
+
 /* =========================================================================
    Generic API hook — same shape as real-data.tsx useApiResource
    but with optional mapper.
@@ -104,7 +106,8 @@ function str(v: unknown, fallback = ""): string {
 export function useApi<T, R = T>(
   loader: () => Promise<T>,
   mapper?: (data: T) => R,
-  deps: unknown[] = []
+  deps: unknown[] = [],
+  cacheKey?: string
 ): {
   data: R | null;
   raw: T | null;
@@ -112,9 +115,10 @@ export function useApi<T, R = T>(
   error: string | null;
   reload: () => void;
 } {
-  const [raw, setRaw] = useState<T | null>(null);
+  const cached = cacheKey ? (apiCache.get(cacheKey) as T | undefined) : undefined;
+  const [raw, setRaw] = useState<T | null>(cached ?? null);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cached);
   const [tick, setTick] = useState(0);
 
   const reload = useCallback(() => setTick((t) => t + 1), []);
@@ -122,11 +126,12 @@ export function useApi<T, R = T>(
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    if (!raw) setLoading(true);
     setError(null);
     stableLoader()
       .then((d) => {
         if (!cancelled) {
+          if (cacheKey) apiCache.set(cacheKey, d);
           setRaw(d);
           setLoading(false);
         }
@@ -140,7 +145,7 @@ export function useApi<T, R = T>(
     return () => {
       cancelled = true;
     };
-  }, [stableLoader, tick]);
+  }, [stableLoader, tick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const data = raw && mapper ? mapper(raw) : ((raw as unknown) as R | null);
   return { data, raw, loading, error, reload };
@@ -340,12 +345,12 @@ export function mapVerification(v: VerificationView): User {
  */
 export function useStudentPrototypeData() {
   // Primary: aggregate dashboard endpoint (1 call instead of 11)
-  const dashboard = useApi(() => experienceApi.studentDashboard(), undefined, []);
+  const dashboard = useApi(() => experienceApi.studentDashboard(), undefined, [], "student-dashboard");
   // Profile is small and shared with app-shell — keep it
-  const profile = useApi(() => profileApi.me(), undefined, []);
+  const profile = useApi(() => profileApi.me(), undefined, [], "student-profile");
   // Passes (tickets+payments) — needed for PaymentScreen + InvoicesScreen
   // Dashboard doesn't return full payments list, so we need this
-  const passes = useApi(() => studentApi.tickets(), undefined, []);
+  const passes = useApi(() => studentApi.tickets(), undefined, [], "student-passes");
 
   const mapped = (() => {
     if (!dashboard.raw) return null;
@@ -466,7 +471,7 @@ export function useDriverPrototypeData() {
   const trips = useApi(() => operationsApi.driverTrips(), undefined, []);
   const feedback = useApi(() => experienceApi.driverFeedback(), undefined, []);
   const notifications = useApi(() => notificationApi.mine(), undefined, []);
-  const profile = useApi(() => profileApi.me(), undefined, []);
+  const profile = useApi(() => profileApi.me(), undefined, [], "student-profile");
 
   const mapped = (() => {
     if (!dashboard.raw) return null;
@@ -532,7 +537,7 @@ export function useAssistantPrototypeData() {
   const dashboard = useApi(() => experienceApi.assistantDashboard(), undefined, []);
   const trips = useApi(() => operationsApi.conductorTrips(), undefined, []);
   const notifications = useApi(() => notificationApi.mine(), undefined, []);
-  const profile = useApi(() => profileApi.me(), undefined, []);
+  const profile = useApi(() => profileApi.me(), undefined, [], "student-profile");
 
   const mapped = (() => {
     if (!dashboard.raw) return null;
@@ -639,7 +644,7 @@ export function useCoordinatorPrototypeData() {
 export function useAdminPrototypeData() {
   // Primary: aggregate admin stats endpoint (returns stats+routeMetrics+complaints+violations+fares)
   const stats = useApi(() => experienceApi.adminStats(), undefined, []);
-  const profile = useApi(() => profileApi.me(), undefined, []);
+  const profile = useApi(() => profileApi.me(), undefined, [], "student-profile");
   // Audits are needed for the activity feed on Dashboard
   const audits = useApi(() => adminApi.auditLogs(), undefined, []);
 

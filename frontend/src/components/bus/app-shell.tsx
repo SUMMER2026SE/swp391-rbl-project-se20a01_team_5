@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import { AnimatePresence, motion, useMotionValueEvent, useScroll } from "framer-motion";
 import { ArrowLeft, BadgeCheck, Bell, ChevronDown, Clock3, LogOut, Menu, PanelLeftClose, PanelLeftOpen, QrCode, School, UserCircle } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -147,7 +148,7 @@ export function AppShell({
           onClick={() => goTo(nav[0].id)}
           className="flex items-center gap-3 text-left"
         >
-          <img src="/logo.png" alt="UniBus Logo" className="h-12 w-auto object-contain shrink-0" />
+          <Image src="/logo.png" alt="UniBus Logo" width={64} height={64} className="h-12 w-auto shrink-0 object-contain" />
           <div className="min-w-0">
             <p className="text-xl font-bold tracking-tight text-on-surface">UniBus</p>
             <p className="truncate text-[11px] text-on-surface-variant">{ROLE_LABELS[role]}</p>
@@ -227,7 +228,7 @@ export function AppShell({
             borderRadius: scrolled ? 20 : 0,
           }}
           transition={{ type: "spring", stiffness: 400, damping: 30 }}
-          className="glass-m3 sticky top-0 z-30 flex items-center gap-2 border border-outline-variant/40 px-3 sm:gap-3 sm:px-6"
+          className="glass-m3 sticky top-0 z-[2400] flex items-center gap-2 border border-outline-variant/40 px-3 sm:gap-3 sm:px-6"
         >
           {!isFirstNav ? (
             <button

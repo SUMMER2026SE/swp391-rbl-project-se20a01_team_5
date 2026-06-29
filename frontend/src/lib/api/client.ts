@@ -768,6 +768,23 @@ export interface AiSource {
   detail?: string;
 }
 
+export interface AiTraceEvent {
+  type: "tool.started" | "tool.completed" | string;
+  tool?: string;
+  label: string;
+  detail?: string;
+  status?: string;
+  elapsedMs?: number;
+}
+
+export interface AiProviderStatus {
+  provider?: string;
+  modelId?: string;
+  status?: string;
+  errorCode?: string;
+  message?: string;
+}
+
 export interface AiRouteSuggestionCard {
   routeId: number;
   routeCode?: string;
@@ -792,11 +809,27 @@ export interface AiRouteSuggestionCard {
 
 export interface AiChatResponse {
   message: string;
-  mode: "BEDROCK" | "FALLBACK" | string;
+  mode: "FAST_REPLY" | "TOOL_ASSISTED" | "ZAI" | "BEDROCK" | "PROVIDER_UNAVAILABLE" | "FALLBACK" | string;
   advisoryType: string;
   routeSuggestions?: AiRouteSuggestionCard[];
   actions?: AiAction[];
   sources?: AiSource[];
+  sessionId?: string;
+  traceEvents?: AiTraceEvent[];
+  providerStatus?: AiProviderStatus;
+}
+
+export interface AiChatStreamEvent {
+  type: string;
+  message?: string;
+  delta?: string;
+  mode?: AiChatResponse["mode"];
+  advisoryType?: string;
+  routeSuggestions?: AiRouteSuggestionCard[];
+  actions?: AiAction[];
+  sources?: AiSource[];
+  traceEvents?: AiTraceEvent[];
+  providerStatus?: AiProviderStatus;
   sessionId?: string;
 }
 
@@ -1008,6 +1041,85 @@ export interface CoordinatorUniversityRouteMetric {
   assignedConductors: number;
 }
 
+type AssistantChatPayload = {
+  message: string;
+  context?: {
+    boardingStopId?: number;
+    alightingStopId?: number;
+    preferredDepartureTime?: string;
+    preferences?: string[];
+    conversationHistory?: {
+      role: "user" | "assistant";
+      content: string;
+    }[];
+  };
+};
+
+function parseSseChunk(chunk: string): AiChatStreamEvent | null {
+  const lines = chunk.split(/\r?\n/);
+  let eventName = "message";
+  const dataLines: string[] = [];
+  for (const line of lines) {
+    if (line.startsWith("event:")) {
+      eventName = line.slice(6).trim();
+    } else if (line.startsWith("data:")) {
+      dataLines.push(line.slice(5).trimStart());
+    }
+  }
+  if (!dataLines.length) return null;
+  try {
+    const parsed = JSON.parse(dataLines.join("\n")) as AiChatStreamEvent;
+    return { ...parsed, type: parsed.type || eventName };
+  } catch {
+    return { type: eventName, delta: dataLines.join("\n") };
+  }
+}
+
+async function streamAssistantChat(
+  data: AssistantChatPayload,
+  onEvent: (event: AiChatStreamEvent) => void,
+  signal?: AbortSignal
+) {
+  const token = getAccessToken();
+  const res = await fetch(`${API_BASE}/students/me/assistant-chat/stream`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(data),
+    signal,
+  });
+  if (!res.ok || !res.body) {
+    const payload = await readPayload(res);
+    throw new ApiError(
+      res.status,
+      payload?.message || payload?.error || res.statusText || "AI stream failed",
+      payload?.data
+    );
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let match = buffer.match(/\r?\n\r?\n/);
+    while (match?.index != null) {
+      const raw = buffer.slice(0, match.index).trim();
+      buffer = buffer.slice(match.index + match[0].length);
+      const event = raw ? parseSseChunk(raw) : null;
+      if (event) onEvent(event);
+      match = buffer.match(/\r?\n\r?\n/);
+    }
+  }
+  const tail = buffer.trim();
+  const event = tail ? parseSseChunk(tail) : null;
+  if (event) onEvent(event);
+}
+
 export const experienceApi = {
   studentDashboard: () => apiFetch.get<StudentDashboardView>("/students/me/dashboard"),
   studentRouteSuggestions: () => apiFetch.get<ExperienceRouteCard[]>("/students/me/route-suggestions"),
@@ -1025,19 +1137,8 @@ export const experienceApi = {
   createStudentSupportTicket: (data: { title: string; content: string; supportType?: string }) =>
     apiFetch.post<ExperienceSupportTicketCard>("/students/me/support-tickets", data),
   studentAssistantChat: () => apiFetch.get<{ chatHistoryId: number; role: string; content: string; sentAt?: string }[]>("/students/me/assistant-chat"),
-  sendAssistantChat: (data: {
-    message: string;
-    context?: {
-      boardingStopId?: number;
-      alightingStopId?: number;
-      preferredDepartureTime?: string;
-      preferences?: string[];
-      conversationHistory?: {
-        role: "user" | "assistant";
-        content: string;
-      }[];
-    };
-  }) => apiFetch.post<AiChatResponse>("/students/me/assistant-chat", data),
+  sendAssistantChat: (data: AssistantChatPayload) => apiFetch.post<AiChatResponse>("/students/me/assistant-chat", data),
+  streamAssistantChat,
   driverDashboard: () => apiFetch.get<DriverDashboardView>("/driver/dashboard"),
   driverFeedback: () => apiFetch.get<ExperienceFeedbackCard[]>("/driver/feedback"),
   assistantDashboard: () => apiFetch.get<AssistantDashboardView>("/conductor/dashboard"),
@@ -1394,6 +1495,29 @@ export interface UniversityStatsView {
   }[];
 }
 
+export interface PaymentTransactionView {
+  orderId: number;
+  transactionId?: number;
+  sepayTransactionId?: number;
+  studentCode?: string;
+  studentName?: string;
+  universityId?: number;
+  universityName?: string;
+  ticketType?: string;
+  routeId?: number;
+  routeName?: string;
+  orderTotal?: number;
+  paymentStatus?: string;
+  gateway?: string;
+  amountIn?: number;
+  amountOut?: number;
+  transactionContent?: string;
+  referenceNumber?: string;
+  transactionDate?: string;
+  paidAt?: string;
+  createdAt?: string;
+}
+
 export interface ReconciliationView {
   universityId: number;
   universityName: string;
@@ -1486,8 +1610,8 @@ export const adminApi = {
   subsidyPolicies: (universityId?: number) => apiFetch.get<SubsidyPolicyView[]>("/admin/subsidy-policies", { universityId }),
   createSubsidyPolicy: (data: { universityId: number; campusId?: number; policyName: string; subsidyType: string; value: number; maxAmount?: number; activeFrom?: string; activeUntil?: string; status?: string }) =>
     apiFetch.post<SubsidyPolicyView>("/admin/subsidy-policies", data),
-  paymentTransactions: (params?: { universityId?: number }) => apiFetch.get<PaymentTransactionView[]>("/admin/payment-transactions", params),
   auditLogs: (params?: { universityId?: number; action?: string }) => apiFetch.get<AuditLogView[]>("/admin/audit-logs", params),
+  paymentTransactions: (params?: { universityId?: number }) => apiFetch.get<PaymentTransactionView[]>("/admin/payment-transactions", params),
 };
 
 export const universityApi = {
@@ -1514,6 +1638,79 @@ export const universityApi = {
   notify: (data: { title: string; content: string }) => apiFetch.post<number>("/university-admin/notifications", data),
 };
 
+export interface DispatchMessageView {
+  messageId: number;
+  senderUserId: number;
+  senderName: string;
+  recipientUserId: number;
+  recipientName: string;
+  tripId?: number;
+  content: string;
+  read: boolean;
+  sentAt?: string;
+}
+
+export interface DispatcherContact {
+  dispatcherUserId: number;
+  dispatcherName: string;
+  phoneNumber?: string;
+  department?: string;
+  activeTripId?: number;
+  messages: DispatchMessageView[];
+}
+
+export const driverDispatchApi = {
+  contact: () => apiFetch.get<DispatcherContact>("/driver/dispatch/contact"),
+  sendMessage: (data: { tripId?: number; content: string }) =>
+    apiFetch.post<DispatchMessageView>("/driver/dispatch/messages", data),
+  reportIncident: (data: { tripId: number; incidentType: string; description: string }) =>
+    apiFetch.post<DispatchMessageView>("/driver/dispatch/incidents", data),
+};
+
+export interface ContactPersonView {
+  userId: number;
+  name: string;
+  role: string;
+  phoneNumber?: string;
+  primary: boolean;
+}
+
+export interface InternalMessageView {
+  messageId: number;
+  senderUserId: number;
+  senderName: string;
+  recipientUserId: number;
+  recipientName: string;
+  tripId?: number;
+  content: string;
+  read: boolean;
+  sentAt?: string;
+}
+
+export interface ConductorContactView {
+  activeTripId?: number;
+  routeName?: string;
+  driverName?: string;
+  driverPhone?: string;
+  contacts: ContactPersonView[];
+  messages: InternalMessageView[];
+}
+
+export interface ConductorSupportResult {
+  type: string;
+  reportId: number;
+  message: string;
+  notificationMessage?: InternalMessageView;
+}
+
+export const conductorApi = {
+  contact: () => apiFetch.get<ConductorContactView>("/conductor/contact"),
+  sendMessage: (data: { tripId?: number; recipientType: string; content: string }) =>
+    apiFetch.post<InternalMessageView>("/conductor/messages", data),
+  submitSupport: (data: { tripId: number; reportType: string; passengerName?: string; location?: string; description: string }) =>
+    apiFetch.post<ConductorSupportResult>("/conductor/support", data),
+};
+
 export const api = {
   auth: authApi,
   profile: profileApi,
@@ -1526,4 +1723,6 @@ export const api = {
   admin: adminApi,
   universities: universityApi,
   messaging: messagingApi,
+  driverDispatch: driverDispatchApi,
+  conductor: conductorApi,
 };

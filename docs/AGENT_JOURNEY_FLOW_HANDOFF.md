@@ -266,6 +266,31 @@ Run again after any backend edit.
 
 ## Follow-Up Work
 
+## 2026-06-28 Google Maps Reference Planner Correction
+
+Scope:
+
+- The FPT Complex testcase was recalibrated against Google Maps screenshots. A walking total around 25 minutes is not automatically a bug for the current GPS point and destination wall/gate coordinate.
+- `JourneyPlannerService` now uses Google-like result density: return at most 2 best options after dedupe instead of listing every reachable route/stop combination.
+- Stop search radius is 1500m. Access walking is capped at 1300m per origin/destination leg, total access walking at 2400m, and transfer walking at 300m.
+- The old "900m is too far" behavior was removed. Options inside the hard caps are scored instead of hard-filtered.
+- Backend and frontend rank by `totalMinutes + transferCount*12 + walkMinutes*0.75 + longWalkPenalty + confidencePenalty`, where long-walk penalty only starts after 1800m total walking.
+- Journey options are deduplicated by bus route sequence plus direction, for example `16:0` or `16:0 > 06:1`. Boarding/alighting stop choices no longer create duplicate cards for the same route sequence.
+- The frontend mirrors backend ranking/dedupe and also caps visible results at 2, so stale or broader API responses do not flood the desktop UI.
+- Result card behavior changed: clicking a card now only selects the option and redraws the map. The user enters the deep panel only through `Xem chi tiết`.
+- Result cards are intentionally compact: route badges, departure-arrival time, total minutes, transfer count, total walking minutes, and headway/ETA text. Single-trip price and full leg detail are not shown on compact cards.
+- Detail panels keep the Google-style step narrative: walk from `Vị trí hiện tại`/origin to boarding stop, take bus leg(s), then walk from alighting stop to destination.
+- Leaflet popups now use UniBus map popup classes and app font stack to avoid the default Leaflet font/weight mismatch.
+- GPS/current-location is used for journey search coordinates but no longer rendered as a separate extra marker on the map. The green endpoint marker in a route preview represents the boarding stop, not the student's exact GPS point.
+- Browser geolocation now requests a fresh high-accuracy reading (`maximumAge: 0`) instead of accepting a cached position.
+- Data QA note: route `16` is present in the BusMap seed and linked to student school demo data. Route `06` is present in source policy as interregional (`ImportDanangBusMapData.ps1` marks `06` in `$interregionalCodes`), and the planner currently filters `COALESCE(r.is_interregional, false) = false`. If product decides Google Maps parity should include `06`, this should be treated as a data-policy change, not a hidden planner bug.
+
+Verification:
+
+- `frontend`: `npm run build` passed on 2026-06-28.
+- `backend`: Maven compile passed on 2026-06-28 using the local Maven cache path documented in the verification commands above.
+- Full `mvn test` currently fails in `AiCopilotServiceTests` because the earlier chatbot fast-path returns mode `FAST_CONTEXT` while two existing assertions still expect provider modes `BEDROCK`/`ZAI`. This is outside the journey planner change set, but the tests should be updated before treating the full backend suite as green again.
+
 Highest priority:
 
 - For any fresh environment, apply V14/V15 then run official seed and `AuditDanangJourneyPlannerData.sql`.
@@ -276,3 +301,114 @@ Highest priority:
 - Add richer local landmarks for Da Nang so geocoder suggestions feel product-grade even when OSM is slow.
 
 Do not reset/revert user work in dirty files. Existing dirty files before this refactor included `backend/src/main/java/com/unibus/api/ai/ZaiAiLlmService.java`, `frontend/src/app/globals.css`, and `frontend/src/components/bus/roles/student-module.tsx`.
+
+## 2026-06-28 Follow-Up: Route Canonicalization, Map Drawing, And Overlay Layering
+
+User QA found that the planner could still show noisy alternatives such as `R16` beside `16`, or transfer options even when direct route `16` is the product-grade result. This was fixed as a general rule, not a one-off testcase:
+
+- Backend direct-route search now checks nearest candidate stops per route line, so a valid direct route is not missed just because global nearest-stop candidates were dominated by another route.
+- Result dedupe now canonicalizes alias route codes like `R16` to `16` in the route-sequence signature. Alias routes also receive a small score penalty, so official numeric routes win when they are otherwise comparable.
+- Direct journeys are preferred. A transfer option is only kept if it beats the best direct option by a strong margin.
+- Current planner thresholds are: nearest stop radius `1700m`, max access walk per end `1600m`, max total walk `2700m`, transfer walk `300m`.
+- Planner no longer uses the old hard filter for interregional routes inside journey search. This prevents data-policy hiding from silently blocking valid options, while scoring/dedupe still keeps the UI compact.
+- Journey card copy now separates total journey time from waiting time: the right side labels `Tổng`, while the meta line uses `Chờ X phút`/`Xe sắp tới`. This avoids reading `61 phút` and `xe tới trong 11 phút` as conflicting values.
+- Compact cards show walking minutes, not raw meters, and no fare. Detail view still contains route steps.
+- Journey map now disables stop-to-stop fallback polylines for planner previews. If backend shape data is missing, the planner will not draw a misleading straight bus line.
+- Planner does not render a separate GPS marker. It only draws dashed walking segments, boarding/alighting stop markers, and actual bus route polylines from backend `path_points`.
+- Header/dropdown overlays were raised above the journey/map stacking context so the avatar menu is not hidden behind the planner.
+
+API verification after backend restart:
+
+- `Vị trí hiện tại` near Hải Châu -> `Bến xe buýt Đại học Việt Hàn`, `maxBusLegs=2`: 1 option, route `16`, direct, 46 minutes, 5 minutes walking, bus polyline 121 points.
+- Same origin/destination with `maxBusLegs=1`: 1 option, route `16`, direct.
+- Bình Minh-ish GPS -> `Bến xe buýt Đại học Việt Hàn`: 1 option, route `16`, direct, longer walking accepted instead of returning `0 kết quả`.
+- Trần Phú-ish GPS -> FPT wall destination: 1 option, route `16`, direct, with start/end walking legs and bus polyline 116 points.
+- Place search for `đại học việt` now prioritizes `Bến xe buýt Đại học Việt Hàn` and `Đại học Việt Hàn`; the raw lowercase `đại học việt` stop label is no longer shown as-is.
+
+Verification commands passed after this follow-up:
+
+```powershell
+cd frontend
+npm run build
+```
+
+```powershell
+cd backend
+& "C:\Users\DuckHai\.m2\wrapper\dists\apache-maven-3.9.15-bin\4rlcemksed9vjmkvgss0jpc4po\apache-maven-3.9.15\bin\mvn.cmd" -q -DskipTests compile
+```
+
+## 2026-06-28 Follow-Up: Desktop Result Card Polish Before PR
+
+Scope was intentionally narrow: only route result cards and the lookup route icon alignment were touched. Overall page layout, navigation, map, colors, and backend APIs were not redesigned in this pass.
+
+Route result card changes:
+
+- Reworked the compact result card into a lower two-column layout:
+  - Left side: route flow and compact trip metadata.
+  - Right side: total duration and `Xem chi tiết` CTA.
+- Preserved all required information: route sequence, departure-arrival time, total duration, transfer count, walking time, waiting time, and details button.
+- Total duration now uses human-readable labels such as `1 giờ 11 phút` instead of raw `71 phút`.
+- Route badges are pill-shaped (`rounded-full`, wider min width) so they no longer look like clipped squares.
+- Walking, transfer, and waiting metadata use icons inline to reduce text weight.
+- Removed card shadow per latest UI feedback. The card now relies on border, background, and state-layer hover only.
+- Kept `Xem chi tiết` behavior unchanged; clicking the card still previews/draws the option, while the button opens the detail panel.
+
+Lookup route card change:
+
+- The bus icon wrapper in route lookup cards is vertically centered against the card content row (`items-center`), fixing the visual misalignment reported in screenshots.
+
+Data/product notes:
+
+- Current published route list does not include route `01`; API `/routes` currently starts at `02` and includes `02, 03, 04, 05, 07, 08, 11, 12, 14, 16, 17, N1, N2, R15, R16, R17A, R4A, R6A, TMF1`.
+- If `01` appears again in journey results, treat it as stale frontend/backend state or a route-selection bug, not a valid published route from the current API.
+
+Verification after this polish:
+
+```powershell
+cd frontend
+npm run build
+```
+
+Status:
+
+- Ready for PR review from the frontend/build perspective.
+- Do not merge directly to `main` without reviewing the full dirty worktree, because this branch also contains broader chatbot/API edits from earlier work.
+
+## 2026-06-28 Follow-Up: Merge `origin/main` Into `DucHai` For PR Prep
+
+Purpose:
+
+- Prepare PR direction `DucHai -> main` by bringing latest `origin/main` into the feature branch and resolving conflicts locally before pushing.
+- Keep `DucHai` as the source of truth for the student journey planner/chatbot/ticket hub UI, while preserving compatible backend/frontend additions from `main`.
+
+Conflict resolution notes:
+
+- `TicketingDtos`, `TicketingController`, `TicketingService`, and `TicketingRepository` were merged by keeping Journey Order / journey monthly pass support from `DucHai` and VNPay payment URL / mock result flow from `main`.
+- `SePayService` was merged by keeping `requestedRouteId` and `routeName` in SePay order responses, while preserving the test-payment guard and order fields from `main`.
+- `ExperienceRepository` keeps the `DucHai` route/stop publishing behavior for planner and dashboard cards, and also preserves the newer internal-message SQL from `main` (`content`, `is_read`, and SOS filtering).
+- `frontend/src/lib/api/client.ts` keeps chatbot SSE streaming from `DucHai` and coordinator university route metrics from `main`.
+- `frontend/src/components/bus/roles/student-module.tsx` was resolved to the `DucHai` version because it contains the latest journey planner, chatbot, ticket hub, route result card, and lookup route UI fixes.
+- `frontend/src/components/bus/nav-config.ts` keeps the new `stu-university` item from `main`.
+
+Verification after merge conflict resolution:
+
+```powershell
+cd frontend
+npm run build
+```
+
+```powershell
+cd backend
+& "C:\Users\DuckHai\.m2\wrapper\dists\apache-maven-3.9.15-bin\4rlcemksed9vjmkvgss0jpc4po\apache-maven-3.9.15\bin\mvn.cmd" -q -DskipTests compile
+```
+
+```powershell
+cd backend
+& "C:\Users\DuckHai\.m2\wrapper\dists\apache-maven-3.9.15-bin\4rlcemksed9vjmkvgss0jpc4po\apache-maven-3.9.15\bin\mvn.cmd" -q "-Dtest=TicketingAndRoutePassServiceTests,TicketingServiceVnpayTests,VNPayUtilsTests" test
+```
+
+Additional checks:
+
+- `git diff --check` passed.
+- Repository-wide conflict-marker search passed (`<<<<<<<` / `>>>>>>>` not found).
+- Browser/visual testing intentionally skipped in this merge-prep pass per user instruction.

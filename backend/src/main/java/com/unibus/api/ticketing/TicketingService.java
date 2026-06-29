@@ -268,6 +268,14 @@ public class TicketingService {
                 : request.method();
     }
 
+    private String method(String method) {
+        return method == null || method.isBlank() ? "BANK_TRANSFER" : method;
+    }
+
+    private String label(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value.trim();
+    }
+
     private boolean hasVnpayCredentials() {
         return vnPayConfig.tmnCode() != null && !vnPayConfig.tmnCode().isBlank()
                 && vnPayConfig.hashSecret() != null && !vnPayConfig.hashSecret().isBlank();
@@ -295,14 +303,6 @@ public class TicketingService {
             builder.queryParam("txnRef", transactionCode);
         }
         return builder.build().toUriString();
-    }
-
-    private String method(String method) {
-        return method == null || method.isBlank() ? "BANK_TRANSFER" : method;
-    }
-
-    private String label(String value, String fallback) {
-        return value == null || value.isBlank() ? fallback : value.trim();
     }
 
     private void ensurePurchasableQuote(MonthlyPassQuote quote) {

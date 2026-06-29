@@ -6,6 +6,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -35,13 +36,15 @@ public class ZaiAiLlmService implements AiLlmService {
     private final String modelId;
     private final int maxOutputTokens;
     private final double temperature;
+    private volatile AiDtos.AiProviderStatus lastStatus;
+    private volatile Instant circuitOpenUntil = Instant.EPOCH;
 
     public ZaiAiLlmService(
             @Value("${app.ai.enabled:false}") boolean enabled,
             @Value("${app.ai.provider:bedrock}") String provider,
             @Value("${app.ai.zai.api-key:}") String apiKey,
             @Value("${app.ai.zai.base-url:https://api.z.ai/api/paas/v4/}") String baseUrl,
-            @Value("${app.ai.zai.model-id:glm-4.7-flash}") String modelId,
+            @Value("${app.ai.zai.model-id:glm-4.5-flash}") String modelId,
             @Value("${app.ai.max-output-tokens:1200}") int maxOutputTokens,
             @Value("${app.ai.temperature:0.2}") double temperature) {
         this.objectMapper = new ObjectMapper();
@@ -52,17 +55,25 @@ public class ZaiAiLlmService implements AiLlmService {
         this.provider = provider == null ? "bedrock" : provider.trim();
         this.apiKey = firstNonBlank(apiKey, System.getenv("ZAI_API_KEY"), windowsUserEnv("ZAI_API_KEY"));
         this.baseUrl = normalizeBaseUrl(firstNonBlank(baseUrl, System.getenv("ZAI_BASE_URL"), windowsUserEnv("ZAI_BASE_URL")));
-        this.modelId = firstNonBlank(modelId, System.getenv("ZAI_MODEL_ID"), windowsUserEnv("ZAI_MODEL_ID"), "glm-4.7-flash");
+        this.modelId = firstNonBlank(windowsUserEnv("ZAI_MODEL_ID"), modelId, System.getenv("ZAI_MODEL_ID"), "glm-4.5-flash");
         this.maxOutputTokens = Math.max(128, maxOutputTokens);
         this.temperature = Math.max(0, Math.min(1, temperature));
+        this.lastStatus = status("READY", null, null);
     }
 
     @Override
     public Optional<LlmResult> complete(AiPrompt prompt) {
-        if (!enabled || !"zai".equalsIgnoreCase(provider)) {
+        if (!enabled) {
+            lastStatus = status("DISABLED", null, "AI is disabled");
+            return Optional.empty();
+        }
+        if (Instant.now().isBefore(circuitOpenUntil)) {
+            lastStatus = status("CIRCUIT_OPEN", "COOLDOWN", "Z.ai is temporarily skipped after a provider failure");
             return Optional.empty();
         }
         if (apiKey.isBlank()) {
+            lastStatus = status("UNAVAILABLE", "MISSING_KEY", "ZAI_API_KEY is not configured");
+            openCircuit();
             log.warn("Z.ai AI completion skipped because ZAI_API_KEY is not configured");
             return Optional.empty();
         }
@@ -78,18 +89,32 @@ public class ZaiAiLlmService implements AiLlmService {
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                log.warn("Z.ai AI completion failed with HTTP {}", response.statusCode());
+                ProviderError providerError = providerError(response.body());
+                lastStatus = status("UNAVAILABLE", providerError.code(), providerError.message());
+                openCircuit();
+                log.warn("Z.ai AI completion failed with HTTP {}: {}", response.statusCode(), truncate(response.body()));
                 return Optional.empty();
             }
             String text = parseResponse(response.body());
             if (text == null || text.isBlank()) {
+                lastStatus = status("UNAVAILABLE", "EMPTY_RESPONSE", "Z.ai returned an empty message");
+                openCircuit();
+                log.warn("Z.ai AI completion returned an empty message: {}", truncate(response.body()));
                 return Optional.empty();
             }
+            lastStatus = status("HEALTHY", null, null);
             return Optional.of(new LlmResult(text.trim(), "zai", modelId));
         } catch (Exception exception) {
+            lastStatus = status("UNAVAILABLE", "REQUEST_FAILED", exception.getMessage());
+            openCircuit();
             log.warn("Z.ai AI completion failed, falling back to deterministic response: {}", exception.getMessage());
             return Optional.empty();
         }
+    }
+
+    @Override
+    public AiDtos.AiProviderStatus providerStatus() {
+        return lastStatus;
     }
 
     private String requestBody(AiPrompt prompt) {
@@ -97,7 +122,7 @@ public class ZaiAiLlmService implements AiLlmService {
                 "model", modelId,
                 "temperature", temperature,
                 "max_tokens", maxOutputTokens,
-                "enable_thinking", false,
+                "stream", false,
                 "thinking", Map.of("type", "disabled"),
                 "messages", List.of(
                         Map.of("role", "system", "content", prompt.systemPrompt()),
@@ -118,7 +143,37 @@ public class ZaiAiLlmService implements AiLlmService {
         JsonNode root = read(responseBody);
         JsonNode choices = root.path("choices");
         if (choices.isArray() && !choices.isEmpty()) {
-            return choices.get(0).path("message").path("content").asText("");
+            JsonNode first = choices.get(0);
+            String content = first.path("message").path("content").asText("");
+            if (!content.isBlank()) {
+                return content;
+            }
+            String reasoningContent = first.path("message").path("reasoning_content").asText("");
+            if (!reasoningContent.isBlank()) {
+                return reasoningContent;
+            }
+            String text = first.path("text").asText("");
+            if (!text.isBlank()) {
+                return text;
+            }
+        }
+        String outputText = root.path("output_text").asText("");
+        if (!outputText.isBlank()) {
+            return outputText;
+        }
+        JsonNode output = root.path("output");
+        if (output.isArray()) {
+            for (JsonNode item : output) {
+                JsonNode content = item.path("content");
+                if (content.isArray()) {
+                    for (JsonNode block : content) {
+                        String text = block.path("text").asText("");
+                        if (!text.isBlank()) {
+                            return text;
+                        }
+                    }
+                }
+            }
         }
         return "";
     }
@@ -187,5 +242,35 @@ public class ZaiAiLlmService implements AiLlmService {
         } catch (Exception exception) {
             throw new IllegalStateException("Unable to parse Z.ai payload", exception);
         }
+    }
+
+    private AiDtos.AiProviderStatus status(String status, String errorCode, String message) {
+        return new AiDtos.AiProviderStatus("zai", modelId, status, errorCode, message);
+    }
+
+    private void openCircuit() {
+        circuitOpenUntil = Instant.now().plusSeconds(45);
+    }
+
+    private ProviderError providerError(String responseBody) {
+        try {
+            JsonNode error = read(responseBody).path("error");
+            String code = error.path("code").asText("HTTP_ERROR");
+            String message = error.path("message").asText("Z.ai request failed");
+            return new ProviderError(code, message);
+        } catch (RuntimeException exception) {
+            return new ProviderError("HTTP_ERROR", truncate(responseBody));
+        }
+    }
+
+    private String truncate(String value) {
+        if (value == null || value.isBlank()) {
+            return "<empty>";
+        }
+        String singleLine = value.replaceAll("\\s+", " ").trim();
+        return singleLine.length() <= 800 ? singleLine : singleLine.substring(0, 800) + "...";
+    }
+
+    private record ProviderError(String code, String message) {
     }
 }

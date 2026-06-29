@@ -13,6 +13,7 @@ backend/uploads/
 frontend/frontend-run*.log
 .codex-tmp/
 .codex/tmp/
+.codex-backend*.log
 *.rej
 *.orig
 patch6.patch
@@ -34,4 +35,6 @@ run-frontend.bat
 run-dev.bat
 node_modules/
 backend/*.log
-.vs/ 
+.vs/
+~$*.xlsx
+~$*.docx

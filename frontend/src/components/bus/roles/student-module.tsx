@@ -12,7 +12,7 @@
 // =============================================================================
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { QRCodeCanvas } from "qrcode.react";
 import {
   MapPin,
@@ -184,6 +184,8 @@ import {
   type JourneyOptionDTO,
   type JourneyTrackingSnapshotDTO,
   type AiSource,
+  type AiTraceEvent,
+  type AiProviderStatus,
   type AiRouteSuggestionCard,
   ApiError,
 } from "@/lib/api/client";
@@ -241,6 +243,8 @@ export function StudentModule({ activeId, onNavigate, onProfileRefresh }: Studen
       return <DashboardScreen ctx={ctx} onNavigate={onNavigate} />;
     case "stu-university":
       return <UniversityScreen ctx={ctx} onProfileRefresh={onProfileRefresh} />;
+    case "stu-stops":
+      return <StopsScreen ctx={ctx} />;
     case "stu-find":
       return <JourneyPlannerDesktop ctx={ctx} onNavigate={onNavigate} />;
     case "stu-my-journeys":
@@ -738,7 +742,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
           actions={
             <button
               className="state-layer inline-flex items-center gap-1 h-8 px-3 rounded-full text-sm font-bold text-[#14140f] hover:bg-[#14140f]/8"
-              onClick={() => onNavigate("stu-notifications")}
+              onClick={() => onNavigate("stu-stops")}
             >
               Xem tất cả
               <ArrowRight className="size-4" />
@@ -4108,177 +4112,92 @@ const CHATBOT_SUGGESTIONS = [
   "Hướng dẫn tôi đăng ký tuyến và mua vé tháng SePay",
 ];
 
-type AgentWorkStep = {
-  label: string;
-  detail: string;
-  icon: React.ElementType;
-};
-
-function chatbotWorkSteps(prompt: string): AgentWorkStep[] {
-  const text = prompt.toLowerCase();
-  const steps: AgentWorkStep[] = [
-    { label: "Đọc câu hỏi", detail: "Xác định ý định và độ khó", icon: Search },
-    { label: "Hồ sơ sinh viên", detail: "Kiểm tra trường, đăng ký và vé hiện tại", icon: School },
-  ];
-  if (text.includes("tuyến") || text.includes("trạm") || text.includes("đến") || text.includes("route") || text.includes("đường")) {
-    steps.push({ label: "Tuyến & trạm", detail: "Tra route, stop order và điểm lên/xuống", icon: RouteIcon });
-  }
-  if (text.includes("giá") || text.includes("vé") || text.includes("trợ giá") || text.includes("sepay")) {
-    steps.push({ label: "Vé & trợ giá", detail: "Tính giá sau trợ giá nếu có dữ liệu", icon: Wallet });
-  }
-  if (text.includes("lịch") || text.includes("chuyến") || text.includes("eta") || text.includes("mấy giờ")) {
-    steps.push({ label: "Lịch chạy", detail: "Đọc chuyến gần nhất và ETA mô phỏng", icon: Clock });
-  }
-  steps.push({ label: "Soạn phản hồi", detail: "Trả lời ngắn, không bịa dữ liệu ngoài context", icon: Sparkles });
-  return steps;
+function ToolGlyph({ tool, className }: { tool?: string; className?: string }) {
+  if (tool?.includes("route")) return <RouteIcon className={className} />;
+  if (tool?.includes("student")) return <School className={className} />;
+  if (tool?.includes("llm")) return <Sparkles className={className} />;
+  if (tool?.includes("fare") || tool?.includes("payment")) return <Wallet className={className} />;
+  if (tool?.includes("schedule") || tool?.includes("eta")) return <Clock className={className} />;
+  return <Search className={className} />;
 }
 
-function AiWorkingIndicator({ prompt }: { prompt: string }) {
-  const steps = useMemo(() => chatbotWorkSteps(prompt), [prompt]);
-  const [activeStep, setActiveStep] = useState(0);
+function ToolTracePanel({
+  traceEvents,
+  mode,
+  providerStatus,
+  streaming,
+}: {
+  traceEvents?: AiTraceEvent[];
+  mode?: string;
+  providerStatus?: AiProviderStatus;
+  streaming?: boolean;
+}) {
+  const reducedMotion = useReducedMotion();
+  const events = traceEvents || [];
+  const latestEvent = [...events].reverse().find((event) => event.type === "tool.started" || event.type === "tool.completed");
+  const providerDown = streaming && mode === "PROVIDER_UNAVAILABLE";
 
-  useEffect(() => {
-    setActiveStep(0);
-    const timer = window.setInterval(() => {
-      setActiveStep((value) => (value + 1) % Math.max(steps.length, 1));
-    }, 780);
-    return () => window.clearInterval(timer);
-  }, [steps.length, prompt]);
+  if (!streaming || mode === "FAST_REPLY" || (!latestEvent && !providerDown)) return null;
 
-  const active = steps[activeStep] || steps[0];
-  const ActiveIcon = active?.icon || Sparkles;
+  const done = latestEvent?.type === "tool.completed";
+  const label = providerDown
+    ? `Provider đang chậm${providerStatus?.errorCode ? ` (${providerStatus.errorCode})` : ""}`
+    : done
+      ? latestEvent?.detail || latestEvent?.label || "Đã truy xuất dữ liệu"
+      : latestEvent?.detail || latestEvent?.label || "Đang truy xuất dữ liệu";
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.25, ease: "easeOut" }}
-      className="flex gap-3 max-w-[92%] min-w-0"
-      role="status"
-      aria-live="polite"
-    >
-      <div className="grid size-8 shrink-0 place-items-center rounded-full bg-[#BDFD4F] text-[#14140f]">
-        <Bot className="size-4" />
-      </div>
-      <div className="min-w-0 rounded-[28px] border border-outline-variant bg-surface px-4 py-3 text-sm">
-        <div className="mb-3 flex items-center justify-between gap-3 text-xs font-semibold text-on-surface-variant">
-          <span className="inline-flex items-center gap-2">
-            <Sparkles className="size-3.5 text-on-surface" />
-            Copilot đang làm việc
-          </span>
-          <span className="inline-flex items-center gap-1" aria-hidden="true">
-            {[0, 1, 2].map((index) => (
-              <motion.span
-                key={index}
-                className="size-1.5 rounded-full bg-[#BDFD4F]"
-                animate={{ opacity: [0.35, 1, 0.35], y: [0, -2, 0] }}
-                transition={{ duration: 0.9, repeat: Infinity, delay: index * 0.14 }}
-              />
-            ))}
-          </span>
-        </div>
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={active?.label}
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
-            className="flex items-start gap-3 rounded-2xl bg-surface-container-low px-3 py-2.5"
-          >
-            <span className="grid size-8 shrink-0 place-items-center rounded-xl bg-[#14140f] text-[#BDFD4F]">
-              <ActiveIcon className="size-4" />
-            </span>
-            <span className="min-w-0">
-              <span className="block text-sm font-semibold text-on-surface">{active?.label}</span>
-              <span className="block text-xs leading-5 text-on-surface-variant">{active?.detail}</span>
-            </span>
-          </motion.div>
-        </AnimatePresence>
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {steps.map((step, index) => {
-            const Icon = step.icon;
-            const isActive = index === activeStep;
-            return (
-              <motion.div
-                key={step.label}
-                initial={false}
-                animate={{
-                  opacity: isActive ? 1 : 0.5,
-                  backgroundColor: isActive ? "#BDFD4F" : "rgba(20,20,15,0.04)",
-                }}
-                transition={{ duration: 0.18 }}
-                className="inline-flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[11px] font-semibold text-[#14140f]"
-              >
-                <Icon className="size-3.5 shrink-0" />
-                <span>{step.label}</span>
-              </motion.div>
-            );
-          })}
-        </div>
-      </div>
-    </motion.div>
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={`${latestEvent?.type || mode}-${latestEvent?.tool || "provider"}-${latestEvent?.detail || ""}`}
+        initial={reducedMotion ? false : { opacity: 0, y: 4, filter: "blur(3px)" }}
+        animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0, filter: "blur(0px)" }}
+        exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -3, filter: "blur(3px)" }}
+        transition={{ duration: done ? 0.16 : 0.22, ease: "easeOut" }}
+        className={cn(
+          "mt-2 inline-flex max-w-full items-center gap-2 rounded-full text-xs font-medium text-on-surface-variant",
+          !done && !providerDown && !reducedMotion && "ai-tool-thinking"
+        )}
+      >
+        <span className={cn(
+          "grid size-5 shrink-0 place-items-center rounded-full",
+          done ? "bg-success/10 text-success" : providerDown ? "bg-warning/15 text-warning" : "bg-[#BDFD4F]/20 text-[#4B651F]"
+        )}>
+          {done ? <CheckCircle2 className="size-3.5" /> : <ToolGlyph tool={latestEvent?.tool} className="size-3.5" />}
+        </span>
+        <span className="truncate">{label}</span>
+      </motion.div>
+    </AnimatePresence>
   );
 }
 
-function AgentExecutionSummary({ sources, mode }: { sources?: AiSource[]; mode?: string }) {
-  const [expanded, setExpanded] = useState(false);
-  const sourceCount = sources?.length || 0;
-  if (!sourceCount && !mode) return null;
-
+function AssistantText({ text, streaming }: { text: string; streaming?: boolean }) {
+  const reducedMotion = useReducedMotion();
+  if (!text) {
+    return (
+      <span className="inline-flex items-center gap-1 text-on-surface-variant" aria-label="Đang chờ phản hồi">
+        <span className="size-1.5 rounded-full bg-current opacity-50" />
+        <span className="size-1.5 rounded-full bg-current opacity-70" />
+        <span className="size-1.5 rounded-full bg-current opacity-50" />
+      </span>
+    );
+  }
+  if (reducedMotion || !streaming) {
+    return <p className="whitespace-pre-wrap">{text}</p>;
+  }
   return (
-    <div className="mt-3 overflow-hidden rounded-2xl border border-outline-variant/70 bg-surface">
-      <button
-        type="button"
-        onClick={() => setExpanded((value) => !value)}
-        aria-expanded={expanded}
-        className="flex min-h-11 w-full items-center gap-2 px-3 text-left text-xs font-semibold text-on-surface transition-colors hover:bg-surface-container-high"
-      >
-        <CheckCircle2 className="size-4 shrink-0 text-success" />
-        <span className="flex-1">
-          {sourceCount ? `Đã tra cứu ${sourceCount} nguồn dữ liệu` : "Đã hoàn tất xử lý"}
-        </span>
-        <ChevronRight className={cn("size-4 text-on-surface-variant transition-transform", expanded && "rotate-90")} />
-      </button>
-      <AnimatePresence initial={false}>
-        {expanded && (
-          <motion.div
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            transition={{ duration: 0.18, ease: "easeOut" }}
-            className="border-t border-outline-variant/70 px-3 py-2.5"
-          >
-            <div className="space-y-2">
-              {(sources || []).map((source, index) => (
-                <div key={`${source.type}-${index}`} className="flex items-start gap-2 text-xs">
-                  <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-success" />
-                  <span>
-                    <span className="font-semibold text-on-surface">{source.label}</span>
-                    {source.detail && <span className="text-on-surface-variant"> · {source.detail}</span>}
-                  </span>
-                </div>
-              ))}
-              {mode && (
-                <div className="flex items-start gap-2 text-xs">
-                  <Sparkles className="mt-0.5 size-3.5 shrink-0 text-on-surface" />
-                  <span className="text-on-surface-variant">
-                    {mode === "FAST_CONTEXT"
-                      ? "Trả lời nhanh bằng dữ liệu UniBus"
-                      : mode === "ZAI"
-                      ? "Tổng hợp phản hồi bằng Z.AI"
-                      : mode === "BEDROCK"
-                        ? "Tổng hợp phản hồi bằng AWS Bedrock"
-                        : "Hoàn tất bằng chế độ dự phòng"}
-                  </span>
-                </div>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+    <p className="whitespace-pre-wrap">
+      {text.split(/(\s+)/).map((part, index) => (
+        <motion.span
+          key={`${part}-${index}`}
+          initial={{ opacity: 0, y: 3 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.18, delay: Math.min(index * 0.008, 0.18), ease: "easeOut" }}
+        >
+          {part}
+        </motion.span>
+      ))}
+    </p>
   );
 }
 
@@ -4291,7 +4210,6 @@ function AiRouteResultCard({
   index: number;
   onNavigate: (id: string) => void;
 }) {
-  const [showStops, setShowStops] = useState(false);
   const stops = route.stops || [];
   const registerAction = route.actions?.find((action) => action.type === "REGISTER_ROUTE");
   const boardingStopId = registerAction?.boardingStopId || stops[0]?.stopId;
@@ -4301,18 +4219,12 @@ function AiRouteResultCard({
 
   const viewOnMap = () => {
     window.sessionStorage.setItem("unibus:assistant:route-preview", String(route.routeId));
+    window.sessionStorage.setItem("unibus:assistant:route-preview-context", JSON.stringify({
+      routeId: route.routeId,
+      boardingStopId,
+      alightingStopId,
+    }));
     onNavigate("stu-find");
-  };
-
-  const registerRoute = () => {
-    if (boardingStopId && alightingStopId) {
-      window.localStorage.setItem("unibus.pendingRegistration", JSON.stringify({
-        routeId: String(route.routeId),
-        boardingStopId: String(boardingStopId),
-        alightingStopId: String(alightingStopId),
-      }));
-    }
-    onNavigate("stu-my-journeys");
   };
 
   return (
@@ -4322,18 +4234,18 @@ function AiRouteResultCard({
       transition={{ duration: 0.22, delay: Math.min(index * 0.04, 0.12), ease: "easeOut" }}
       className="overflow-hidden rounded-2xl border border-outline-variant bg-surface text-on-surface"
     >
-      <div className="p-4">
+      <div className="p-3.5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex h-7 items-center rounded-lg bg-[#14140f] px-2.5 text-xs font-bold text-[#beff50]">
+              <span className="inline-flex h-6 items-center rounded-full bg-[#14140f] px-2.5 text-[11px] font-bold text-[#beff50]">
                 {route.routeCode || `T-${route.routeId}`}
               </span>
               {route.confidence != null && (
                 <span className="text-xs font-medium text-on-surface-variant">{route.confidence}% phù hợp</span>
               )}
             </div>
-            <h3 className="mt-2 text-sm font-bold leading-5">{route.routeName}</h3>
+            <h3 className="mt-2 text-sm font-semibold leading-5">{route.routeName}</h3>
           </div>
           <Bus className="size-5 shrink-0 text-on-surface-variant" />
         </div>
@@ -4344,91 +4256,38 @@ function AiRouteResultCard({
           </p>
         )}
 
-        <div className="mt-4 grid grid-cols-3 divide-x divide-outline-variant rounded-xl border border-outline-variant">
-          <div className="min-w-0 px-2.5 py-3">
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          <div className="min-w-0 rounded-xl bg-surface-container-low px-2.5 py-2">
             <p className="text-[10px] text-on-surface-variant">Chuyến gần nhất</p>
             <p className="mt-1 truncate text-xs font-bold">{departure || "Chưa có"}</p>
           </div>
-          <div className="min-w-0 px-2.5 py-3">
+          <div className="min-w-0 rounded-xl bg-surface-container-low px-2.5 py-2">
             <p className="text-[10px] text-on-surface-variant">Số trạm</p>
             <p className="mt-1 text-xs font-bold">{stops.length || "Chưa rõ"}</p>
           </div>
-          <div className="min-w-0 px-2.5 py-3">
+          <div className="min-w-0 rounded-xl bg-surface-container-low px-2.5 py-2">
             <p className="text-[10px] text-on-surface-variant">Vé tháng</p>
             <p className="mt-1 truncate text-xs font-bold">{monthlyFare != null ? formatVND(monthlyFare) : "Chưa có"}</p>
           </div>
         </div>
 
         {route.subsidyAmount != null && route.subsidyAmount > 0 && (
-          <div className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-[#beff50]/15 px-3 py-2 text-xs">
+          <div className="mt-2 flex items-center justify-between gap-3 rounded-xl bg-[#beff50]/12 px-3 py-2 text-xs">
             <span className="text-on-surface-variant">Trợ giá sinh viên</span>
             <span className="font-bold text-on-surface">-{formatVND(route.subsidyAmount)}</span>
           </div>
         )}
-
-        {stops.length > 0 && (
-          <div className="mt-4">
-            <button
-              type="button"
-              onClick={() => setShowStops((value) => !value)}
-              aria-expanded={showStops}
-              className="flex min-h-11 w-full items-center gap-3 text-left"
-            >
-              <span className="relative flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-container text-on-primary-container">
-                <MapPin className="size-4" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-xs font-semibold">{stops[0]?.stopName}</span>
-                <span className="block truncate text-[11px] text-on-surface-variant">
-                  đến {stops[stops.length - 1]?.stopName}
-                </span>
-              </span>
-              <span className="text-[11px] font-medium text-on-surface-variant">
-                {showStops ? "Thu gọn" : "Xem trạm"}
-              </span>
-              <ChevronRight className={cn("size-4 text-on-surface-variant transition-transform", showStops && "rotate-90")} />
-            </button>
-            <AnimatePresence initial={false}>
-              {showStops && (
-                <motion.ol
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
-                  transition={{ duration: 0.18, ease: "easeOut" }}
-                  className="ml-4 border-l border-outline-variant py-1 pl-5"
-                >
-                  {stops.map((stop, stopIndex) => (
-                    <li key={`${route.routeId}-${stop.stopId}`} className="relative py-1.5 text-xs">
-                      <span className="absolute -left-[23px] top-3 size-1.5 rounded-full bg-[#BDFD4F]" />
-                      <span className="font-medium">{stop.stopName}</span>
-                      {stopIndex > 0 && stop.minutesFromPreviousStop != null && (
-                        <span className="ml-2 text-on-surface-variant">+{stop.minutesFromPreviousStop} phút</span>
-                      )}
-                    </li>
-                  ))}
-                </motion.ol>
-              )}
-            </AnimatePresence>
-          </div>
-        )}
       </div>
 
-      <div className="flex flex-wrap gap-2 border-t border-outline-variant bg-surface-container-low px-4 py-3">
+      <div className="border-t border-outline-variant bg-surface-container-low px-3 py-2.5">
         <button
           type="button"
           onClick={viewOnMap}
-          className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-outline-variant bg-surface px-3 text-xs font-semibold transition-colors hover:bg-surface-container-high"
+          className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#14140f] px-3 text-xs font-semibold text-[#BDFD4F] transition-opacity hover:opacity-90"
         >
           <MapPinned className="size-4" />
-          Xem bản đồ
-        </button>
-        <button
-          type="button"
-          onClick={registerRoute}
-          className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-[#14140f] px-3 text-xs font-semibold text-[#BDFD4F] transition-opacity hover:opacity-90"
-        >
-          Đăng ký tuyến
-          <ArrowRight className="size-4" />
+          Xem tuyến
+          <ArrowRight className="size-3.5" />
         </button>
       </div>
     </motion.article>
@@ -4442,6 +4301,10 @@ type AssistantMessage = {
   mode?: string;
   sources?: AiSource[];
   routeSuggestions?: AiRouteSuggestionCard[];
+  traceEvents?: AiTraceEvent[];
+  providerStatus?: AiProviderStatus;
+  streaming?: boolean;
+  toolActive?: boolean;
 };
 
 function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
@@ -4460,7 +4323,6 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
   const [sessionReady, setSessionReady] = useState(false);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [pendingPrompt, setPendingPrompt] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -4496,41 +4358,121 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
   const send = async (value = input) => {
     if (!value.trim() || loading || !sessionReady) return;
     const userMsg = { role: "user" as const, text: value.trim(), time: new Date().toISOString() };
-    setMessages((m) => [...m, userMsg]);
+    const botTime = new Date().toISOString();
+    const botDraft: AssistantMessage = {
+      role: "bot",
+      text: "",
+      time: botTime,
+      traceEvents: [],
+      routeSuggestions: [],
+      streaming: true,
+      toolActive: false,
+    };
+    const historySnapshot = [...messages, userMsg];
+    setMessages((m) => [...m, userMsg, botDraft]);
     setInput("");
-    setPendingPrompt(userMsg.text);
     setLoading(true);
+    const payload = {
+      message: userMsg.text,
+      context: {
+        preferences: ["fast", "cheap"],
+        conversationHistory: historySnapshot.slice(-8).map((message) => ({
+          role: message.role === "bot" ? "assistant" as const : "user" as const,
+          content: message.text,
+        })),
+      },
+    };
+    const patchBot = (patch: Partial<AssistantMessage> | ((current: AssistantMessage) => Partial<AssistantMessage>)) => {
+      setMessages((current) => current.map((message) => {
+        if (message.time !== botTime || message.role !== "bot") return message;
+        const resolved = typeof patch === "function" ? patch(message) : patch;
+        return { ...message, ...resolved };
+      }));
+    };
     try {
-      const res = await experienceApi.sendAssistantChat({
-        message: userMsg.text,
-        context: {
-          preferences: ["fast", "cheap"],
-          conversationHistory: [...messages, userMsg].slice(-8).map((message) => ({
-            role: message.role === "bot" ? "assistant" : "user",
-            content: message.text,
-          })),
-        },
+      await experienceApi.streamAssistantChat(payload, (event) => {
+        if (event.type === "tool.started" || event.type === "tool.completed") {
+          patchBot((current) => ({
+            traceEvents: [...(current.traceEvents || []), ...(event.traceEvents || [])],
+            mode: event.mode || current.mode,
+            providerStatus: event.providerStatus || current.providerStatus,
+            toolActive: true,
+          }));
+          return;
+        }
+        if (event.type === "answer.delta" && event.delta) {
+          patchBot((current) => ({
+            text: `${current.text || ""}${current.text ? " " : ""}${event.delta}`,
+            mode: event.mode || current.mode,
+            sources: event.sources || current.sources,
+            routeSuggestions: event.routeSuggestions || current.routeSuggestions,
+            providerStatus: event.providerStatus || current.providerStatus,
+            toolActive: false,
+          }));
+          return;
+        }
+        if (event.type === "route.cards") {
+          patchBot({
+            routeSuggestions: event.routeSuggestions || [],
+            sources: event.sources || [],
+            mode: event.mode,
+            providerStatus: event.providerStatus,
+            toolActive: false,
+          });
+          return;
+        }
+        if (event.type === "provider_unavailable") {
+          patchBot({
+            mode: event.mode || "PROVIDER_UNAVAILABLE",
+            providerStatus: event.providerStatus,
+            toolActive: false,
+          });
+          return;
+        }
+        if (event.type === "fast_reply" || event.type === "assistant.completed") {
+          patchBot({
+            text: event.message || undefined,
+            mode: event.mode,
+            sources: event.sources || [],
+            routeSuggestions: event.routeSuggestions || [],
+            traceEvents: event.traceEvents || undefined,
+            providerStatus: event.providerStatus,
+            streaming: event.type !== "assistant.completed",
+            toolActive: false,
+          });
+        }
       });
-      setMessages((m) => [...m, {
-        role: "bot",
-        text: res.message || "Mình đã phân tích dữ liệu UniBus hiện có cho bạn.",
-        time: new Date().toISOString(),
-        mode: res.mode,
-        sources: res.sources || [],
-        routeSuggestions: res.routeSuggestions || [],
-      }]);
     } catch {
-      setMessages((m) => [...m, { role: "bot", text: "Xin lỗi, mình không thể trả lời lúc này. Vui lòng thử lại sau.", time: new Date().toISOString() }]);
+      try {
+        const res = await experienceApi.sendAssistantChat(payload);
+        patchBot({
+          role: "bot",
+          text: res.message || "Mình đã phân tích dữ liệu UniBus hiện có cho bạn.",
+          time: botTime,
+          mode: res.mode,
+          sources: res.sources || [],
+          routeSuggestions: res.routeSuggestions || [],
+          traceEvents: res.traceEvents || [],
+          providerStatus: res.providerStatus,
+          streaming: false,
+          toolActive: false,
+        });
+      } catch {
+        patchBot({
+          text: "Xin lỗi, mình không thể trả lời lúc này. Vui lòng thử lại sau.",
+          streaming: false,
+          toolActive: false,
+        });
+      }
     } finally {
+      patchBot({ streaming: false, toolActive: false });
       setLoading(false);
-      setPendingPrompt("");
     }
   };
 
   const reset = () => {
     setMessages([{ ...welcomeMessage, time: new Date().toISOString() }]);
     setInput("");
-    setPendingPrompt("");
     setLoading(false);
     try {
       window.sessionStorage.removeItem(sessionKey);
@@ -4549,7 +4491,7 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
             </span>
             <div className="min-w-0">
               <h2 className="truncate text-base font-semibold text-on-surface">UniBus Copilot</h2>
-              <p className="truncate text-xs text-on-surface-variant">AI agent tra cứu tuyến, vé tháng và SePay</p>
+              <p className="truncate text-xs text-on-surface-variant">Smart mode · Tool trace · Tuyến xe và vé tháng</p>
             </div>
           </div>
           <button
@@ -4574,7 +4516,10 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                 className={cn("flex min-w-0 gap-2 sm:gap-3", m.role === "user" && "justify-end")}
               >
                 {m.role === "bot" && (
-                  <span className="mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-[#BDFD4F] text-[#14140f]">
+                  <span className={cn(
+                    "mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-[#BDFD4F] text-[#14140f]",
+                    m.toolActive && (m.traceEvents?.length || 0) > 0 && "ai-agent-avatar-glow"
+                  )}>
                     <Bot className="size-4" />
                   </span>
                 )}
@@ -4586,12 +4531,17 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                       : "rounded-[28px] border border-outline-variant bg-surface px-4 py-3 text-on-surface"
                   )}
                 >
-                  <p className="whitespace-pre-wrap">{m.text}</p>
+                  {m.role === "bot" ? <AssistantText text={m.text} streaming={m.streaming} /> : <p className="whitespace-pre-wrap">{m.text}</p>}
                   {m.role === "bot" && (
                     <>
-                      <AgentExecutionSummary sources={m.sources} mode={m.mode} />
+                      <ToolTracePanel
+                        traceEvents={m.traceEvents}
+                        mode={m.mode}
+                        providerStatus={m.providerStatus}
+                        streaming={m.toolActive}
+                      />
                       {!!m.routeSuggestions?.length && (
-                        <div className="mt-3 space-y-3">
+                        <div className="mt-3 space-y-2">
                           {m.routeSuggestions.slice(0, 3).map((route, routeIndex) => (
                             <AiRouteResultCard
                               key={route.routeId}
@@ -4612,7 +4562,6 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                 )}
               </motion.div>
             ))}
-            {loading && <AiWorkingIndicator prompt={pendingPrompt || input} />}
           </AnimatePresence>
         </div>
 
@@ -4642,7 +4591,7 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
           }}
         >
           <Input
-            placeholder="Hỏi về tuyến xe, điểm đến, giá vé, lịch chạy..."
+            placeholder={loading ? "Copilot đang phản hồi..." : "Hỏi về tuyến xe, điểm đến, giá vé, lịch chạy..."}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             disabled={loading || !sessionReady}

@@ -1272,7 +1272,7 @@ function StopsScreen({ ctx }: { ctx: Ctx }) {
 
   useEffect(() => {
     if (!selectedRouteId && routes.length > 0) setSelectedRouteId(routes[0].id);
-  }, [routes]);
+  }, [routes, selectedRouteId]);
 
   const load = useCallback(async () => {
     if (!selectedRouteId) return;
