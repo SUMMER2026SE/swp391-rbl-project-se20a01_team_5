@@ -2448,9 +2448,26 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
     ...(ctx.activeTicket ? [ctx.activeTicket] : []),
     ...((ctx.raw.passes?.data?.tickets || []) as TicketView[]),
   ];
-  const hasPaidTicketForRoute = (routeId: number | string) => paidTickets.some((ticket: any) =>
-    String(ticket.routeId) === String(routeId) && ["ACTIVE", "VALID", "UNUSED"].includes(String(ticket.status || "").toUpperCase())
-  );
+  const registrationStatusLabel = (status?: string) => ({
+    APPROVED: "Đã đăng ký",
+    PENDING: "Đang chờ",
+    CANCELLED: "Đã hủy",
+    REJECTED: "Không được duyệt",
+  } as Record<string, string>)[String(status || "").toUpperCase()] || "Đã đăng ký";
+  const activeMonthlyForRoute = (routeId?: number | string | null) => {
+    if (routeId == null) return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return paidTickets.find((ticket: any) => {
+      const active = ["ACTIVE", "VALID", "UNUSED"].includes(String(ticket.status || "").toUpperCase());
+      const monthly = String(ticket.ticketType || "MONTHLY").toUpperCase().includes("MONTH");
+      const expiryRaw = ticket.expiresOn || ticket.expiresAt;
+      const expiry = expiryRaw ? new Date(expiryRaw) : null;
+      const stillValid = !expiry || expiry > today;
+      return active && monthly && stillValid && String(ticket.routeId) === String(routeId);
+    }) || null;
+  };
+  const targetMonthlyPass = activeMonthlyForRoute(targetCancel?.routeId);
 
   const loadRegistrations = useCallback(async () => {
     try {
@@ -2519,7 +2536,8 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
         <StaggerGroup className="grid gap-4 lg:grid-cols-2 min-w-0">
           {activeRegistrations.map((item: RegistrationDTO) => {
             const regRoute = ctx.routes.find((r) => r.id === String(item.routeId));
-            const isPaid = hasPaidTicketForRoute(item.routeId);
+            const activeMonthlyPass = activeMonthlyForRoute(item.routeId);
+            const monthlyExpiresOn = activeMonthlyPass?.expiresOn || activeMonthlyPass?.expiresAt;
             return (
               <StaggerItem key={item.registrationId}>
                 <motion.div
@@ -2541,14 +2559,19 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
                       <div className="flex items-center gap-2 flex-wrap mb-3">
                         <h2 className="text-xl font-black truncate">{item.routeName}</h2>
                         <span className="inline-flex items-center h-6 px-2.5 rounded-full text-[10px] font-bold bg-[#14140f] text-[#beff50]">
-                          {item.status}
+                          {registrationStatusLabel(item.status)}
+                        </span>
+                        <span className={cn("inline-flex items-center h-6 px-2.5 rounded-full text-[10px] font-bold", activeMonthlyPass ? "bg-white text-[#166534]" : "bg-[#14140f]/10 text-[#14140f]") }>
+                          {activeMonthlyPass ? "Đã có vé tháng" : "Chưa có vé hợp lệ"}
                         </span>
                       </div>
                       <div className="grid sm:grid-cols-2 gap-2 text-sm">
                         <InfoCell label="Trạm lên" value={item.boardingStopName || "—"} />
                         <InfoCell label="Trạm xuống" value={item.alightingStopName || "—"} />
-                        <InfoCell label="Hiệu lực" value={formatDate(item.effectiveDate)} />
+                        <InfoCell label="Hiệu lực đăng ký" value={formatDate(item.effectiveDate)} />
                         <InfoCell label="Đăng ký" value={formatDate(item.registeredAt)} />
+                        <InfoCell label="Trạng thái vé" value={activeMonthlyPass ? "Đã có vé tháng" : "Chưa có vé hợp lệ"} />
+                        <InfoCell label="Hiệu lực vé" value={activeMonthlyPass ? `Đến ${formatDate(monthlyExpiresOn)}` : "—"} />
                       </div>
                       <div className="flex flex-wrap gap-2 mt-4">
                         <motion.button
@@ -2556,11 +2579,6 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
                           whileTap={{ scale: 0.97 }}
                           transition={{ type: "spring", stiffness: 400, damping: 22 }}
                           onClick={() => {
-                            if (!isPaid) {
-                              localStorage.setItem("unibus.paymentRouteId", String(item.routeId));
-                              onNavigate("stu-payment");
-                              return;
-                            }
                             window.localStorage.setItem(SELECTED_BUS_TRACKING_KEY, JSON.stringify({
                               routeId: Number(item.routeId),
                               stopId: item.boardingStopId ? Number(item.boardingStopId) : undefined,
@@ -2569,10 +2587,27 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
                             }));
                             onNavigate("stu-tracking");
                           }}
+                          className="inline-flex items-center gap-1.5 h-10 px-5 rounded-full bg-[#F8F6EF] text-[#14140f] text-sm font-bold border border-[#14140f]/10 hover:bg-[#beff50]/35"
+                        >
+                          <Navigation className="size-4" />
+                          Theo dõi tuyến
+                        </motion.button>
+                        <motion.button
+                          whileHover={{ y: -2 }}
+                          whileTap={{ scale: 0.97 }}
+                          transition={{ type: "spring", stiffness: 400, damping: 22 }}
+                          onClick={() => {
+                            if (activeMonthlyPass) {
+                              onNavigate("stu-my-ticket");
+                              return;
+                            }
+                            localStorage.setItem("unibus.paymentRouteId", String(item.routeId));
+                            onNavigate("stu-payment");
+                          }}
                           className="inline-flex items-center gap-1.5 h-10 px-5 rounded-full bg-[#14140f] text-[#beff50] text-sm font-bold"
                         >
-                          {isPaid ? <Navigation className="size-4" /> : <CreditCard className="size-4" />}
-                          {isPaid ? "Theo dõi xe" : "Thanh toán"}
+                          {activeMonthlyPass ? <QrCode className="size-4" /> : <CreditCard className="size-4" />}
+                          {activeMonthlyPass ? "Xem vé / QR" : "Chọn vé / thanh toán"}
                         </motion.button>
                         <motion.button
                           whileHover={{ y: -2 }}
@@ -2582,7 +2617,7 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
                             setTargetCancel(item);
                             setCancelling(true);
                           }}
-                          className="inline-flex items-center gap-1.5 h-10 px-5 rounded-full bg-white text-[#14140f] text-sm font-bold border-2 border-[#14140f]"
+                          className={cn("inline-flex items-center gap-1.5 h-10 px-5 rounded-full bg-white text-[#14140f] text-sm font-bold border-2 border-[#14140f]", activeMonthlyPass && "opacity-75")}
                         >
                           <Trash2 className="size-4" />
                           Hủy đăng ký
