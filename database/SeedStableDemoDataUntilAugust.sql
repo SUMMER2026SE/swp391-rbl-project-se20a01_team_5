@@ -229,17 +229,31 @@ BEGIN
     END IF;
 
     INSERT INTO fares (route_id, fare_type, amount, effective_from, effective_until, adjusted_by_user_id, notes)
-    SELECT v_route_supported_id, 'SINGLE', 7000, DATE '2026-01-01', DATE '2026-12-31', v_admin_user_id, 'DEMO fare'
+    SELECT v_route_supported_id, 'SINGLE', 5000, DATE '2026-01-01', DATE '2026-12-31', v_admin_user_id, 'DEMO supported fare - subsidy visible'
     WHERE NOT EXISTS (SELECT 1 FROM fares WHERE route_id = v_route_supported_id AND fare_type = 'SINGLE' AND effective_from <= CURRENT_DATE AND (effective_until IS NULL OR effective_until >= CURRENT_DATE));
     INSERT INTO fares (route_id, fare_type, amount, effective_from, effective_until, adjusted_by_user_id, notes)
-    SELECT v_route_supported_id, 'MONTHLY', 140000, DATE '2026-01-01', DATE '2026-12-31', v_admin_user_id, 'DEMO fare'
+    SELECT v_route_supported_id, 'MONTHLY', 100000, DATE '2026-01-01', DATE '2026-12-31', v_admin_user_id, 'DEMO supported fare - subsidy visible'
     WHERE NOT EXISTS (SELECT 1 FROM fares WHERE route_id = v_route_supported_id AND fare_type = 'MONTHLY' AND effective_from <= CURRENT_DATE AND (effective_until IS NULL OR effective_until >= CURRENT_DATE));
     INSERT INTO fares (route_id, fare_type, amount, effective_from, effective_until, adjusted_by_user_id, notes)
-    SELECT v_route_full_id, 'SINGLE', 8000, DATE '2026-01-01', DATE '2026-12-31', v_admin_user_id, 'DEMO fare'
+    SELECT v_route_full_id, 'SINGLE', 1000, DATE '2026-01-01', DATE '2026-12-31', v_admin_user_id, 'DEMO bank-test fare 1000 VND'
     WHERE NOT EXISTS (SELECT 1 FROM fares WHERE route_id = v_route_full_id AND fare_type = 'SINGLE' AND effective_from <= CURRENT_DATE AND (effective_until IS NULL OR effective_until >= CURRENT_DATE));
     INSERT INTO fares (route_id, fare_type, amount, effective_from, effective_until, adjusted_by_user_id, notes)
-    SELECT v_route_full_id, 'MONTHLY', 160000, DATE '2026-01-01', DATE '2026-12-31', v_admin_user_id, 'DEMO fare'
+    SELECT v_route_full_id, 'MONTHLY', 1000, DATE '2026-01-01', DATE '2026-12-31', v_admin_user_id, 'DEMO bank-test fare 1000 VND'
     WHERE NOT EXISTS (SELECT 1 FROM fares WHERE route_id = v_route_full_id AND fare_type = 'MONTHLY' AND effective_from <= CURRENT_DATE AND (effective_until IS NULL OR effective_until >= CURRENT_DATE));
+
+    UPDATE fares f
+    SET amount = CASE
+            WHEN f.route_id = v_route_supported_id AND f.fare_type = 'SINGLE' THEN 5000
+            WHEN f.route_id = v_route_supported_id AND f.fare_type = 'MONTHLY' THEN 100000
+            ELSE 1000
+        END,
+        notes = CASE
+            WHEN f.route_id = v_route_supported_id THEN 'DEMO supported fare - subsidy visible'
+            ELSE 'DEMO bank-test fare 1000 VND'
+        END
+    WHERE f.route_id IN (v_route_supported_id, v_route_full_id)
+      AND f.fare_type IN ('SINGLE', 'MONTHLY', 'DAY')
+      AND CURRENT_DATE BETWEEN f.effective_from AND COALESCE(f.effective_until, CURRENT_DATE);
 
     UPDATE route_universities
     SET status = 'INACTIVE', active_until = LEAST(COALESCE(active_until, CURRENT_DATE - 1), CURRENT_DATE - 1), updated_at = CURRENT_TIMESTAMP
@@ -424,6 +438,9 @@ BEGIN
 END $$;
 
 COMMIT;
+
+
+
 
 
 

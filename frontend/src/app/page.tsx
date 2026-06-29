@@ -101,9 +101,17 @@ export default function Page() {
   }, [loadProfile]);
 
   const handleLogin = async (r: Role) => {
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
     setRole(r);
     setActiveId(firstNav(r));
     setAuthed(true);
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    });
     try {
       await loadProfile(r);
     } catch {

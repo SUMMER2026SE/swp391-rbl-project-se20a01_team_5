@@ -192,25 +192,7 @@ public class JourneyPlannerService {
         options.stream()
                 .sorted(journeyComparator())
                 .forEach(option -> bestByRouteSequence.putIfAbsent(journeySignature(option), option));
-        List<JourneyOption> distinct = bestByRouteSequence.values().stream().toList();
-        List<JourneyOption> direct = distinct.stream()
-                .filter(option -> option.summary().transferCount() == null || option.summary().transferCount() == 0)
-                .limit(MAX_OPTIONS)
-                .toList();
-        if (direct.size() >= MAX_OPTIONS) {
-            return direct;
-        }
-        if (!direct.isEmpty()) {
-            JourneyOption bestDirect = direct.get(0);
-            List<JourneyOption> result = new ArrayList<>(direct);
-            distinct.stream()
-                    .filter(option -> option.summary().transferCount() != null && option.summary().transferCount() > 0)
-                    .filter(option -> journeyScore(option) + 18 < journeyScore(bestDirect))
-                    .findFirst()
-                    .ifPresent(result::add);
-            return result.stream().limit(MAX_OPTIONS).toList();
-        }
-        return distinct.stream().limit(MAX_OPTIONS).toList();
+        return bestByRouteSequence.values().stream().limit(MAX_OPTIONS).toList();
     }
 
     private Comparator<JourneyOption> journeyComparator() {

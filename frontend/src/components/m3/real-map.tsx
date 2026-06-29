@@ -101,6 +101,7 @@ export const RealMap = React.memo(function RealMap({
   // Init map once (dynamic load Leaflet to avoid SSR window error)
   React.useEffect(() => {
     let cancelled = false;
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null;
     loadLeaflet().then((Lmod) => {
       if (cancelled || !containerRef.current || mapRef.current) return;
       const map = Lmod.map(containerRef.current, {
@@ -118,10 +119,15 @@ export const RealMap = React.memo(function RealMap({
       Lmod.control.zoom({ position: "bottomright" }).addTo(map);
       mapRef.current = map;
       mapRef.current._L = Lmod; // stash for later effects
-      const t = setTimeout(() => map.invalidateSize(), 250);
+      resizeTimer = setTimeout(() => {
+        if (!cancelled && mapRef.current === map && containerRef.current) {
+          map.invalidateSize();
+        }
+      }, 250);
     });
     return () => {
       cancelled = true;
+      if (resizeTimer) window.clearTimeout(resizeTimer);
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;

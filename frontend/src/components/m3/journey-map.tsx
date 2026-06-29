@@ -70,6 +70,7 @@ export interface JourneyMapProps {
   arrivalOverlay?: React.ReactNode;
   compact?: boolean;
   allowFallbackPolyline?: boolean;
+  scrollWheelZoom?: boolean;
 }
 
 const STYLE_ID = "unibus-journey-map-styles-v2";
@@ -276,6 +277,7 @@ export const JourneyMap = React.memo(function JourneyMap({
   animateCamera = true,
   arrivalOverlay,
   allowFallbackPolyline = true,
+  scrollWheelZoom = true,
 }: JourneyMapProps) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const mapRef = React.useRef<any>(null);
@@ -298,7 +300,7 @@ export const JourneyMap = React.memo(function JourneyMap({
         center: [16.0544, 108.2022],
         zoom: 12,
         zoomControl: false,
-        scrollWheelZoom: true,
+        scrollWheelZoom: false,
         doubleClickZoom: true,
         dragging: true,
         zoomSnap: 0.5,
@@ -535,3 +537,4 @@ export const JourneyMap = React.memo(function JourneyMap({
     </div>
   );
 });
+
