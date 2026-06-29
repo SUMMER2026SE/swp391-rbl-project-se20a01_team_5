@@ -39,7 +39,7 @@ export interface JourneyExtraMarker {
   label: string;
   lat: number;
   lng: number;
-  tone?: "current" | "destination";
+  tone?: "user" | "nearest" | "selected" | "boarding" | "destination" | "current";
 }
 
 export interface JourneyPolyline {
@@ -222,8 +222,15 @@ function extraMarkerIcon(
   L: typeof import("leaflet"),
   tone: JourneyExtraMarker["tone"],
 ) {
-  const color = tone === "current" ? "#087f5b" : "#dc3f36";
-  const halo = tone === "current" ? "#BDFD4F" : "#fff";
+  const palette = {
+    user: { color: "#14140f", halo: "#BDFD4F" },
+    nearest: { color: "#166534", halo: "#DCFCE7" },
+    selected: { color: "#14140f", halo: "#F8F6EF" },
+    boarding: { color: "#16803c", halo: "#BDFD4F" },
+    destination: { color: "#dc3f36", halo: "#fff" },
+    current: { color: "#087f5b", halo: "#BDFD4F" },
+  } as const;
+  const { color, halo } = palette[tone || "current"];
   return L.divIcon({
     className: "unibus-map-marker",
     html: `

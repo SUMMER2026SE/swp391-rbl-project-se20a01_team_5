@@ -3010,7 +3010,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
     return [
       {
         id: "journey-origin",
-        name: "Điểm xuất phát",
+        name: "Trạm đầu tuyến",
         code: "A",
         address: "Đà Nẵng",
         lat: first.lat,
@@ -3020,7 +3020,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
       },
       {
         id: "journey-destination",
-        name: "Điểm đến",
+        name: "Trạm cuối tuyến",
         code: "B",
         address: "Đà Nẵng",
         lat: last.lat,
@@ -3119,14 +3119,14 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
     ? distanceMeters(userLocation, { lat: selectedStop.lat, lng: selectedStop.lng })
     : null;
   const selectedStopNextEta = selectedStopEtas?.[0]
-    || (journeyTracking?.stopEtas || []).find((stop) => selectedStop && String(stop.stopId) === String(selectedStop.id))
-    || nextEta;
+    || (journeyTracking?.stopEtas || []).find((stop) => selectedStop && String(stop.stopId) === String(selectedStop.id));
   const selectedStopMinutes = (selectedStopNextEta as { minutesAway?: number; etaMinutes?: number } | undefined)?.minutesAway
     ?? (selectedStopNextEta as { minutesAway?: number; etaMinutes?: number } | undefined)?.etaMinutes;
   const trackingMarkers: JourneyExtraMarker[] = [
-    userLocation ? { id: "user-location", label: "Vị trí của tôi", lat: userLocation.lat, lng: userLocation.lng, tone: "current" } : null,
-    selectedStop ? { id: "selected-stop", label: selectedStop.name, lat: selectedStop.lat, lng: selectedStop.lng, tone: "current" } : null,
-    boardingStop ? { id: "boarding", label: `Trạm lên: ${boardingStop.name}`, lat: boardingStop.lat, lng: boardingStop.lng, tone: "current" } : null,
+    userLocation ? { id: "user-location", label: "Bạn đang ở đây", lat: userLocation.lat, lng: userLocation.lng, tone: "user" } : null,
+    nearestStop ? { id: "nearest-stop", label: `Gần bạn nhất: ${nearestStop.stop.name}`, lat: nearestStop.stop.lat, lng: nearestStop.stop.lng, tone: "nearest" } : null,
+    selectedStop ? { id: "selected-stop", label: `Trạm đang chọn: ${selectedStop.name}`, lat: selectedStop.lat, lng: selectedStop.lng, tone: "selected" } : null,
+    boardingStop ? { id: "boarding", label: `Trạm lên: ${boardingStop.name}`, lat: boardingStop.lat, lng: boardingStop.lng, tone: "boarding" } : null,
     alightingStop ? { id: "alighting", label: `Trạm xuống: ${alightingStop.name}`, lat: alightingStop.lat, lng: alightingStop.lng, tone: "destination" } : null,
   ].filter(Boolean) as JourneyExtraMarker[];
 
@@ -3179,7 +3179,17 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
     setLocationLoading(true);
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        setUserLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
+        const location = { lat: position.coords.latitude, lng: position.coords.longitude };
+        setUserLocation(location);
+        if (trackingStops.length) {
+          const closest = trackingStops
+            .map((stop) => ({ stop, meters: distanceMeters(location, { lat: stop.lat, lng: stop.lng }) }))
+            .sort((left, right) => left.meters - right.meters)[0];
+          if (closest?.stop?.id) {
+            setSelectedStopId(closest.stop.id);
+            setSelectedStopEtas(null);
+          }
+        }
         setLocationLoading(false);
       },
       () => {
@@ -3192,12 +3202,14 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
 
   const selectTrackingStop = (stopId: string) => {
     setSelectedStopId(stopId);
+    setSelectedStopEtas(null);
   };
 
   useEffect(() => {
     const routeId = trackingContext?.routeId || selectedRouteId;
     if (!routeId || !selectedStop?.id || selectedStop.id.startsWith("journey-")) return;
     let cancelled = false;
+    setSelectedStopEtas(null);
     setSelectedStopEtaLoading(true);
     transportApi.eta(routeId, selectedStop.id)
       .then((rows) => {
@@ -3514,9 +3526,9 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
 
                 <div className="grid grid-cols-2 gap-3">
                   <InfoCell label="Trạm đang chọn" value={selectedStop?.name || "Chọn trạm"} />
-                  <InfoCell label="Khoảng cách" value={distanceLabel(selectedStopDistance)} />
-                  <InfoCell label="Đi bộ" value={walkingLabel(selectedStopDistance)} />
-                  <InfoCell label="Thời gian dự kiến" value={selectedStopMinutes != null ? `${selectedStopMinutes} phút` : "Chưa có ETA"} />
+                  <InfoCell label="Khoảng cách" value={userLocation ? distanceLabel(selectedStopDistance) : "Bấm để tìm trạm gần bạn"} />
+                  <InfoCell label="Đi bộ" value={userLocation ? walkingLabel(selectedStopDistance) : "Bấm để tìm trạm gần bạn"} />
+                  <InfoCell label="Thời gian dự kiến" value={selectedStopEtaLoading ? "Đang tải" : selectedStopMinutes != null ? `${selectedStopMinutes} phút` : "Chưa có thời gian dự kiến"} />
                 </div>
               </ExpressiveCard>
             </ScrollReveal>
