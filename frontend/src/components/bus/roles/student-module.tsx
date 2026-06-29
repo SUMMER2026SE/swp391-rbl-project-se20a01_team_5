@@ -2195,6 +2195,7 @@ function TrackingScreen({ ctx }: { ctx: Ctx }) {
   const [arrivals, setArrivals] = useState<LiveArrivalDTO[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [locationStatus, setLocationStatus] = useState<"idle" | "requesting" | "granted" | "denied" | "unsupported">("idle");
 
   useEffect(() => {
     try {
@@ -2208,8 +2209,7 @@ function TrackingScreen({ ctx }: { ctx: Ctx }) {
       // Fallback to registered route below.
     }
     const registration = ctx.registration;
-    const hasPaidTicket = Boolean(ctx.activeTicket || ctx.raw?.passes?.data?.tickets?.length);
-    if (hasPaidTicket && registration?.routeId && registration.boardingStopId) {
+    if (registration?.routeId && registration.boardingStopId) {
       setSelected({
         routeId: Number(registration.routeId),
         stopId: Number(registration.boardingStopId),
@@ -2220,6 +2220,20 @@ function TrackingScreen({ ctx }: { ctx: Ctx }) {
       setSelected(null);
     }
   }, [ctx.registration]);
+
+  useEffect(() => {
+    if (!selected || locationStatus !== "idle") return;
+    if (!navigator.geolocation) {
+      setLocationStatus("unsupported");
+      return;
+    }
+    setLocationStatus("requesting");
+    navigator.geolocation.getCurrentPosition(
+      () => setLocationStatus("granted"),
+      () => setLocationStatus("denied"),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+    );
+  }, [selected, locationStatus]);
 
   useEffect(() => {
     if (!selected?.routeId) return;
@@ -2306,6 +2320,9 @@ function TrackingScreen({ ctx }: { ctx: Ctx }) {
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader title="Theo dõi xe" description={preview ? `${preview.routeName} · ${tracked?.plateNumber || "xe gần nhất"}` : "Đang tải chuyến xe..."} icon={<Navigation className="size-7" />} />
+      {locationStatus === "requesting" ? <div className="rounded-2xl bg-primary-container p-4 text-sm font-semibold text-on-primary-container">Vui lòng cấp quyền vị trí để UniBus tìm xe gần nhất quanh bạn.</div> : null}
+      {locationStatus === "denied" ? <div className="rounded-2xl bg-error-container p-4 text-sm font-semibold text-on-error-container">Bạn chưa cấp quyền vị trí. Trình theo dõi vẫn dùng trạm lên đã đăng ký.</div> : null}
+      {locationStatus === "unsupported" ? <div className="rounded-2xl bg-error-container p-4 text-sm font-semibold text-on-error-container">Trình duyệt không hỗ trợ định vị GPS.</div> : null}
       {error ? <div className="rounded-2xl bg-error-container p-4 text-sm font-semibold text-on-error-container">{error}</div> : null}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-4 min-w-0">
         <ExpressiveCard variant="elevated" className="overflow-hidden min-w-0 h-[420px] lg:h-[560px]">
@@ -2453,13 +2470,18 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
                           whileTap={{ scale: 0.97 }}
                           transition={{ type: "spring", stiffness: 400, damping: 22 }}
                           onClick={() => {
-                            localStorage.setItem("unibus.paymentRouteId", String(item.routeId));
-                            onNavigate("stu-payment");
+                            window.localStorage.setItem(SELECTED_BUS_TRACKING_KEY, JSON.stringify({
+                              routeId: Number(item.routeId),
+                              stopId: item.boardingStopId ? Number(item.boardingStopId) : undefined,
+                              stopName: item.boardingStopName,
+                              savedAt: new Date().toISOString(),
+                            }));
+                            onNavigate("stu-tracking");
                           }}
                           className="inline-flex items-center gap-1.5 h-10 px-5 rounded-full bg-[#14140f] text-[#beff50] text-sm font-bold"
                         >
-                          <CreditCard className="size-4" />
-                          Mua vé tháng
+                          <Navigation className="size-4" />
+                          Theo dõi xe
                         </motion.button>
                         <motion.button
                           whileHover={{ y: -2 }}
