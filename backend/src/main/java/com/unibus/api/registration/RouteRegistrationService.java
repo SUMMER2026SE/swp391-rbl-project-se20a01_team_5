@@ -116,9 +116,10 @@ public class RouteRegistrationService {
         Student student = findStudent(currentUser);
         RouteRegistration registration = ownedRegistration(student, registrationId);
         requireActive(registration);
-        if (routeRegistrationRepository.countActiveMonthlyPasses(student.getStudentCode()) > 0) {
+        if (routeRegistrationRepository.countActiveMonthlyPassesByRoute(
+                student.getStudentCode(), registration.getRoute().getId()) > 0) {
             throw new ApiException(HttpStatus.CONFLICT,
-                    "Active monthly pass locks the current route registration until the pass expires");
+                    "Không thể hủy khi vé tháng còn hiệu lực cho tuyến này");
         }
         registration.setStatus(RegistrationStatus.CANCELLED);
         registration.setCancellationReason(reason == null || reason.isBlank() ? "Cancelled by student" : reason.trim());

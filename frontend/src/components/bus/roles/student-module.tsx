@@ -3746,6 +3746,26 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
   const reg = ctx.registration;
   const activeRegistrations = registrations.length ? registrations : reg ? [reg] : [];
 
+  const registrationStatusLabel = (status?: string) => ({
+    APPROVED: "Đã đăng ký",
+    PENDING: "Đang chờ",
+    CANCELLED: "Đã hủy",
+    REJECTED: "Không được duyệt",
+  } as Record<string, string>)[String(status || "").toUpperCase()] || "Đã đăng ký";
+  const activeMonthlyForRoute = (routeId?: number | string | null) => {
+    const ticket = ctx.activeTicket;
+    if (!ticket || routeId == null) return null;
+    const active = String(ticket.status || "").toUpperCase() === "ACTIVE";
+    const monthly = String(ticket.ticketType || "MONTHLY").toUpperCase() === "MONTHLY";
+    const expiryRaw = ticket.expiresOn || ticket.expiresAt;
+    const expiry = expiryRaw ? new Date(expiryRaw) : null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const stillValid = !expiry || expiry > today;
+    return active && monthly && stillValid && String(ticket.routeId) === String(routeId) ? ticket : null;
+  };
+  const targetMonthlyPass = activeMonthlyForRoute(targetCancel?.routeId);
+
   const loadRegistrations = useCallback(async () => {
     try {
       const list = await studentApi.registrations();
@@ -3813,6 +3833,8 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
         <StaggerGroup className="grid gap-4 lg:grid-cols-2 min-w-0">
           {activeRegistrations.map((item: RegistrationDTO) => {
             const regRoute = ctx.routes.find((r) => r.id === String(item.routeId));
+            const activeMonthlyPass = activeMonthlyForRoute(item.routeId);
+            const monthlyExpiresOn = activeMonthlyPass?.expiresOn || activeMonthlyPass?.expiresAt;
             return (
               <StaggerItem key={item.registrationId}>
                 <motion.div
@@ -3834,14 +3856,19 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
                       <div className="flex items-center gap-2 flex-wrap mb-3">
                         <h2 className="text-xl font-black truncate">{item.routeName}</h2>
                         <span className="inline-flex items-center h-6 px-2.5 rounded-full text-[10px] font-bold bg-[#14140f] text-[#beff50]">
-                          {item.status}
+                          {registrationStatusLabel(item.status)}
+                        </span>
+                        <span className={cn("inline-flex items-center h-6 px-2.5 rounded-full text-[10px] font-bold", activeMonthlyPass ? "bg-white text-[#166534]" : "bg-[#14140f]/10 text-[#14140f]") }>
+                          {activeMonthlyPass ? "Đã có vé tháng" : "Chưa có vé hợp lệ"}
                         </span>
                       </div>
                       <div className="grid sm:grid-cols-2 gap-2 text-sm">
                         <InfoCell label="Trạm lên" value={item.boardingStopName || "—"} />
                         <InfoCell label="Trạm xuống" value={item.alightingStopName || "—"} />
-                        <InfoCell label="Hiệu lực" value={formatDate(item.effectiveDate)} />
+                        <InfoCell label="Hiệu lực đăng ký" value={formatDate(item.effectiveDate)} />
                         <InfoCell label="Đăng ký" value={formatDate(item.registeredAt)} />
+                        <InfoCell label="Trạng thái vé" value={activeMonthlyPass ? "Đã có vé tháng" : "Chưa có vé hợp lệ"} />
+                        <InfoCell label="Hiệu lực vé" value={activeMonthlyPass ? `Đến ${formatDate(monthlyExpiresOn)}` : "—"} />
                       </div>
                       <div className="flex flex-wrap gap-2 mt-4">
                         <motion.button
@@ -3862,13 +3889,17 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
                           whileTap={{ scale: 0.97 }}
                           transition={{ type: "spring", stiffness: 400, damping: 22 }}
                           onClick={() => {
+                            if (activeMonthlyPass) {
+                              onNavigate("stu-my-ticket");
+                              return;
+                            }
                             localStorage.setItem("unibus.paymentRouteId", String(item.routeId));
                             onNavigate("stu-invoices");
                           }}
                           className="inline-flex items-center gap-1.5 h-10 px-5 rounded-full bg-[#14140f] text-[#beff50] text-sm font-bold"
                         >
-                          <CreditCard className="size-4" />
-                          Chọn vé / thanh toán
+                          {activeMonthlyPass ? <QrCode className="size-4" /> : <CreditCard className="size-4" />}
+                          {activeMonthlyPass ? "Xem vé / QR" : "Chọn vé / thanh toán"}
                         </motion.button>
                         <motion.button
                           whileHover={{ y: -2 }}
@@ -3878,7 +3909,7 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
                             setTargetCancel(item);
                             setCancelling(true);
                           }}
-                          className="inline-flex items-center gap-1.5 h-10 px-5 rounded-full bg-white text-[#14140f] text-sm font-bold border-2 border-[#14140f]"
+                          className={cn("inline-flex items-center gap-1.5 h-10 px-5 rounded-full bg-white text-[#14140f] text-sm font-bold border-2 border-[#14140f]", activeMonthlyPass && "opacity-75")}
                         >
                           <Trash2 className="size-4" />
                           Hủy đăng ký
@@ -3907,31 +3938,37 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
       <AlertDialog open={cancelling} onOpenChange={setCancelling}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Hủy đăng ký tuyến?</AlertDialogTitle>
+            <AlertDialogTitle>{targetMonthlyPass ? "Chưa thể hủy đăng ký" : "Hủy đăng ký tuyến?"}</AlertDialogTitle>
             <AlertDialogDescription>
-              Bạn sẽ không thể sử dụng vé tháng đã mua cho tuyến này sau khi hủy. Hành động này không thể hoàn tác.
+              {targetMonthlyPass
+                ? `Không thể hủy khi vé tháng còn hiệu lực. Bạn có thể hủy sau ngày ${formatDate(targetMonthlyPass.expiresOn || targetMonthlyPass.expiresAt)}.`
+                : "Bạn có thể đăng ký lại tuyến sau nếu cần. Hành động này không thể hoàn tác."}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="py-2">
-            <Label className="text-xs">Lý do hủy (tùy chọn)</Label>
-            <Textarea
-              className="mt-1.5"
-              placeholder="Nhập lý do hủy đăng ký..."
-              value={cancelReason}
-              onChange={(e) => setCancelReason(e.target.value)}
-              rows={3}
-            />
-          </div>
+          {!targetMonthlyPass && (
+            <div className="py-2">
+              <Label className="text-xs">Lý do hủy (tùy chọn)</Label>
+              <Textarea
+                className="mt-1.5"
+                placeholder="Nhập lý do hủy đăng ký..."
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                rows={3}
+              />
+            </div>
+          )}
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={working}>Giữ lại</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={doCancel}
-              disabled={working}
-              className="bg-error text-on-error hover:bg-error/90"
-            >
-              {working ? <RefreshCw className="size-4 animate-spin" /> : null}
-              Xác nhận hủy
-            </AlertDialogAction>
+            <AlertDialogCancel disabled={working}>{targetMonthlyPass ? "Đã hiểu" : "Giữ lại"}</AlertDialogCancel>
+            {!targetMonthlyPass && (
+              <AlertDialogAction
+                onClick={doCancel}
+                disabled={working}
+                className="bg-error text-on-error hover:bg-error/90"
+              >
+                {working ? <RefreshCw className="size-4 animate-spin" /> : null}
+                Xác nhận hủy
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
