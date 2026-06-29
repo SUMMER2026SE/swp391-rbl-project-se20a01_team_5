@@ -521,6 +521,16 @@ export const JourneyMap = React.memo(function JourneyMap({
     });
   }, [buses, mapReadyToken, onSelectBus, routeColor]);
 
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!map || mapReadyToken === 0) return;
+    if (scrollWheelZoom) {
+      map.scrollWheelZoom.enable();
+    } else {
+      map.scrollWheelZoom.disable();
+    }
+  }, [mapReadyToken, scrollWheelZoom]);
+
   return (
     <div
       ref={containerRef}

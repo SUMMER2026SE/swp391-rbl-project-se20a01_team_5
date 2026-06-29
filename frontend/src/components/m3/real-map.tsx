@@ -31,6 +31,7 @@ export interface RealMapProps {
   nextStopIndex?: number;
   className?: string;
   height?: number;
+  scrollWheelZoom?: boolean;
 }
 
 function makeStopIcon(Lmod: typeof import("leaflet"), color: string, label?: string, isEnd = false) {
@@ -91,6 +92,7 @@ export const RealMap = React.memo(function RealMap({
   nextStopIndex = 1,
   className,
   height = 360,
+  scrollWheelZoom = true,
 }: RealMapProps) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const mapRef = React.useRef<any>(null);
@@ -135,6 +137,16 @@ export const RealMap = React.memo(function RealMap({
       }
     };
   }, []);
+
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (scrollWheelZoom) {
+      map.scrollWheelZoom.enable();
+    } else {
+      map.scrollWheelZoom.disable();
+    }
+  }, [scrollWheelZoom]);
 
   // Add stop markers + route polyline when stops change
   React.useEffect(() => {

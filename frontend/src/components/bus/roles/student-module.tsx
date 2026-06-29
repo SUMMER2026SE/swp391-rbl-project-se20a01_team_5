@@ -310,7 +310,7 @@ type RouteTrackingContext = {
   registrationId?: number | string;
 };
 
-function saveRouteTrackingContext(registration: Partial<RegistrationDTO>) {
+function saveRouteTrackingContext(registration: Partial<RegistrationDTO> & { routeCode?: string }) {
   const context: RouteTrackingContext = {
     type: "route",
     routeId: registration.routeId!,
@@ -2948,19 +2948,24 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
     || ctx.routes.find((r) => String(r.id) === String(selectedRouteId));
   const routeStops = useMemo(
     () => {
+      const normalizeStop = (stop: any) => ({
+        id: String(stop.id ?? stop.stopId),
+        name: stop.name ?? stop.stopName,
+        code: stop.code ?? stop.stopCode ?? String(stop.id ?? stop.stopId),
+        address: stop.address,
+        lat: stop.lat ?? stop.latitude,
+        lng: stop.lng ?? stop.longitude,
+        hasShelter: stop.hasShelter,
+        routes: stop.routes || [],
+      });
       const embeddedStops = selectedRoute?.stops;
       if (Array.isArray(embeddedStops) && embeddedStops.length && typeof embeddedStops[0] === "object") {
-        return embeddedStops.map((stop: any) => ({
-          id: stop.id ?? stop.stopId,
-          name: stop.name ?? stop.stopName,
-          code: stop.code ?? stop.stopCode ?? String(stop.id ?? stop.stopId),
-          address: stop.address,
-          lat: stop.lat ?? stop.latitude,
-          lng: stop.lng ?? stop.longitude,
-          hasShelter: stop.hasShelter,
-        }));
+        return embeddedStops.map(normalizeStop);
       }
-      return ctx.stops.filter((s: any) => selectedRoute?.stops?.includes(s.id));
+      const routeStopIds = new Set((Array.isArray(embeddedStops) ? embeddedStops : []).map((id: any) => String(id)));
+      return ctx.stops
+        .filter((stop: any) => routeStopIds.has(String(stop.id ?? stop.stopId)))
+        .map(normalizeStop);
     },
     [ctx.stops, selectedRoute],
   );
@@ -3022,6 +3027,8 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
         lng: last.lng,
         routes: [],
         hasShelter: false,
+        boarding: false,
+        alighting: false,
       },
     ];
   }, [journeyPolylines]);
@@ -3060,16 +3067,16 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
     if (routeStops.length) {
       return routeStops
         .map((stop: any) => ({
-          id: String(stop.id),
-          name: stop.name,
-          code: stop.code || String(stop.id),
+          id: String(stop.id ?? stop.stopId),
+          name: stop.name ?? stop.stopName,
+          code: stop.code ?? stop.stopCode ?? String(stop.id ?? stop.stopId),
           address: stop.address || "Đà Nẵng",
-          lat: numberValue(stop.lat),
-          lng: numberValue(stop.lng),
+          lat: numberValue(stop.lat ?? stop.latitude),
+          lng: numberValue(stop.lng ?? stop.longitude),
           routes: selectedRoute?.code ? [selectedRoute.code] : [],
           hasShelter: Boolean(stop.hasShelter),
-          boarding: trackingContext?.boardingStopId != null && String(trackingContext.boardingStopId) === String(stop.id),
-          alighting: trackingContext?.alightingStopId != null && String(trackingContext.alightingStopId) === String(stop.id),
+          boarding: trackingContext?.boardingStopId != null && String(trackingContext.boardingStopId) === String(stop.id ?? stop.stopId),
+          alighting: trackingContext?.alightingStopId != null && String(trackingContext.alightingStopId) === String(stop.id ?? stop.stopId),
         }))
         .filter((stop) => stop.lat && stop.lng);
     }
@@ -3114,6 +3121,8 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
   const selectedStopNextEta = selectedStopEtas?.[0]
     || (journeyTracking?.stopEtas || []).find((stop) => selectedStop && String(stop.stopId) === String(selectedStop.id))
     || nextEta;
+  const selectedStopMinutes = (selectedStopNextEta as { minutesAway?: number; etaMinutes?: number } | undefined)?.minutesAway
+    ?? (selectedStopNextEta as { minutesAway?: number; etaMinutes?: number } | undefined)?.etaMinutes;
   const trackingMarkers: JourneyExtraMarker[] = [
     userLocation ? { id: "user-location", label: "Vị trí của tôi", lat: userLocation.lat, lng: userLocation.lng, tone: "current" } : null,
     selectedStop ? { id: "selected-stop", label: selectedStop.name, lat: selectedStop.lat, lng: selectedStop.lng, tone: "current" } : null,
@@ -3259,7 +3268,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
       routeId: registration.routeId,
       boardingStopId: registration.boardingStopId,
       alightingStopId: registration.alightingStopId,
-      routeCode: registration.routeCode,
+      routeCode: (registration as RegistrationDTO & { routeCode?: string }).routeCode,
       routeName: registration.routeName,
       registrationId: registration.registrationId,
     });
@@ -3364,7 +3373,12 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                 icon={<RouteIcon className="size-7" />}
                 title="Bạn chưa có tuyến để theo dõi"
                 description="Hãy đăng ký tuyến trước, sau đó quay lại màn này để xem xe sắp tới trạm của bạn."
-                action={onNavigate ? { label: "Tìm tuyến xe", onClick: () => onNavigate("stu-find") } : undefined}
+                action={onNavigate ? (
+                  <ExpressiveButton variant="filled" onClick={() => onNavigate("stu-find")}>
+                    <RouteIcon className="size-4" />
+                    Tìm tuyến xe
+                  </ExpressiveButton>
+                ) : undefined}
               />
             )}
           </ExpressiveCard>
@@ -3502,7 +3516,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                   <InfoCell label="Trạm đang chọn" value={selectedStop?.name || "Chọn trạm"} />
                   <InfoCell label="Khoảng cách" value={distanceLabel(selectedStopDistance)} />
                   <InfoCell label="Đi bộ" value={walkingLabel(selectedStopDistance)} />
-                  <InfoCell label="Thời gian dự kiến" value={selectedStopNextEta?.minutesAway != null ? `${selectedStopNextEta.minutesAway} phút` : "Chưa có ETA"} />
+                  <InfoCell label="Thời gian dự kiến" value={selectedStopMinutes != null ? `${selectedStopMinutes} phút` : "Chưa có ETA"} />
                 </div>
               </ExpressiveCard>
             </ScrollReveal>
@@ -3601,6 +3615,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                 route={selectedRoute}
                 progress={0.3}
                 nextStopIndex={0}
+                scrollWheelZoom
               />
             </ExpressiveCard>
           </ScrollReveal>
@@ -4112,9 +4127,6 @@ function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
               <div className="min-w-0 flex-1">
                 <p className="text-[10px] font-bold opacity-70 uppercase tracking-wider">Vé tháng đang sử dụng</p>
                 <h2 className="text-2xl sm:text-3xl font-black mt-1 truncate">{t.routeName}</h2>
-                <p className="mt-2 text-sm font-medium text-[#4f5349]">
-                  Tài khoản này hiện có vé tháng cho tuyến này. Vé lượt sẽ hiển thị riêng bên dưới nếu đã mua.
-                </p>
                 <div className="flex flex-wrap items-center gap-2 mt-3">
                   <span className="inline-flex h-7 px-3 rounded-full bg-[#14140f] text-white text-xs font-bold items-center">
                     {t.routeCode || route?.code || "UNIBUS"}
