@@ -3646,7 +3646,7 @@ function MyJourneysScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
   const [tab, setTab] = useState("routes");
   const tabs = [
     { id: "routes", label: "Tuyến đã đăng ký", icon: TicketCheck },
-    { id: "ticket", label: "Vé & QR", icon: QrCode },
+    { id: "ticket", label: "Vé đã mua", icon: QrCode },
     { id: "tracking", label: "Theo dõi tuyến", icon: Navigation },
   ];
 
@@ -3654,7 +3654,6 @@ function MyJourneysScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
     <PageTransition className="space-y-5 min-w-0">
       <PageHeader
         title="Vé của tôi"
-        description="Quản lý tuyến đã đăng ký, vé tháng và trạng thái xe trong một nơi."
         icon={<TicketCheck className="size-7" />}
         actions={
           <ExpressiveButton variant="filled" onClick={() => onNavigate("stu-find")}>
@@ -3677,8 +3676,8 @@ function MyJourneysScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
                 className={cn(
                   "state-layer flex min-h-11 items-center justify-center gap-2 rounded-2xl px-3 text-xs font-bold transition-colors sm:text-sm",
                   active
-                    ? "bg-[#BDFD4F] text-[#14140f]"
-                    : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface",
+                    ? "bg-[#14140f] text-[#beff50] shadow-sm"
+                    : "text-on-surface-variant hover:bg-[#F8F6EF] hover:text-[#14140f]",
                 )}
               >
                 <Icon className="size-4 shrink-0" />
@@ -3826,7 +3825,7 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
                             saveRouteTrackingContext(item);
                             onNavigate("stu-tracking");
                           }}
-                          className="inline-flex items-center gap-1.5 h-10 px-5 rounded-full bg-[#144fcc] text-white text-sm font-bold"
+                          className="inline-flex items-center gap-1.5 h-10 px-5 rounded-full bg-[#F8F6EF] text-[#14140f] text-sm font-bold border border-[#14140f]/10 hover:bg-[#beff50]/35"
                         >
                           <Navigation className="size-4" />
                           Theo dõi tuyến
@@ -3842,7 +3841,7 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
                           className="inline-flex items-center gap-1.5 h-10 px-5 rounded-full bg-[#14140f] text-[#beff50] text-sm font-bold"
                         >
                           <CreditCard className="size-4" />
-                          Mở vé tháng
+                          Chọn vé / thanh toán
                         </motion.button>
                         <motion.button
                           whileHover={{ y: -2 }}
@@ -4091,6 +4090,7 @@ function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
   }
 
   const route = ctx.routes.find((r) => r.id === String(t.routeId));
+  const hasActiveMonthlyPass = String(t.status || "").toUpperCase() === "ACTIVE";
 
   return (
     <PageTransition className="space-y-6 min-w-0">
@@ -4101,30 +4101,32 @@ function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
           initial={{ opacity: 0, y: 16, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ type: "spring", stiffness: 260, damping: 24 }}
-          className="relative overflow-hidden rounded-3xl elev-2 min-w-0"
-          style={{ backgroundColor: route?.color || "#beff50", color: "#14140f" }}
+          className="relative overflow-hidden rounded-3xl border border-[#14140f]/10 bg-[#FAF8F2] text-[#14140f] shadow-[0_18px_50px_rgba(20,20,15,0.08)] min-w-0"
         >
           {/* decorative dark blobs */}
           <div className="absolute -top-12 -right-12 size-48 rounded-full bg-[#14140f]/8 blur-3xl pointer-events-none" />
-          <div className="absolute -bottom-16 -left-8 size-40 rounded-full bg-[#144fcc]/10 blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-16 -left-8 size-40 rounded-full bg-[#beff50]/35 blur-3xl pointer-events-none" />
 
           <div className="relative p-6 sm:p-8 min-w-0">
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6 min-w-0">
               <div className="min-w-0 flex-1">
-                <p className="text-[10px] font-bold opacity-70 uppercase tracking-wider">Vé tháng sinh viên</p>
+                <p className="text-[10px] font-bold opacity-70 uppercase tracking-wider">Vé tháng đang sử dụng</p>
                 <h2 className="text-2xl sm:text-3xl font-black mt-1 truncate">{t.routeName}</h2>
+                <p className="mt-2 text-sm font-medium text-[#4f5349]">
+                  Tài khoản này hiện có vé tháng cho tuyến này. Vé lượt sẽ hiển thị riêng bên dưới nếu đã mua.
+                </p>
                 <div className="flex flex-wrap items-center gap-2 mt-3">
                   <span className="inline-flex h-7 px-3 rounded-full bg-[#14140f] text-white text-xs font-bold items-center">
                     {t.routeCode || route?.code || "UNIBUS"}
                   </span>
                   <span className={cn(
                     "inline-flex items-center gap-1 h-7 px-3 rounded-full text-xs font-bold",
-                    t.status === "ACTIVE" ? "bg-[#14140f] text-[#beff50]" : "bg-[#f59e0b] text-[#14140f]"
+                    hasActiveMonthlyPass ? "bg-[#14140f] text-[#beff50]" : "bg-[#f59e0b] text-[#14140f]"
                   )}>
-                    <span className={cn("size-1.5 rounded-full", t.status === "ACTIVE" && "animate-pulse")} style={{ backgroundColor: t.status === "ACTIVE" ? "#beff50" : "#14140f" }} />
-                    {t.status === "ACTIVE" ? "Đang hoạt động" : t.status}
+                    <span className={cn("size-1.5 rounded-full", hasActiveMonthlyPass && "animate-pulse")} style={{ backgroundColor: hasActiveMonthlyPass ? "#beff50" : "#14140f" }} />
+                    {hasActiveMonthlyPass ? "Vé tháng còn hiệu lực" : t.status}
                   </span>
-                  <span className="inline-flex items-center gap-1 h-7 px-3 rounded-full bg-white/20 text-xs font-bold backdrop-blur">
+                  <span className="inline-flex items-center gap-1 h-7 px-3 rounded-full bg-white text-xs font-bold border border-[#14140f]/10">
                     <Calendar className="size-3.5" />
                     30 ngày
                   </span>
