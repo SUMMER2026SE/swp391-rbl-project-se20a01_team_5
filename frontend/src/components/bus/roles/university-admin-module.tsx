@@ -136,7 +136,7 @@ type UniversityAdminModuleProps = {
 export function UniversityAdminModule({ activeId, onNavigate }: UniversityAdminModuleProps) {
   const proto = useUniversityAdminPrototypeData();
 
-  if (proto.loading) return <LoadingScreen label="Đang tải dữ liệu admin trường..." />;
+  if (proto.loading || !proto.data) return <LoadingScreen label="Đang tải dữ liệu admin trường..." />;
   if (proto.error) return <ErrorScreen message={proto.error} onRetry={proto.reload} />;
 
   const d = proto.data!;
@@ -172,22 +172,22 @@ export function UniversityAdminModule({ activeId, onNavigate }: UniversityAdminM
     case "uniadm-dashboard":
       return <DashboardScreen ctx={ctx} onNavigate={onNavigate} />;
     case "uniadm-info":
+      return <InfoScreen ctx={ctx} />;
     case "uniadm-domains":
-      return <SchoolSettingsScreen ctx={ctx} />;
-    case "uniadm-students":
+      return <DomainsScreen ctx={ctx} />;
     case "uniadm-import":
+      return <ImportScreen ctx={ctx} />;
     case "uniadm-roster":
-      return <StudentsScreen ctx={ctx} />;
+      return <RosterScreen ctx={ctx} />;
     case "uniadm-subsidy":
       return <SubsidyScreen ctx={ctx} />;
-    case "uniadm-finance":
-    case "uniadm-transactions":
-    case "uniadm-recon":
-      return <FinanceScreen ctx={ctx} />;
     case "uniadm-stats":
       return <StatsScreen ctx={ctx} />;
     case "uniadm-notify":
       return <NotifyScreen ctx={ctx} />;
+    case "uniadm-recon":
+    case "uniadm-transactions":
+      return <ReconScreen ctx={ctx} />;
     default:
       return <FallbackScreen activeId={activeId} />;
   }
@@ -210,28 +210,6 @@ interface Ctx {
   notifications: any[];
   raw: any;
   reload: () => void;
-}
-
-function SchoolSettingsScreen({ ctx }: { ctx: Ctx }) {
-  return (
-    <PageTransition className="space-y-8 min-w-0">
-      <InfoScreen ctx={ctx} />
-      <DomainsScreen ctx={ctx} />
-    </PageTransition>
-  );
-}
-
-function StudentsScreen({ ctx }: { ctx: Ctx }) {
-  return (
-    <PageTransition className="space-y-8 min-w-0">
-      <ImportScreen ctx={ctx} />
-      <RosterScreen ctx={ctx} />
-    </PageTransition>
-  );
-}
-
-function FinanceScreen({ ctx }: { ctx: Ctx }) {
-  return <ReconScreen ctx={ctx} />;
 }
 
 function LoadingScreen({ label = "Đang tải..." }: { label?: string }) {
@@ -282,10 +260,10 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
   }));
 
   const quickActions = [
-    { id: "uniadm-students", label: "Sinh viên", icon: Users, accent: "primary" as const },
-    { id: "uniadm-students", label: "Nhập danh sách", icon: Upload, accent: "tertiary" as const },
-    { id: "uniadm-subsidy", label: "Tuyến & trợ giá", icon: Percent, accent: "secondary" as const },
-    { id: "uniadm-finance", label: "Đối soát", icon: FileBarChart, accent: "primary" as const },
+    { id: "uniadm-roster", label: "Danh sách SV", icon: Users, accent: "primary" as const },
+    { id: "uniadm-import", label: "Nhập danh sách", icon: Upload, accent: "tertiary" as const },
+    { id: "uniadm-subsidy", label: "Chính sách trợ giá", icon: Percent, accent: "secondary" as const },
+    { id: "uniadm-stats", label: "Thống kê", icon: FileBarChart, accent: "primary" as const },
   ];
 
   return (

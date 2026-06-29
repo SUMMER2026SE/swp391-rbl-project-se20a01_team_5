@@ -97,9 +97,6 @@ public class RouteSuggestionService {
             reasons.add("Có chuyến gần khung giờ bạn cần");
         }
         int confidence = Math.max(45, Math.min(98, (int) Math.round(score)));
-        if (reasons.isEmpty()) {
-            reasons.add("Phù hợp với dữ liệu tuyến hiện tại");
-        }
         List<AiAction> actions = List.of(
                 new AiAction("REGISTER_ROUTE", "Đăng ký tuyến", route.routeId(), boardingStopId, alightingStopId),
                 new AiAction("BUY_MONTHLY_PASS", "Mua vé tháng", route.routeId(), boardingStopId, alightingStopId),

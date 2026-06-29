@@ -4,7 +4,7 @@
 // Student Module — UniBus (M3 Expressive, aligned to UIPrototype v1.1)
 // 14 role-specific screens driven by `activeId`:
 //   stu-dashboard, stu-university, stu-stops, stu-find, stu-my-journeys,
-//   stu-history, stu-chatbot, stu-payment, stu-invoices plus legacy hidden routes
+//   stu-history, stu-chatbot, stu-invoices plus legacy hidden routes
 //
 // Visual: keeps prototype v1.1 look (hero lime card, M3 Expressive cards,
 // SplitText reveal, ScrollReveal, M3MapCanvas, vertical timeline).
@@ -12,7 +12,7 @@
 // =============================================================================
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { QRCodeCanvas } from "qrcode.react";
 import {
   MapPin,
@@ -184,6 +184,8 @@ import {
   type JourneyOptionDTO,
   type JourneyTrackingSnapshotDTO,
   type AiSource,
+  type AiTraceEvent,
+  type AiProviderStatus,
   type AiRouteSuggestionCard,
   ApiError,
 } from "@/lib/api/client";
@@ -260,9 +262,8 @@ export function StudentModule({ activeId, onNavigate, onProfileRefresh }: Studen
     case "stu-chatbot":
       return <ChatbotScreen ctx={ctx} onNavigate={onNavigate} />;
     case "stu-payment":
-      return <PaymentScreen ctx={ctx} />;
     case "stu-invoices":
-      return <InvoicesScreen ctx={ctx} />;
+      return <FinanceScreen ctx={ctx} />;
     case "stu-feedback":
       return <FeedbackScreen ctx={ctx} />;
     case "stu-lost":
@@ -497,8 +498,8 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
 
   const quickActions = [
     { id: "stu-find", label: "Tìm tuyến xe", icon: RouteIcon, bg: "#144fcc", fg: "#fff", iconBg: "#beff50", iconFg: "#14140f" },
-    { id: "stu-my-journeys", label: "Chuyến đi của tôi", icon: TicketCheck, bg: "#ff8c5f", fg: "#14140f", iconBg: "#14140f", iconFg: "#ff8c5f" },
-    { id: "stu-payment", label: "Mua vé tháng", icon: CreditCard, bg: "#14140f", fg: "#fff", iconBg: "#beff50", iconFg: "#14140f" },
+    { id: "stu-my-journeys", label: "Vé của tôi", icon: TicketCheck, bg: "#ff8c5f", fg: "#14140f", iconBg: "#14140f", iconFg: "#ff8c5f" },
+    { id: "stu-invoices", label: "Vé tháng & hóa đơn", icon: Receipt, bg: "#14140f", fg: "#fff", iconBg: "#beff50", iconFg: "#14140f" },
     { id: "stu-chatbot", label: "Hỏi Copilot", icon: Bot, bg: "#c8a0ff", fg: "#14140f", iconBg: "#14140f", iconFg: "#c8a0ff" },
   ];
 
@@ -624,7 +625,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
                     whileHover={{ y: -2 }}
                     whileTap={{ scale: 0.97 }}
                     transition={{ type: "spring", stiffness: 400, damping: 22 }}
-                    onClick={() => onNavigate("stu-payment")}
+                    onClick={() => onNavigate("stu-invoices")}
                     className="state-layer inline-flex items-center gap-1 h-10 px-4 rounded-full bg-white text-[#14140f] text-sm font-bold border-2 border-[#14140f]"
                   >
                     Mua vé
@@ -904,52 +905,49 @@ function HistoryRow({
   history,
   routes,
   onFeedback,
-  onSupport,
   onLostItem,
 }: {
   history: any;
   routes: any[];
-  onFeedback: (history: any) => void;
-  onSupport: (history: any) => void;
+  onFeedback: () => void;
   onLostItem: () => void;
 }) {
   const route = routes.find((r) => r.id === String(history.routeId));
-  const routeName = history.routeName || route?.name || "Chuyến xe";
-  const routeCode = route?.code || routeName.slice(0, 2) || "?";
-  const boarding = history.boardingStopName || "?";
-  const alighting = history.alightingStopName || "?";
-
   return (
-    <div className="flex flex-col gap-3 p-3 rounded-xl bg-surface-container-low min-w-0 sm:flex-row sm:items-center">
-      <div className="flex items-center gap-3 min-w-0 flex-1">
-        <div
-          className="size-9 shrink-0 rounded-xl flex items-center justify-center font-bold text-xs"
-          style={{ backgroundColor: route?.color || "#14b8a6", color: "#14140f" }}
-        >
-          {routeCode.slice(0, 2)}
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-bold truncate">{routeName}</p>
-          <p className="text-xs text-on-surface-variant truncate">
-            {boarding} → {alighting}
-          </p>
-          <p className="text-[10px] text-on-surface-variant mt-0.5">{formatDate(history.boardedAt || history.serviceDate)}</p>
-        </div>
-        <CheckCircle2 className="size-4 text-success shrink-0" />
+    <div className="flex flex-wrap items-center gap-3 p-3 rounded-xl bg-surface-container-low min-w-0">
+      <div
+        className="size-9 shrink-0 rounded-xl flex items-center justify-center font-bold text-xs"
+        style={{ backgroundColor: route?.color || "#14b8a6", color: "#14140f" }}
+      >
+        {route?.code?.slice(0, 2) || "?"}
       </div>
-      <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
-        <ExpressiveButton variant="outlined" size="sm" onClick={() => onFeedback?.(history)}>
-          <Star className="size-4" />
-          Phản hồi
-        </ExpressiveButton>
-        <ExpressiveButton variant="tonal" size="sm" onClick={() => onSupport?.(history)}>
-          <LifeBuoy className="size-4" />
-          Hỗ trợ
-        </ExpressiveButton>
-        <ExpressiveButton variant="text" size="sm" onClick={onLostItem}>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-bold truncate">{history.routeName || route?.name}</p>
+        <p className="text-xs text-on-surface-variant truncate">
+          {history.boardingStopName || "?"} → {history.alightingStopName || "?"}
+        </p>
+      </div>
+      <div className="text-right shrink-0">
+        <p className="text-[10px] text-on-surface-variant">{formatDate(history.boardedAt || history.serviceDate)}</p>
+        <CheckCircle2 className="size-4 text-success ml-auto" />
+      </div>
+      <div className="ml-auto flex shrink-0 flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={onFeedback}
+          className="inline-flex h-8 items-center gap-1.5 rounded-full bg-[#BDFD4F] px-3 text-xs font-bold text-[#14140f]"
+        >
+          <Star className="size-3.5" />
+          Đánh giá
+        </button>
+        <button
+          type="button"
+          onClick={onLostItem}
+          className="inline-flex h-8 items-center gap-1.5 rounded-full border border-outline-variant bg-surface px-3 text-xs font-bold text-on-surface"
+        >
           <PackageSearch className="size-3.5" />
           Mất đồ
-        </ExpressiveButton>
+        </button>
       </div>
     </div>
   );
@@ -1853,12 +1851,12 @@ function JourneyPlannerDesktopScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate
       localStorage.setItem("unibus.paymentRouteId", String(action.routeId));
       ctx.reload();
       toast.success("Đã đăng ký tuyến. Chuyển sang mua vé tháng.");
-      onNavigate("stu-payment");
+      onNavigate("stu-invoices");
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
         localStorage.setItem("unibus.paymentRouteId", String(action.routeId));
         toast.info("Tuyến này đã được đăng ký. Chuyển sang mua vé.");
-        onNavigate("stu-payment");
+        onNavigate("stu-invoices");
         return;
       }
       toast.error(error instanceof Error ? error.message : "Không thể đăng ký tuyến");
@@ -2489,10 +2487,24 @@ function FindRoutesScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
 
   useEffect(() => {
     const routeId = window.sessionStorage.getItem("unibus:assistant:route-preview");
-    if (!routeId || !routeRows.some((row: any) => String(row.route.id) === routeId)) return;
-    setSelectedJourneyId("");
-    setSelectedRoutePreviewId(routeId);
+    const rawContext = window.sessionStorage.getItem("unibus:assistant:route-preview-context");
+    let routeCode = "";
+    try {
+      routeCode = rawContext ? String(JSON.parse(rawContext)?.routeCode || "") : "";
+    } catch {
+      routeCode = "";
+    }
+    const matched = routeRows.find((row: any) => {
+      const route = row.route || {};
+      return String(route.id) === routeId
+        || String(route.routeId) === routeId
+        || (!!routeCode && String(route.code || route.routeCode).toLowerCase() === routeCode.toLowerCase());
+    });
     window.sessionStorage.removeItem("unibus:assistant:route-preview");
+    window.sessionStorage.removeItem("unibus:assistant:route-preview-context");
+    if (!matched) return;
+    setSelectedJourneyId("");
+    setSelectedRoutePreviewId(String(matched.route.id ?? matched.route.routeId));
   }, [routeRows]);
 
   useEffect(() => {
@@ -3284,7 +3296,7 @@ function MyJourneysScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
   return (
     <PageTransition className="space-y-5 min-w-0">
       <PageHeader
-        title="Chuyến đi của tôi"
+        title="Vé của tôi"
         description="Quản lý tuyến đã đăng ký, vé tháng và trạng thái xe trong một nơi."
         icon={<TicketCheck className="size-7" />}
         actions={
@@ -3455,12 +3467,12 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
                           transition={{ type: "spring", stiffness: 400, damping: 22 }}
                           onClick={() => {
                             localStorage.setItem("unibus.paymentRouteId", String(item.routeId));
-                            onNavigate("stu-payment");
+                            onNavigate("stu-invoices");
                           }}
                           className="inline-flex items-center gap-1.5 h-10 px-5 rounded-full bg-[#14140f] text-[#beff50] text-sm font-bold"
                         >
                           <CreditCard className="size-4" />
-                          Mua vé tháng
+                          Mở vé tháng
                         </motion.button>
                         <motion.button
                           whileHover={{ y: -2 }}
@@ -3659,7 +3671,7 @@ function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
           icon={<QrCode className="size-7" />}
           title="Chưa có vé tháng"
           description="Mua vé tháng để sử dụng dịch vụ xe buýt không giới hạn trong 30 ngày."
-          action={<ExpressiveButton variant="filled" onClick={() => onNavigate("stu-payment")}>
+          action={<ExpressiveButton variant="filled" onClick={() => onNavigate("stu-invoices")}>
             <CreditCard className="size-4" /> Mua vé tháng
           </ExpressiveButton>}
         />
@@ -3765,7 +3777,7 @@ function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
                   whileHover={{ y: -2 }}
                   whileTap={{ scale: 0.97 }}
                   transition={{ type: "spring", stiffness: 400, damping: 22 }}
-                  onClick={() => onNavigate("stu-payment")}
+                  onClick={() => onNavigate("stu-invoices")}
                   className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-[#14140f] text-[#beff50] text-xs font-bold shrink-0"
                 >
                   Gia hạn vé
@@ -3795,13 +3807,6 @@ function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
 function HistoryScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
   const [view, setView] = useState<"trips" | "feedback" | "lost">("trips");
   const totalTrips = ctx.tripsHistory.length;
-  const [feedbackTrip, setFeedbackTrip] = useState<any | null>(null);
-  const [supportTrip, setSupportTrip] = useState<any | null>(null);
-  const [rating, setRating] = useState(5);
-  const [category, setCategory] = useState("service");
-  const [feedbackContent, setFeedbackContent] = useState("");
-  const [supportContent, setSupportContent] = useState("");
-  const [submitting, setSubmitting] = useState(false);
   // Estimate monthly spend from active ticket fare
   const monthlyFare = ctx.activeTicket?.finalFareAmount ?? ctx.activeTicket?.originalFareAmount ?? 0;
   const thisMonthTrips = ctx.tripsHistory.filter((h: any) => {
@@ -3809,65 +3814,6 @@ function HistoryScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
     const now = new Date();
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
   }).length;
-  const feedbackRoute = feedbackTrip ? ctx.routes.find((r: any) => String(r.id) === String(feedbackTrip.routeId)) : null;
-  const supportRoute = supportTrip ? ctx.routes.find((r: any) => String(r.id) === String(supportTrip.routeId)) : null;
-
-  const submitFeedback = async () => {
-    if (!feedbackTrip) return;
-    if (!feedbackContent.trim()) {
-      toast.error("Vui lòng nhập nội dung phản hồi");
-      return;
-    }
-    setSubmitting(true);
-    try {
-      await feedbackApi.create({
-        tripId: feedbackTrip.tripId ? Number(feedbackTrip.tripId) : undefined,
-        routeId: feedbackTrip.routeId ? Number(feedbackTrip.routeId) : undefined,
-        rating,
-        category,
-        content: feedbackContent.trim(),
-      });
-      toast.success("Đã gửi phản hồi");
-      setFeedbackTrip(null);
-      setFeedbackContent("");
-      setRating(5);
-      setCategory("service");
-      ctx.reload();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Không thể gửi phản hồi");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const submitSupport = async () => {
-    if (!supportTrip) return;
-    if (!supportContent.trim()) {
-      toast.error("Vui lòng nhập nội dung cần hỗ trợ");
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const routeName = supportTrip.routeName || supportRoute?.name || "chuyến đi";
-      await experienceApi.createStudentSupportTicket({
-        title: `Hỗ trợ ${routeName}`,
-        supportType: "TRIP_SUPPORT",
-        content: [
-          `Chuyến: ${routeName}`,
-          `Ngày đi: ${formatDate(supportTrip.boardedAt || supportTrip.serviceDate)}`,
-          `Nội dung: ${supportContent.trim()}`,
-        ].join("\n"),
-      });
-      toast.success("Đã gửi yêu cầu hỗ trợ");
-      setSupportTrip(null);
-      setSupportContent("");
-      ctx.reload();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Không thể gửi yêu cầu hỗ trợ");
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   return (
     <PageTransition className="space-y-6 min-w-0">
@@ -3926,8 +3872,11 @@ function HistoryScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
               <HistoryRow
                 history={h}
                 routes={ctx.routes}
-                onFeedback={setFeedbackTrip}
-                onSupport={setSupportTrip}
+                onFeedback={() => {
+                  localStorage.setItem("unibus.supportTripId", String(h.tripId || h.id));
+                  if (h.routeId) localStorage.setItem("unibus.supportRouteId", String(h.routeId));
+                  setView("feedback");
+                }}
                 onLostItem={() => {
                   localStorage.setItem("unibus.lostTripId", String(h.tripId || h.id));
                   setView("lost");
@@ -3939,73 +3888,6 @@ function HistoryScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
       )}
         </>
       )}
-
-      <Dialog open={!!feedbackTrip} onOpenChange={(open) => !open && setFeedbackTrip(null)}>
-        {feedbackTrip && (
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Phản hồi chuyến đi</DialogTitle>
-              <DialogDescription>
-                {feedbackTrip.routeName || feedbackRoute?.name || "Chuyến xe"} · {formatDate(feedbackTrip.boardedAt || feedbackTrip.serviceDate)}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label className="text-xs font-bold">Đánh giá</Label>
-                <div className="mt-1.5"><M3StarRating value={rating} onChange={setRating} size="size-7" /></div>
-              </div>
-              <div>
-                <Label className="text-xs font-bold">Danh mục</Label>
-                <Select value={category} onValueChange={setCategory}>
-                  <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="service">Chất lượng dịch vụ</SelectItem>
-                    <SelectItem value="driver">Tài xế</SelectItem>
-                    <SelectItem value="vehicle">Phương tiện</SelectItem>
-                    <SelectItem value="punctuality">Đúng giờ</SelectItem>
-                    <SelectItem value="other">Khác</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs font-bold">Nội dung</Label>
-                <Textarea className="mt-1.5" rows={4} value={feedbackContent} onChange={(e) => setFeedbackContent(e.target.value)} placeholder="Nhập phản hồi về chuyến đi..." />
-              </div>
-            </div>
-            <DialogFooter>
-              <ExpressiveButton variant="text" onClick={() => setFeedbackTrip(null)} disabled={submitting}>Hủy</ExpressiveButton>
-              <ExpressiveButton variant="filled" onClick={submitFeedback} disabled={submitting}>
-                {submitting ? <RefreshCw className="size-4 animate-spin" /> : <Send className="size-4" />}
-                Gửi phản hồi
-              </ExpressiveButton>
-            </DialogFooter>
-          </DialogContent>
-        )}
-      </Dialog>
-
-      <Dialog open={!!supportTrip} onOpenChange={(open) => !open && setSupportTrip(null)}>
-        {supportTrip && (
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Yêu cầu hỗ trợ</DialogTitle>
-              <DialogDescription>
-                {supportTrip.routeName || supportRoute?.name || "Chuyến xe"} · {formatDate(supportTrip.boardedAt || supportTrip.serviceDate)}
-              </DialogDescription>
-            </DialogHeader>
-            <div>
-              <Label className="text-xs font-bold">Bạn cần hỗ trợ gì?</Label>
-              <Textarea className="mt-1.5" rows={5} value={supportContent} onChange={(e) => setSupportContent(e.target.value)} placeholder="VD: Tôi bị quên đồ, cần xác nhận điểm xuống, cần hỗ trợ về vé..." />
-            </div>
-            <DialogFooter>
-              <ExpressiveButton variant="text" onClick={() => setSupportTrip(null)} disabled={submitting}>Hủy</ExpressiveButton>
-              <ExpressiveButton variant="filled" onClick={submitSupport} disabled={submitting}>
-                {submitting ? <RefreshCw className="size-4 animate-spin" /> : <LifeBuoy className="size-4" />}
-                Gửi hỗ trợ
-              </ExpressiveButton>
-            </DialogFooter>
-          </DialogContent>
-        )}
-      </Dialog>
     </PageTransition>
   );
 }
@@ -4245,8 +4127,6 @@ function AIScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => v
               { bg: "#ff8c5f", fg: "#14140f", label: "#3 THAM KHẢO" },
             ];
             const rank = rankColors[idx] ?? { bg: "#14140f", fg: "#beff50", label: `#${idx + 1}` };
-            const confidence = r.confidence ?? getConfidence(idx, results.length);
-            const matchScore = getMatchScore(r, idx);
             const reason = getReason(r);
             const fare = r.finalFare ?? r.monthlyFare ?? r.singleFare ?? route.fare ?? 0;
 
@@ -4283,37 +4163,6 @@ function AIScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => v
                   <p className="text-sm opacity-90 bg-white/10 rounded-xl p-3 mb-4">
                     {reason}
                   </p>
-
-                  {/* Độ tin cậy + Điểm phù hợp */}
-                  <div className="grid sm:grid-cols-2 gap-4 mb-4 min-w-0">
-                    <div>
-                      <div className="flex items-center justify-between text-xs mb-1.5">
-                        <span className="opacity-70">Độ tin cậy</span>
-                        <span className="font-bold">{confidence}%</span>
-                      </div>
-                      <div className="h-2 rounded-full bg-white/15 overflow-hidden">
-                        <motion.div
-                          className="h-full rounded-full"
-                          style={{ backgroundColor: rank.fg }}
-                          initial={{ width: 0 }}
-                          animate={{ width: `${confidence}%` }}
-                          transition={{ type: "spring", stiffness: 120, damping: 20, delay: 0.2 + idx * 0.1 }}
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs opacity-70 mb-1.5">Điểm phù hợp</p>
-                      <div className="flex items-center gap-1">
-                        {[1, 2, 3, 4, 5].map((star) => (
-                          <Star
-                            key={star}
-                            className={cn("size-4", star <= matchScore ? "fill-current" : "opacity-25")}
-                          />
-                        ))}
-                        <span className="ml-2 text-xs font-bold">{matchScore}/5</span>
-                      </div>
-                    </div>
-                  </div>
 
                   {/* Action */}
                   <div className="flex items-center justify-between gap-3 pt-3 border-t border-white/15 min-w-0">
@@ -4355,176 +4204,130 @@ const CHATBOT_SUGGESTIONS = [
   "Hướng dẫn tôi đăng ký tuyến và mua vé tháng SePay",
 ];
 
-type AgentWorkStep = {
-  label: string;
-  detail: string;
-  icon: React.ElementType;
-};
-
-function chatbotWorkSteps(prompt: string): AgentWorkStep[] {
-  const text = prompt.toLowerCase();
-  const steps: AgentWorkStep[] = [
-    { label: "Đọc câu hỏi", detail: "Xác định ý định và độ khó", icon: Search },
-    { label: "Hồ sơ sinh viên", detail: "Kiểm tra trường, đăng ký và vé hiện tại", icon: School },
-  ];
-  if (text.includes("tuyến") || text.includes("trạm") || text.includes("đến") || text.includes("route") || text.includes("đường")) {
-    steps.push({ label: "Tuyến & trạm", detail: "Tra route, stop order và điểm lên/xuống", icon: RouteIcon });
-  }
-  if (text.includes("giá") || text.includes("vé") || text.includes("trợ giá") || text.includes("sepay")) {
-    steps.push({ label: "Vé & trợ giá", detail: "Tính giá sau trợ giá nếu có dữ liệu", icon: Wallet });
-  }
-  if (text.includes("lịch") || text.includes("chuyến") || text.includes("eta") || text.includes("mấy giờ")) {
-    steps.push({ label: "Lịch chạy", detail: "Đọc chuyến gần nhất và ETA mô phỏng", icon: Clock });
-  }
-  steps.push({ label: "Soạn phản hồi", detail: "Trả lời ngắn, không bịa dữ liệu ngoài context", icon: Sparkles });
-  return steps;
+function ToolGlyph({ tool, className }: { tool?: string; className?: string }) {
+  if (tool?.includes("route")) return <RouteIcon className={className} />;
+  if (tool?.includes("student")) return <School className={className} />;
+  if (tool?.includes("llm")) return <Sparkles className={className} />;
+  if (tool?.includes("fare") || tool?.includes("payment")) return <Wallet className={className} />;
+  if (tool?.includes("schedule") || tool?.includes("eta")) return <Clock className={className} />;
+  return <Search className={className} />;
 }
 
-function AiWorkingIndicator({ prompt }: { prompt: string }) {
-  const steps = useMemo(() => chatbotWorkSteps(prompt), [prompt]);
-  const [activeStep, setActiveStep] = useState(0);
+function isRealLlmResponse(mode?: string) {
+  return ["ZAI", "BEDROCK"].includes((mode || "").toUpperCase());
+}
 
-  useEffect(() => {
-    setActiveStep(0);
-    const timer = window.setInterval(() => {
-      setActiveStep((value) => (value + 1) % Math.max(steps.length, 1));
-    }, 780);
-    return () => window.clearInterval(timer);
-  }, [steps.length, prompt]);
+function ToolTracePanel({
+  traceEvents,
+  mode,
+  providerStatus,
+  streaming,
+}: {
+  traceEvents?: AiTraceEvent[];
+  mode?: string;
+  providerStatus?: AiProviderStatus;
+  streaming?: boolean;
+}) {
+  const reducedMotion = useReducedMotion();
+  const events = traceEvents || [];
+  const latestEvent = [...events].reverse().find((event) => event.type === "tool.started" || event.type === "tool.completed");
+  const providerDown = streaming && mode === "PROVIDER_UNAVAILABLE";
 
-  const active = steps[activeStep] || steps[0];
-  const ActiveIcon = active?.icon || Sparkles;
+  if (!streaming || mode === "FAST_REPLY" || (!latestEvent && !providerDown)) return null;
+
+  const done = latestEvent?.type === "tool.completed";
+  const label = providerDown
+    ? `Provider đang chậm${providerStatus?.errorCode ? ` (${providerStatus.errorCode})` : ""}`
+    : done
+      ? latestEvent?.detail || latestEvent?.label || "Đã truy xuất dữ liệu"
+      : latestEvent?.detail || latestEvent?.label || "Đang truy xuất dữ liệu";
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.25, ease: "easeOut" }}
-      className="flex gap-3 max-w-[92%] min-w-0"
-      role="status"
-      aria-live="polite"
-    >
-      <div className="grid size-8 shrink-0 place-items-center rounded-full bg-[#BDFD4F] text-[#14140f]">
-        <Bot className="size-4" />
-      </div>
-      <div className="min-w-0 rounded-[28px] border border-outline-variant bg-surface px-4 py-3 text-sm">
-        <div className="mb-3 flex items-center justify-between gap-3 text-xs font-semibold text-on-surface-variant">
-          <span className="inline-flex items-center gap-2">
-            <Sparkles className="size-3.5 text-on-surface" />
-            Copilot đang làm việc
-          </span>
-          <span className="inline-flex items-center gap-1" aria-hidden="true">
-            {[0, 1, 2].map((index) => (
-              <motion.span
-                key={index}
-                className="size-1.5 rounded-full bg-[#BDFD4F]"
-                animate={{ opacity: [0.35, 1, 0.35], y: [0, -2, 0] }}
-                transition={{ duration: 0.9, repeat: Infinity, delay: index * 0.14 }}
-              />
-            ))}
-          </span>
-        </div>
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={active?.label}
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
-            className="flex items-start gap-3 rounded-2xl bg-surface-container-low px-3 py-2.5"
-          >
-            <span className="grid size-8 shrink-0 place-items-center rounded-xl bg-[#14140f] text-[#BDFD4F]">
-              <ActiveIcon className="size-4" />
-            </span>
-            <span className="min-w-0">
-              <span className="block text-sm font-semibold text-on-surface">{active?.label}</span>
-              <span className="block text-xs leading-5 text-on-surface-variant">{active?.detail}</span>
-            </span>
-          </motion.div>
-        </AnimatePresence>
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {steps.map((step, index) => {
-            const Icon = step.icon;
-            const isActive = index === activeStep;
-            return (
-              <motion.div
-                key={step.label}
-                initial={false}
-                animate={{
-                  opacity: isActive ? 1 : 0.5,
-                  backgroundColor: isActive ? "#BDFD4F" : "rgba(20,20,15,0.04)",
-                }}
-                transition={{ duration: 0.18 }}
-                className="inline-flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[11px] font-semibold text-[#14140f]"
-              >
-                <Icon className="size-3.5 shrink-0" />
-                <span>{step.label}</span>
-              </motion.div>
-            );
-          })}
-        </div>
-      </div>
-    </motion.div>
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={`${latestEvent?.type || mode}-${latestEvent?.tool || "provider"}-${latestEvent?.detail || ""}`}
+        initial={reducedMotion ? false : { opacity: 0, y: 4, filter: "blur(3px)" }}
+        animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0, filter: "blur(0px)" }}
+        exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -3, filter: "blur(3px)" }}
+        transition={{ duration: done ? 0.16 : 0.22, ease: "easeOut" }}
+        className={cn(
+          "mt-2 inline-flex max-w-full items-center gap-2 rounded-full text-xs font-medium text-on-surface-variant",
+          !done && !providerDown && !reducedMotion && "ai-tool-thinking"
+        )}
+      >
+        <span className={cn(
+          "grid size-5 shrink-0 place-items-center rounded-full",
+          done ? "bg-success/10 text-success" : providerDown ? "bg-warning/15 text-warning" : "bg-[#BDFD4F]/20 text-[#4B651F]"
+        )}>
+          {done ? <CheckCircle2 className="size-3.5" /> : <ToolGlyph tool={latestEvent?.tool} className="size-3.5" />}
+        </span>
+        <span className="truncate">{label}</span>
+      </motion.div>
+    </AnimatePresence>
   );
 }
 
-function AgentExecutionSummary({ sources, mode }: { sources?: AiSource[]; mode?: string }) {
-  const [expanded, setExpanded] = useState(false);
-  const sourceCount = sources?.length || 0;
-  if (!sourceCount && !mode) return null;
+function sanitizeAssistantCopy(text: string) {
+  return text
+    .replace(/\bLý do:\s*/gi, "")
+    .replace(/\b(?:Đi qua đúng trạm lên và trạm xuống|Có trạm lên và trạm xuống|Có trợ giá cho sinh viên)\b[,\s]*/gi, "")
+    .replace(/\bchuyến gần nhất:\s*chưa có lịch gần nhất\.?/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+([,.;:])/g, "$1")
+    .trim();
+}
+function isLongChatBubble(text: string) {
+  const safeText = sanitizeAssistantCopy(text);
+  return safeText.length > 92 || safeText.includes("\n");
+}
+function AssistantText({ text, streaming }: { text: string; streaming?: boolean }) {
+  const reducedMotion = useReducedMotion();
+  if (!text) {
+    return null;
+  }
+  const safeText = sanitizeAssistantCopy(text);
+  if (reducedMotion || !streaming) {
+    return <p className="whitespace-pre-wrap">{safeText}</p>;
+  }
+  return (
+    <p className="whitespace-pre-wrap">
+      {safeText.split(/(\s+)/).map((part, index) => (
+        <motion.span
+          key={`${part}-${index}`}
+          initial={{ opacity: 0, y: 3 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.18, delay: Math.min(index * 0.008, 0.18), ease: "easeOut" }}
+        >
+          {part}
+        </motion.span>
+      ))}
+    </p>
+  );
+}
+
+function AssistantThinkingBubble({ traceEvents }: { traceEvents?: AiTraceEvent[] }) {
+  const reducedMotion = useReducedMotion();
+  const latestEvent = [...(traceEvents || [])]
+    .reverse()
+    .find((event) => event.type === "tool.started" || event.type === "tool.completed");
+  const label = latestEvent?.detail || latestEvent?.label || "Đang chuẩn bị phản hồi";
 
   return (
-    <div className="mt-3 overflow-hidden rounded-2xl border border-outline-variant/70 bg-surface">
-      <button
-        type="button"
-        onClick={() => setExpanded((value) => !value)}
-        aria-expanded={expanded}
-        className="flex min-h-11 w-full items-center gap-2 px-3 text-left text-xs font-semibold text-on-surface transition-colors hover:bg-surface-container-high"
-      >
-        <CheckCircle2 className="size-4 shrink-0 text-success" />
-        <span className="flex-1">
-          {sourceCount ? `Đã tra cứu ${sourceCount} nguồn dữ liệu` : "Đã hoàn tất xử lý"}
-        </span>
-        <ChevronRight className={cn("size-4 text-on-surface-variant transition-transform", expanded && "rotate-90")} />
-      </button>
-      <AnimatePresence initial={false}>
-        {expanded && (
-          <motion.div
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            transition={{ duration: 0.18, ease: "easeOut" }}
-            className="border-t border-outline-variant/70 px-3 py-2.5"
-          >
-            <div className="space-y-2">
-              {(sources || []).map((source, index) => (
-                <div key={`${source.type}-${index}`} className="flex items-start gap-2 text-xs">
-                  <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-success" />
-                  <span>
-                    <span className="font-semibold text-on-surface">{source.label}</span>
-                    {source.detail && <span className="text-on-surface-variant"> · {source.detail}</span>}
-                  </span>
-                </div>
-              ))}
-              {mode && (
-                <div className="flex items-start gap-2 text-xs">
-                  <Sparkles className="mt-0.5 size-3.5 shrink-0 text-on-surface" />
-                  <span className="text-on-surface-variant">
-                    {mode === "FAST_CONTEXT"
-                      ? "Trả lời nhanh bằng dữ liệu UniBus"
-                      : mode === "ZAI"
-                      ? "Tổng hợp phản hồi bằng Z.AI"
-                      : mode === "BEDROCK"
-                        ? "Tổng hợp phản hồi bằng AWS Bedrock"
-                        : "Hoàn tất bằng chế độ dự phòng"}
-                  </span>
-                </div>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+    <div className="inline-flex w-fit max-w-full items-center gap-2.5 rounded-[22px] rounded-tl-lg border border-[#BDFD4F]/30 bg-[#fbfbf7] px-3.5 py-2.5 shadow-[0_12px_30px_rgba(20,20,15,0.06)]">
+      <span className="inline-flex shrink-0 items-center gap-1" aria-label="Copilot đang suy nghĩ">
+        {[0, 1, 2].map((index) => (
+          <motion.span
+            key={index}
+            className="size-2 rounded-full bg-[#14140f]/35"
+            animate={reducedMotion ? { opacity: 0.65 } : { opacity: [0.3, 0.9, 0.3], y: [0, -3, 0] }}
+            transition={{ duration: 0.9, repeat: Infinity, delay: index * 0.12, ease: "easeInOut" }}
+          />
+        ))}
+      </span>
+      <span className="grid size-6 shrink-0 place-items-center rounded-full bg-[#BDFD4F]/60 text-[#4B651F] ring-1 ring-[#BDFD4F]/80">
+        <ToolGlyph tool={latestEvent?.tool} className="size-3.5" />
+      </span>
+      <span className="min-w-0 max-w-[180px] truncate text-sm font-semibold text-[#6f6b63]">{label}</span>
     </div>
   );
 }
@@ -4538,150 +4341,99 @@ function AiRouteResultCard({
   index: number;
   onNavigate: (id: string) => void;
 }) {
-  const [showStops, setShowStops] = useState(false);
   const stops = route.stops || [];
   const registerAction = route.actions?.find((action) => action.type === "REGISTER_ROUTE");
   const boardingStopId = registerAction?.boardingStopId || stops[0]?.stopId;
   const alightingStopId = registerAction?.alightingStopId || stops[stops.length - 1]?.stopId;
   const monthlyFare = route.finalFare ?? route.monthlyFare;
   const departure = route.nextDepartures?.[0];
+  const meaningfulReasons = (route.reasons || [])
+    .map((reason) => sanitizeAssistantCopy(reason || ""))
+    .filter((reason) => reason && !/phù hợp với dữ liệu tuyến hiện tại/i.test(reason))
+    .slice(0, 2);
+  const primaryReason = meaningfulReasons[0];
+  const metrics = [
+    departure ? { label: "Gần nhất", value: sanitizeAssistantCopy(departure) } : null,
+    route.singleFare != null ? { label: "Vé lượt", value: formatVND(route.singleFare) } : null,
+    monthlyFare != null ? { label: "Vé tháng", value: formatVND(monthlyFare) } : null,
+  ].filter(Boolean) as { label: string; value: string }[];
 
   const viewOnMap = () => {
     window.sessionStorage.setItem("unibus:assistant:route-preview", String(route.routeId));
+    window.sessionStorage.setItem("unibus:assistant:route-preview-context", JSON.stringify({
+      routeId: route.routeId,
+      routeCode: route.routeCode,
+      routeName: route.routeName,
+      boardingStopId,
+      alightingStopId,
+    }));
     onNavigate("stu-find");
-  };
-
-  const registerRoute = () => {
-    if (boardingStopId && alightingStopId) {
-      window.localStorage.setItem("unibus.pendingRegistration", JSON.stringify({
-        routeId: String(route.routeId),
-        boardingStopId: String(boardingStopId),
-        alightingStopId: String(alightingStopId),
-      }));
-    }
-    onNavigate("stu-my-journeys");
   };
 
   return (
     <motion.article
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.22, delay: Math.min(index * 0.04, 0.12), ease: "easeOut" }}
-      className="overflow-hidden rounded-2xl border border-outline-variant bg-surface text-on-surface"
+      transition={{ duration: 0.2, delay: Math.min(index * 0.035, 0.1), ease: "easeOut" }}
+      className="w-full max-w-[560px] rounded-[22px] border border-[#14140f]/10 bg-[#fffef9] p-3 text-on-surface shadow-[0_4px_10px_rgba(20,20,15,0.03)]"
     >
-      <div className="p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex h-7 items-center rounded-lg bg-[#14140f] px-2.5 text-xs font-bold text-[#beff50]">
+      <div className="flex items-start gap-3">
+        <div className="grid size-9 shrink-0 place-items-center rounded-2xl bg-[#14140f] text-[#BDFD4F]">
+          <Bus className="size-4" />
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            {(route.routeCode || route.routeId) && (
+              <span className="inline-flex h-5 shrink-0 items-center rounded-full bg-[#BDFD4F]/28 px-2 text-[10px] font-extrabold text-[#4B651F] ring-1 ring-[#BDFD4F]/50">
                 {route.routeCode || `T-${route.routeId}`}
               </span>
-              {route.confidence != null && (
-                <span className="text-xs font-medium text-on-surface-variant">{route.confidence}% phù hợp</span>
-              )}
+            )}
+            {index === 0 && (
+              <span className="hidden h-5 shrink-0 items-center rounded-full bg-[#14140f]/6 px-2 text-[10px] font-bold text-on-surface-variant sm:inline-flex">
+                Tốt nhất
+              </span>
+            )}
+            <h3 className="min-w-0 flex-1 truncate text-sm font-semibold leading-5 tracking-[-0.01em]">{route.routeName}</h3>
+          </div>
+
+          {primaryReason && (
+            <p className="mt-1.5 line-clamp-1 text-xs leading-5 text-on-surface-variant">{primaryReason}</p>
+          )}
+
+          {!!metrics.length && (
+            <div className="mt-2 flex min-w-0 flex-wrap gap-1.5">
+              {metrics.slice(0, 4).map((metric) => (
+                <div key={metric.label} className="inline-flex min-h-8 items-center gap-1.5 rounded-full bg-surface px-2.5 text-xs ring-1 ring-[#14140f]/7">
+                  <span className="text-[10px] font-medium text-on-surface-variant">{metric.label}</span>
+                  <span className="font-bold text-on-surface">{metric.value}</span>
+                </div>
+              ))}
             </div>
-            <h3 className="mt-2 text-sm font-bold leading-5">{route.routeName}</h3>
-          </div>
-          <Bus className="size-5 shrink-0 text-on-surface-variant" />
-        </div>
+          )}
 
-        {!!route.reasons?.length && (
-          <p className="mt-2 text-xs leading-5 text-on-surface-variant">
-            {route.reasons.slice(0, 2).join(" · ")}
-          </p>
-        )}
+          <div className="mt-2 flex items-center justify-between gap-2">
+            {route.subsidyAmount != null && route.subsidyAmount > 0 ? (
+              <div className="inline-flex min-h-8 min-w-0 items-center gap-2 rounded-full bg-[#BDFD4F]/16 px-2.5 text-xs ring-1 ring-[#BDFD4F]/35">
+                <span className="truncate font-medium text-[#5B6E2A]">Trợ giá</span>
+                <span className="font-bold text-on-surface">-{formatVND(route.subsidyAmount)}</span>
+              </div>
+            ) : <span />}
 
-        <div className="mt-4 grid grid-cols-3 divide-x divide-outline-variant rounded-xl border border-outline-variant">
-          <div className="min-w-0 px-2.5 py-3">
-            <p className="text-[10px] text-on-surface-variant">Chuyến gần nhất</p>
-            <p className="mt-1 truncate text-xs font-bold">{departure || "Chưa có"}</p>
-          </div>
-          <div className="min-w-0 px-2.5 py-3">
-            <p className="text-[10px] text-on-surface-variant">Số trạm</p>
-            <p className="mt-1 text-xs font-bold">{stops.length || "Chưa rõ"}</p>
-          </div>
-          <div className="min-w-0 px-2.5 py-3">
-            <p className="text-[10px] text-on-surface-variant">Vé tháng</p>
-            <p className="mt-1 truncate text-xs font-bold">{monthlyFare != null ? formatVND(monthlyFare) : "Chưa có"}</p>
-          </div>
-        </div>
-
-        {route.subsidyAmount != null && route.subsidyAmount > 0 && (
-          <div className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-[#beff50]/15 px-3 py-2 text-xs">
-            <span className="text-on-surface-variant">Trợ giá sinh viên</span>
-            <span className="font-bold text-on-surface">-{formatVND(route.subsidyAmount)}</span>
-          </div>
-        )}
-
-        {stops.length > 0 && (
-          <div className="mt-4">
             <button
               type="button"
-              onClick={() => setShowStops((value) => !value)}
-              aria-expanded={showStops}
-              className="flex min-h-11 w-full items-center gap-3 text-left"
+              onClick={viewOnMap}
+              className="inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-full bg-[#14140f] px-3 text-xs font-semibold text-[#BDFD4F] transition-all duration-150 hover:-translate-y-0.5 hover:bg-[#22221a] active:translate-y-0 active:scale-[0.98]"
             >
-              <span className="relative flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-container text-on-primary-container">
-                <MapPin className="size-4" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-xs font-semibold">{stops[0]?.stopName}</span>
-                <span className="block truncate text-[11px] text-on-surface-variant">
-                  đến {stops[stops.length - 1]?.stopName}
-                </span>
-              </span>
-              <span className="text-[11px] font-medium text-on-surface-variant">
-                {showStops ? "Thu gọn" : "Xem trạm"}
-              </span>
-              <ChevronRight className={cn("size-4 text-on-surface-variant transition-transform", showStops && "rotate-90")} />
+              Xem tuyến
+              <ArrowRight className="size-3.5" />
             </button>
-            <AnimatePresence initial={false}>
-              {showStops && (
-                <motion.ol
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
-                  transition={{ duration: 0.18, ease: "easeOut" }}
-                  className="ml-4 border-l border-outline-variant py-1 pl-5"
-                >
-                  {stops.map((stop, stopIndex) => (
-                    <li key={`${route.routeId}-${stop.stopId}`} className="relative py-1.5 text-xs">
-                      <span className="absolute -left-[23px] top-3 size-1.5 rounded-full bg-[#BDFD4F]" />
-                      <span className="font-medium">{stop.stopName}</span>
-                      {stopIndex > 0 && stop.minutesFromPreviousStop != null && (
-                        <span className="ml-2 text-on-surface-variant">+{stop.minutesFromPreviousStop} phút</span>
-                      )}
-                    </li>
-                  ))}
-                </motion.ol>
-              )}
-            </AnimatePresence>
           </div>
-        )}
-      </div>
-
-      <div className="flex flex-wrap gap-2 border-t border-outline-variant bg-surface-container-low px-4 py-3">
-        <button
-          type="button"
-          onClick={viewOnMap}
-          className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-outline-variant bg-surface px-3 text-xs font-semibold transition-colors hover:bg-surface-container-high"
-        >
-          <MapPinned className="size-4" />
-          Xem bản đồ
-        </button>
-        <button
-          type="button"
-          onClick={registerRoute}
-          className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-[#14140f] px-3 text-xs font-semibold text-[#BDFD4F] transition-opacity hover:opacity-90"
-        >
-          Đăng ký tuyến
-          <ArrowRight className="size-4" />
-        </button>
+        </div>
       </div>
     </motion.article>
   );
 }
-
 type AssistantMessage = {
   role: "user" | "bot";
   text: string;
@@ -4689,6 +4441,10 @@ type AssistantMessage = {
   mode?: string;
   sources?: AiSource[];
   routeSuggestions?: AiRouteSuggestionCard[];
+  traceEvents?: AiTraceEvent[];
+  providerStatus?: AiProviderStatus;
+  streaming?: boolean;
+  toolActive?: boolean;
 };
 
 function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
@@ -4707,8 +4463,15 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
   const [sessionReady, setSessionReady] = useState(false);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [pendingPrompt, setPendingPrompt] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const toolDismissTimers = useRef<Record<string, number>>({});
+  const shouldRefocusInput = useRef(false);
+
+  useEffect(() => () => {
+    Object.values(toolDismissTimers.current).forEach((timer) => window.clearTimeout(timer));
+    toolDismissTimers.current = {};
+  }, []);
 
   useEffect(() => {
     try {
@@ -4743,41 +4506,137 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
   const send = async (value = input) => {
     if (!value.trim() || loading || !sessionReady) return;
     const userMsg = { role: "user" as const, text: value.trim(), time: new Date().toISOString() };
-    setMessages((m) => [...m, userMsg]);
+    const botTime = new Date().toISOString();
+    const botDraft: AssistantMessage = {
+      role: "bot",
+      text: "",
+      time: botTime,
+      traceEvents: [],
+      routeSuggestions: [],
+      streaming: true,
+      toolActive: false,
+    };
+    const historySnapshot = [...messages, userMsg];
+    setMessages((m) => [...m, userMsg, botDraft]);
     setInput("");
-    setPendingPrompt(userMsg.text);
     setLoading(true);
+    shouldRefocusInput.current = true;
+    const payload = {
+      message: userMsg.text,
+      context: {
+        preferences: ["fast", "cheap"],
+        conversationHistory: historySnapshot.slice(-8).map((message) => ({
+          role: message.role === "bot" ? "assistant" as const : "user" as const,
+          content: message.text,
+        })),
+      },
+    };
+    const patchBot = (patch: Partial<AssistantMessage> | ((current: AssistantMessage) => Partial<AssistantMessage>)) => {
+      setMessages((current) => current.map((message) => {
+        if (message.time !== botTime || message.role !== "bot") return message;
+        const resolved = typeof patch === "function" ? patch(message) : patch;
+        return { ...message, ...resolved };
+      }));
+    };
+    const cancelToolDismiss = () => {
+      const timer = toolDismissTimers.current[botTime];
+      if (timer) window.clearTimeout(timer);
+      delete toolDismissTimers.current[botTime];
+    };
+    const dismissToolTraceSoon = (delay = 760) => {
+      cancelToolDismiss();
+      toolDismissTimers.current[botTime] = window.setTimeout(() => {
+        patchBot({ toolActive: false });
+        delete toolDismissTimers.current[botTime];
+      }, delay);
+    };
     try {
-      const res = await experienceApi.sendAssistantChat({
-        message: userMsg.text,
-        context: {
-          preferences: ["fast", "cheap"],
-          conversationHistory: [...messages, userMsg].slice(-8).map((message) => ({
-            role: message.role === "bot" ? "assistant" : "user",
-            content: message.text,
-          })),
-        },
+      await experienceApi.streamAssistantChat(payload, (event) => {
+        if (event.type === "tool.started" || event.type === "tool.completed") {
+          if (event.type === "tool.started") cancelToolDismiss();
+          patchBot((current) => ({
+            traceEvents: [...(current.traceEvents || []), ...(event.traceEvents || [])],
+            mode: event.mode || current.mode,
+            providerStatus: event.providerStatus || current.providerStatus,
+            toolActive: true,
+          }));
+          if (event.type === "tool.completed") dismissToolTraceSoon(920);
+          return;
+        }
+        if (event.type === "answer.delta" && event.delta) {
+          patchBot((current) => ({
+            text: `${current.text || ""}${current.text ? " " : ""}${event.delta}`,
+            mode: event.mode || current.mode,
+            sources: event.sources || current.sources,
+            routeSuggestions: event.routeSuggestions || current.routeSuggestions,
+            providerStatus: event.providerStatus || current.providerStatus,
+          }));
+          return;
+        }
+        if (event.type === "route.cards") {
+          patchBot({
+            routeSuggestions: event.routeSuggestions || [],
+            sources: event.sources || [],
+            mode: event.mode,
+            providerStatus: event.providerStatus,
+          });
+          return;
+        }
+        if (event.type === "provider_unavailable") {
+          patchBot({
+            mode: event.mode || "PROVIDER_UNAVAILABLE",
+            providerStatus: event.providerStatus,
+          });
+          dismissToolTraceSoon(700);
+          return;
+        }
+        if (event.type === "fast_reply" || event.type === "assistant.completed") {
+          patchBot({
+            text: event.message || undefined,
+            mode: event.mode,
+            sources: event.sources || [],
+            routeSuggestions: event.routeSuggestions || [],
+            traceEvents: event.traceEvents || undefined,
+            providerStatus: event.providerStatus,
+            streaming: event.type !== "assistant.completed",
+            toolActive: event.type === "fast_reply" ? false : undefined,
+          });
+        }
       });
-      setMessages((m) => [...m, {
-        role: "bot",
-        text: res.message || "Mình đã phân tích dữ liệu UniBus hiện có cho bạn.",
-        time: new Date().toISOString(),
-        mode: res.mode,
-        sources: res.sources || [],
-        routeSuggestions: res.routeSuggestions || [],
-      }]);
     } catch {
-      setMessages((m) => [...m, { role: "bot", text: "Xin lỗi, mình không thể trả lời lúc này. Vui lòng thử lại sau.", time: new Date().toISOString() }]);
+      try {
+        const res = await experienceApi.sendAssistantChat(payload);
+        patchBot({
+          role: "bot",
+          text: res.message || "Mình đã phân tích dữ liệu UniBus hiện có cho bạn.",
+          time: botTime,
+          mode: res.mode,
+          sources: res.sources || [],
+          routeSuggestions: res.routeSuggestions || [],
+          traceEvents: res.traceEvents || [],
+          providerStatus: res.providerStatus,
+          streaming: false,
+          toolActive: false,
+        });
+      } catch {
+        patchBot({
+          text: "Xin lỗi, mình không thể trả lời lúc này. Vui lòng thử lại sau.",
+          streaming: false,
+          toolActive: false,
+        });
+      }
     } finally {
+      patchBot({ streaming: false });
+      dismissToolTraceSoon(520);
       setLoading(false);
-      setPendingPrompt("");
     }
   };
 
   const reset = () => {
+    Object.values(toolDismissTimers.current).forEach((timer) => window.clearTimeout(timer));
+    toolDismissTimers.current = {};
     setMessages([{ ...welcomeMessage, time: new Date().toISOString() }]);
     setInput("");
-    setPendingPrompt("");
     setLoading(false);
     try {
       window.sessionStorage.removeItem(sessionKey);
@@ -4796,7 +4655,7 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
             </span>
             <div className="min-w-0">
               <h2 className="truncate text-base font-semibold text-on-surface">UniBus Copilot</h2>
-              <p className="truncate text-xs text-on-surface-variant">AI agent tra cứu tuyến, vé tháng và SePay</p>
+              <p className="truncate text-xs text-on-surface-variant">Smart mode · Tool trace · Tuyến xe và vé tháng</p>
             </div>
           </div>
           <button
@@ -4818,38 +4677,66 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -6 }}
                 transition={{ duration: 0.2, ease: "easeOut" }}
-                className={cn("flex min-w-0 gap-2 sm:gap-3", m.role === "user" && "justify-end")}
+                className={cn("flex min-w-0 gap-2 sm:gap-3", m.role === "user" ? "justify-end" : "items-start")}
               >
                 {m.role === "bot" && (
-                  <span className="mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-[#BDFD4F] text-[#14140f]">
+                  <span className={cn(
+                    "relative mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-[#BDFD4F] text-[#14140f]",
+                    m.toolActive && (m.traceEvents?.length || 0) > 0 && "ai-agent-avatar-glow"
+                  )}>
                     <Bot className="size-4" />
+                    {isRealLlmResponse(m.mode) && (
+                      <span
+                        aria-label="Phản hồi từ LLM thật"
+                        className="absolute -right-0.5 -top-0.5 flex size-2.5"
+                      >
+                        <span className="absolute inline-flex size-full rounded-full bg-success/45 ai-model-online-ping" />
+                        <span className="relative inline-flex size-2.5 rounded-full border border-surface bg-success" />
+                      </span>
+                    )}
                   </span>
                 )}
-                <div
-                  className={cn(
-                    "min-w-0 max-w-[92%] break-words text-sm leading-relaxed sm:max-w-[78%]",
-                    m.role === "user"
-                      ? "rounded-[28px] bg-[#14140f] px-4 py-3 text-[#BDFD4F]"
-                      : "rounded-[28px] border border-outline-variant bg-surface px-4 py-3 text-on-surface"
-                  )}
-                >
-                  <p className="whitespace-pre-wrap">{m.text}</p>
-                  {m.role === "bot" && (
-                    <>
-                      <AgentExecutionSummary sources={m.sources} mode={m.mode} />
-                      {!!m.routeSuggestions?.length && (
-                        <div className="mt-3 space-y-3">
-                          {m.routeSuggestions.slice(0, 3).map((route, routeIndex) => (
-                            <AiRouteResultCard
-                              key={route.routeId}
-                              route={route}
-                              index={routeIndex}
-                              onNavigate={onNavigate}
-                            />
-                          ))}
-                        </div>
-                      )}
-                    </>
+                <div className={cn("min-w-0 break-words text-sm leading-relaxed", m.role === "bot" ? "max-w-[min(680px,82%)]" : "max-w-[92%] sm:max-w-[78%]")}>
+                  <div
+                    className={cn(
+                      "px-4 py-3",
+                      m.role === "user"
+                        ? "bg-[#14140f] text-[#BDFD4F]"
+                        : "border border-[#14140f]/10 bg-[#fffefb] text-on-surface",
+                      isLongChatBubble(m.text)
+                        ? "rounded-[28px]"
+                        : "rounded-[999px]"
+                    )}
+                  >
+                    {m.role === "bot"
+                      ? m.text
+                        ? <AssistantText text={m.text} streaming={m.streaming} />
+                        : <AssistantThinkingBubble traceEvents={m.traceEvents} />
+                      : <p className="whitespace-pre-wrap">{m.text}</p>}
+                    {m.role === "bot" && m.text && (
+                      <ToolTracePanel
+                        traceEvents={m.traceEvents}
+                        mode={m.mode}
+                        providerStatus={m.providerStatus}
+                        streaming={m.toolActive}
+                      />
+                    )}
+                  </div>
+                  {m.role === "bot" && !!m.routeSuggestions?.length && (
+                    <div className="mt-2.5 space-y-2 pl-1">
+                      <div className="flex items-center gap-2 px-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-on-surface-variant/80">
+                        <Sparkles className="size-3.5 text-[#84a91f]" />
+                        Tuyến được đề xuất
+                      </div>
+                      {m.routeSuggestions.slice(0, 3).map((route, routeIndex) => (
+                        <AiRouteResultCard
+                          key={route.routeId}
+                          route={route}
+                          index={routeIndex}
+                          onNavigate={onNavigate}
+                        />
+                      ))}
+                    </div>
                   )}
                 </div>
                 {m.role === "user" && (
@@ -4859,22 +4746,21 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                 )}
               </motion.div>
             ))}
-            {loading && <AiWorkingIndicator prompt={pendingPrompt || input} />}
           </AnimatePresence>
         </div>
 
         {messages.length <= 1 && (
-          <div className="border-t border-outline-variant bg-surface px-4 py-3 sm:px-5">
-            <div className="flex gap-2 overflow-x-auto pb-1">
+          <div className="overflow-hidden border-t border-outline-variant bg-surface px-4 py-3 sm:px-5">
+            <div className="grid min-w-0 grid-cols-2 gap-2 lg:grid-cols-4">
               {CHATBOT_SUGGESTIONS.map((suggestion) => (
                 <button
                   key={suggestion}
                   type="button"
                   onClick={() => send(suggestion)}
                   disabled={loading || !sessionReady}
-                  className="shrink-0 rounded-full border border-outline-variant bg-surface px-3 py-2 text-xs font-medium text-on-surface transition-colors hover:bg-surface-container-high disabled:opacity-50"
+                  className="min-h-14 min-w-0 rounded-2xl border border-outline-variant bg-surface px-3 py-2.5 text-left text-[11px] font-semibold leading-snug text-on-surface transition-colors hover:bg-surface-container-high disabled:opacity-50 sm:text-xs"
                 >
-                  {suggestion}
+                  <span className="block line-clamp-2 whitespace-normal">{suggestion}</span>
                 </button>
               ))}
             </div>
@@ -4889,10 +4775,11 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
           }}
         >
           <Input
-            placeholder="Hỏi về tuyến xe, điểm đến, giá vé, lịch chạy..."
+            ref={inputRef}
+            placeholder={loading ? "Copilot đang phản hồi..." : "Hỏi về tuyến xe, điểm đến, giá vé, lịch chạy..."}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            disabled={loading || !sessionReady}
+            readOnly={loading || !sessionReady}
             className="min-h-12 flex-1 rounded-2xl border-outline-variant bg-surface px-4"
           />
           <ExpressiveButton variant="filled" size="icon" type="submit" disabled={loading || !sessionReady || !input.trim()} className="size-12 rounded-2xl">
@@ -4900,6 +4787,15 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
           </ExpressiveButton>
         </form>
       </div>
+    </PageTransition>
+  );
+}
+
+function FinanceScreen({ ctx }: { ctx: Ctx }) {
+  return (
+    <PageTransition className="space-y-8 min-w-0">
+      <PaymentScreen ctx={ctx} />
+      <InvoicesScreen ctx={ctx} />
     </PageTransition>
   );
 }

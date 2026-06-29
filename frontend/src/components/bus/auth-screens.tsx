@@ -229,7 +229,6 @@ export function AuthScreens({
             </p>
             <div className="mt-6 space-y-3">
               {[
-                { icon: ShieldCheck, t: "Xác thực Google an toàn", bg: "#144fcc" },
                 { icon: School, t: "Tự nhận diện trường qua email", bg: "#ff8c5f" },
                 { icon: Sparkles, t: "Vé tháng trợ giá theo trường", bg: "#c8a0ff" },
               ].map((f, i) => (

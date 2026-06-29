@@ -114,7 +114,7 @@ type DriverModuleProps = {
 export function DriverModule({ activeId, onNavigate }: DriverModuleProps) {
   const proto = useDriverPrototypeData();
 
-  if (proto.loading) return <LoadingScreen label="Đang tải dữ liệu tài xế..." />;
+  if (proto.loading || !proto.data) return <LoadingScreen label="Đang tải dữ liệu tài xế..." />;
   if (proto.error) return <ErrorScreen message={proto.error} onRetry={proto.reload} />;
 
   const d = proto.data!;

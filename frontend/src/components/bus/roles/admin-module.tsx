@@ -158,7 +158,7 @@ type AdminModuleProps = {
 export function AdminModule({ activeId, onNavigate }: AdminModuleProps) {
   const proto = useAdminPrototypeData();
 
-  if (proto.loading) return <LoadingScreen label="Đang tải dữ liệu quản trị..." />;
+  if (proto.loading || !proto.data) return <LoadingScreen label="Đang tải dữ liệu quản trị..." />;
   if (proto.error) return <ErrorScreen message={proto.error} onRetry={proto.reload} />;
 
   const d = proto.data!;
