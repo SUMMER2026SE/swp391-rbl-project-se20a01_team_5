@@ -4,6 +4,7 @@ import com.unibus.api.user.model.UserRole;
 
 import java.math.BigDecimal;
 import java.sql.PreparedStatement;
+import java.sql.Types;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -76,7 +77,6 @@ public class SePayService {
             throw new ApiException(HttpStatus.FORBIDDEN, "Test payment is not enabled for this user");
         }
         String storedTicketType = testOrder ? "single" : ticketType.toLowerCase();
-        ApprovedRegistration registration = null;
         Integer routeId = null;
         BigDecimal amount;
         BigDecimal originalFare;
@@ -90,7 +90,7 @@ public class SePayService {
             originalFare = amount;
             finalAmount = amount;
         } else {
-            registration = ticketingRepository.approvedRegistration(studentCode, requestedRouteId)
+            ApprovedRegistration registration = ticketingRepository.approvedRegistration(studentCode, requestedRouteId)
                     .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Student must have an approved route registration"));
             routeId = registration.routeId();
 
@@ -141,20 +141,44 @@ public class SePayService {
         }
 
         // Check for an existing unpaid order with same student_code, ticket_type, route_id and total amount to avoid spamming
-        List<Map<String, Object>> existingOrders = jdbcTemplate.queryForList(
-                "SELECT id, total FROM tb_orders WHERE student_code = ? AND ticket_type = ? AND route_id IS NOT DISTINCT FROM ? AND payment_status = 'Unpaid' ORDER BY created_at DESC LIMIT 1",
-                studentCode, storedTicketType, routeId);
+        Integer existingOrderRouteId = routeId;
+        List<Map<String, Object>> existingOrders = jdbcTemplate.query(connection -> {
+            PreparedStatement statement = connection.prepareStatement(
+                    "SELECT id, total FROM tb_orders WHERE student_code = ? AND ticket_type = ? AND route_id IS NOT DISTINCT FROM ? AND payment_status = 'Unpaid' ORDER BY created_at DESC LIMIT 1");
+            statement.setString(1, studentCode);
+            statement.setString(2, storedTicketType);
+            if (existingOrderRouteId == null) {
+                statement.setNull(3, Types.INTEGER);
+            } else {
+                statement.setInt(3, existingOrderRouteId);
+            }
+            return statement;
+        }, (rs, rowNum) -> {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("id", rs.getLong("id"));
+            row.put("total", rs.getBigDecimal("total"));
+            return row;
+        });
 
         if (!existingOrders.isEmpty()) {
             Map<String, Object> existing = existingOrders.get(0);
             BigDecimal existingTotal = (BigDecimal) existing.get("total");
             if (existingTotal.compareTo(amount) == 0) {
                 long orderId = ((Number) existing.get("id")).longValue();
-                String description = "DH" + orderId;
+                String description = paymentDescription(orderId);
                 String qrUrl = String.format("https://qr.sepay.vn/img?bank=%s&acc=%s&template=%s&amount=%s&des=%s",
                         bankCode, accountNo, qrTemplate, amount.toPlainString(), description);
-                return orderResponse(orderId, studentCode, testOrder ? "test" : storedTicketType, routeId,
-                        registration == null ? null : registration.routeName(), amount, description, qrUrl);
+                return Map.of(
+                    "orderId", orderId,
+                    "studentCode", studentCode,
+                    "ticketType", testOrder ? "test" : storedTicketType,
+                    "amount", amount,
+                    "description", description,
+                    "qrUrl", qrUrl,
+                    "bankCode", bankCode,
+                    "accountNo", accountNo,
+                    "accountName", accountName
+                );
             }
         }
 
@@ -166,7 +190,11 @@ public class SePayService {
                     new String[] { "id" });
             statement.setString(1, studentCode);
             statement.setString(2, storedTicketType);
-            statement.setObject(3, orderRouteId);
+            if (orderRouteId == null) {
+                statement.setNull(3, Types.INTEGER);
+            } else {
+                statement.setInt(3, orderRouteId);
+            }
             statement.setBigDecimal(4, amount);
             statement.setString(5, testOrder ? "Test UniBus" : orderName(ticketType));
             return statement;
@@ -177,39 +205,29 @@ public class SePayService {
             throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to create payment order");
         }
         long orderId = idVal.longValue();
-        String description = "DH" + orderId;
+        String description = paymentDescription(orderId);
         // Generate SePay QR URL
         String qrUrl = String.format("https://qr.sepay.vn/img?bank=%s&acc=%s&template=%s&amount=%s&des=%s",
                 bankCode, accountNo, qrTemplate, amount.toPlainString(), description);
 
-        return orderResponse(orderId, studentCode, testOrder ? "test" : storedTicketType, routeId,
-                registration == null ? null : registration.routeName(), amount, description, qrUrl);
+        return Map.of(
+            "orderId", orderId,
+            "studentCode", studentCode,
+            "ticketType", testOrder ? "test" : storedTicketType,
+            "amount", amount,
+            "description", description,
+            "qrUrl", qrUrl,
+            "bankCode", bankCode,
+            "accountNo", accountNo,
+            "accountName", accountName
+        );
     }
 
-    private Map<String, Object> orderResponse(
-            long orderId,
-            String studentCode,
-            String ticketType,
-            Integer routeId,
-            String routeName,
-            BigDecimal amount,
-            String description,
-            String qrUrl) {
-        Map<String, Object> response = new LinkedHashMap<>();
-        response.put("orderId", orderId);
-        response.put("studentCode", studentCode);
-        response.put("ticketType", ticketType.toLowerCase());
-        response.put("routeId", routeId);
-        response.put("routeName", routeName);
-        response.put("amount", amount);
-        response.put("description", description);
-        response.put("qrUrl", qrUrl);
-        response.put("bankCode", bankCode);
-        response.put("accountNo", accountNo);
-        response.put("accountName", accountName);
-        return response;
-    }
 
+    private String paymentDescription(long orderId) {
+        long mixed = (orderId * 7919L) + 1782577075040L;
+        return "UB" + Long.toString(mixed, 36).toUpperCase() + "DH" + orderId;
+    }
 
     private String orderName(String ticketType) {
         if ("monthly".equalsIgnoreCase(ticketType)) return "Vé tháng UniBus";
@@ -224,7 +242,7 @@ public class SePayService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Student profile not found"));
 
         List<Map<String, Object>> orders = jdbcTemplate.queryForList(
-                "SELECT id, student_code, ticket_type, route_id, total, payment_status, paid_at FROM tb_orders WHERE id = ? AND student_code = ?",
+                "SELECT id, student_code, ticket_type, total, payment_status, paid_at FROM tb_orders WHERE id = ? AND student_code = ?",
                 orderId, studentCode);
 
         if (orders.isEmpty()) {
@@ -234,13 +252,12 @@ public class SePayService {
         Map<String, Object> order = orders.get(0);
         BigDecimal total = (BigDecimal) order.get("total");
         long id = ((Number) order.get("id")).longValue();
-        String description = "DH" + id;
+        String description = paymentDescription(id);
         String qrUrl = String.format("https://qr.sepay.vn/img?bank=%s&acc=%s&template=%s&amount=%s&des=%s",
                 bankCode, accountNo, qrTemplate, total.toPlainString(), description);
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("orderId", id);
         response.put("ticketType", order.get("ticket_type"));
-        response.put("routeId", order.get("route_id"));
         response.put("total", total);
         response.put("amount", total);
         response.put("description", description);
