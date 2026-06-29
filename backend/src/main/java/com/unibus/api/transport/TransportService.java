@@ -323,7 +323,6 @@ public class TransportService {
 
     @Transactional(readOnly = true)
     public RouteSelection requireValidSelection(CurrentUser currentUser, Integer routeId, Integer boardingStopId, Integer alightingStopId) {
-        subsidyService.requireRouteLinked(currentUser, routeId);
         BusRoute route = busRouteRepository.findById(routeId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Route not found"));
         if (route.getStatus() != RouteStatus.ACTIVE) {

@@ -47,7 +47,7 @@ public class JourneyPlannerService {
     private static final int MAX_TOTAL_WALK_M = 2_700;
     private static final int TRANSFER_WALK_RADIUS_M = 300;
     private static final int PREFERRED_TOTAL_WALK_M = 1_800;
-    private static final int MAX_OPTIONS = 2;
+    private static final int MAX_OPTIONS = 4;
 
     private final JdbcTemplate jdbcTemplate;
     private final SubsidyService subsidyService;
@@ -104,7 +104,7 @@ public class JourneyPlannerService {
                 }
             }
         }
-        List<JourneyOption> sorted = bestDistinctOptions(options);
+        List<JourneyOption> sorted = bestDistinctOptions(options, maxBusLegs);
         sorted.forEach(option -> optionCache.put(option.optionId(), option));
         return sorted;
     }
@@ -187,7 +187,7 @@ public class JourneyPlannerService {
         }
     }
 
-    private List<JourneyOption> bestDistinctOptions(List<JourneyOption> options) {
+    private List<JourneyOption> bestDistinctOptions(List<JourneyOption> options, int maxBusLegs) {
         Map<String, JourneyOption> bestByRouteSequence = new LinkedHashMap<>();
         options.stream()
                 .sorted(journeyComparator())
@@ -197,20 +197,21 @@ public class JourneyPlannerService {
                 .filter(option -> option.summary().transferCount() == null || option.summary().transferCount() == 0)
                 .limit(MAX_OPTIONS)
                 .toList();
-        if (direct.size() >= MAX_OPTIONS) {
-            return direct;
-        }
-        if (!direct.isEmpty()) {
-            JourneyOption bestDirect = direct.get(0);
-            List<JourneyOption> result = new ArrayList<>(direct);
-            distinct.stream()
-                    .filter(option -> option.summary().transferCount() != null && option.summary().transferCount() > 0)
-                    .filter(option -> journeyScore(option) + 18 < journeyScore(bestDirect))
-                    .findFirst()
-                    .ifPresent(result::add);
+        List<JourneyOption> transfer = distinct.stream()
+                .filter(option -> option.summary().transferCount() != null && option.summary().transferCount() > 0)
+                .limit(MAX_OPTIONS)
+                .toList();
+        if (maxBusLegs >= 2 && !transfer.isEmpty()) {
+            List<JourneyOption> result = new ArrayList<>();
+            direct.stream().limit(2).forEach(result::add);
+            transfer.stream()
+                    .filter(option -> result.stream().noneMatch(existing -> journeySignature(existing).equals(journeySignature(option))))
+                    .forEach(result::add);
             return result.stream().limit(MAX_OPTIONS).toList();
         }
-        return distinct.stream().limit(MAX_OPTIONS).toList();
+        return direct.isEmpty()
+                ? distinct.stream().limit(MAX_OPTIONS).toList()
+                : direct.stream().limit(MAX_OPTIONS).toList();
     }
 
     private Comparator<JourneyOption> journeyComparator() {
@@ -243,7 +244,7 @@ public class JourneyPlannerService {
     private String journeySignature(JourneyOption option) {
         String routeSequence = option.legs().stream()
                 .filter(leg -> "BUS".equals(leg.mode()))
-                .map(leg -> canonicalRouteCode(leg.routeCode(), leg.routeId()) + ":" + legDirection(leg))
+                .map(leg -> canonicalRouteCode(leg.routeCode(), leg.routeId()))
                 .collect(java.util.stream.Collectors.joining(">"));
         return routeSequence.isBlank() ? option.optionId() : routeSequence;
     }
@@ -458,15 +459,9 @@ public class JourneyPlannerService {
     }
 
     private JourneyAction primaryAction(List<Segment> busSegments) {
-        Optional<Segment> firstEligible = busSegments.stream().filter(segment -> segment.line().universityLinked()).findFirst();
-        if (firstEligible.isPresent()) {
-            Segment segment = firstEligible.get();
-            return new JourneyAction("REGISTER_ROUTE", "Đăng ký tuyến " + segment.line().routeCode(),
-                    true, null, segment.line().routeId(), segment.from().stop().stopId(), segment.to().stop().stopId());
-        }
         Segment first = busSegments.get(0);
-        return new JourneyAction("REGISTER_ROUTE", "Tuyến chưa liên kết trường", false,
-                "Hành trình này dùng tuyến chưa được trường của bạn liên kết để mua UniPass.",
+        return new JourneyAction("REGISTER_ROUTE", "Đăng ký tuyến " + first.line().routeCode(), true,
+                first.line().universityLinked() ? null : "Tuyến này chưa có trợ giá từ trường của bạn.",
                 first.line().routeId(), first.from().stop().stopId(), first.to().stop().stopId());
     }
 

@@ -32,6 +32,7 @@ import {
   Clock,
   TrendingUp,
   ArrowRight,
+  ArrowLeft,
   ArrowLeftRight,
   Calendar,
   CheckCircle2,
@@ -183,6 +184,10 @@ import {
   type PlaceSuggestionDTO,
   type JourneyOptionDTO,
   type JourneyTrackingSnapshotDTO,
+  type SePayOrderDTO,
+  type SePayOrderItemDTO,
+  type SePayOrderRequestDTO,
+  type SePayQuoteDTO,
   type AiSource,
   type AiTraceEvent,
   type AiProviderStatus,
@@ -243,8 +248,6 @@ export function StudentModule({ activeId, onNavigate, onProfileRefresh }: Studen
       return <DashboardScreen ctx={ctx} onNavigate={onNavigate} />;
     case "stu-university":
       return <UniversityScreen ctx={ctx} onProfileRefresh={onProfileRefresh} />;
-    case "stu-stops":
-      return <StopsScreen ctx={ctx} />;
     case "stu-find":
       return <JourneyPlannerDesktop ctx={ctx} onNavigate={onNavigate} />;
     case "stu-my-journeys":
@@ -266,9 +269,9 @@ export function StudentModule({ activeId, onNavigate, onProfileRefresh }: Studen
     case "stu-invoices":
       return <InvoicesScreen ctx={ctx} />;
     case "stu-feedback":
-      return <FeedbackScreen ctx={ctx} />;
+      return <FeedbackScreen ctx={ctx} onNavigate={onNavigate} />;
     case "stu-lost":
-      return <LostItemsScreen ctx={ctx} />;
+      return <LostItemsScreen ctx={ctx} onNavigate={onNavigate} />;
     default:
       return <FallbackScreen activeId={activeId} />;
   }
@@ -500,7 +503,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
   const quickActions = [
     { id: "stu-find", label: "Tìm tuyến xe", icon: RouteIcon, bg: "#144fcc", fg: "#fff", iconBg: "#beff50", iconFg: "#14140f" },
     { id: "stu-my-journeys", label: "Chuyến đi của tôi", icon: TicketCheck, bg: "#ff8c5f", fg: "#14140f", iconBg: "#14140f", iconFg: "#ff8c5f" },
-    { id: "stu-payment", label: "Mua vé tháng", icon: CreditCard, bg: "#14140f", fg: "#fff", iconBg: "#beff50", iconFg: "#14140f" },
+    { id: "stu-payment", label: "Mua vé", icon: CreditCard, bg: "#14140f", fg: "#fff", iconBg: "#beff50", iconFg: "#14140f" },
     { id: "stu-chatbot", label: "Hỏi Copilot", icon: Bot, bg: "#c8a0ff", fg: "#14140f", iconBg: "#14140f", iconFg: "#c8a0ff" },
   ];
 
@@ -3347,7 +3350,7 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
                           className="inline-flex items-center gap-1.5 h-10 px-5 rounded-full bg-[#14140f] text-[#beff50] text-sm font-bold"
                         >
                           <CreditCard className="size-4" />
-                          Mua vé tháng
+                          Mua vé
                         </motion.button>
                         <motion.button
                           whileHover={{ y: -2 }}
@@ -3545,9 +3548,9 @@ function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
         <EmptyState
           icon={<QrCode className="size-7" />}
           title="Chưa có vé tháng"
-          description="Mua vé tháng để sử dụng dịch vụ xe buýt không giới hạn trong 30 ngày."
+          description="Mua vé ngày hoặc vé tháng để sử dụng dịch vụ xe buýt."
           action={<ExpressiveButton variant="filled" onClick={() => onNavigate("stu-payment")}>
-            <CreditCard className="size-4" /> Mua vé tháng
+            <CreditCard className="size-4" /> Mua vé
           </ExpressiveButton>}
         />
       </PageTransition>
@@ -3680,11 +3683,32 @@ function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
 // Screen 8: History — travel history list with stat cards
 // =============================================================================
 function HistoryScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
-  const [view, setView] = useState<"trips" | "feedback" | "lost">("trips");
-  const totalTrips = ctx.tripsHistory.length;
+  const mockHistory = useMemo(() => {
+    const route = ctx.routes[0];
+    const routeStops = Array.isArray(route?.stops)
+      ? route.stops
+          .map((id: string) => ctx.stops.find((stop: any) => String(stop.id) === String(id)))
+          .filter(Boolean)
+      : [];
+    const now = new Date();
+    now.setHours(7, 45, 0, 0);
+    return {
+      id: "mock-trip-history",
+      tripId: "mock-trip-history",
+      routeId: route?.id || route?.routeId || "R16",
+      routeName: route?.name || route?.routeName || "Tuyến Kim Liên - Cao đẳng Việt Hàn",
+      boardingStopName: routeStops[0]?.name || route?.from || "121 Tôn Đức Thắng",
+      alightingStopName: routeStops[routeStops.length - 1]?.name || route?.to || "Cao đẳng Việt Hàn",
+      boardedAt: now.toISOString(),
+      serviceDate: now.toISOString(),
+      _mock: true,
+    };
+  }, [ctx.routes, ctx.stops]);
+  const displayHistory = ctx.tripsHistory.length ? ctx.tripsHistory : [mockHistory];
+  const totalTrips = displayHistory.length;
   // Estimate monthly spend from active ticket fare
   const monthlyFare = ctx.activeTicket?.finalFareAmount ?? ctx.activeTicket?.originalFareAmount ?? 0;
-  const thisMonthTrips = ctx.tripsHistory.filter((h: any) => {
+  const thisMonthTrips = displayHistory.filter((h: any) => {
     const d = new Date(h.boardedAt || h.serviceDate || "");
     const now = new Date();
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
@@ -3698,18 +3722,6 @@ function HistoryScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
         icon={<History className="size-7" />}
       />
 
-      <Tabs value={view} onValueChange={(value) => setView(value as "trips" | "feedback" | "lost")}>
-        <TabsList className="grid w-full grid-cols-3 rounded-2xl bg-surface-container-low p-1 shadow-none">
-          <TabsTrigger value="trips" className="rounded-xl">Chuyến đã đi</TabsTrigger>
-          <TabsTrigger value="feedback" className="rounded-xl">Phản hồi</TabsTrigger>
-          <TabsTrigger value="lost" className="rounded-xl">Mất đồ</TabsTrigger>
-        </TabsList>
-      </Tabs>
-
-      {view === "feedback" && <FeedbackScreen ctx={ctx} compact />}
-      {view === "lost" && <LostItemsScreen ctx={ctx} compact />}
-      {view !== "trips" ? null : (
-        <>
       {/* Stat cards — 3 mini cards giống prototype */}
       {totalTrips > 0 && (
         <StaggerGroup className="grid grid-cols-3 gap-2 sm:gap-3 min-w-0">
@@ -3734,15 +3746,14 @@ function HistoryScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
         </StaggerGroup>
       )}
 
-      {totalTrips === 0 ? (
-        <EmptyState
-          icon={<History className="size-7" />}
-          title="Chưa có chuyến đi nào"
-          description="Lịch sử sẽ hiển thị tại đây sau khi bạn dùng vé tháng để đi xe."
-        />
-      ) : (
-        <StaggerGroup className="space-y-3 min-w-0">
-          {ctx.tripsHistory.map((h: any) => (
+      {!ctx.tripsHistory.length && (
+        <div className="rounded-2xl border border-dashed border-outline-variant bg-surface-container-low px-4 py-3 text-sm font-semibold text-on-surface-variant">
+          Đang hiển thị 1 chuyến giả định để test phản hồi và báo mất đồ.
+        </div>
+      )}
+
+      <StaggerGroup className="space-y-3 min-w-0">
+          {displayHistory.map((h: any) => (
             <StaggerItem key={h.id}>
               <HistoryRow
                 history={h}
@@ -3750,19 +3761,16 @@ function HistoryScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                 onFeedback={() => {
                   localStorage.setItem("unibus.supportTripId", String(h.tripId || h.id));
                   if (h.routeId) localStorage.setItem("unibus.supportRouteId", String(h.routeId));
-                  setView("feedback");
+                  onNavigate("stu-feedback");
                 }}
                 onLostItem={() => {
                   localStorage.setItem("unibus.lostTripId", String(h.tripId || h.id));
-                  setView("lost");
+                  onNavigate("stu-lost");
                 }}
               />
             </StaggerItem>
           ))}
         </StaggerGroup>
-      )}
-        </>
-      )}
     </PageTransition>
   );
 }
@@ -4609,36 +4617,73 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
 // =============================================================================
 // Screen 11: Payment — buy monthly pass (SePay QR)
 // =============================================================================
+const PAYMENT_CONTEXT_KEY = "unibus.studentPaymentContext.v1";
+
 function PaymentScreen({ ctx }: { ctx: Ctx }) {
   const [purchasing, setPurchasing] = useState(false);
   const [registrations, setRegistrations] = useState<RegistrationDTO[]>([]);
   const [selectedRouteId, setSelectedRouteId] = useState<string>("");
-  const [sepayOrder, setSepayOrder] = useState<{
-    orderId: number;
-    routeId?: number;
-    routeName?: string;
-    qrUrl: string;
-    amount: number;
-    description: string;
-    bankCode?: string;
-    accountNo?: string;
-    accountName?: string;
-  } | null>(null);
+  const [paymentContext, setPaymentContext] = useState<SePayOrderRequestDTO | null>(null);
+  const [paymentQuote, setPaymentQuote] = useState<SePayQuoteDTO | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [sepayOrder, setSepayOrder] = useState<SePayOrderDTO | null>(null);
   const [paidStatus, setPaidStatus] = useState<"idle" | "checking" | "paid" | "expired">("idle");
   const [copying, setCopying] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
 
-  const passes = ctx.raw.passes?.data;
-  const quote = passes?.monthlyPassQuote;
-  const selectedRegistration = registrations.find((item) => String(item.routeId) === selectedRouteId) || ctx.registration;
+  const selectableRegistrations = useMemo(() => {
+    const seen = new Set<string>();
+    return registrations.filter((item) => {
+      const key = String(item.routeId);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [registrations]);
+  const selectedRegistration = selectableRegistrations.find((item) => String(item.routeId) === selectedRouteId) || ctx.registration;
+  const isCombo = paymentContext?.mode === "journey-combo";
+  const lockedPaymentRoute = Boolean(paymentContext?.legs?.length);
+  const ticketPeriod = paymentContext?.ticketPeriod || "month";
+  const orderTitle = isCombo
+    ? ticketPeriod === "day" ? "Combo vé ngày" : "Combo vé tháng"
+    : ticketPeriod === "day" ? "Vé ngày tuyến này" : "Vé tháng tuyến này";
+  const routeOptionParts = useCallback((item: RegistrationDTO) => {
+    const route = ctx.routes.find((r: any) => String(r.id) === String(item.routeId));
+    const routeName = route?.name || route?.routeName || item.routeName || `Tuyến ${item.routeId}`;
+    const firstStopId = Array.isArray(route?.stops) ? route.stops[0] : null;
+    const lastStopId = Array.isArray(route?.stops) ? route.stops[route.stops.length - 1] : null;
+    const firstStop = ctx.stops.find((s: any) => String(s.id) === String(firstStopId));
+    const lastStop = ctx.stops.find((s: any) => String(s.id) === String(lastStopId));
+    let from = firstStop?.name || route?.from || route?.fromStopName || item.boardingStopName || "Điểm đầu";
+    let to = lastStop?.name || route?.to || route?.toStopName || item.alightingStopName || "Điểm cuối";
+    if (from === to) {
+      const endpoints = routeName.split(/\s+[–-]\s+/).filter(Boolean);
+      if (endpoints.length >= 2) {
+        from = endpoints[0];
+        to = endpoints[endpoints.length - 1];
+      }
+    }
+    return { routeName, from, to, text: `${routeName} — ${from} → ${to}` };
+  }, [ctx.routes, ctx.stops]);
+  const selectedRouteParts = selectedRegistration ? routeOptionParts(selectedRegistration) : null;
 
   useEffect(() => {
     let cancelled = false;
+    let storedContext: SePayOrderRequestDTO | null = null;
+    try {
+      const raw = localStorage.getItem(PAYMENT_CONTEXT_KEY);
+      storedContext = raw ? JSON.parse(raw) as SePayOrderRequestDTO : null;
+    } catch {
+      storedContext = null;
+    }
+    if (storedContext) {
+      setPaymentContext(storedContext);
+    }
     studentApi.registrations()
       .then((list) => {
         if (cancelled) return;
         setRegistrations(list);
-        const preferred = localStorage.getItem("unibus.paymentRouteId");
+        const preferred = storedContext?.routeId?.toString() || storedContext?.legs?.[0]?.routeId?.toString() || localStorage.getItem("unibus.paymentRouteId");
         const firstRoute = preferred || list[0]?.routeId?.toString() || ctx.registration?.routeId?.toString() || "";
         setSelectedRouteId(firstRoute);
         localStorage.removeItem("unibus.paymentRouteId");
@@ -4652,6 +4697,52 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
       cancelled = true;
     };
   }, [ctx.registration?.routeId]);
+
+  const buildOrderRequest = useCallback((): SePayOrderRequestDTO | null => {
+    if (paymentContext?.legs?.length) {
+      return paymentContext;
+    }
+    if (!selectedRegistration) return null;
+    return {
+      mode: "single-route",
+      ticketPeriod: "month",
+      routeId: selectedRegistration.routeId,
+      boardingStopId: selectedRegistration.boardingStopId,
+      alightingStopId: selectedRegistration.alightingStopId,
+      originLabel: selectedRegistration.boardingStopName,
+      destinationLabel: selectedRegistration.alightingStopName,
+      serviceDate: new Date().toISOString().slice(0, 10),
+      legs: [{
+        routeId: selectedRegistration.routeId,
+        boardingStopId: selectedRegistration.boardingStopId,
+        alightingStopId: selectedRegistration.alightingStopId,
+        legOrder: 1,
+      }],
+    };
+  }, [paymentContext, selectedRegistration]);
+
+  useEffect(() => {
+    const request = buildOrderRequest();
+    if (!request) return;
+    let cancelled = false;
+    setQuoteLoading(true);
+    studentApi.quoteSePayOrder(request)
+      .then((quote) => {
+        if (!cancelled) setPaymentQuote(quote);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setPaymentQuote(null);
+          toast.error(error instanceof Error ? error.message : "Không thể lấy giá vé");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setQuoteLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [buildOrderRequest]);
 
   // Step state: 1 = review, 2 = pay, 3 = done
   const step = !sepayOrder ? 1 : paidStatus === "paid" ? 3 : 2;
@@ -4674,13 +4765,14 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
   }, [sepayOrder, paidStatus]);
 
   const buy = async () => {
-    if (!selectedRouteId) {
-      toast.error("Hãy chọn tuyến cần mua vé tháng.");
+    const request = buildOrderRequest();
+    if (!request) {
+      toast.error("Hãy chọn tuyến cần mua vé.");
       return;
     }
     setPurchasing(true);
     try {
-      const order = await studentApi.createSePayOrder("MONTHLY", Number(selectedRouteId));
+      const order = await studentApi.createSePayOrder(request);
       setSepayOrder(order);
       setPaidStatus("checking");
       toast.success("Đã tạo đơn hàng. Vui lòng quét mã QR để thanh toán.");
@@ -4691,7 +4783,8 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
             const s = await studentApi.getSePayOrderStatus(order.orderId);
             if (s.paid) {
               setPaidStatus("paid");
-              toast.success("Thanh toán thành công! Vé tháng đã được kích hoạt.");
+              toast.success("Thanh toán thành công! Vé đã được kích hoạt.");
+              localStorage.removeItem(PAYMENT_CONTEXT_KEY);
               ctx.reload();
               return;
             }
@@ -4737,7 +4830,7 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
-        title="Mua vé tháng"
+        title="Mua vé"
         description="Thanh toán qua SePay bằng mã QR VietQR — nhanh, an toàn."
         icon={<CreditCard className="size-7" />}
       />
@@ -4775,35 +4868,90 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
           <ExpressiveCard variant="elevated" className="p-6 h-full min-w-0">
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
               <TicketCheck className="size-5 text-primary" />
-              Đơn vé tháng
+              {orderTitle}
             </h3>
-            {selectedRegistration ? (
+            {paymentQuote || selectedRegistration ? (
               <div className="space-y-3 text-sm">
-                {registrations.length > 1 && (
+                {!isCombo && !lockedPaymentRoute && selectableRegistrations.length > 1 && (
                   <div>
                     <Label className="text-xs font-bold">Chọn tuyến cần mua vé</Label>
                     <Select value={selectedRouteId} onValueChange={setSelectedRouteId}>
-                      <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn tuyến" /></SelectTrigger>
-                      <SelectContent>
-                        {registrations.map((item) => (
-                          <SelectItem key={item.registrationId} value={String(item.routeId)}>
-                            {item.routeName} — {item.boardingStopName} → {item.alightingStopName}
+                      <SelectTrigger className="mt-1.5 h-auto min-h-14 overflow-hidden py-2.5 whitespace-normal">
+                        <div className="min-w-0 flex-1 text-left">
+                          <p className="truncate text-sm font-bold text-on-surface">
+                            {selectedRouteParts?.routeName || "Chọn tuyến"}
+                          </p>
+                          {selectedRouteParts && (
+                            <p className="mt-0.5 truncate text-xs font-medium text-on-surface-variant">
+                              {selectedRouteParts.from} → {selectedRouteParts.to}
+                            </p>
+                          )}
+                        </div>
+                      </SelectTrigger>
+                      <SelectContent className="max-w-[min(720px,calc(100vw-32px))]">
+                        {selectableRegistrations.map((item) => {
+                          const parts = routeOptionParts(item);
+                          return (
+                          <SelectItem key={item.registrationId} value={String(item.routeId)} textValue={parts.text}>
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-bold">{parts.routeName}</p>
+                              <p className="mt-0.5 truncate text-xs text-on-surface-variant">
+                                {parts.from} → {parts.to}
+                              </p>
+                            </div>
                           </SelectItem>
-                        ))}
+                          );
+                        })}
                       </SelectContent>
                     </Select>
                   </div>
                 )}
-                <Row label="Tuyến" value={selectedRegistration.routeName} icon={<RouteIcon className="size-4" />} />
-                <Row label="Trạm lên" value={selectedRegistration.boardingStopName} icon={<MapPin className="size-4" />} />
-                <Row label="Trạm xuống" value={selectedRegistration.alightingStopName} icon={<MapPin className="size-4" />} />
-                <Row label="Hiệu lực" value="30 ngày" icon={<Calendar className="size-4" />} />
-                {quote && (
+                {isCombo && paymentQuote?.originLabel && (
+                  <Row label="Hành trình" value={`${paymentQuote.originLabel} → ${paymentQuote.destinationLabel || "Điểm đến"}`} icon={<RouteIcon className="size-4" />} />
+                )}
+                {!isCombo && selectedRegistration && (
+                  <>
+                    <Row label="Tuyến" value={selectedRegistration.routeName} icon={<RouteIcon className="size-4" />} />
+                    <Row label="Trạm lên" value={selectedRegistration.boardingStopName} icon={<MapPin className="size-4" />} />
+                    <Row label="Trạm xuống" value={selectedRegistration.alightingStopName} icon={<MapPin className="size-4" />} />
+                  </>
+                )}
+                <Row label="Hiệu lực" value={ticketPeriod === "day" ? "Trong ngày sử dụng" : "Tháng hiện tại"} icon={<Calendar className="size-4" />} />
+                {quoteLoading && (
+                  <div className="flex items-center gap-2 rounded-xl bg-surface-container-low px-3 py-2 text-xs font-semibold text-on-surface-variant">
+                    <RefreshCw className="size-4 animate-spin" />
+                    Đang tính giá vé theo từng tuyến...
+                  </div>
+                )}
+                {paymentQuote && (
                   <>
                     <div className="h-px bg-outline-variant my-2" />
-                    <Row label="Giá gốc" value={formatVND(quote.originalFareAmount || quote.baseAmount || 0)} muted />
-                    {quote.subsidyAmount != null && quote.subsidyAmount > 0 && (
-                      <Row label="Trợ giá trường" value={`-${formatVND(quote.subsidyAmount)}`} accent="success" />
+                    {paymentQuote.items && paymentQuote.items.length > 1 && (
+                      <div className="space-y-2">
+                        {paymentQuote.items.map((item: SePayOrderItemDTO, index: number) => (
+                          <div key={`${item.routeId}-${index}`} className="rounded-xl border border-outline-variant bg-surface px-3 py-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-bold text-on-surface">{index + 1}. {item.routeName || `Tuyến ${item.routeId}`}</p>
+                                <p className="mt-1 text-xs text-on-surface-variant">
+                                  {item.boardingStopName || "Trạm lên"} → {item.alightingStopName || "Trạm xuống"}
+                                </p>
+                                <p className="mt-1 text-[11px] font-medium text-on-surface-variant">{item.subsidyNote}</p>
+                              </div>
+                              <div className="shrink-0 text-right">
+                                <p className="text-xs text-on-surface-variant line-through">{formatVND(Number(item.originalAmount || 0))}</p>
+                                <p className="font-black text-on-surface">{formatVND(Number(item.finalAmount || 0))}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <Row label="Giá gốc" value={formatVND(Number(paymentQuote.originalAmount || 0))} muted />
+                    {Number(paymentQuote.subsidyAmount || 0) > 0 ? (
+                      <Row label="Trợ giá trường" value={`-${formatVND(Number(paymentQuote.subsidyAmount || 0))}`} accent="success" />
+                    ) : (
+                      <Row label="Trợ giá trường" value="0đ" muted />
                     )}
                     <motion.div
                       initial={{ opacity: 0, y: 8 }}
@@ -4813,7 +4961,7 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
                     >
                       <p className="text-[10px] font-bold opacity-70 uppercase tracking-wide">Tổng thanh toán</p>
                       <p className="text-3xl font-black mt-1 tabular-nums">
-                        {formatVND(quote.payableAmount || quote.finalFareAmount || 0)}
+                        {formatVND(Number(paymentQuote.finalAmount || 0))}
                       </p>
                     </motion.div>
                   </>
@@ -4823,7 +4971,7 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
                     variant="filled"
                     className="w-full mt-5"
                     onClick={buy}
-                    disabled={purchasing}
+                    disabled={purchasing || quoteLoading || !paymentQuote || Number(paymentQuote.finalAmount || 0) <= 0}
                   >
                     {purchasing ? <RefreshCw className="size-4 animate-spin" /> : <CreditCard className="size-4" />}
                     Tạo mã QR thanh toán
@@ -4839,7 +4987,7 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
               <EmptyState
                 icon={<TicketCheck className="size-7" />}
                 title="Chưa đăng ký tuyến"
-                description="Vui lòng đăng ký tuyến trước khi mua vé tháng."
+                description="Vui lòng đăng ký tuyến trước khi mua vé."
               />
             )}
           </ExpressiveCard>
@@ -4877,7 +5025,7 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
                 </motion.div>
                 <h2 className="text-2xl font-black">Thanh toán thành công!</h2>
                 <p className="text-sm font-semibold opacity-80 mt-2">
-                  Vé tháng đã được kích hoạt. Bạn có thể xem vé trong mục “Vé của tôi”.
+                  Vé đã được kích hoạt. Bạn có thể xem trong “Chuyến đi của tôi” hoặc “Vé của tôi”.
                 </p>
                 <div className="bg-[#14140f]/10 rounded-2xl p-4 mt-4 w-full max-w-xs">
                   <p className="text-xs font-bold opacity-70 uppercase">Mã giao dịch</p>
@@ -5055,7 +5203,7 @@ function InvoicesScreen({ ctx }: { ctx: Ctx }) {
 // =============================================================================
 // Screen 13: Feedback — submit + list
 // =============================================================================
-function FeedbackScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean }) {
+function FeedbackScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compact?: boolean; onNavigate?: (id: string) => void }) {
   const [rating, setRating] = useState(5);
   const [category, setCategory] = useState("service");
   const [content, setContent] = useState("");
@@ -5081,14 +5229,10 @@ function FeedbackScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean 
       toast.error("Vui lòng nhập nội dung phản hồi");
       return;
     }
-    if (!tripId) {
-      toast.error("Vui lòng chọn chuyến đi cần hỗ trợ");
-      return;
-    }
     setSubmitting(true);
     try {
       await feedbackApi.create({
-        tripId: Number(tripId),
+        tripId: tripId.startsWith("mock-") ? undefined : Number(tripId),
         routeId: routeId ? Number(routeId) : undefined,
         rating,
         category,
@@ -5110,11 +5254,23 @@ function FeedbackScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean 
   return (
     <PageTransition className="space-y-6 min-w-0">
       {!compact && (
-        <PageHeader
-          title="Phản hồi"
-          description="Chia sẻ trải nghiệm của bạn để chúng tôi cải thiện dịch vụ."
-          icon={<Star className="size-7" />}
-        />
+        <>
+          {onNavigate && (
+            <button
+              type="button"
+              onClick={() => onNavigate("stu-history")}
+              className="inline-flex h-9 items-center gap-2 rounded-lg px-1 text-sm font-bold text-on-surface-variant hover:text-on-surface"
+            >
+              <ArrowLeft className="size-4" />
+              Quay lại lịch sử
+            </button>
+          )}
+          <PageHeader
+            title="Phản hồi"
+            description="Chia sẻ trải nghiệm của bạn để chúng tôi cải thiện dịch vụ."
+            icon={<Star className="size-7" />}
+          />
+        </>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
@@ -5138,34 +5294,6 @@ function FeedbackScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean 
                     <SelectItem value="vehicle">Phương tiện</SelectItem>
                     <SelectItem value="punctuality">Đúng giờ</SelectItem>
                     <SelectItem value="other">Khác</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs font-bold">Chuyến đi cần hỗ trợ</Label>
-                <Select value={tripId} onValueChange={(value) => {
-                  setTripId(value);
-                  const selected = ctx.tripsHistory.find((h: any) => String(h.tripId || h.id) === value);
-                  if (selected?.routeId) setRouteId(String(selected.routeId));
-                }}>
-                  <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn chuyến từ lịch sử" /></SelectTrigger>
-                  <SelectContent>
-                    {ctx.tripsHistory.map((h: any) => (
-                      <SelectItem key={h.tripId || h.id} value={String(h.tripId || h.id)}>
-                        {(h.routeName || "Tuyến xe")} · {formatDate(h.boardedAt || h.serviceDate)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs font-bold">Tuyến (tùy chọn)</Label>
-                <Select value={routeId} onValueChange={setRouteId}>
-                  <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn tuyến" /></SelectTrigger>
-                  <SelectContent>
-                    {ctx.routes.map((r: any) => (
-                      <SelectItem key={r.id} value={r.id}>{r.code} — {r.name}</SelectItem>
-                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -5227,7 +5355,7 @@ function FeedbackScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean 
 // =============================================================================
 // Screen 14: Lost Items — report + list
 // =============================================================================
-function LostItemsScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean }) {
+function LostItemsScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compact?: boolean; onNavigate?: (id: string) => void }) {
   const [description, setDescription] = useState("");
   const [tripId, setTripId] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
@@ -5241,7 +5369,7 @@ function LostItemsScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean
     try {
       await experienceApi.createStudentLostItem({
         itemDescription: description.trim(),
-        tripId: tripId ? Number(tripId) : undefined,
+        tripId: tripId && !tripId.startsWith("mock-") ? Number(tripId) : undefined,
       });
       toast.success("Đã báo mất vật dụng. Chúng tôi sẽ liên hệ khi tìm thấy.");
       setDescription("");
@@ -5265,11 +5393,23 @@ function LostItemsScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean
   return (
     <PageTransition className="space-y-6 min-w-0">
       {!compact && (
-        <PageHeader
-          title="Đồ thất lạc"
-          description="Báo mất vật dụng và theo dõi trạng thái tìm kiếm."
-          icon={<PackageSearch className="size-7" />}
-        />
+        <>
+          {onNavigate && (
+            <button
+              type="button"
+              onClick={() => onNavigate("stu-history")}
+              className="inline-flex h-9 items-center gap-2 rounded-lg px-1 text-sm font-bold text-on-surface-variant hover:text-on-surface"
+            >
+              <ArrowLeft className="size-4" />
+              Quay lại lịch sử
+            </button>
+          )}
+          <PageHeader
+            title="Đồ thất lạc"
+            description="Báo mất vật dụng và theo dõi trạng thái tìm kiếm."
+            icon={<PackageSearch className="size-7" />}
+          />
+        </>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
@@ -5277,19 +5417,6 @@ function LostItemsScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean
           <ExpressiveCard variant="elevated" className="p-5 min-w-0">
             <h3 className="text-base font-bold mb-4">Báo mất vật dụng</h3>
             <div className="space-y-4">
-              <div>
-                <Label className="text-xs font-bold">Chuyến đi (tùy chọn)</Label>
-                <Select value={tripId} onValueChange={setTripId}>
-                  <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn chuyến" /></SelectTrigger>
-                  <SelectContent>
-                    {ctx.tripsHistory.map((h: any) => (
-                      <SelectItem key={h.tripId || h.id} value={String(h.tripId || h.id)}>
-                        {(h.routeName || "Tuyến xe")} — {formatDate(h.boardedAt || h.serviceDate)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
               <div>
                 <Label className="text-xs font-bold">Mô tả vật dụng</Label>
                 <Textarea

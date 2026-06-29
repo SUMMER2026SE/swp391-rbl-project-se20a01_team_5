@@ -30,14 +30,18 @@ public class SePayController {
     @PreAuthorize("hasRole('STUDENT')")
     public ApiResponse<Map<String, Object>> createOrder(
             @AuthenticationPrincipal CurrentUser currentUser,
-            @RequestBody Map<String, String> request) {
-        String ticketType = request.get("ticketType");
-        if (ticketType == null || ticketType.isBlank()) {
-            ticketType = "monthly";
-        }
-        Integer routeId = parseRouteId(request.get("routeId"));
-        Map<String, Object> orderDetails = sePayService.createOrder(currentUser, ticketType, routeId);
+            @RequestBody Map<String, Object> request) {
+        Map<String, Object> orderDetails = sePayService.createOrder(currentUser, request);
         return ApiResponse.ok("Payment order created", orderDetails);
+    }
+
+    @PostMapping("/api/v1/students/me/payments/sepay/quote")
+    @PreAuthorize("hasRole('STUDENT')")
+    public ApiResponse<Map<String, Object>> quoteOrder(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @RequestBody Map<String, Object> request) {
+        Map<String, Object> quote = sePayService.quote(currentUser, request);
+        return ApiResponse.ok("Payment quote retrieved", quote);
     }
 
     @GetMapping("/api/v1/students/me/payments/sepay/order/{orderId}/status")
@@ -61,14 +65,4 @@ public class SePayController {
         }
     }
 
-    private Integer parseRouteId(String raw) {
-        if (raw == null || raw.isBlank()) {
-            return null;
-        }
-        try {
-            return Integer.valueOf(raw);
-        } catch (NumberFormatException exception) {
-            throw new com.unibus.api.common.ApiException(HttpStatus.BAD_REQUEST, "routeId must be a number");
-        }
-    }
 }

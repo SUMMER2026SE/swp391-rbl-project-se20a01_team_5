@@ -11,6 +11,7 @@ import {
   CircleDot,
   Clock3,
   Coins,
+  CreditCard,
   Crosshair,
   Footprints,
   Info,
@@ -20,6 +21,7 @@ import {
   RefreshCw,
   Route,
   Search,
+  TicketCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -73,12 +75,13 @@ const DEFAULT_DESTINATION = "Bến xe Trung tâm Đà Nẵng";
 const CURRENT_LOCATION_LABEL = "Vị trí hiện tại";
 const PLANNER_STORAGE_KEY = "unibus.studentJourneyPlanner.v1";
 const LAST_REGISTERED_ROUTE_CONTEXT_KEY = "unibus.lastRegisteredRouteContext";
+const PAYMENT_CONTEXT_KEY = "unibus.studentPaymentContext.v1";
 const STUDENT_INK = "#14140f";
 const STUDENT_LIME = "#BDFD4F";
 const STUDENT_GREEN = "#087f5b";
 const STUDENT_MAP_GREEN = "#6CA82B";
 const STUDENT_CORAL = "#EE7D5A";
-const MAX_JOURNEY_RESULT_CARDS = 2;
+const MAX_JOURNEY_RESULT_CARDS = 4;
 const PREFERRED_TOTAL_WALK_METERS = 1800;
 
 function numeric(value: number | string | null | undefined) {
@@ -182,6 +185,17 @@ function optionBusLegs(option: JourneyOptionDTO | null) {
   return option?.legs.filter((leg) => leg.mode === "BUS") ?? [];
 }
 
+function paymentLegs(option: JourneyOptionDTO) {
+  return optionBusLegs(option)
+    .filter((leg) => leg.routeId && leg.fromStopId && leg.toStopId)
+    .map((leg, index) => ({
+      routeId: Number(leg.routeId),
+      boardingStopId: Number(leg.fromStopId),
+      alightingStopId: Number(leg.toStopId),
+      legOrder: index + 1,
+    }));
+}
+
 function optionBadges(option: JourneyOptionDTO) {
   if (option.routeBadges?.length) return option.routeBadges;
   return option.legs
@@ -225,16 +239,14 @@ function normalizeJourneyResults(options: JourneyOptionDTO[]) {
   const direct = distinct
     .filter((option) => !numeric(option.summary.transferCount))
     .slice(0, MAX_JOURNEY_RESULT_CARDS);
-  if (direct.length >= MAX_JOURNEY_RESULT_CARDS) return direct;
-  if (direct.length) {
-    const bestDirect = direct[0];
-    const strongTransfer = distinct.find((option) => (
-      numeric(option.summary.transferCount) > 0
-      && journeyResultScore(option) + 18 < journeyResultScore(bestDirect)
-    ));
-    return strongTransfer ? [...direct, strongTransfer].slice(0, MAX_JOURNEY_RESULT_CARDS) : direct;
+  const transfer = distinct
+    .filter((option) => numeric(option.summary.transferCount) > 0)
+    .slice(0, MAX_JOURNEY_RESULT_CARDS);
+  if (transfer.length) {
+    const result = [...direct.slice(0, 2), ...transfer];
+    return result.slice(0, MAX_JOURNEY_RESULT_CARDS);
   }
-  return distinct.slice(0, MAX_JOURNEY_RESULT_CARDS);
+  return direct.length ? direct.slice(0, MAX_JOURNEY_RESULT_CARDS) : distinct.slice(0, MAX_JOURNEY_RESULT_CARDS);
 }
 
 function journeyResultScore(option: JourneyOptionDTO) {
@@ -259,10 +271,7 @@ function journeyResultScore(option: JourneyOptionDTO) {
 function journeyResultSignature(option: JourneyOptionDTO) {
   const routeSequence = option.legs
     .filter((leg) => leg.mode === "BUS")
-    .map((leg) => {
-      const direction = leg.stops?.find((stop) => stop.stationDirection !== undefined)?.stationDirection ?? "x";
-      return `${canonicalRouteCode(leg.routeCode, leg.routeId)}:${direction}`;
-    })
+    .map((leg) => canonicalRouteCode(leg.routeCode, leg.routeId))
     .join(">");
   return routeSequence || option.optionId;
 }
@@ -987,11 +996,13 @@ function JourneyPlanDetailPanel({
   option: JourneyOptionDTO;
   registering: boolean;
   onBack: () => void;
-  onRegister: () => void;
+  onRegister: (ticketPeriod: "day" | "month") => void;
 }) {
   const busLegs = optionBusLegs(option);
   const window = resultWindow(option);
   const action = option.primaryAction;
+  const isCombo = busLegs.length > 1;
+  const canBuy = paymentLegs(option).length > 0;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="border-b border-outline-variant px-4 py-3">
@@ -1059,19 +1070,30 @@ function JourneyPlanDetailPanel({
       </div>
 
       <div className="border-t border-outline-variant bg-surface px-4 py-3">
-        {!action?.enabled && action?.reason ? (
-          <p className="mb-2 text-xs font-semibold text-error">{action.reason}</p>
+        {action?.reason ? (
+          <p className="mb-2 text-xs font-semibold text-on-surface-variant">{action.reason}</p>
         ) : null}
-        <button
-          type="button"
-          onClick={onRegister}
-          disabled={registering || !action?.enabled}
-          className="inline-flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-xl px-5 text-sm font-bold transition-[opacity,transform] hover:opacity-90 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45"
-          style={{ backgroundColor: STUDENT_INK, color: STUDENT_LIME }}
-        >
-          {registering ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
-          Đăng ký
-        </button>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => onRegister("day")}
+            disabled={registering || !canBuy}
+            className="inline-flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-outline-variant bg-surface px-5 text-sm font-bold text-on-surface transition-[opacity,transform] hover:bg-surface-container-low active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            {registering ? <RefreshCw className="size-4 animate-spin" /> : <TicketCheck className="size-4" />}
+            {isCombo ? "Combo vé ngày" : "Vé ngày tuyến này"}
+          </button>
+          <button
+            type="button"
+            onClick={() => onRegister("month")}
+            disabled={registering || !canBuy}
+            className="inline-flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-xl px-5 text-sm font-bold transition-[opacity,transform] hover:opacity-90 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45"
+            style={{ backgroundColor: STUDENT_INK, color: STUDENT_LIME }}
+          >
+            {registering ? <RefreshCw className="size-4 animate-spin" /> : <CreditCard className="size-4" />}
+            {isCombo ? "Combo vé tháng" : "Vé tháng tuyến này"}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1117,7 +1139,11 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
   const [inlineError, setInlineError] = useState("");
   const [storageReady, setStorageReady] = useState(false);
 
-  const selectedJourney = journeys.find((item) => item.optionId === selectedId) || journeys[0] || null;
+  const safeJourneys = useMemo(
+    () => journeys.filter((item) => item?.optionId && Array.isArray(item.legs)),
+    [journeys],
+  );
+  const selectedJourney = safeJourneys.find((item) => item.optionId === selectedId) || safeJourneys[0] || null;
 
   useEffect(() => {
     let cancelled = false;
@@ -1362,47 +1388,62 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
     );
   };
 
-  const registerSelected = async () => {
+  const registerSelected = async (ticketPeriod: "day" | "month") => {
     const journey = selectedJourney;
-    const action = journey?.primaryAction;
-    if (!journey || !action?.enabled || !action.routeId || !action.boardingStopId || !action.alightingStopId) {
-      setInlineError(action?.reason || "Hành trình này chưa đủ điều kiện đăng ký.");
+    if (!journey) {
+      setInlineError("Hành trình này chưa đủ điều kiện đăng ký.");
+      return;
+    }
+    const legs = paymentLegs(journey);
+    if (!legs.length) {
+      setInlineError("Hành trình này chưa đủ dữ liệu tuyến để mua vé.");
       return;
     }
     setRegistering(true);
     setInlineError("");
     try {
-      await studentApi.registerRoute({
-        routeId: action.routeId,
-        boardingStopId: action.boardingStopId,
-        alightingStopId: action.alightingStopId,
-      });
-      localStorage.setItem("unibus.paymentRouteId", String(action.routeId));
+      for (const leg of legs) {
+        try {
+          await studentApi.registerRoute({
+            routeId: leg.routeId,
+            boardingStopId: leg.boardingStopId,
+            alightingStopId: leg.alightingStopId,
+          });
+        } catch (error) {
+          if (!(error instanceof ApiError && error.status === 409)) {
+            throw error;
+          }
+        }
+      }
+      const mode = legs.length > 1 ? "journey-combo" : "single-route";
+      const firstLeg = legs[0];
+      localStorage.setItem("unibus.paymentRouteId", String(firstLeg.routeId));
+      localStorage.setItem(PAYMENT_CONTEXT_KEY, JSON.stringify({
+        source: "journey-planner",
+        mode,
+        ticketPeriod,
+        routeId: mode === "single-route" ? firstLeg.routeId : undefined,
+        boardingStopId: mode === "single-route" ? firstLeg.boardingStopId : undefined,
+        alightingStopId: mode === "single-route" ? firstLeg.alightingStopId : undefined,
+        originLabel: origin?.label || originQuery || "Điểm đi",
+        destinationLabel: destination?.label || destinationQuery || "Điểm đến",
+        journeyOptionId: journey.optionId,
+        serviceDate: new Date().toISOString().slice(0, 10),
+        legs,
+        savedAt: new Date().toISOString(),
+      }));
       localStorage.setItem(LAST_REGISTERED_ROUTE_CONTEXT_KEY, JSON.stringify({
         source: "journey-planner",
-        routeId: action.routeId,
-        boardingStopId: action.boardingStopId,
-        alightingStopId: action.alightingStopId,
+        routeId: firstLeg.routeId,
+        boardingStopId: firstLeg.boardingStopId,
+        alightingStopId: firstLeg.alightingStopId,
         journeyOptionId: journey.optionId,
         savedAt: new Date().toISOString(),
       }));
       await ctx.reload();
-      toast.success("Đăng ký tuyến thành công.");
+      toast.success(legs.length > 1 ? "Đã đăng ký các tuyến trong hành trình." : "Đăng ký tuyến thành công.");
       onNavigate("stu-payment");
     } catch (error) {
-      if (error instanceof ApiError && error.status === 409) {
-        localStorage.setItem("unibus.paymentRouteId", String(action.routeId));
-        localStorage.setItem(LAST_REGISTERED_ROUTE_CONTEXT_KEY, JSON.stringify({
-          source: "journey-planner",
-          routeId: action.routeId,
-          boardingStopId: action.boardingStopId,
-          alightingStopId: action.alightingStopId,
-          journeyOptionId: journey.optionId,
-          savedAt: new Date().toISOString(),
-        }));
-        onNavigate("stu-payment");
-        return;
-      }
       setInlineError(error instanceof Error ? error.message : "Không thể đăng ký tuyến.");
     } finally {
       setRegistering(false);
@@ -1582,7 +1623,7 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
                   option={selectedJourney}
                   registering={registering}
                   onBack={() => setShowJourneyDetail(false)}
-                  onRegister={() => void registerSelected()}
+                  onRegister={(ticketPeriod) => void registerSelected(ticketPeriod)}
                 />
               </motion.div>
             ) : (
@@ -1673,7 +1714,7 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
                     <div>
                       <h2 className="text-sm font-bold text-on-surface">Kết quả tìm đường</h2>
                       <p className="mt-0.5 text-xs text-on-surface-variant">
-                        {loading ? "Đang tìm..." : `${journeys.length} hành trình tốt nhất`}
+                        {loading ? "Đang tìm..." : `${safeJourneys.length} hành trình tốt nhất`}
                       </p>
                     </div>
                     <BusFront className="size-5 text-on-surface-variant" />
@@ -1683,10 +1724,10 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
                     Array.from({ length: 3 }).map((_, index) => (
                       <div key={index} className="h-24 animate-pulse rounded-lg bg-surface-container" />
                     ))
-                  ) : journeys.length ? (
-                    journeys.map((option, index) => (
+                  ) : safeJourneys.length ? (
+                    safeJourneys.map((option, index) => (
                       <JourneyResultCard
-                        key={option.optionId}
+                        key={`${option.optionId}-${index}`}
                         option={option}
                         index={index}
                         selected={selectedJourney?.optionId === option.optionId}
