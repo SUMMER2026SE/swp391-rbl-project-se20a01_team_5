@@ -582,54 +582,6 @@ WHERE NOT EXISTS (
       AND th.confirmation_method = 'QR_SCAN'
 );
 
-WITH recipient AS (
-    SELECT user_id
-    FROM users
-    WHERE LOWER(email) = LOWER('khanhnv20a02@gmail.com')
-),
-sender AS (
-    SELECT user_id
-    FROM (
-        SELECT user_id, 1 AS priority FROM users WHERE email = 'admin.verify@unibus.local'
-        UNION ALL
-        SELECT user_id, 2 AS priority FROM users WHERE role = 'ADMIN'
-        UNION ALL
-        SELECT user_id, 3 AS priority FROM recipient
-    ) actor
-    ORDER BY priority
-    LIMIT 1
-),
-notification_rows(title, content, notification_type) AS (
-    VALUES
-        ('UI QA Khanh: Vé tháng đã kích hoạt', 'Tài khoản đã có vé tháng thật, QR và invoice để kiểm tra trang chủ sinh viên.', 'PAYMENT'),
-        ('UI QA Khanh: Tuyến Campus Loop sẵn sàng', 'Route registration, lịch sử di chuyển và dữ liệu tuyến đã được seed cho tài khoản này.', 'TRIP')
-)
-INSERT INTO notifications (
-    recipient_user_id,
-    sender_user_id,
-    title,
-    content,
-    notification_type,
-    is_read,
-    sent_at
-)
-SELECT
-    recipient.user_id,
-    sender.user_id,
-    nr.title,
-    nr.content,
-    nr.notification_type,
-    FALSE,
-    CURRENT_TIMESTAMP
-FROM notification_rows nr
-CROSS JOIN recipient
-CROSS JOIN sender
-WHERE NOT EXISTS (
-    SELECT 1
-    FROM notifications n
-    WHERE n.recipient_user_id = recipient.user_id
-      AND n.title = nr.title
-);
 
 WITH student_data AS (
     SELECT s.student_code

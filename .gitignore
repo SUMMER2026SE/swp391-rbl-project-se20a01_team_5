@@ -14,6 +14,7 @@ frontend/frontend-run*.log
 .codex-tmp/
 .codex/tmp/
 .codex-backend*.log
+.codex-*.log
 *.rej
 *.orig
 patch6.patch

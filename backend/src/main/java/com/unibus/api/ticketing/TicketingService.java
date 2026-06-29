@@ -312,9 +312,6 @@ public class TicketingService {
         if (SubsidyService.STATUS_NO_UNIVERSITY.equals(quote.subsidyStatus())) {
             throw new ApiException(HttpStatus.CONFLICT, "Student university is not linked to a partner university yet");
         }
-        if (SubsidyService.STATUS_ROUTE_NOT_LINKED.equals(quote.subsidyStatus())) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "Route is not configured for the student's university");
-        }
     }
 
     private record JourneyOrderLine(Integer monthlyPassId, Integer routeId, Integer legOrder,
@@ -322,3 +319,4 @@ public class TicketingService {
             BigDecimal subsidyAmount, BigDecimal finalAmount) {
     }
 }
+

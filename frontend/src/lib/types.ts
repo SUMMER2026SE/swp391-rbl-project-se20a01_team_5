@@ -179,7 +179,12 @@ export interface Bus {
 export interface Trip {
   id: string;
   routeId: string;
+  routeName?: string;
+  routeCode?: string;
   busId: string;
+  licensePlate?: string;
+  busPlate?: string;
+  rawStatus?: string;
   driverId: string;
   assistantId?: string;
   date: string;
@@ -299,3 +304,4 @@ export interface Stats {
   delta?: number;
   trend?: "up" | "down" | "flat";
 }
+

@@ -236,29 +236,24 @@ public class TransportService {
         requireActiveStop(boardingStopId);
         requireActiveStop(alightingStopId);
         Set<Integer> linkedRouteIds = subsidyService.activeLinkedRouteIds(currentUser);
-        if (linkedRouteIds.isEmpty()) {
-            return List.of();
-        }
         return busRouteRepository.searchRoutes(boardingStopId, alightingStopId).stream()
-                .filter(route -> linkedRouteIds.contains(route.getId()))
-                .map(route -> toRouteSuggestion(route, true))
+                .map(route -> toRouteSuggestion(route, linkedRouteIds.contains(route.getId())))
                 .toList();
     }
 
     @Transactional(readOnly = true)
     public RouteSuggestion getRoute(CurrentUser currentUser, Integer routeId) {
-        subsidyService.requireRouteLinked(currentUser, routeId);
+        Set<Integer> linkedRouteIds = subsidyService.activeLinkedRouteIds(currentUser);
         BusRoute route = busRouteRepository.findById(routeId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Route not found"));
         if (route.getStatus() != RouteStatus.ACTIVE) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Route is not active");
         }
-        return toRouteSuggestion(route, true);
+        return toRouteSuggestion(route, linkedRouteIds.contains(routeId));
     }
 
     @Transactional(readOnly = true)
     public List<Eta> getEtas(CurrentUser currentUser, Integer routeId, Integer stopId) {
-        subsidyService.requireRouteLinked(currentUser, routeId);
         BusRoute route = busRouteRepository.findById(routeId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Route not found"));
         if (route.getStatus() != RouteStatus.ACTIVE) {
