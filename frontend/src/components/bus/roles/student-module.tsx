@@ -312,12 +312,12 @@ export function StudentModule({ activeId, onNavigate, onProfileRefresh }: Studen
       return <UniversityScreen ctx={ctx} onProfileRefresh={onProfileRefresh} />;
     case "stu-find":
       return <JourneyPlannerDesktop ctx={ctx} onNavigate={onNavigate} />;
+    case "stu-my-journeys":
+      return <MyJourneysScreen ctx={ctx} onNavigate={onNavigate} />;
     case "stu-my-routes":
       return <MyRoutesScreen ctx={ctx} onNavigate={onNavigate} />;
     case "stu-tracking":
       return <TrackingScreen ctx={ctx} />;
-    case "stu-my-routes":
-      return <MyRoutesScreen ctx={ctx} onNavigate={onNavigate} />;
     case "stu-my-ticket":
       return <MyTicketScreen ctx={ctx} onNavigate={onNavigate} />;
     case "stu-history":
@@ -564,7 +564,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
 
   const quickActions = [
     { id: "stu-find", label: "Tìm tuyến xe", icon: RouteIcon, bg: "#144fcc", fg: "#fff", iconBg: "#beff50", iconFg: "#14140f" },
-    { id: "stu-my-routes", label: "Chuyến đi của tôi", icon: TicketCheck, bg: "#ff8c5f", fg: "#14140f", iconBg: "#14140f", iconFg: "#ff8c5f" },
+    { id: "stu-my-journeys", label: "Chuyến đi của tôi", icon: TicketCheck, bg: "#ff8c5f", fg: "#14140f", iconBg: "#14140f", iconFg: "#ff8c5f" },
     { id: "stu-payment", label: "Mua vé tháng", icon: CreditCard, bg: "#14140f", fg: "#fff", iconBg: "#beff50", iconFg: "#14140f" },
     { id: "stu-chatbot", label: "Hỏi Copilot", icon: Bot, bg: "#c8a0ff", fg: "#14140f", iconBg: "#14140f", iconFg: "#c8a0ff" },
   ];
@@ -681,7 +681,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
                     whileHover={{ y: -2 }}
                     whileTap={{ scale: 0.97 }}
                     transition={{ type: "spring", stiffness: 400, damping: 22 }}
-                    onClick={() => onNavigate("stu-my-routes")}
+                    onClick={() => onNavigate("stu-my-journeys")}
                     className="state-layer inline-flex items-center gap-1.5 h-10 px-4 rounded-full bg-[#14140f] text-white text-sm font-bold"
                   >
                     <Navigation className="size-4" />
@@ -751,7 +751,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
                   <div
                     key={r.id}
                     className="state-layer flex items-center gap-3 p-3 rounded-xl cursor-pointer min-w-0"
-                    onClick={() => onNavigate("stu-my-routes")}
+                    onClick={() => onNavigate("stu-my-journeys")}
                   >
                     <div
                       className="flex size-11 shrink-0 items-center justify-center rounded-xl"
@@ -922,7 +922,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
                 whileHover={{ y: -2 }}
                 whileTap={{ scale: 0.97 }}
                 transition={{ type: "spring", stiffness: 400, damping: 22 }}
-                onClick={() => { setQrExpanded(false); onNavigate("stu-my-routes"); }}
+                onClick={() => { setQrExpanded(false); onNavigate("stu-my-journeys"); }}
                 className="w-full h-11 rounded-full bg-[#beff50] text-[#14140f] text-sm font-bold flex items-center justify-center gap-2"
               >
                 Xem chi tiết vé
@@ -2063,7 +2063,7 @@ function FindRoutesScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
                               boardingStopId: String(firstLeg.fromStop.id),
                               alightingStopId: String(firstLeg.toStop.id),
                             }));
-                            onNavigate("stu-my-routes");
+                            onNavigate("stu-my-journeys");
                           }}
                           className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full text-xs font-bold shrink-0"
                           style={{ backgroundColor: pal.accent, color: pal.bg }}
@@ -2189,7 +2189,7 @@ function FindRoutesScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
 // =============================================================================
 // Screen 5: Tracking — live map + ETA
 // =============================================================================
-function TrackingScreen({ ctx }: { ctx: Ctx }) {
+function TrackingScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean }) {
   const [selected, setSelected] = useState<SelectedBusTracking | null>(null);
   const [preview, setPreview] = useState<RouteMapPreviewDTO | null>(null);
   const [arrivals, setArrivals] = useState<LiveArrivalDTO[]>([]);
@@ -2323,7 +2323,7 @@ function TrackingScreen({ ctx }: { ctx: Ctx }) {
   if (!selected) {
     return (
       <PageTransition className="space-y-6 min-w-0">
-        <PageHeader title="Theo dõi xe" description="Đăng ký tuyến và mua vé để theo dõi xe gần nhất." icon={<Navigation className="size-7" />} />
+        {!compact && <PageHeader title="Theo dõi xe" description="Đăng ký tuyến và mua vé để theo dõi xe gần nhất." icon={<Navigation className="size-7" />} />}
         <EmptyState icon={<Navigation className="size-7" />} title="Chưa có tuyến để theo dõi" description="Vào Tìm tuyến xe, đăng ký tuyến rồi thanh toán vé để mở theo dõi realtime." />
       </PageTransition>
     );
@@ -2331,7 +2331,7 @@ function TrackingScreen({ ctx }: { ctx: Ctx }) {
 
   return (
     <PageTransition className="space-y-6 min-w-0">
-      <PageHeader title="Theo dõi xe" description={preview ? `${preview.routeName} · ${tracked?.plateNumber || "xe gần nhất"}` : "Đang tải chuyến xe..."} icon={<Navigation className="size-7" />} />
+      {!compact && <PageHeader title="Theo dõi xe" description={preview ? `${preview.routeName} · ${tracked?.plateNumber || "xe gần nhất"}` : "Đang tải chuyến xe..."} icon={<Navigation className="size-7" />} />}
       {locationStatus === "requesting" ? <div className="rounded-2xl bg-primary-container p-4 text-sm font-semibold text-on-primary-container">Vui lòng cấp quyền vị trí để UniBus tìm xe gần nhất quanh bạn.</div> : null}
       {locationStatus === "denied" ? <div className="rounded-2xl bg-error-container p-4 text-sm font-semibold text-on-error-container">Bạn chưa cấp quyền vị trí. Trình theo dõi vẫn dùng trạm lên đã đăng ký.</div> : null}
       {locationStatus === "unsupported" ? <div className="rounded-2xl bg-error-container p-4 text-sm font-semibold text-on-error-container">Trình duyệt không hỗ trợ định vị GPS.</div> : null}
@@ -2362,6 +2362,72 @@ function TrackingScreen({ ctx }: { ctx: Ctx }) {
           </div>
         </ExpressiveCard>
       </div>
+    </PageTransition>
+  );
+}
+// =============================================================================
+// Screen 5.5: My Journeys — registered routes + tickets + tracking in one place
+// =============================================================================
+function MyJourneysScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
+  const [tab, setTab] = useState("routes");
+  const tabs = [
+    { id: "routes", label: "Tuyến đã đăng ký", icon: TicketCheck },
+    { id: "ticket", label: "Vé & QR", icon: QrCode },
+    { id: "tracking", label: "Theo dõi xe", icon: Navigation },
+  ];
+
+  return (
+    <PageTransition className="space-y-5 min-w-0">
+      <PageHeader
+        title="Chuyến đi của tôi"
+        description="Quản lý tuyến đã đăng ký, vé tháng và trạng thái xe trong một nơi."
+        icon={<TicketCheck className="size-7" />}
+        actions={
+          <ExpressiveButton variant="filled" onClick={() => onNavigate("stu-find")}>
+            <RouteIcon className="size-4" />
+            Tìm tuyến mới
+          </ExpressiveButton>
+        }
+      />
+
+      <div className="rounded-3xl border border-outline-variant bg-surface p-2">
+        <div className="grid grid-cols-3 gap-1">
+          {tabs.map((item) => {
+            const Icon = item.icon;
+            const active = tab === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setTab(item.id)}
+                className={cn(
+                  "state-layer flex min-h-11 items-center justify-center gap-2 rounded-2xl px-3 text-xs font-bold transition-colors sm:text-sm",
+                  active
+                    ? "bg-[#BDFD4F] text-[#14140f]"
+                    : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface",
+                )}
+              >
+                <Icon className="size-4 shrink-0" />
+                <span className="truncate">{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={tab}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -6 }}
+          transition={{ duration: 0.18, ease: "easeOut" }}
+        >
+          {tab === "routes" && <MyRoutesScreen ctx={ctx} onNavigate={onNavigate} compact />}
+          {tab === "ticket" && <MyTicketScreen ctx={ctx} onNavigate={onNavigate} compact />}
+          {tab === "tracking" && <TrackingScreen ctx={ctx} compact />}
+        </motion.div>
+      </AnimatePresence>
     </PageTransition>
   );
 }
@@ -3243,7 +3309,7 @@ function AIScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => v
                       transition={{ type: "spring", stiffness: 400, damping: 22 }}
                       onClick={() => {
                         toast.success(`Đã chuyển đến đăng ký tuyến ${r.routeCode || route.code}`);
-                        onNavigate("stu-my-routes");
+                        onNavigate("stu-my-journeys");
                       }}
                       className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-[#beff50] text-[#14140f] text-sm font-bold shrink-0"
                     >
