@@ -710,6 +710,8 @@ export const studentApi = {
       }[];
     }>("/students/me/tickets/journey-monthly-pass", data),
   singleTripTickets: () => apiFetch.get<SingleTripTicketView[]>("/students/me/tickets/single-trip"),
+  ticketQuote: (routeId: number | string, ticketType = "MONTHLY") =>
+    apiFetch.get<PassesDashboard["monthlyPassQuote"]>("/students/me/tickets/quote", { routeId, ticketType }),
   payments: () => apiFetch.get<PaymentView[]>("/students/me/payments"),
   createSePayOrder: (ticketType: string, routeId?: number) =>
     apiFetch.post<{ orderId: number; routeId?: number; routeName?: string; qrUrl: string; amount: number; description: string; bankCode: string; accountNo: string; accountName: string }>("/students/me/payments/sepay/order", { ticketType, routeId }),

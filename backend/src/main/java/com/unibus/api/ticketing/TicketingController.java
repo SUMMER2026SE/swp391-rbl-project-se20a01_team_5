@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.unibus.api.common.ApiResponse;
@@ -16,6 +17,7 @@ import com.unibus.api.security.CurrentUser;
 import com.unibus.api.ticketing.TicketingDtos.CreateVnpayPaymentRequest;
 import com.unibus.api.ticketing.TicketingDtos.JourneyOrderView;
 import com.unibus.api.ticketing.TicketingDtos.PassesDashboard;
+import com.unibus.api.ticketing.TicketingDtos.MonthlyPassQuote;
 import com.unibus.api.ticketing.TicketingDtos.PaymentView;
 import com.unibus.api.ticketing.TicketingDtos.PurchaseJourneyPassRequest;
 import com.unibus.api.ticketing.TicketingDtos.PurchaseMonthlyPassRequest;
@@ -41,6 +43,14 @@ public class TicketingController {
     @GetMapping("/tickets")
     ApiResponse<PassesDashboard> dashboard(@AuthenticationPrincipal CurrentUser currentUser) {
         return ApiResponse.ok("Tickets retrieved", ticketingService.dashboard(currentUser));
+    }
+
+    @GetMapping("/tickets/quote")
+    ApiResponse<MonthlyPassQuote> quote(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @RequestParam Integer routeId,
+            @RequestParam(defaultValue = "MONTHLY") String ticketType) {
+        return ApiResponse.ok("Ticket quote retrieved", ticketingService.quote(currentUser, routeId, ticketType));
     }
 
     @PostMapping("/tickets/monthly-pass")
