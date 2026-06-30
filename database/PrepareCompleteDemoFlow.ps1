@@ -79,7 +79,8 @@ class UniBusDemoSqlRunner {
 
 $tempSource = Join-Path ([System.IO.Path]::GetTempPath()) "UniBusDemoSqlRunner.java"
 try {
-    Set-Content -LiteralPath $tempSource -Value $runnerSource -Encoding UTF8
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($tempSource, $runnerSource, $utf8NoBom)
     & java -cp $driver.FullName $tempSource `
         (Resolve-Path -LiteralPath $AuthFile).Path `
         (Resolve-Path -LiteralPath $sqlFile).Path

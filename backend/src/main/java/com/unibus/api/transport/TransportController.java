@@ -19,6 +19,7 @@ import com.unibus.api.transport.dto.TransportDtos.Eta;
 import com.unibus.api.transport.dto.TransportDtos.JourneyOption;
 import com.unibus.api.transport.dto.TransportDtos.JourneySearchRequest;
 import com.unibus.api.transport.dto.TransportDtos.JourneyTrackingSnapshot;
+import com.unibus.api.transport.dto.TransportDtos.LiveArrival;
 import com.unibus.api.transport.dto.TransportDtos.PlaceReverseResult;
 import com.unibus.api.transport.dto.TransportDtos.PlaceSuggestion;
 import com.unibus.api.transport.dto.TransportDtos.RouteLookup;
@@ -114,6 +115,14 @@ public class TransportController {
         return ApiResponse.ok("Route preview retrieved", transportService.getRoutePreview(currentUser, routeId, direction));
     }
 
+    @GetMapping("/routes/{routeId}/stops/{stopId}/live-arrivals")
+    ApiResponse<List<LiveArrival>> getLiveArrivals(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @PathVariable Integer routeId,
+            @PathVariable Integer stopId,
+            @RequestParam(required = false) Integer direction) {
+        return ApiResponse.ok("Live arrivals retrieved", transportService.getLiveArrivals(currentUser, routeId, stopId, direction));
+    }
     @GetMapping("/routes/{routeId}/stops/{stopId}/eta")
     ApiResponse<List<Eta>> getEta(
             @AuthenticationPrincipal CurrentUser currentUser,
