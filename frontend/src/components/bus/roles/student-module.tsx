@@ -12,6 +12,7 @@
 // =============================================================================
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { QRCodeCanvas } from "qrcode.react";
 import {
@@ -194,72 +195,6 @@ import {
 } from "@/lib/api/client";
 import { ProtectedImage } from "@/components/bus/protected-image";
 import { JourneyPlannerDesktop } from "@/components/bus/student/journey-planner-desktop";
-
-const SELECTED_BUS_TRACKING_KEY = "unibus.selectedBusTracking.v1";
-
-type SelectedBusTracking = {
-  vehicleId?: string;
-  routeId: number;
-  direction?: number;
-  stopId?: number;
-  stopName?: string;
-  savedAt?: string;
-};
-
-function saveSelectedRouteTracking(registration?: RegistrationDTO | null) {
-  if (typeof window === "undefined" || !registration?.routeId || !registration.boardingStopId) return false;
-  window.localStorage.setItem(SELECTED_BUS_TRACKING_KEY, JSON.stringify({
-    routeId: Number(registration.routeId),
-    stopId: Number(registration.boardingStopId),
-    stopName: registration.boardingStopName,
-    savedAt: new Date().toISOString(),
-  }));
-  return true;
-}
-
-function geoDistanceMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
-  const earthRadiusMeters = 6371000;
-  const toRad = (value: number) => (value * Math.PI) / 180;
-  const dLat = toRad(b.lat - a.lat);
-  const dLng = toRad(b.lng - a.lng);
-  const lat1 = toRad(a.lat);
-  const lat2 = toRad(b.lat);
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
-  return 2 * earthRadiusMeters * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
-}
-
-function distanceAlongPolyline(points: { lat: number; lng: number }[], target: { lat: number; lng: number }) {
-  if (points.length < 2) return 0;
-  let cumulative = 0;
-  let bestMeters = 0;
-  let bestDistance = Number.POSITIVE_INFINITY;
-  for (let index = 0; index < points.length - 1; index += 1) {
-    const start = points[index];
-    const end = points[index + 1];
-    const segmentMeters = geoDistanceMeters(start, end);
-    if (segmentMeters <= 0) continue;
-    const latScale = 111320;
-    const lngScale = 111320 * Math.cos(((start.lat + end.lat) / 2) * Math.PI / 180);
-    const sx = start.lng * lngScale;
-    const sy = start.lat * latScale;
-    const ex = end.lng * lngScale;
-    const ey = end.lat * latScale;
-    const tx = target.lng * lngScale;
-    const ty = target.lat * latScale;
-    const dx = ex - sx;
-    const dy = ey - sy;
-    const ratio = Math.max(0, Math.min(1, ((tx - sx) * dx + (ty - sy) * dy) / (dx * dx + dy * dy || 1)));
-    const px = sx + dx * ratio;
-    const py = sy + dy * ratio;
-    const projectedDistance = Math.hypot(tx - px, ty - py);
-    if (projectedDistance < bestDistance) {
-      bestDistance = projectedDistance;
-      bestMeters = cumulative + segmentMeters * ratio;
-    }
-    cumulative += segmentMeters;
-  }
-  return bestMeters;
-}
 
 type StudentModuleProps = {
   activeId: string;
@@ -3102,6 +3037,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
     ];
   }, [journeyPolylines]);
 
+
   const trackingStops = useMemo(() => {
     if (journeyTracking?.stops?.length) {
       return journeyTracking.stops
@@ -3173,7 +3109,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
   const stopRows = hasOnlySyntheticStops && etaStopRows.length ? etaStopRows : trackingStops;
   const boardingName = hasOnlySyntheticStops && nextEta ? nextEta.stopName : boardingStop?.name;
   const alightingName = hasOnlySyntheticStops && etaStopRows.length ? etaStopRows[etaStopRows.length - 1].name : alightingStop?.name;
-  const routeStatus = displayVehicles.length
+  const routeStatus = journeyTracking?.vehicles?.length
     ? "Chuyến đang chạy"
     : journeyTracking?.stopEtas?.length
       ? "Xe sắp tới"
@@ -3424,8 +3360,8 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
   const visibleEtaRows = showAllEtaStops ? realtimeEtaRows : realtimeEtaRows.slice(etaWindowStart, etaWindowStart + 5);
   const visibleStopRows = showAllTrackingStops ? stopRows : stopRows.slice(0, 6);
   const trackingUpdatedLabel = journeyTracking?.updatedAt ? `Cập nhật ${formatDateTime(journeyTracking.updatedAt)}` : "Đang đồng bộ";
-  const trackingSourceLabel = displayVehicles.length ? "Chuyến đang chạy" : "Chưa có chuyến";
-  const trackingModeBadge = displayVehicles.length ? "Chuyến đang chạy" : "Chưa có chuyến";
+  const trackingSourceLabel = journeyTracking?.vehicles?.length ? "Chuyến đang chạy" : "Chưa có chuyến";
+  const trackingModeBadge = journeyTracking?.vehicles?.length ? "Chuyến đang chạy" : "Chưa có chuyến";
 
   return (
     <PageTransition className="space-y-6 min-w-0">
@@ -3539,7 +3475,6 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                     extraMarkers={trackingMarkers}
                     height="100%"
                     animateCamera
-                    allowFallbackPolyline={false}
                     nextStopIndex={selectedStop ? trackingStops.findIndex((stop) => stop.id === selectedStop.id) : undefined}
                     onSelectStop={selectTrackingStop}
                     arrivalOverlay={
@@ -3732,27 +3667,22 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                 </div>
                 {visibleEtaRows.length ? (
                   <div className="space-y-0">
-                    {visibleEtaRows.map((stop, index) => {
-                      const passed = Boolean((stop as { passed?: boolean }).passed);
-                      const current = Boolean((stop as { current?: boolean }).current);
-                      const minutesAway = Number(stop.minutesAway ?? 0);
-                      return (
-                        <div key={`${stop.routeId}-${stop.stopId}`} className={cn("grid grid-cols-[28px_minmax(0,1fr)_56px] gap-3", passed && "opacity-45 grayscale")}>
-                          <div className="flex flex-col items-center">
-                            <span className={cn("mt-1 size-3 rounded-full border-2", current ? "border-[#beff50] bg-[#beff50]" : passed ? "border-[#9CA3AF] bg-[#E5E7EB]" : "border-[#144fcc] bg-white")} />
-                            {index < visibleEtaRows.length - 1 ? <span className={cn("mt-1 h-11 w-px", passed ? "bg-[#9CA3AF]/35" : "bg-[#144fcc]/20")} /> : null}
-                          </div>
-                          <div className="pb-4">
-                            <p className={cn("truncate text-sm font-semibold", passed ? "text-[#6B6B6B]" : "text-[#14140f]")}>{stop.stopName}</p>
-                            <p className="mt-0.5 text-xs text-[#6B6B6B]">{stop.routeCode || routeCode} · {stop.estimatedArrivalAt ? new Date(stop.estimatedArrivalAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : passed ? "Đã đi qua" : "Đang tính"}</p>
-                          </div>
-                          <p className={cn("pt-0.5 text-right text-sm font-semibold", current ? "text-[#166534]" : passed ? "text-[#6B6B6B]" : "text-[#144fcc]")}>{passed ? "Đã qua" : `${minutesAway} phút`}</p>
+                    {visibleEtaRows.map((stop, index) => (
+                      <div key={`${stop.routeId}-${stop.stopId}`} className="grid grid-cols-[28px_minmax(0,1fr)_56px] gap-3">
+                        <div className="flex flex-col items-center">
+                          <span className={cn("mt-1 size-3 rounded-full border-2", index === 0 ? "border-[#beff50] bg-[#beff50]" : "border-[#144fcc] bg-white")} />
+                          {index < visibleEtaRows.length - 1 ? <span className="mt-1 h-11 w-px bg-[#144fcc]/20" /> : null}
                         </div>
-                      );
-                    })}
-                    {realtimeEtaRows.length > visibleEtaRows.length ? (
+                        <div className="pb-4">
+                          <p className="truncate text-sm font-semibold text-[#14140f]">{stop.stopName}</p>
+                          <p className="mt-0.5 text-xs text-[#6B6B6B]">{stop.routeCode || routeCode} · {stop.estimatedArrivalAt ? new Date(stop.estimatedArrivalAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "Đang tính"}</p>
+                        </div>
+                        <p className={cn("pt-0.5 text-right text-sm font-semibold", index === 0 ? "text-[#166534]" : "text-[#144fcc]")}>{stop.minutesAway ?? 0} phút</p>
+                      </div>
+                    ))}
+                    {(journeyTracking?.stopEtas || []).length > visibleEtaRows.length ? (
                       <button type="button" onClick={() => setShowAllEtaStops((value) => !value)} className="mt-2 w-full rounded-2xl border border-[#14140f]/10 px-4 py-2 text-sm font-semibold text-[#144fcc] hover:bg-[#F8F6EF]">
-                        {showAllEtaStops ? "Thu gọn thời gian dự kiến" : "Xem thêm trạm"}
+                        {showAllEtaStops ? "Thu gọn thời gian dự kiến" : "Xem tất cả các trạm"}
                       </button>
                     ) : null}
                   </div>
@@ -3822,10 +3752,6 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
 // =============================================================================
 function MyJourneysScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
   const [tab, setTab] = useState("routes");
-  const openTab = (nextTab: string) => {
-    if (nextTab === "tracking") saveSelectedRouteTracking(ctx.registration);
-    setTab(nextTab);
-  };
   const tabs = [
     { id: "routes", label: "Tuyến đã đăng ký", icon: TicketCheck },
     { id: "ticket", label: "Vé đã mua", icon: QrCode },
@@ -3854,7 +3780,7 @@ function MyJourneysScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
               <button
                 key={item.id}
                 type="button"
-                onClick={() => openTab(item.id)}
+                onClick={() => setTab(item.id)}
                 className={cn(
                   "state-layer flex min-h-11 items-center justify-center gap-2 rounded-2xl px-3 text-xs font-bold transition-colors sm:text-sm",
                   active
@@ -3878,7 +3804,7 @@ function MyJourneysScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
           exit={{ opacity: 0, y: -6 }}
           transition={{ duration: 0.18, ease: "easeOut" }}
         >
-          {tab === "routes" && <MyRoutesScreen ctx={ctx} onNavigate={onNavigate} compact onTrackingSelect={() => openTab("tracking")} />}
+          {tab === "routes" && <MyRoutesScreen ctx={ctx} onNavigate={onNavigate} compact />}
           {tab === "ticket" && <MyTicketScreen ctx={ctx} onNavigate={onNavigate} compact />}
           {tab === "tracking" && <TrackingScreen ctx={ctx} compact />}
         </motion.div>
@@ -3890,7 +3816,7 @@ function MyJourneysScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
 // =============================================================================
 // Screen 6: My Routes — registration management
 // =============================================================================
-function MyRoutesScreen({ ctx, onNavigate, compact = false, onTrackingSelect }: { ctx: Ctx; onNavigate: (id: string) => void; compact?: boolean; onTrackingSelect?: () => void }) {
+function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavigate: (id: string) => void; compact?: boolean }) {
   const [showRegister, setShowRegister] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
@@ -4032,11 +3958,7 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false, onTrackingSelect }: 
                           transition={{ type: "spring", stiffness: 400, damping: 22 }}
                           onClick={() => {
                             saveRouteTrackingContext(item);
-                            if (onTrackingSelect) {
-                              onTrackingSelect();
-                            } else {
-                              onNavigate("stu-tracking");
-                            }
+                            onNavigate("stu-tracking");
                           }}
                           className="inline-flex items-center gap-1.5 h-10 px-5 rounded-full bg-[#F8F6EF] text-[#14140f] text-sm font-bold border border-[#14140f]/10 hover:bg-[#beff50]/35"
                         >
@@ -5740,8 +5662,8 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
 
       </div>
 
-      {sepayOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      {typeof document !== "undefined" && sepayOrder && createPortal((
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
           <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-bold text-gray-900">Thanh toán SePay</h3>
@@ -5775,7 +5697,7 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
             )}
           </div>
         </div>
-      )}
+      ), document.body)}
 
     </PageTransition>
   );
