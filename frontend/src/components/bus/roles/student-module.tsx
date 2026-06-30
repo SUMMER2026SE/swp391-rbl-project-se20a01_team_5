@@ -5649,7 +5649,7 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
                   animate={{ opacity: 1, scale: 1 }}
                   className="bg-white p-4 rounded-2xl shadow-lg ring-2 ring-[#beff50]/40"
                 >
-                  <QRCodeCanvas value={sepayOrder.qrUrl} size={240} level="M" includeMargin={false} />
+                  <img src={sepayOrder.qrUrl} alt="SePay QR" className="h-[240px] w-[240px] rounded-xl object-contain" />
                 </motion.div>
                 <div className="flex items-center gap-2 text-2xl font-black text-primary">
                   {formatVND(sepayOrder.amount)}
