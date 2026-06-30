@@ -42,6 +42,8 @@ import {
   UniversityStatsView,
   UniversityView,
   VerificationView,
+  isPaidStatus,
+  isRefundedStatus,
   adminApi,
   experienceApi,
   feedbackApi,
@@ -190,9 +192,14 @@ export function mapStop(s: ExperienceStopCard): BusStop {
 
 export function mapTrip(t: ExperienceTripCard): Trip {
   return {
-    id: String(t.tripId),
-    routeId: String(t.routeId),
-    busId: String(t.busId ?? 0),
+    id: String(t.tripId ?? ""),
+    routeId: String(t.routeId ?? ""),
+    routeName: t.routeName || undefined,
+    routeCode: t.routeCode || undefined,
+    busId: String(t.busId ?? ""),
+    licensePlate: t.licensePlate || undefined,
+    busPlate: t.licensePlate || undefined,
+    rawStatus: t.status || undefined,
     driverId: "",
     assistantId: "",
     date: t.serviceDate || "",
@@ -307,7 +314,7 @@ export function mapInvoice(p: PaymentTransactionView): Invoice {
     description: `${p.ticketType || "Vé tháng"} • ${p.routeName || ""}`.trim(),
     amount: num(p.orderTotal ?? p.amountIn),
     method: (p.gateway || "cash").toLowerCase() as Invoice["method"],
-    status: p.paymentStatus === "PAID" ? "paid" : p.paymentStatus === "REFUNDED" ? "refunded" : "pending",
+    status: isPaidStatus(p.paymentStatus) ? "paid" : isRefundedStatus(p.paymentStatus) ? "refunded" : "pending",
     date: p.paidAt || p.transactionDate || p.createdAt || "",
   };
 }
@@ -856,5 +863,4 @@ export function ErrorBlock({ message, onRetry }: { message: string; onRetry?: ()
 export function isApiError(err: unknown): err is ApiError {
   return err instanceof ApiError;
 }
-
 

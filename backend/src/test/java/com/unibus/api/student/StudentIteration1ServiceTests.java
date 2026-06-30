@@ -122,7 +122,11 @@ class StudentIteration1ServiceTests {
 
    @Test
    void searchesRouteAndManagesSingleActiveRegistration() {
-      Assertions.assertThat(this.transportService.searchRoutes(this.currentUser, this.boarding.getId(), this.alighting.getId())).singleElement().extracting(TransportDtos.RouteSuggestion::routeName).isEqualTo("Route A");
+      Assertions.assertThat(this.transportService.searchRoutes(this.currentUser, this.boarding.getId(), this.alighting.getId()))
+            .filteredOn(TransportDtos.RouteSuggestion::universityLinked)
+            .singleElement()
+            .extracting(TransportDtos.RouteSuggestion::routeName)
+            .isEqualTo("Route A");
       RegistrationDtos.Registration registration = this.routeRegistrationService.register(this.currentUser, new RegistrationDtos.RegistrationRequest(this.route.getId(), this.boarding.getId(), this.alighting.getId(), (LocalDate)null));
       Assertions.assertThat(registration.status().name()).isEqualTo("APPROVED");
       ((AbstractThrowableAssert)Assertions.assertThatThrownBy(() -> this.routeRegistrationService.register(this.currentUser, new RegistrationDtos.RegistrationRequest(this.route.getId(), this.boarding.getId(), this.alighting.getId(), (LocalDate)null))).isInstanceOf(ApiException.class)).extracting((exception) -> ((ApiException)exception).getStatus()).isEqualTo(HttpStatus.CONFLICT);
@@ -131,14 +135,15 @@ class StudentIteration1ServiceTests {
    }
 
    @Test
-   void strictUniversityLinkHidesAndBlocksUnlinkedRoute() {
+   void publicUnlinkedRouteIsVisibleAndRegisterableAtFullPrice() {
       Assertions.assertThat(this.transportService.searchRoutes(this.currentUser, this.boarding.getId(), this.alighting.getId()))
             .extracting(TransportDtos.RouteSuggestion::routeName)
-            .containsExactly("Route A");
+            .containsExactly("Route A", "Route B Unlinked");
 
-      ((AbstractThrowableAssert)Assertions.assertThatThrownBy(() -> this.routeRegistrationService.register(this.currentUser, new RegistrationDtos.RegistrationRequest(this.unlinkedRoute.getId(), this.boarding.getId(), this.alighting.getId(), (LocalDate)null))).isInstanceOf(ApiException.class))
-            .extracting((exception) -> ((ApiException)exception).getStatus())
-            .isEqualTo(HttpStatus.FORBIDDEN);
+      RegistrationDtos.Registration registration = this.routeRegistrationService.register(
+            this.currentUser,
+            new RegistrationDtos.RegistrationRequest(this.unlinkedRoute.getId(), this.boarding.getId(), this.alighting.getId(), (LocalDate)null));
+      Assertions.assertThat(registration.status().name()).isEqualTo("APPROVED");
    }
 
    @Test

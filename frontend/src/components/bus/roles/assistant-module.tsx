@@ -10,7 +10,7 @@
 // Data: real backend via /conductor/dashboard, /conductor/tickets/scan, etc.
 // =============================================================================
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard,
@@ -197,12 +197,37 @@ function greetingByHour(): string {
   return "Chào buổi tối";
 }
 
+function hasTripIdentity(trip: any | null | undefined): boolean {
+  return Boolean(trip?.tripId ?? trip?.id) && Boolean(trip?.routeId) && Boolean(trip?.routeName?.trim?.());
+}
+
+function hasRouteInfo(trip: any | null | undefined): boolean {
+  return Boolean(trip?.routeId) && Boolean(trip?.routeName?.trim?.());
+}
+
+function hasTripDisplayData(trip: any | null | undefined): boolean {
+  return hasTripIdentity(trip) && Boolean((trip?.licensePlate || trip?.busPlate)?.trim?.());
+}
+
+function isRunningTrip(trip: any | null | undefined): boolean {
+  return trip?.status === "running" || String(trip?.rawStatus || trip?.status || "").toUpperCase() === "RUNNING";
+}
+
+function tripLabel(trip: any): string {
+  return trip?.routeName || `Tuyến #${trip?.routeId || trip?.id || "?"}`;
+}
+
 // =============================================================================
 // Screen 1: Assistant Dashboard
 // =============================================================================
 function AssistantDashboard({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
   const firstName = (ctx.user.name || "bạn").split(" ").slice(-1)[0];
   const activeTrip = ctx.activeTrip;
+  const todayTrips = ctx.conductorTrips || [];
+  const hasAssignedTrips = todayTrips.length > 0;
+  const hasIncompleteTripData = Boolean(activeTrip && !hasTripDisplayData(activeTrip)) || todayTrips.some((trip) => !hasRouteInfo(trip));
+  const canShowRunningTrip = Boolean(activeTrip && isRunningTrip(activeTrip) && hasTripDisplayData(activeTrip));
+  const nextAssignedTrip = todayTrips.find((trip) => hasRouteInfo(trip));
   const statCards = ctx.stats.slice(0, 4);
 
   const quickActions = [
@@ -231,7 +256,7 @@ function AssistantDashboard({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: st
             <Bus className="size-3.5" />
             Phụ xe
           </span>
-          {activeTrip && (
+          {canShowRunningTrip ? (
             <span className="inline-flex items-center gap-1.5 h-7 px-3 rounded-full bg-[#beff50] text-[#14140f] text-xs font-bold shrink-0">
               <motion.span
                 className="size-1.5 rounded-full bg-[#14140f]"
@@ -240,11 +265,11 @@ function AssistantDashboard({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: st
               />
               Đang trong chuyến
             </span>
-          )}
+          ) : null}
         </div>
       </motion.div>
 
-      {activeTrip ? (
+      {canShowRunningTrip ? (
         <ScrollReveal>
           <motion.div
             initial={{ opacity: 0, y: 16, scale: 0.98 }}
@@ -266,16 +291,16 @@ function AssistantDashboard({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: st
                 </span>
               </div>
               <h2 className="text-2xl sm:text-3xl font-bold mb-2 truncate">
-                {activeTrip.routeName || "Chuyến xe"}
+                {activeTrip.routeName}
               </h2>
               <div className="flex flex-wrap items-center gap-4 text-sm">
                 <div>
                   <p className="text-[10px] font-bold opacity-70 uppercase">Biển số</p>
-                  <p className="font-bold">{activeTrip.licensePlate || activeTrip.busPlate || "—"}</p>
+                  <p className="font-bold">{activeTrip.licensePlate || activeTrip.busPlate}</p>
                 </div>
                 <div>
                   <p className="text-[10px] font-bold opacity-70 uppercase">Khởi hành</p>
-                  <p className="font-bold">{activeTrip.departTime || activeTrip.departureTime || "—"}</p>
+                  <p className="font-bold">{activeTrip.departTime || activeTrip.departureTime || "Chưa có giờ"}</p>
                 </div>
               </div>
               <ExpressiveButton
@@ -289,12 +314,40 @@ function AssistantDashboard({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: st
             </div>
           </motion.div>
         </ScrollReveal>
+      ) : hasIncompleteTripData ? (
+        <ScrollReveal>
+          <ExpressiveCard variant="elevated" className="p-6 text-center min-w-0 border border-warning/40 bg-warning-container/30">
+            <AlertTriangle className="size-10 mx-auto text-warning" />
+            <p className="mt-3 text-base font-bold">Dữ liệu chuyến hôm nay chưa đầy đủ</p>
+            <p className="mt-1.5 text-sm text-on-surface-variant">
+              Vui lòng tải lại hoặc liên hệ điều phối viên.
+            </p>
+            <ExpressiveButton variant="tonal" className="mt-4" onClick={ctx.reload}>
+              <RefreshCw className="size-4" />
+              Tải lại dữ liệu
+            </ExpressiveButton>
+          </ExpressiveCard>
+        </ScrollReveal>
+      ) : hasAssignedTrips ? (
+        <ScrollReveal>
+          <ExpressiveCard variant="elevated" className="p-6 text-center min-w-0">
+            <Clock className="size-10 mx-auto text-primary" />
+            <p className="mt-3 text-base font-bold">Bạn có chuyến được phân công hôm nay.</p>
+            <p className="mt-1.5 text-sm text-on-surface-variant">
+              {nextAssignedTrip ? `${tripLabel(nextAssignedTrip)} • ${nextAssignedTrip.departureTime || nextAssignedTrip.departTime || "chưa có giờ"}` : "Chuyến chưa bắt đầu."}
+            </p>
+            <ExpressiveButton variant="tonal" className="mt-4" onClick={() => onNavigate("ast-scan")}>
+              <ScanLine className="size-4" />
+              Xem danh sách chuyến
+            </ExpressiveButton>
+          </ExpressiveCard>
+        </ScrollReveal>
       ) : (
         <ScrollReveal>
           <ExpressiveCard variant="elevated" className="p-6 text-center min-w-0">
             <Coffee className="size-10 mx-auto text-on-surface-variant" />
-            <p className="mt-3 text-base font-bold">Không có chuyến đang chạy</p>
-            <p className="text-sm text-on-surface-variant mt-1">Đợi điều phối phân công chuyến.</p>
+            <p className="mt-3 text-base font-bold">Hôm nay bạn chưa được phân công chuyến nào.</p>
+            <p className="mt-1.5 text-sm text-on-surface-variant">Khi điều phối viên phân công chuyến, thông tin sẽ hiển thị tại đây.</p>
           </ExpressiveCard>
         </ScrollReveal>
       )}
@@ -356,7 +409,6 @@ function AssistantDashboard({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: st
           </Section>
         </ScrollReveal>
       )}
-
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
         <ScrollReveal delay={0.2}>
           <Section title="Sự cố gần đây" actions={<button onClick={() => onNavigate("ast-incident")} className="text-xs font-bold text-primary">Xem tất cả</button>}>
@@ -427,12 +479,15 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
   const [lastResult, setLastResult] = useState<TicketScanResult | null>(null);
   const [tickets, setTickets] = useState<ConductorTicketView[] | null>(null);
   const [loadingTickets, setLoadingTickets] = useState(false);
+  const validConductorTrips = useMemo(() => ctx.conductorTrips.filter((trip) => hasTripIdentity(trip)), [ctx.conductorTrips]);
+  const hasConductorTrips = ctx.conductorTrips.length > 0;
+  const hasInvalidConductorTrips = hasConductorTrips && validConductorTrips.length !== ctx.conductorTrips.length;
 
   useEffect(() => {
-    if (!tripId && ctx.conductorTrips.length > 0) {
-      setTripId(ctx.conductorTrips[0].tripId);
+    if (!tripId && validConductorTrips.length > 0) {
+      setTripId(validConductorTrips[0].tripId);
     }
-  }, [ctx.conductorTrips, tripId]);
+  }, [validConductorTrips, tripId]);
 
   const loadTickets = useCallback(async () => {
     if (!tripId) return;
@@ -475,19 +530,44 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Quét vé"
-        description="Quét mã QR vé tháng để kiểm tra hợp lệ."
+        description="Chọn đúng chuyến rồi quét QR để kiểm tra vé theo route/trip hiện tại."
         icon={<ScanLine className="size-7" />}
         actions={
-          <Select value={tripId ? String(tripId) : ""} onValueChange={(v) => setTripId(Number(v))}>
-            <SelectTrigger className="w-full sm:w-64"><SelectValue placeholder="Chọn chuyến" /></SelectTrigger>
+          <Select value={tripId ? String(tripId) : ""} onValueChange={(value) => setTripId(Number(value))} disabled={validConductorTrips.length === 0}>
+            <SelectTrigger className="w-full sm:w-64">
+              <SelectValue placeholder={hasConductorTrips ? "Chuyến thiếu dữ liệu" : "Chưa có chuyến"} />
+            </SelectTrigger>
             <SelectContent>
-              {ctx.conductorTrips.map((t) => (
-                <SelectItem key={t.tripId} value={String(t.tripId)}>{t.routeName} — {formatDate(t.serviceDate)}</SelectItem>
+              {validConductorTrips.map((trip) => (
+                <SelectItem key={trip.tripId} value={String(trip.tripId)}>{tripLabel(trip)} — {formatDate(trip.serviceDate)}</SelectItem>
               ))}
             </SelectContent>
           </Select>
         }
       />
+
+
+      {validConductorTrips.length === 0 ? (
+        <ExpressiveCard variant="elevated" className="p-6 text-center min-w-0 border border-outline-variant">
+          <ScanLine className="size-10 mx-auto text-on-surface-variant" />
+          <p className="mt-3 text-base font-bold">{hasConductorTrips ? "Chuyến hôm nay thiếu dữ liệu" : "Hôm nay chưa có chuyến để quét"}</p>
+          <p className="mt-1.5 text-sm text-on-surface-variant">
+            {hasConductorTrips
+              ? "Chuyến cần có mã chuyến, tuyến và tên tuyến trước khi phụ xe quét vé."
+              : "Khi điều phối viên phân công chuyến hôm nay, màn quét vé sẽ mở lại."}
+          </p>
+        </ExpressiveCard>
+      ) : hasInvalidConductorTrips ? (
+        <ExpressiveCard variant="elevated" className="p-4 border border-warning/40 bg-warning-container/30">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="size-5 shrink-0 text-warning" />
+            <div>
+              <p className="text-sm font-bold">Một số chuyến bị thiếu dữ liệu</p>
+              <p className="mt-1 text-xs text-on-surface-variant">Chỉ các chuyến có đủ mã chuyến, tuyến và tên tuyến mới được phép quét.</p>
+            </div>
+          </div>
+        </ExpressiveCard>
+      ) : null}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
         <ScrollReveal>
@@ -506,13 +586,13 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
                 variant="filled"
                 className="w-full h-14 bg-[#beff50] text-[#14140f] hover:bg-[#a6e639]"
                 onClick={() => {
-                  if (!tripId) {
-                    toast.error("Vui lòng chọn chuyến trước khi quét");
+                  if (!tripId || validConductorTrips.length === 0) {
+                    toast.error(hasConductorTrips ? "Chuyến hôm nay thiếu dữ liệu, chưa thể quét" : "Hôm nay chưa có chuyến để quét");
                     return;
                   }
                   setScannerOpen(true);
                 }}
-                disabled={scanning}
+                disabled={scanning || validConductorTrips.length === 0}
               >
                 <ScanLine className="size-5" />
                 Bật camera quét vé
@@ -524,10 +604,10 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
                   placeholder="Nhập mã QR vé..."
                   value={qrInput}
                   onChange={(e) => setQrInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && scan()}
+                  onKeyDown={(e) => e.key === "Enter" && validConductorTrips.length > 0 && scan()}
                 />
               </div>
-              <ExpressiveButton variant="filled" className="w-full" onClick={() => scan()} disabled={scanning || !qrInput.trim()}>
+              <ExpressiveButton variant="filled" className="w-full" onClick={() => scan()} disabled={scanning || validConductorTrips.length === 0 || !qrInput.trim()}>
                 {scanning ? <RefreshCw className="size-4 animate-spin" /> : <ScanLine className="size-4" />}
                 Quét vé
               </ExpressiveButton>
@@ -554,16 +634,38 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
                   {lastResult.valid ? "Vé hợp lệ" : "Vé không hợp lệ"}
                 </p>
                 <p className="text-sm text-on-surface-variant mt-1">{lastResult.message}</p>
-                {lastResult.ticket && (
-                  <div className="mt-4 w-full p-3 rounded-xl bg-surface-container-low text-left min-w-0">
-                    <p className="text-xs text-on-surface-variant">Mã sinh viên</p>
-                    <p className="font-bold">{lastResult.ticket.studentCode || "—"}</p>
-                    <p className="text-xs text-on-surface-variant mt-2">Tên sinh viên</p>
-                    <p className="font-bold">{lastResult.ticket.studentName || "—"}</p>
-                    <p className="text-xs text-on-surface-variant mt-2">Tuyến</p>
-                    <p className="font-bold">{lastResult.ticket.routeName || "—"}</p>
+                <div className="mt-4 w-full rounded-2xl bg-surface-container-low p-3 text-left ring-1 ring-outline-variant/60 min-w-0">
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <p className="text-on-surface-variant">Sinh viên</p>
+                      <p className="font-bold truncate">{lastResult.ticket?.studentName || lastResult.ticket?.studentCode || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-on-surface-variant">Loại vé</p>
+                      <p className="font-bold truncate">{lastResult.ticket?.ticketKind || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-on-surface-variant">Tuyến hợp lệ</p>
+                      <p className="font-bold truncate">{lastResult.ticket?.routeName || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-on-surface-variant">Trạng thái vé</p>
+                      <p className="font-bold truncate">{lastResult.ticket?.status || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-on-surface-variant">Hiệu lực từ</p>
+                      <p className="font-bold truncate">{formatDate(lastResult.ticket?.validFrom)}</p>
+                    </div>
+                    <div>
+                      <p className="text-on-surface-variant">Hết hạn</p>
+                      <p className="font-bold truncate">{formatDate(lastResult.ticket?.expiresAt)}</p>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-on-surface-variant">Mã lịch sử chuyến</p>
+                      <p className="font-bold truncate">{lastResult.travelHistoryId ?? "—"}</p>
+                    </div>
                   </div>
-                )}
+                </div>
               </div>
             </ExpressiveCard>
           ) : (
@@ -799,7 +901,6 @@ function AssistantIncident({ ctx }: { ctx: Ctx }) {
         description="Báo cáo sự cố trong chuyến và theo dõi trạng thái."
         icon={<AlertTriangle className="size-7" />}
       />
-
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
         <ScrollReveal>
           <ExpressiveCard variant="elevated" className="p-5 min-w-0">
@@ -932,7 +1033,6 @@ function AssistantContact({ ctx }: { ctx: Ctx }) {
         description="Trao đổi nội bộ với tài xế và điều phối viên theo chuyến đang chạy."
         icon={<Phone className="size-7" />}
       />
-
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
         <ScrollReveal>
           <Section title="Danh bạ chuyến xe">
@@ -1080,4 +1180,6 @@ function FallbackScreen({ activeId }: { activeId: string }) {
     />
   );
 }
+
+
 

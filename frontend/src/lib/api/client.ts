@@ -29,6 +29,14 @@ export class ApiError extends Error {
   }
 }
 
+
+const normalizedStatus = (status?: string | null) => status?.trim().toLowerCase() ?? "";
+
+export const isPaidStatus = (status?: string | null) => normalizedStatus(status) === "paid";
+export const isUnpaidStatus = (status?: string | null) => normalizedStatus(status) === "unpaid";
+export const isCancelledStatus = (status?: string | null) => normalizedStatus(status) === "cancelled";
+export const isRefundedStatus = (status?: string | null) => normalizedStatus(status) === "refunded";
+
 export function getAccessToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem(ACCESS_TOKEN_KEY) || localStorage.getItem("unibus_access_token");
@@ -405,6 +413,11 @@ export interface JourneyOptionDTO {
     routeId?: number;
     boardingStopId?: number;
     alightingStopId?: number;
+    subsidyEligible?: boolean;
+    universityLinked?: boolean;
+    fullPriceAllowed?: boolean;
+    availabilityStatus?: string;
+    availabilityMessage?: string;
   };
   secondaryActions?: {
     type: string;
@@ -422,6 +435,12 @@ export interface JourneyOptionDTO {
 export interface JourneyTrackingSnapshotDTO {
   journeyId: string;
   updatedAt?: string;
+  routeId?: number;
+  routeCode?: string;
+  routeName?: string;
+  boardingStopId?: number;
+  alightingStopId?: number;
+  simulated?: boolean;
   vehicles?: {
     vehicleId: string;
     plateNumber?: string;
@@ -443,6 +462,16 @@ export interface JourneyTrackingSnapshotDTO {
     routeCode?: string;
     estimatedArrivalAt?: string;
     minutesAway?: number;
+  }[];
+  stops?: {
+    stopId: number;
+    stopName: string;
+    address?: string;
+    latitude?: number | string;
+    longitude?: number | string;
+    stopOrder?: number;
+    boarding?: boolean;
+    alighting?: boolean;
   }[];
   polylines?: { legId: string; mode: string; colorHex?: string; points: CoordinateDTO[] }[];
 }
@@ -497,6 +526,11 @@ export const transportApi = {
     apiFetch.post<JourneyOptionDTO[]>("/journeys/search", data),
   trackJourney: (journeyId: string) =>
     apiFetch.get<JourneyTrackingSnapshotDTO>(`/tracking/journeys/${encodeURIComponent(journeyId)}`),
+  trackRoute: (routeId: number | string, params?: { boardingStopId?: number | string; alightingStopId?: number | string }) =>
+    apiFetch.get<JourneyTrackingSnapshotDTO>(`/tracking/routes/${encodeURIComponent(String(routeId))}`, {
+      boardingStopId: params?.boardingStopId,
+      alightingStopId: params?.alightingStopId,
+    }),
   searchRoutes: (boardingStopId: number | string, alightingStopId: number | string) =>
     apiFetch.get<RouteSuggestionDTO[]>("/routes/search", { boardingStopId, alightingStopId }),
   route: (routeId: number | string) => apiFetch.get<RouteSuggestionDTO>(`/routes/${routeId}`),
@@ -548,6 +582,23 @@ export interface TicketView {
   purchasedAt?: string;
 }
 
+
+export interface SingleTripTicketView {
+  ticketId: number;
+  routeId: number;
+  routeName: string;
+  boardingStopId?: number;
+  boardingStopName?: string;
+  alightingStopId?: number;
+  alightingStopName?: string;
+  originalFareAmount?: number;
+  subsidyAmount?: number;
+  finalFareAmount?: number;
+  qrCode?: string;
+  status: string;
+  purchasedAt?: string;
+  expiresAt?: string;
+}
 export interface PaymentView {
   paymentId: number;
   ticketId?: number;
@@ -676,6 +727,7 @@ export const studentApi = {
         finalAmount?: number | string;
       }[];
     }>("/students/me/tickets/journey-monthly-pass", data),
+  singleTripTickets: () => apiFetch.get<SingleTripTicketView[]>("/students/me/tickets/single-trip"),
   payments: () => apiFetch.get<PaymentView[]>("/students/me/payments"),
   createSePayOrder: (ticketType: string, routeId?: number) =>
     apiFetch.post<{ orderId: number; routeId?: number; routeName?: string; qrUrl: string; amount: number; description: string; bankCode: string; accountNo: string; accountName: string }>("/students/me/payments/sepay/order", { ticketType, routeId }),
@@ -1522,9 +1574,18 @@ export interface PaymentTransactionView {
   universityId?: number;
   universityName?: string;
   ticketType?: string;
+  orderMode?: string;
+  ticketPeriod?: string;
+  originLabel?: string;
+  destinationLabel?: string;
+  legsJson?: string;
+  legsCount?: number;
   routeId?: number;
   routeName?: string;
   orderTotal?: number;
+  originalAmount?: number;
+  subsidyAmount?: number;
+  finalAmount?: number;
   paymentStatus?: string;
   gateway?: string;
   amountIn?: number;
@@ -1542,32 +1603,12 @@ export interface ReconciliationView {
   totalOriginalAmount: number;
   totalSubsidyAmount: number;
   totalFinalAmount: number;
+  totalOrders: number;
+  journeyOrders: number;
+  dayTickets: number;
   monthlyPasses: number;
   from?: string;
   to?: string;
-}
-
-export interface PaymentTransactionView {
-  orderId: number;
-  transactionId?: number;
-  sepayTransactionId?: number;
-  studentCode?: string;
-  studentName?: string;
-  universityId?: number;
-  universityName?: string;
-  ticketType?: string;
-  routeId?: number;
-  routeName?: string;
-  orderTotal?: number;
-  paymentStatus?: string;
-  gateway?: string;
-  amountIn?: number;
-  amountOut?: number;
-  transactionContent?: string;
-  referenceNumber?: string;
-  transactionDate?: string;
-  paidAt?: string;
-  createdAt?: string;
 }
 
 export interface AuditLogView {
@@ -1744,3 +1785,4 @@ export const api = {
   driverDispatch: driverDispatchApi,
   conductor: conductorApi,
 };
+

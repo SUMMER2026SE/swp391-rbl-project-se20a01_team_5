@@ -83,6 +83,7 @@ public class SePayService {
         BigDecimal subsidyAmount = BigDecimal.ZERO;
         BigDecimal finalAmount;
         Integer subsidyPolicyId = null;
+        ApprovedRegistration registration = null;
 
         if ("test".equalsIgnoreCase(ticketType)) {
             routeId = jdbcTemplate.queryForObject("SELECT route_id FROM routes ORDER BY route_id LIMIT 1", Integer.class);
@@ -90,7 +91,7 @@ public class SePayService {
             originalFare = amount;
             finalAmount = amount;
         } else {
-            ApprovedRegistration registration = ticketingRepository.approvedRegistration(studentCode, requestedRouteId)
+            registration = ticketingRepository.approvedRegistration(studentCode, requestedRouteId)
                     .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Student must have an approved route registration"));
             routeId = registration.routeId();
 
@@ -116,10 +117,6 @@ public class SePayService {
                 if (SubsidyService.STATUS_NO_UNIVERSITY.equals(quote.subsidyStatus())) {
                     throw new ApiException(HttpStatus.CONFLICT, "Student university is not linked to a partner university yet");
                 }
-                if (SubsidyService.STATUS_ROUTE_NOT_LINKED.equals(quote.subsidyStatus())) {
-                    throw new ApiException(HttpStatus.FORBIDDEN, "Route is not configured for the student's university");
-                }
-
                 amount = quote.finalFareAmount();
                 originalFare = quote.originalFareAmount();
                 subsidyAmount = quote.subsidyAmount();
@@ -144,7 +141,7 @@ public class SePayService {
         Integer existingOrderRouteId = routeId;
         List<Map<String, Object>> existingOrders = jdbcTemplate.query(connection -> {
             PreparedStatement statement = connection.prepareStatement(
-                    "SELECT id, total FROM tb_orders WHERE student_code = ? AND ticket_type = ? AND route_id IS NOT DISTINCT FROM ? AND payment_status = 'Unpaid' ORDER BY created_at DESC LIMIT 1");
+                    "SELECT id, total FROM tb_orders WHERE student_code = ? AND ticket_type = ? AND route_id IS NOT DISTINCT FROM ? AND LOWER(payment_status) = 'unpaid' ORDER BY created_at DESC LIMIT 1");
             statement.setString(1, studentCode);
             statement.setString(2, storedTicketType);
             if (existingOrderRouteId == null) {
@@ -183,10 +180,17 @@ public class SePayService {
         }
 
         Integer orderRouteId = routeId;
+        String orderMode = "single-route";
+        String ticketPeriod = "single".equalsIgnoreCase(storedTicketType) ? "day" : "month";
+        String originLabel = registration == null ? null : registration.boardingStopName();
+        String destinationLabel = registration == null ? null : registration.alightingStopName();
+        BigDecimal orderOriginalAmount = originalFare == null ? amount : originalFare;
+        BigDecimal orderSubsidyAmount = subsidyAmount == null ? BigDecimal.ZERO : subsidyAmount;
+        BigDecimal orderFinalAmount = finalAmount == null ? amount : finalAmount;
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update(connection -> {
             PreparedStatement statement = connection.prepareStatement(
-                    "INSERT INTO tb_orders (student_code, ticket_type, route_id, total, payment_status, name) VALUES (?, ?, ?, ?, 'Unpaid', ?)",
+                    "INSERT INTO tb_orders (student_code, ticket_type, route_id, total, payment_status, name, order_mode, ticket_period, origin_label, destination_label, original_amount, subsidy_amount, final_amount) VALUES (?, ?, ?, ?, 'Unpaid', ?, ?, ?, ?, ?, ?, ?, ?)",
                     new String[] { "id" });
             statement.setString(1, studentCode);
             statement.setString(2, storedTicketType);
@@ -197,6 +201,13 @@ public class SePayService {
             }
             statement.setBigDecimal(4, amount);
             statement.setString(5, testOrder ? "Test UniBus" : orderName(ticketType));
+            statement.setString(6, orderMode);
+            statement.setString(7, ticketPeriod);
+            statement.setString(8, originLabel);
+            statement.setString(9, destinationLabel);
+            statement.setBigDecimal(10, orderOriginalAmount);
+            statement.setBigDecimal(11, orderSubsidyAmount);
+            statement.setBigDecimal(12, orderFinalAmount);
             return statement;
         }, keyHolder);
 
@@ -230,10 +241,10 @@ public class SePayService {
     }
 
     private String orderName(String ticketType) {
-        if ("monthly".equalsIgnoreCase(ticketType)) return "Vé tháng UniBus";
-        if ("single".equalsIgnoreCase(ticketType)) return "Vé thường UniBus";
-        if ("test".equalsIgnoreCase(ticketType)) return "Test thanh toán UniBus";
-        return "Thanh toán UniBus";
+        if ("monthly".equalsIgnoreCase(ticketType)) return "VÃ© thÃ¡ng UniBus";
+        if ("single".equalsIgnoreCase(ticketType)) return "VÃ© thÆ°á»ng UniBus";
+        if ("test".equalsIgnoreCase(ticketType)) return "Test thanh toÃ¡n UniBus";
+        return "Thanh toÃ¡n UniBus";
     }
 
     @Transactional(readOnly = true)
@@ -526,3 +537,5 @@ public class SePayService {
         }
     }
 }
+
+

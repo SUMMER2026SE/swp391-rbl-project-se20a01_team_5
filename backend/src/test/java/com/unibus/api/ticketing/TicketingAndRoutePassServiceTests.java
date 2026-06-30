@@ -206,6 +206,22 @@ class TicketingAndRoutePassServiceTests {
                 .isEqualByComparingTo(BigDecimal.ZERO);
     }
 
+
+    @Test
+    void activeMonthlyPassOnDifferentRouteDoesNotBlockCancellation() {
+        jdbcTemplate.update("""
+                INSERT INTO monthly_passes(student_code, route_id, effective_month, effective_year,
+                    valid_from, expires_on, fare_amount, original_fare_amount, subsidy_amount,
+                    final_fare_amount, qr_code, status)
+                VALUES (?, ?, ?, ?, CURRENT_DATE, CURRENT_DATE + 20, 150000, 150000, 0, 150000, 'QR-ROUTE-B', 'ACTIVE')
+                """, "SE-TICKET-001", routeB.getId(), LocalDate.now().getMonthValue(), LocalDate.now().getYear());
+
+        routeRegistrationService.cancel(currentUser, registration.registrationId(), "No longer needed");
+
+        RouteRegistration persisted = routeRegistrationRepository.findById(registration.registrationId()).orElseThrow();
+        assertThat(persisted.getStatus().name()).isEqualTo("CANCELLED");
+    }
+
     @Test
     void activeMonthlyPassBlocksDifferentRouteButAllowsSameRouteStopUpdate() {
         ticketingService.purchaseMonthlyPass(currentUser, new PurchaseMonthlyPassRequest(null, "BANK_TRANSFER", null, null));

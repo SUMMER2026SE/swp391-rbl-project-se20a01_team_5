@@ -115,6 +115,8 @@ import {
 } from "@/lib/prototype-data";
 import {
   universityApi,
+  isPaidStatus,
+  isUnpaidStatus,
   notificationApi,
   type CampusView,
   type DomainView,
@@ -132,6 +134,36 @@ type UniversityAdminModuleProps = {
   activeId: string;
   onNavigate: (id: string) => void;
 };
+
+const paymentFinalAmount = (payment: PaymentTransactionView) => {
+  if (payment.finalAmount != null) {
+    if (payment.finalAmount > 0) return payment.finalAmount;
+    const original = payment.originalAmount ?? payment.orderTotal ?? 0;
+    const subsidy = payment.subsidyAmount ?? 0;
+    if (original > 0 && subsidy >= original) return 0;
+    if (!isPaidStatus(payment.paymentStatus) && !isUnpaidStatus(payment.paymentStatus)) return payment.finalAmount;
+  }
+  return payment.orderTotal ?? payment.amountIn ?? 0;
+};
+
+const paymentOriginalAmount = (payment: PaymentTransactionView) =>
+  payment.originalAmount ?? payment.orderTotal ?? payment.amountIn ?? 0;
+
+const paymentModeLabel = (payment: PaymentTransactionView) => {
+  if (payment.orderMode === "journey-combo") return "Combo nhiều chặng";
+  if (payment.ticketPeriod === "day" || payment.ticketType === "single") return "Vé ngày";
+  return "Vé tháng";
+};
+
+const paymentPeriodLabel = (payment: PaymentTransactionView) => {
+  if (payment.ticketType === "single" || payment.ticketPeriod === "day") return "day";
+  return payment.ticketPeriod || "month";
+};
+
+const paymentJourneyLabel = (payment: PaymentTransactionView) =>
+  payment.originLabel && payment.destinationLabel
+    ? `${payment.originLabel} → ${payment.destinationLabel}`
+    : payment.routeName || payment.ticketType || "—";
 
 export function UniversityAdminModule({ activeId, onNavigate }: UniversityAdminModuleProps) {
   const proto = useUniversityAdminPrototypeData();
@@ -186,8 +218,9 @@ export function UniversityAdminModule({ activeId, onNavigate }: UniversityAdminM
     case "uniadm-notify":
       return <NotifyScreen ctx={ctx} />;
     case "uniadm-recon":
-    case "uniadm-transactions":
       return <ReconScreen ctx={ctx} />;
+    case "uniadm-transactions":
+      return <TransactionsScreen ctx={ctx} />;
     default:
       return <FallbackScreen activeId={activeId} />;
   }
@@ -364,10 +397,10 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
       <StaggerGroup className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 min-w-0">
         <StaggerItem>
           <StatCard
-            label="Sinh viên đang hoạt động"
+            label="Sinh viên có giao dịch"
             value={<Counter to={s?.activeRosterStudents || 0} />}
             icon={<Users className="size-6" />}
-            hint={`${s?.matchedStudents || 0} đã liên kết`}
+            hint={`${s?.matchedStudents || 0} hồ sơ sinh viên`}
             trend="up"
             accent="primary"
           />
@@ -377,7 +410,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
             label="Vé tháng tháng này"
             value={<Counter to={s?.monthlyPasses || 0} />}
             icon={<FileSpreadsheet className="size-6" />}
-            hint={`${s?.activeRosterStudents ? Math.round((s.monthlyPasses / s.activeRosterStudents) * 100) : 0}% sinh viên`}
+            hint={`${s?.activeRosterStudents ? Math.round((s.monthlyPasses / s.activeRosterStudents) * 100) : 0}% SV có giao dịch`}
             trend="up"
             accent="tertiary"
           />
@@ -518,7 +551,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
         </ScrollReveal>
 
         <ScrollReveal delay={0.1} className="lg:col-span-2 min-w-0">
-          <Section title="Giao dịch gần đây" actions={<button onClick={() => onNavigate("uniadm-recon")} className="text-xs font-bold text-primary">Đối soát</button>}>
+          <Section title="Giao dịch gần đây" actions={<button onClick={() => onNavigate("uniadm-recon")} className="text-xs font-bold text-primary">Đối soát theo kỳ</button>}>
             {ctx.payments.length === 0 ? (
               <EmptyState icon={<Banknote className="size-7" />} title="Chưa có giao dịch" />
             ) : (
@@ -528,11 +561,11 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
                     <div className="flex items-center justify-between gap-2 min-w-0">
                       <div className="min-w-0">
                         <p className="font-bold text-sm truncate">{p.studentName || p.studentCode || "—"}</p>
-                        <p className="text-xs text-on-surface-variant truncate">{p.routeName || p.ticketType}</p>
+                        <p className="text-xs text-on-surface-variant truncate">{paymentModeLabel(p)} · {paymentJourneyLabel(p)}</p>
                       </div>
                       <div className="text-right shrink-0">
-                        <p className="font-bold text-primary">{p.orderTotal ? formatVND(p.orderTotal) : "—"}</p>
-                        <M3StatusPill label={p.paymentStatus || "—"} tone={p.paymentStatus === "PAID" ? "success" : "warning"} />
+                        <p className="font-bold text-primary">{formatVND(paymentFinalAmount(p))}</p>
+                        <M3StatusPill label={p.paymentStatus || "—"} tone={isPaidStatus(p.paymentStatus) ? "success" : "warning"} />
                       </div>
                     </div>
                   </ExpressiveCard>
@@ -1103,6 +1136,68 @@ function NotifyScreen({ ctx }: { ctx: Ctx }) {
 }
 
 // =============================================================================
+// Screen 9A: Transactions — payment/order history, not reconciliation
+// =============================================================================
+function TransactionsScreen({ ctx }: { ctx: Ctx }) {
+  const rows = ctx.payments || [];
+  const paidRows = rows.filter((p) => isPaidStatus(p.paymentStatus));
+  const finalTotal = paidRows.reduce((sum, p) => sum + paymentFinalAmount(p), 0);
+
+  return (
+    <PageTransition className="space-y-6 min-w-0">
+      <PageHeader
+        title="Lịch sử giao dịch"
+        description="Danh sách đơn thanh toán của sinh viên; không phải báo cáo đối soát theo kỳ."
+        icon={<Banknote className="size-7" />}
+      />
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 min-w-0">
+        <StatCard label="Tổng giao dịch" value={rows.length} icon={<Banknote className="size-5" />} accent="primary" />
+        <StatCard label="Đã thanh toán" value={paidRows.length} icon={<CheckCircle2 className="size-5" />} accent="success" />
+        <StatCard label="Sinh viên đã trả" value={formatVND(finalTotal)} icon={<Wallet className="size-5" />} accent="tertiary" />
+      </div>
+
+      {rows.length === 0 ? (
+        <EmptyState icon={<Banknote className="size-7" />} title="Chưa có giao dịch" />
+      ) : (
+        <ExpressiveCard variant="elevated" className="overflow-hidden min-w-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>SV</TableHead>
+                <TableHead>Loại đơn</TableHead>
+                <TableHead>Kỳ vé</TableHead>
+                <TableHead>Chặng/Tuyến</TableHead>
+                <TableHead className="text-right">Giá gốc</TableHead>
+                <TableHead className="text-right">Trợ giá</TableHead>
+                <TableHead className="text-right">Sinh viên trả</TableHead>
+                <TableHead>Trạng thái</TableHead>
+                <TableHead>Ngày</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.slice(0, 100).map((p) => (
+                <TableRow key={`${p.orderId}-${p.transactionId || p.sepayTransactionId || "order"}`}>
+                  <TableCell className="truncate">{p.studentName || p.studentCode || "—"}</TableCell>
+                  <TableCell className="text-xs whitespace-nowrap">{paymentModeLabel(p)}</TableCell>
+                  <TableCell className="text-xs whitespace-nowrap">{paymentPeriodLabel(p)}</TableCell>
+                  <TableCell className="truncate text-xs">{paymentJourneyLabel(p)}</TableCell>
+                  <TableCell className="text-right font-bold tabular-nums">{formatVND(paymentOriginalAmount(p))}</TableCell>
+                  <TableCell className="text-right tabular-nums text-success">{formatVND(p.subsidyAmount || 0)}</TableCell>
+                  <TableCell className="text-right font-bold tabular-nums">{formatVND(paymentFinalAmount(p))}</TableCell>
+                  <TableCell><M3StatusPill label={p.paymentStatus || "—"} tone={isPaidStatus(p.paymentStatus) ? "success" : "warning"} /></TableCell>
+                  <TableCell className="text-xs whitespace-nowrap">{formatDate(p.paidAt || p.transactionDate || p.createdAt)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </ExpressiveCard>
+      )}
+    </PageTransition>
+  );
+}
+
+// =============================================================================
 // Screen 9: Reconciliation
 // =============================================================================
 function ReconScreen({ ctx }: { ctx: Ctx }) {
@@ -1124,7 +1219,7 @@ function ReconScreen({ ctx }: { ctx: Ctx }) {
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Đối soát tài chính"
-        description="Tổng hợp giao dịch và trợ giá theo kỳ."
+        description="Tổng hợp theo kỳ, ưu tiên đơn thanh toán V16 và fallback vé tháng legacy khi chưa có dữ liệu đơn."
         icon={<ScrollText className="size-7" />}
         actions={
           <div className="flex gap-2">
@@ -1144,18 +1239,21 @@ function ReconScreen({ ctx }: { ctx: Ctx }) {
               <p className="text-2xl font-black mt-2 text-primary">
                 <Counter to={r.totalOriginalAmount} format={(n) => formatVND(Math.round(n))} />
               </p>
+              <p className="mt-1 text-xs text-on-surface-variant">{r.totalOrders || r.monthlyPasses} đơn/vé trong kỳ</p>
             </ExpressiveCard>
             <ExpressiveCard variant="elevated" className="p-6 min-w-0">
               <p className="text-xs text-on-surface-variant uppercase">Tổng trợ giá</p>
               <p className="text-2xl font-black mt-2 text-success">
                 <Counter to={r.totalSubsidyAmount} format={(n) => formatVND(Math.round(n))} />
               </p>
+              <p className="mt-1 text-xs text-on-surface-variant">Phần trường hỗ trợ sinh viên</p>
             </ExpressiveCard>
             <ExpressiveCard variant="elevated" className="p-6 min-w-0">
-              <p className="text-xs text-on-surface-variant uppercase">Tổng thu</p>
+              <p className="text-xs text-on-surface-variant uppercase">Sinh viên đã trả</p>
               <p className="text-2xl font-black mt-2 text-tertiary">
                 <Counter to={r.totalFinalAmount} format={(n) => formatVND(Math.round(n))} />
               </p>
+              <p className="mt-1 text-xs text-on-surface-variant">{r.journeyOrders || 0} combo · {r.dayTickets || 0} vé ngày · {r.monthlyPasses || 0} vé tháng</p>
             </ExpressiveCard>
           </div>
         </ScrollReveal>
@@ -1169,8 +1267,8 @@ function ReconScreen({ ctx }: { ctx: Ctx }) {
                 <TableHeader>
                   <TableRow>
                     <TableHead>SV</TableHead>
-                    <TableHead>Tuyến</TableHead>
-                    <TableHead className="text-right">Tổng</TableHead>
+                    <TableHead>Loại/Chặng</TableHead>
+                    <TableHead className="text-right">Gốc / Trả</TableHead>
                     <TableHead>Trạng thái</TableHead>
                     <TableHead>Ngày</TableHead>
                   </TableRow>
@@ -1179,9 +1277,9 @@ function ReconScreen({ ctx }: { ctx: Ctx }) {
                   {ctx.payments.slice(0, 50).map((p) => (
                     <TableRow key={p.orderId}>
                       <TableCell className="truncate">{p.studentName || p.studentCode}</TableCell>
-                      <TableCell className="truncate text-xs">{p.routeName || p.ticketType}</TableCell>
-                      <TableCell className="text-right font-bold tabular-nums">{p.orderTotal ? formatVND(p.orderTotal) : "—"}</TableCell>
-                      <TableCell><M3StatusPill label={p.paymentStatus || "—"} tone={p.paymentStatus === "PAID" ? "success" : "warning"} /></TableCell>
+                      <TableCell className="truncate text-xs">{paymentModeLabel(p)}<div className="text-[10px] text-on-surface-variant truncate">{paymentJourneyLabel(p)}</div></TableCell>
+                      <TableCell className="text-right font-bold tabular-nums"><div>{formatVND(paymentOriginalAmount(p))}</div><div className="text-[10px] text-on-surface-variant">→ {formatVND(paymentFinalAmount(p))}</div></TableCell>
+                      <TableCell><M3StatusPill label={p.paymentStatus || "—"} tone={isPaidStatus(p.paymentStatus) ? "success" : "warning"} /></TableCell>
                       <TableCell className="text-xs whitespace-nowrap">{formatDate(p.paidAt || p.transactionDate)}</TableCell>
                     </TableRow>
                   ))}

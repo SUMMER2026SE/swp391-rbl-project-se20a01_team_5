@@ -39,7 +39,7 @@ export interface JourneyExtraMarker {
   label: string;
   lat: number;
   lng: number;
-  tone?: "current" | "destination";
+  tone?: "user" | "nearest" | "selected" | "boarding" | "destination" | "current";
 }
 
 export interface JourneyPolyline {
@@ -70,6 +70,7 @@ export interface JourneyMapProps {
   arrivalOverlay?: React.ReactNode;
   compact?: boolean;
   allowFallbackPolyline?: boolean;
+  scrollWheelZoom?: boolean;
 }
 
 const STYLE_ID = "unibus-journey-map-styles-v2";
@@ -221,8 +222,15 @@ function extraMarkerIcon(
   L: typeof import("leaflet"),
   tone: JourneyExtraMarker["tone"],
 ) {
-  const color = tone === "current" ? "#087f5b" : "#dc3f36";
-  const halo = tone === "current" ? "#BDFD4F" : "#fff";
+  const palette = {
+    user: { color: "#14140f", halo: "#BDFD4F" },
+    nearest: { color: "#166534", halo: "#DCFCE7" },
+    selected: { color: "#14140f", halo: "#F8F6EF" },
+    boarding: { color: "#16803c", halo: "#BDFD4F" },
+    destination: { color: "#dc3f36", halo: "#fff" },
+    current: { color: "#087f5b", halo: "#BDFD4F" },
+  } as const;
+  const { color, halo } = palette[tone || "current"];
   return L.divIcon({
     className: "unibus-map-marker",
     html: `
@@ -281,6 +289,7 @@ export const JourneyMap = React.memo(function JourneyMap({
   animateCamera = true,
   arrivalOverlay,
   allowFallbackPolyline = true,
+  scrollWheelZoom = true,
 }: JourneyMapProps) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const mapRef = React.useRef<any>(null);
@@ -303,7 +312,7 @@ export const JourneyMap = React.memo(function JourneyMap({
         center: [16.0544, 108.2022],
         zoom: 12,
         zoomControl: false,
-        scrollWheelZoom: true,
+        scrollWheelZoom: false,
         doubleClickZoom: true,
         dragging: true,
         zoomSnap: 0.5,
@@ -524,6 +533,16 @@ export const JourneyMap = React.memo(function JourneyMap({
     });
   }, [buses, mapReadyToken, onSelectBus, routeColor]);
 
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!map || mapReadyToken === 0) return;
+    if (scrollWheelZoom) {
+      map.scrollWheelZoom.enable();
+    } else {
+      map.scrollWheelZoom.disable();
+    }
+  }, [mapReadyToken, scrollWheelZoom]);
+
   return (
     <div
       ref={containerRef}
@@ -540,3 +559,4 @@ export const JourneyMap = React.memo(function JourneyMap({
     </div>
   );
 });
+
