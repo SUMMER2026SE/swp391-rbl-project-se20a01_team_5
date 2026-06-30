@@ -99,8 +99,8 @@ public class RouteRegistrationService {
             return toResponse(routeRegistrationRepository.save(existing));
         }
 
-        if (routeRegistrationRepository.countActiveMonthlyPassesOnDifferentRoute(
-                student.getStudentCode(), selection.route().getId()) > 0) {
+        if (routeRegistrationRepository.countActiveMonthlyPassesByRoute(
+                student.getStudentCode(), existing.getRoute().getId()) > 0) {
             throw new ApiException(HttpStatus.CONFLICT,
                     "Active monthly pass locks the current route until the pass expires");
         }
