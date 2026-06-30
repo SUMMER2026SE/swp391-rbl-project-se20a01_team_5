@@ -207,6 +207,17 @@ type SelectedBusTracking = {
   savedAt?: string;
 };
 
+function saveSelectedRouteTracking(registration?: RegistrationDTO | null) {
+  if (typeof window === "undefined" || !registration?.routeId || !registration.boardingStopId) return false;
+  window.localStorage.setItem(SELECTED_BUS_TRACKING_KEY, JSON.stringify({
+    routeId: Number(registration.routeId),
+    stopId: Number(registration.boardingStopId),
+    stopName: registration.boardingStopName,
+    savedAt: new Date().toISOString(),
+  }));
+  return true;
+}
+
 function geoDistanceMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
   const earthRadiusMeters = 6371000;
   const toRad = (value: number) => (value * Math.PI) / 180;
@@ -2370,6 +2381,10 @@ function TrackingScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean 
 // =============================================================================
 function MyJourneysScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
   const [tab, setTab] = useState("routes");
+  const openTab = (nextTab: string) => {
+    if (nextTab === "tracking") saveSelectedRouteTracking(ctx.registration);
+    setTab(nextTab);
+  };
   const tabs = [
     { id: "routes", label: "Tuyến đã đăng ký", icon: TicketCheck },
     { id: "ticket", label: "Vé & QR", icon: QrCode },
@@ -2399,7 +2414,7 @@ function MyJourneysScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
               <button
                 key={item.id}
                 type="button"
-                onClick={() => setTab(item.id)}
+                onClick={() => openTab(item.id)}
                 className={cn(
                   "state-layer flex min-h-11 items-center justify-center gap-2 rounded-2xl px-3 text-xs font-bold transition-colors sm:text-sm",
                   active
@@ -2423,7 +2438,7 @@ function MyJourneysScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
           exit={{ opacity: 0, y: -6 }}
           transition={{ duration: 0.18, ease: "easeOut" }}
         >
-          {tab === "routes" && <MyRoutesScreen ctx={ctx} onNavigate={onNavigate} compact />}
+          {tab === "routes" && <MyRoutesScreen ctx={ctx} onNavigate={onNavigate} compact onTrackingSelect={() => openTab("tracking")} />}
           {tab === "ticket" && <MyTicketScreen ctx={ctx} onNavigate={onNavigate} compact />}
           {tab === "tracking" && <TrackingScreen ctx={ctx} compact />}
         </motion.div>
@@ -2434,7 +2449,7 @@ function MyJourneysScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
 // =============================================================================
 // Screen 6: My Routes — registration management
 // =============================================================================
-function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavigate: (id: string) => void; compact?: boolean }) {
+function MyRoutesScreen({ ctx, onNavigate, compact = false, onTrackingSelect }: { ctx: Ctx; onNavigate: (id: string) => void; compact?: boolean; onTrackingSelect?: () => void }) {
   const [showRegister, setShowRegister] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
@@ -2579,13 +2594,12 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
                           whileTap={{ scale: 0.97 }}
                           transition={{ type: "spring", stiffness: 400, damping: 22 }}
                           onClick={() => {
-                            window.localStorage.setItem(SELECTED_BUS_TRACKING_KEY, JSON.stringify({
-                              routeId: Number(item.routeId),
-                              stopId: item.boardingStopId ? Number(item.boardingStopId) : undefined,
-                              stopName: item.boardingStopName,
-                              savedAt: new Date().toISOString(),
-                            }));
-                            onNavigate("stu-tracking");
+                            saveSelectedRouteTracking(item);
+                            if (onTrackingSelect) {
+                              onTrackingSelect();
+                            } else {
+                              onNavigate("stu-tracking");
+                            }
                           }}
                           className="inline-flex items-center gap-1.5 h-10 px-5 rounded-full bg-[#F8F6EF] text-[#14140f] text-sm font-bold border border-[#14140f]/10 hover:bg-[#beff50]/35"
                         >
