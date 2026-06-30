@@ -173,6 +173,30 @@ BEGIN
             university_id = EXCLUDED.university_id;
     END IF;
 
+    INSERT INTO university_student_rosters (university_id, student_code, full_name, email, status, faculty, academic_year, matched_user_id, created_at, updated_at)
+    SELECT s.university_id,
+           s.student_code,
+           u.full_name,
+           u.email,
+           'ACTIVE',
+           s.faculty,
+           s.academic_year,
+           u.user_id,
+           CURRENT_TIMESTAMP,
+           CURRENT_TIMESTAMP
+    FROM students s
+    JOIN users u ON u.user_id = s.user_id
+    WHERE s.university_id = v_supported_university_id
+      AND (s.student_code LIKE 'SV-STABLE-%' OR s.student_code = 'DTU202032312')
+    ON CONFLICT (university_id, student_code) DO UPDATE
+    SET full_name = EXCLUDED.full_name,
+        email = EXCLUDED.email,
+        status = 'ACTIVE',
+        faculty = EXCLUDED.faculty,
+        academic_year = EXCLUDED.academic_year,
+        matched_user_id = EXCLUDED.matched_user_id,
+        updated_at = CURRENT_TIMESTAMP;
+
     INSERT INTO drivers (user_id, license_number, years_experience, average_rating, work_status)
     VALUES (v_driver_user_id, 'DEMO-DL-2026-01', 6, 4.80, 'READY')
     ON CONFLICT (user_id) DO UPDATE

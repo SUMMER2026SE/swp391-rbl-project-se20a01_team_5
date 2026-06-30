@@ -172,10 +172,11 @@ uniadmin_visibility AS (
     SELECT
         'university_admin' AS section,
         'Duy Tân visible demo data' AS subject,
-        CASE WHEN count(DISTINCT s.student_code) >= 6 AND count(DISTINCT o.id) >= 2 THEN 'PASS' ELSE 'FAIL' END AS status,
-        concat('students=', count(DISTINCT s.student_code), ', orders=', count(DISTINCT o.id), ', monthly_passes=', count(DISTINCT mp.monthly_pass_id), ', single_tickets=', count(DISTINCT st.single_trip_ticket_id)) AS detail
+        CASE WHEN count(DISTINCT s.student_code) >= 6 AND count(DISTINCT usr.roster_id) >= 6 AND count(DISTINCT o.id) >= 2 THEN 'PASS' ELSE 'FAIL' END AS status,
+        concat('students=', count(DISTINCT s.student_code), ', roster_rows=', count(DISTINCT usr.roster_id), ', orders=', count(DISTINCT o.id), ', monthly_passes=', count(DISTINCT mp.monthly_pass_id), ', single_tickets=', count(DISTINCT st.single_trip_ticket_id)) AS detail
     FROM dtu d
     LEFT JOIN students s ON s.university_id = d.university_id AND (s.student_code LIKE 'SV-STABLE-%' OR s.student_code = 'DTU202032312')
+    LEFT JOIN university_student_rosters usr ON usr.university_id = d.university_id AND usr.student_code = s.student_code AND usr.status = 'ACTIVE'
     LEFT JOIN tb_orders o ON o.student_code = s.student_code
     LEFT JOIN monthly_passes mp ON mp.student_code = s.student_code
     LEFT JOIN single_trip_tickets st ON st.student_code = s.student_code
