@@ -129,6 +129,8 @@ import {
   useAdminPrototypeData,
   useAdminVerifications,
   useAdminPayments,
+  useAdminRouteUnis,
+  useAdminUniversities,
   formatVND,
   formatDateTime,
   formatDate,
@@ -138,6 +140,7 @@ import {
   isPaidStatus,
   isUnpaidStatus,
   experienceApi,
+  transportApi,
   notificationApi,
   type AdminUserView,
   type UniversityView,
@@ -146,6 +149,7 @@ import {
   type PaymentTransactionView,
   type AuditLogView,
   type RouteUniversityView,
+  type RouteLookupDTO,
   type SubsidyPolicyView,
   type ExperienceDashboardStat,
   type AdminStatsView,
@@ -796,15 +800,98 @@ function UniAdminsScreen({ ctx }: { ctx: Ctx }) {
 // Screen 4: Route-University linking
 // =============================================================================
 function RouteUniScreen({ ctx }: { ctx: Ctx }) {
+  const routeUnis = useAdminRouteUnis();
+  const universities = useAdminUniversities({ status: "ACTIVE" });
+  const [routes, setRoutes] = useState<RouteLookupDTO[]>([]);
+  const [routesLoading, setRoutesLoading] = useState(true);
+  const [open, setOpen] = useState(false);
+  const [routeId, setRouteId] = useState("");
+  const [universityId, setUniversityId] = useState("");
+  const [activeFrom, setActiveFrom] = useState(() => new Date().toISOString().slice(0, 10));
+  const [activeUntil, setActiveUntil] = useState("");
+  const [status, setStatus] = useState("ACTIVE");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setRoutesLoading(true);
+    transportApi.routes()
+      .then((items) => {
+        if (!cancelled) setRoutes(items || []);
+      })
+      .catch((error) => toast.error(error?.message || "Không tải được danh sách tuyến"))
+      .finally(() => {
+        if (!cancelled) setRoutesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const links = routeUnis.raw || ctx.routeUnis || [];
+  const universityOptions = universities.raw || ctx.universities || [];
+  const activeLinks = links.filter((item) => item.status === "ACTIVE").length;
+  const inactiveLinks = links.length - activeLinks;
+
+  const resetForm = () => {
+    setRouteId("");
+    setUniversityId("");
+    setActiveFrom(new Date().toISOString().slice(0, 10));
+    setActiveUntil("");
+    setStatus("ACTIVE");
+  };
+
+  const save = async () => {
+    if (!routeId || !universityId) {
+      toast.error("Chọn tuyến và trường trước khi lưu");
+      return;
+    }
+    setSaving(true);
+    try {
+      await adminApi.createRouteUniversity({
+        routeId: Number(routeId),
+        universityId: Number(universityId),
+        activeFrom: activeFrom || undefined,
+        activeUntil: activeUntil || undefined,
+        status,
+      });
+      toast.success("Đã gán tuyến cho trường");
+      routeUnis.reload();
+      setOpen(false);
+      resetForm();
+    } catch (error: any) {
+      toast.error(error?.message || "Không thể gán tuyến cho trường");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Tuyến ↔ Trường"
-        description={`${ctx.routeUnis.length} liên kết tuyến-trường`}
+        description={`${links.length} liên kết tuyến-trường`}
         icon={<RouteIcon className="size-7" />}
+        actions={(
+          <ExpressiveButton variant="filled" onClick={() => setOpen(true)}>
+            <Plus className="size-4" />
+            Gán tuyến
+          </ExpressiveButton>
+        )}
       />
-      {ctx.routeUnis.length === 0 ? (
-        <EmptyState icon={<RouteIcon className="size-7" />} title="Chưa có liên kết" />
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <StatCard icon={<RouteIcon className="size-5" />} label="Tổng liên kết" value={links.length} hint="Tuyến đã gán cho trường" />
+        <StatCard icon={<CheckCircle2 className="size-5" />} label="Đang hoạt động" value={activeLinks} hint="Có hiệu lực cho sinh viên" />
+        <StatCard icon={<Clock className="size-5" />} label="Tạm ngưng/hết hạn" value={inactiveLinks} hint="Không dùng khi tính trợ giá" />
+      </div>
+
+      {routeUnis.loading ? (
+        <LoadingScreen label="Đang tải liên kết tuyến-trường..." />
+      ) : routeUnis.error ? (
+        <ErrorScreen message={routeUnis.error} onRetry={routeUnis.reload} />
+      ) : links.length === 0 ? (
+        <EmptyState icon={<RouteIcon className="size-7" />} title="Chưa có liên kết" description="Bấm Gán tuyến để liên kết tuyến xe với trường đại học." />
       ) : (
         <ExpressiveCard variant="elevated" className="overflow-hidden min-w-0">
           <Table>
@@ -818,12 +905,12 @@ function RouteUniScreen({ ctx }: { ctx: Ctx }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {ctx.routeUnis.map((ru) => (
+              {links.map((ru) => (
                 <TableRow key={ru.routeUniversityId}>
                   <TableCell className="font-bold truncate">{ru.routeName}</TableCell>
                   <TableCell className="truncate">{ru.universityName}</TableCell>
                   <TableCell className="truncate">{ru.campusName || "—"}</TableCell>
-                  <TableCell className="text-xs">{formatDate(ru.activeFrom)} → {formatDate(ru.activeUntil)}</TableCell>
+                  <TableCell className="text-xs whitespace-nowrap">{formatDate(ru.activeFrom)} → {formatDate(ru.activeUntil)}</TableCell>
                   <TableCell><M3StatusPill label={ru.status} tone={ru.status === "ACTIVE" ? "success" : "neutral"} /></TableCell>
                 </TableRow>
               ))}
@@ -831,6 +918,71 @@ function RouteUniScreen({ ctx }: { ctx: Ctx }) {
           </Table>
         </ExpressiveCard>
       )}
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Gán tuyến cho trường</DialogTitle>
+            <DialogDescription>Liên kết tuyến xe với trường để sinh viên có thể đăng ký, thanh toán và áp dụng trợ giá.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="text-xs font-bold">Tuyến xe</Label>
+              <Select value={routeId} onValueChange={setRouteId} disabled={routesLoading}>
+                <SelectTrigger className="mt-1.5"><SelectValue placeholder={routesLoading ? "Đang tải tuyến..." : "Chọn tuyến"} /></SelectTrigger>
+                <SelectContent>
+                  {routes.map((route) => (
+                    <SelectItem key={route.routeId} value={String(route.routeId)}>
+                      {route.routeCode ? `${route.routeCode} — ` : ""}{route.routeName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs font-bold">Trường đại học</Label>
+              <Select value={universityId} onValueChange={setUniversityId} disabled={universities.loading}>
+                <SelectTrigger className="mt-1.5"><SelectValue placeholder={universities.loading ? "Đang tải trường..." : "Chọn trường"} /></SelectTrigger>
+                <SelectContent>
+                  {universityOptions.map((uni: UniversityView) => (
+                    <SelectItem key={uni.universityId} value={String(uni.universityId)}>
+                      {uni.shortName || uni.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs font-bold">Hiệu lực từ</Label>
+                <Input className="mt-1.5" type="date" value={activeFrom} onChange={(e) => setActiveFrom(e.target.value)} />
+              </div>
+              <div>
+                <Label className="text-xs font-bold">Hiệu lực đến</Label>
+                <Input className="mt-1.5" type="date" value={activeUntil} onChange={(e) => setActiveUntil(e.target.value)} />
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs font-bold">Trạng thái</Label>
+              <Select value={status} onValueChange={setStatus}>
+                <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ACTIVE">ACTIVE</SelectItem>
+                  <SelectItem value="INACTIVE">INACTIVE</SelectItem>
+                  <SelectItem value="SUSPENDED">SUSPENDED</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <ExpressiveButton variant="text" onClick={() => setOpen(false)} disabled={saving}>Hủy</ExpressiveButton>
+            <ExpressiveButton variant="filled" onClick={save} disabled={saving || routesLoading || universities.loading}>
+              {saving ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
+              Lưu liên kết
+            </ExpressiveButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageTransition>
   );
 }
