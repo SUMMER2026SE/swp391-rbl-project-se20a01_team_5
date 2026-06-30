@@ -3006,6 +3006,9 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
   const [selectedStopId, setSelectedStopId] = useState<string>("");
   const [selectedStopEtas, setSelectedStopEtas] = useState<EtaDTO[] | null>(null);
   const [selectedStopEtaLoading, setSelectedStopEtaLoading] = useState(false);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
+  const [showAllVehicles, setShowAllVehicles] = useState(false);
+  const locationRequestedRef = useRef(false);
 
   const registeredRoutes = registrations.length ? registrations : ctx.registration ? [ctx.registration] : [];
   const selectedRegistration = registeredRoutes.find((item) => String(item.routeId) === String(trackingContext?.routeId))
@@ -3141,9 +3144,10 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
   const routeTitle = journeyTracking?.routeName || trackingContext?.routeName || selectedRoute?.name || "Tuyến đang theo dõi";
   const routeCode = journeyTracking?.routeCode || trackingContext?.routeCode || journeyTracking?.stopEtas?.[0]?.routeCode || selectedRoute?.code || "BUS";
   const displayVehicles = journeyTracking?.vehicles || [];
+  const selectedVehicle = displayVehicles.find((vehicle) => vehicle.vehicleId === selectedVehicleId) || displayVehicles[0];
+  const collapsedVehicles = displayVehicles.filter((vehicle) => vehicle.vehicleId !== selectedVehicle?.vehicleId);
 
-
-  const journeyBuses = useMemo(() => displayVehicles
+  const journeyBuses = useMemo(() => (selectedVehicle ? [selectedVehicle] : [])
     .map((vehicle) => ({
       id: vehicle.vehicleId,
       plate: vehicle.plateNumber || "43B-00000",
@@ -3155,7 +3159,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
       capacity: vehicle.capacity,
       etaMinutes: vehicle.etaMinutes,
     }))
-    .filter((vehicle) => vehicle.lat && vehicle.lng), [displayVehicles, journeyRouteColor]);
+    .filter((vehicle) => vehicle.lat && vehicle.lng), [journeyRouteColor, selectedVehicle]);
   const etaStopRows = (journeyTracking?.stopEtas || []).map((stop) => ({
     id: `eta-${stop.routeId}-${stop.stopId}`,
     name: stop.stopName,
@@ -3174,6 +3178,31 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
     : journeyTracking?.stopEtas?.length
       ? "Xe sắp tới"
       : "Chưa có chuyến";
+  const hasTrackingSnapshot = Boolean(journeyId || trackingContext?.routeId);
+  const showRouteChooser = choosingRoute || !hasTrackingSnapshot;
+  const primaryVehicle = selectedVehicle;
+  const nextVehicleStopIndex = primaryVehicle?.nextStopId == null
+    ? -1
+    : trackingStops.findIndex((stop) => String(stop.id) === String(primaryVehicle.nextStopId));
+  const realtimeEtaRows = primaryVehicle && trackingStops.length && nextVehicleStopIndex >= 0
+    ? trackingStops.map((stop, index) => {
+        const passed = index < nextVehicleStopIndex;
+        const current = index === nextVehicleStopIndex;
+        const minutesAway = passed
+          ? -1
+          : Math.max(0, Number(primaryVehicle.etaMinutes ?? 0)) + Math.max(0, index - nextVehicleStopIndex) * 4;
+        return {
+          stopId: Number(stop.id),
+          stopName: stop.name,
+          routeId: Number(journeyTracking?.routeId || trackingContext?.routeId || selectedRouteId || 0),
+          routeCode: journeyTracking?.routeCode || trackingContext?.routeCode || selectedRoute?.code || "BUS",
+          estimatedArrivalAt: passed ? undefined : new Date(new Date(journeyTracking?.updatedAt || new Date().toISOString()).getTime() + minutesAway * 60_000).toISOString(),
+          minutesAway,
+          passed,
+          current,
+        };
+      })
+    : (journeyTracking?.stopEtas || []).map((stop, index) => ({ ...stop, passed: false, current: index === 0 }));
   const nearestStop = userLocation && trackingStops.length
     ? trackingStops
       .map((stop) => ({ stop, meters: distanceMeters(userLocation, { lat: stop.lat, lng: stop.lng }) }))
@@ -3186,10 +3215,20 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
   const selectedStopDistance = userLocation && selectedStop
     ? distanceMeters(userLocation, { lat: selectedStop.lat, lng: selectedStop.lng })
     : null;
-  const selectedStopNextEta = selectedStopEtas?.[0]
+  const selectedStopRealtimeEta = realtimeEtaRows.find((stop) => selectedStop && String(stop.stopId) === String(selectedStop.id));
+  const selectedStopNextEta = selectedStopRealtimeEta
+    || selectedStopEtas?.[0]
     || (journeyTracking?.stopEtas || []).find((stop) => selectedStop && String(stop.stopId) === String(selectedStop.id));
-  const selectedStopMinutes = (selectedStopNextEta as { minutesAway?: number; etaMinutes?: number } | undefined)?.minutesAway
-    ?? (selectedStopNextEta as { minutesAway?: number; etaMinutes?: number } | undefined)?.etaMinutes;
+  const selectedStopPassed = Boolean((selectedStopNextEta as { passed?: boolean } | undefined)?.passed);
+  const selectedStopMinutes = selectedStopPassed ? null : ((selectedStopNextEta as { minutesAway?: number; etaMinutes?: number } | undefined)?.minutesAway
+    ?? (selectedStopNextEta as { minutesAway?: number; etaMinutes?: number } | undefined)?.etaMinutes);
+  const selectedStopEtaLabel = selectedStopEtaLoading
+    ? "Đang tải"
+    : selectedStopPassed
+      ? "Đã qua trạm"
+      : selectedStopMinutes != null
+        ? `${selectedStopMinutes} phút`
+        : "Chưa có thời gian dự kiến";
   const trackingMarkers: JourneyExtraMarker[] = [
     userLocation ? { id: "user-location", label: "Bạn đang ở đây", lat: userLocation.lat, lng: userLocation.lng, tone: "user" } : null,
     nearestStop ? { id: "nearest-stop", label: `Gần bạn nhất: ${nearestStop.stop.name}`, lat: nearestStop.stop.lat, lng: nearestStop.stop.lng, tone: "nearest" } : null,
@@ -3239,7 +3278,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
     }
   }, [boardingStop, nearestStop?.stop, selectedStopId, trackingStops]);
 
-  const useMyLocation = () => {
+  const requestMyLocation = () => {
     if (!navigator.geolocation) {
       toast.info("Trình duyệt chưa hỗ trợ vị trí.");
       return;
@@ -3249,6 +3288,16 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
       (position) => {
         const location = { lat: position.coords.latitude, lng: position.coords.longitude };
         setUserLocation(location);
+        if (displayVehicles.length) {
+          const closestVehicle = displayVehicles
+            .filter((vehicle) => vehicle.latitude != null && vehicle.longitude != null)
+            .map((vehicle) => ({ vehicle, meters: distanceMeters(location, { lat: numberValue(vehicle.latitude), lng: numberValue(vehicle.longitude) }) }))
+            .sort((left, right) => left.meters - right.meters)[0];
+          if (closestVehicle?.vehicle?.vehicleId) {
+            setSelectedVehicleId(closestVehicle.vehicle.vehicleId);
+            setShowAllVehicles(false);
+          }
+        }
         if (trackingStops.length) {
           const closest = trackingStops
             .map((stop) => ({ stop, meters: distanceMeters(location, { lat: stop.lat, lng: stop.lng }) }))
@@ -3267,6 +3316,16 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
       { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 },
     );
   };
+
+  useEffect(() => {
+    if (locationRequestedRef.current || showRouteChooser || !hasTrackingSnapshot || typeof navigator === "undefined") return;
+    locationRequestedRef.current = true;
+    requestMyLocation();
+  }, [hasTrackingSnapshot, showRouteChooser]);
+
+  useEffect(() => {
+    if (!selectedVehicleId && displayVehicles[0]?.vehicleId) setSelectedVehicleId(displayVehicles[0].vehicleId);
+  }, [displayVehicles, selectedVehicleId]);
 
   const selectTrackingStop = (stopId: string) => {
     setSelectedStopId(stopId);
@@ -3360,31 +3419,6 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
     setChoosingRoute(true);
   };
 
-  const hasTrackingSnapshot = Boolean(journeyId || trackingContext?.routeId);
-  const showRouteChooser = choosingRoute || !hasTrackingSnapshot;
-  const primaryVehicle = displayVehicles[0];
-  const nextVehicleStopIndex = primaryVehicle?.nextStopId == null
-    ? -1
-    : trackingStops.findIndex((stop) => String(stop.id) === String(primaryVehicle.nextStopId));
-  const realtimeEtaRows = primaryVehicle && trackingStops.length && nextVehicleStopIndex >= 0
-    ? trackingStops.map((stop, index) => {
-        const passed = index < nextVehicleStopIndex;
-        const current = index === nextVehicleStopIndex;
-        const minutesAway = passed
-          ? -1
-          : Math.max(0, Number(primaryVehicle.etaMinutes ?? 0)) + Math.max(0, index - nextVehicleStopIndex) * 4;
-        return {
-          stopId: Number(stop.id),
-          stopName: stop.name,
-          routeId: Number(journeyTracking?.routeId || trackingContext?.routeId || selectedRouteId || 0),
-          routeCode: journeyTracking?.routeCode || trackingContext?.routeCode || selectedRoute?.code || "BUS",
-          estimatedArrivalAt: passed ? undefined : new Date(new Date(journeyTracking?.updatedAt || new Date().toISOString()).getTime() + minutesAway * 60_000).toISOString(),
-          minutesAway,
-          passed,
-          current,
-        };
-      })
-    : (journeyTracking?.stopEtas || []).map((stop, index) => ({ ...stop, passed: false, current: index === 0 }));
   const nearestEtaIndex = Math.max(0, realtimeEtaRows.findIndex((stop) => Boolean((stop as { current?: boolean }).current)));
   const etaWindowStart = showAllEtaStops ? 0 : Math.max(0, Math.min(nearestEtaIndex - 2, realtimeEtaRows.length - 5));
   const visibleEtaRows = showAllEtaStops ? realtimeEtaRows : realtimeEtaRows.slice(etaWindowStart, etaWindowStart + 5);
@@ -3613,7 +3647,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                   <span className="shrink-0 rounded-full bg-[#beff50]/30 px-3 py-1 text-xs font-semibold text-[#166534]">{trackingModeBadge}</span>
                 </div>
 
-                <button type="button" onClick={useMyLocation} className="mb-4 inline-flex h-10 items-center gap-2 rounded-2xl border border-[#14140f]/10 px-3 text-sm font-semibold text-[#144fcc] hover:bg-[#F8F6EF]">
+                <button type="button" onClick={requestMyLocation} className="mb-4 inline-flex h-10 items-center gap-2 rounded-2xl border border-[#14140f]/10 px-3 text-sm font-semibold text-[#144fcc] hover:bg-[#F8F6EF]">
                   <Crosshair className={cn("size-4", locationLoading && "animate-spin")} />
                   Dùng vị trí của tôi
                 </button>
@@ -3622,7 +3656,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                   <InfoCell label="Trạm đang chọn" value={selectedStop?.name || "Chọn trạm"} />
                   <InfoCell label="Khoảng cách" value={userLocation ? distanceLabel(selectedStopDistance) : "Bấm để tìm trạm gần bạn"} />
                   <InfoCell label="Đi bộ" value={userLocation ? walkingLabel(selectedStopDistance) : "Bấm để tìm trạm gần bạn"} />
-                  <InfoCell label="Thời gian dự kiến" value={selectedStopEtaLoading ? "Đang tải" : selectedStopMinutes != null ? `${selectedStopMinutes} phút` : "Chưa có thời gian dự kiến"} />
+                  <InfoCell label="Thời gian dự kiến" value={selectedStopEtaLabel} />
                 </div>
               </ExpressiveCard>
             </ScrollReveal>
@@ -3640,34 +3674,52 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                 </div>
 
                 <div className="space-y-3">
-                  {displayVehicles.map((vehicle) => (
+                  {selectedVehicle ? (
                     <motion.div
-                      key={vehicle.vehicleId}
+                      key={selectedVehicle.vehicleId}
                       layout
                       className="relative rounded-[22px] border border-[#14140f]/10 bg-[#FAF8F2] p-4 transition hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(0,0,0,0.05)]"
                     >
                       <span className="absolute right-4 top-4 grid size-14 place-items-center rounded-full bg-[#beff50] text-sm font-black text-[#14140f]">
-                        {vehicle.etaMinutes ?? 0} phút
+                        {selectedVehicle.etaMinutes ?? 0} phút
                       </span>
                       <div className="pr-16">
-                        <p className="truncate text-base font-semibold text-[#14140f]">{vehicle.plateNumber || "Xe theo lịch tuyến"}</p>
-                        <p className="mt-1 text-xs text-[#6B6B6B]">Xe sắp tới · Trạm kế: {vehicle.nextStopName || "đang xác định"}</p>
+                        <p className="truncate text-base font-semibold text-[#14140f]">{selectedVehicle.plateNumber || "Xe theo lịch tuyến"}</p>
+                        <p className="mt-1 text-xs text-[#6B6B6B]">Xe sắp tới · Trạm kế: {selectedVehicle.nextStopName || "đang xác định"}</p>
                       </div>
                       <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
-                        <InfoCell label="Tốc độ" value={`${Math.round(numberValue(vehicle.speedKmh))} km/h`} />
-                        <InfoCell label="Tải" value={vehicle.occupancy != null && vehicle.capacity ? `${vehicle.occupancy}/${vehicle.capacity}` : "--"} />
-                        <InfoCell label="Biển số" value={vehicle.plateNumber || vehicle.vehicleId || "--"} />
-                        <InfoCell label="Tuyến" value={vehicle.routeCode || routeCode} />
+                        <InfoCell label="Tốc độ" value={`${Math.round(numberValue(selectedVehicle.speedKmh))} km/h`} />
+                        <InfoCell label="Tải" value={selectedVehicle.occupancy != null && selectedVehicle.capacity ? `${selectedVehicle.occupancy}/${selectedVehicle.capacity}` : "--"} />
+                        <InfoCell label="Biển số" value={selectedVehicle.plateNumber || selectedVehicle.vehicleId || "--"} />
+                        <InfoCell label="Tuyến" value={selectedVehicle.routeCode || routeCode} />
                       </div>
                     </motion.div>
-                  ))}
-                  {!displayVehicles.length && (
+                  ) : (
                     <EmptyState
                       icon={<Bus className="size-7" />}
                       title="Chưa có chuyến đang chạy"
                       description="Bạn vẫn có thể xem danh sách trạm đi qua và thời gian dự kiến bên dưới."
                     />
                   )}
+                  {collapsedVehicles.length > 0 && (
+                    <button type="button" onClick={() => setShowAllVehicles((value) => !value)} className="w-full rounded-2xl border border-[#14140f]/10 px-4 py-2 text-sm font-semibold text-[#144fcc] hover:bg-[#F8F6EF]">
+                      {showAllVehicles ? "Thu gọn xe trên tuyến" : "Xem thêm xe trên tuyến này"}
+                    </button>
+                  )}
+                  {showAllVehicles && collapsedVehicles.map((vehicle) => (
+                    <button
+                      key={vehicle.vehicleId}
+                      type="button"
+                      onClick={() => {
+                        setSelectedVehicleId(vehicle.vehicleId);
+                        setShowAllVehicles(false);
+                      }}
+                      className="w-full rounded-[18px] border border-[#14140f]/10 bg-[#FAF8F2] p-4 text-left transition hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(0,0,0,0.05)]"
+                    >
+                      <p className="truncate text-base font-semibold text-[#14140f]">{vehicle.plateNumber || "Xe theo lịch tuyến"}</p>
+                      <p className="mt-1 text-xs text-[#6B6B6B]">Xe sắp tới · Trạm kế: {vehicle.nextStopName || "đang xác định"}</p>
+                    </button>
+                  ))}
                 </div>
               </ExpressiveCard>
             </ScrollReveal>
@@ -5565,7 +5617,7 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
         </div>
       </ScrollReveal>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.2fr] gap-4 min-w-0">
+      <div className="mx-auto grid w-full max-w-xl grid-cols-1 gap-4 min-w-0">
         {/* Order details */}
         <ScrollReveal>
           <ExpressiveCard variant="elevated" className="p-6 h-full min-w-0">
@@ -5686,132 +5738,45 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
           </ExpressiveCard>
         </ScrollReveal>
 
-        {/* QR / status panel */}
-        <ScrollReveal delay={0.1}>
-          {!sepayOrder ? (
-            <ExpressiveCard variant="filled" className="p-6 h-full flex flex-col items-center justify-center text-center min-w-0">
-              <div className="size-16 rounded-3xl bg-primary-container flex items-center justify-center mb-4">
-                <QrCode className="size-8 text-on-primary-container" />
-              </div>
-              <p className="text-base font-bold">Sẵn sàng thanh toán</p>
-              <p className="text-sm text-on-surface-variant mt-1 max-w-xs">
-                Chọn loại vé bên trái rồi bấm Xác nhận để tạo mã thanh toán VietQR qua SePay.
-                Hỗ trợ mọi app ngân hàng: MBBank, Vietcombank, BIDV, TC Bank, v.v.
-              </p>
-            </ExpressiveCard>
-          ) : step === 3 ? (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ type: "spring", stiffness: 240, damping: 22 }}
-            >
-              <ExpressiveCard variant="elevated" className="p-8 h-full flex flex-col items-center justify-center text-center min-w-0"
-                style={{ backgroundColor: "#beff50", color: "#14140f" }}
-              >
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: "spring", stiffness: 260, damping: 18, delay: 0.1 }}
-                  className="size-24 rounded-full bg-[#14140f] flex items-center justify-center mb-4"
-                >
-                  <CheckCircle2 className="size-12 text-[#beff50]" />
-                </motion.div>
-                <h2 className="text-2xl font-black">Thanh toán thành công!</h2>
-                <p className="text-sm font-semibold opacity-80 mt-2">
-                  {ticketLabel} đã được kích hoạt. Bạn có thể xem vé trong mục “Vé của tôi”.
-                </p>
-                <div className="bg-[#14140f]/10 rounded-2xl p-4 mt-4 w-full max-w-xs">
-                  <p className="text-xs font-bold opacity-70 uppercase">Mã giao dịch</p>
-                  <p className="font-mono font-black text-lg">#{sepayOrder.orderId}</p>
-                  <p className="text-xs font-bold opacity-70 uppercase mt-2">Số tiền</p>
-                  <p className="font-black text-lg">{formatVND(sepayOrder.amount)}</p>
-                </div>
-              </ExpressiveCard>
-            </motion.div>
-          ) : (
-            <ExpressiveCard variant="elevated" className="p-6 h-full min-w-0">
-              {/* Header with countdown */}
-              <div className="flex items-center justify-between mb-4 min-w-0">
-                <div className="min-w-0">
-                  <h3 className="text-lg font-bold flex items-center gap-2">
-                    <QrCode className="size-5 text-primary" />
-                    Quét QR thanh toán {sepayOrder.ticketType === "SINGLE" ? "vé lượt" : "vé tháng"}
-                  </h3>
-                  <p className="text-xs text-on-surface-variant mt-0.5">Mở app ngân hàng bất kỳ → quét QR</p>
-                </div>
-                <div className={cn(
-                  "shrink-0 px-3 py-1.5 rounded-full text-xs font-black tabular-nums",
-                  secondsLeft != null && secondsLeft < 60
-                    ? "bg-error text-white animate-pulse"
-                    : "bg-warning-container text-on-surface"
-                )}>
-                  {fmtCountdown(secondsLeft)}
-                </div>
-              </div>
-
-              {/* QR */}
-              <div className="flex flex-col items-center gap-3">
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="bg-white p-4 rounded-2xl shadow-lg ring-2 ring-[#beff50]/40"
-                >
-                  <img src={sepayOrder.qrUrl} alt="SePay QR" className="h-[240px] w-[240px] rounded-xl object-contain" />
-                </motion.div>
-                <div className="flex items-center gap-2 text-2xl font-black text-primary">
-                  {formatVND(sepayOrder.amount)}
-                </div>
-                <p className="text-xs text-on-surface-variant text-center break-all max-w-xs font-mono">
-                  {sepayOrder.description}
-                </p>
-              </div>
-
-              {/* Bank info */}
-              {sepayOrder.bankCode && sepayOrder.accountNo && (
-                <div className="mt-5 p-4 rounded-2xl bg-surface-container-low space-y-2 min-w-0">
-                  <div className="flex items-center justify-between gap-2 min-w-0">
-                    <span className="text-xs text-on-surface-variant">Ngân hàng</span>
-                    <span className="font-bold text-sm">{sepayOrder.bankCode}</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-2 min-w-0">
-                    <span className="text-xs text-on-surface-variant">Số tài khoản</span>
-                    <button
-                      onClick={copyAccount}
-                      className={cn(
-                        "font-mono font-bold text-sm flex items-center gap-1.5 transition-colors",
-                        copying ? "text-success" : "text-primary hover:underline"
-                      )}
-                    >
-                      {sepayOrder.accountNo}
-                      {copying ? <CheckCircle2 className="size-3.5" /> : <Banknote className="size-3.5" />}
-                    </button>
-                  </div>
-                  {sepayOrder.accountName && (
-                    <div className="flex items-center justify-between gap-2 min-w-0">
-                      <span className="text-xs text-on-surface-variant">Chủ TK</span>
-                      <span className="font-bold text-sm truncate">{sepayOrder.accountName}</span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Status */}
-              <div className="mt-4 p-3 rounded-xl bg-primary-container/30 text-primary text-sm flex items-center gap-2 min-w-0">
-                <RefreshCw className="size-4 animate-spin shrink-0" />
-                <span className="font-medium truncate">Đang chờ xác nhận thanh toán từ SePay...</span>
-              </div>
-
-              {paidStatus === "expired" && (
-                <div className="mt-3 p-3 rounded-xl bg-error-container/40 text-error text-sm flex items-center gap-2 min-w-0">
-                  <AlertTriangle className="size-4 shrink-0" />
-                  <span className="font-medium">Đơn hàng hết hạn. Vui lòng tạo lại.</span>
-                  <ExpressiveButton variant="text" size="sm" className="ml-auto" onClick={reset}>Tạo lại</ExpressiveButton>
-                </div>
-              )}
-            </ExpressiveCard>
-          )}
-        </ScrollReveal>
       </div>
+
+      {sepayOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-900">Thanh toán SePay</h3>
+              <button onClick={reset} className="rounded-full px-3 py-1 text-sm font-semibold text-gray-500 hover:bg-gray-100">Đóng</button>
+            </div>
+            {step === 3 ? (
+              <div className="rounded-xl border border-green-200 bg-green-50 p-5 text-center text-green-700">
+                <CheckCircle2 className="mx-auto mb-2 size-10" />
+                <p className="font-bold">Thanh toán thành công!</p>
+                <p className="text-sm">{ticketLabel} đã được kích hoạt.</p>
+              </div>
+            ) : (
+              <div className="space-y-4 text-center">
+                {sepayOrder.qrUrl && (
+                  <div className="flex justify-center">
+                    <img src={sepayOrder.qrUrl} alt="SePay QR" className="max-w-[240px] rounded-lg" />
+                  </div>
+                )}
+                <div className="rounded-xl bg-gray-50 p-4 text-left text-sm text-gray-700">
+                  <p className="flex justify-between gap-3"><span>Số tiền</span><span className="font-bold text-blue-600">{formatVND(sepayOrder.amount)}</span></p>
+                  <p className="mt-2 flex justify-between gap-3"><span>Nội dung CK</span><span className="font-bold text-red-600 select-all">{sepayOrder.description}</span></p>
+                  {sepayOrder.bankCode && <p className="mt-2 flex justify-between gap-3"><span>Ngân hàng</span><span className="font-semibold">{sepayOrder.bankCode}</span></p>}
+                  {sepayOrder.accountNo && <p className="mt-2 flex justify-between gap-3"><span>Số TK</span><span className="font-semibold select-all">{sepayOrder.accountNo}</span></p>}
+                  {sepayOrder.accountName && <p className="mt-2 flex justify-between gap-3"><span>Chủ TK</span><span className="font-semibold text-right">{sepayOrder.accountName}</span></p>}
+                </div>
+                <p className="text-xs text-gray-500">Đang chờ xác nhận thanh toán từ SePay...</p>
+                {paidStatus === "expired" && (
+                  <div className="rounded-xl bg-red-50 p-3 text-sm font-medium text-red-600">Đơn hàng hết hạn. Vui lòng đóng popup và tạo lại.</div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
     </PageTransition>
   );
 }
