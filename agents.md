@@ -352,6 +352,18 @@ tuyến mới từ màn tra cứu tuyến, màn `Mua vé` phải nhận đúng t
 giữ context tuyến cũ. Đồng thời danh sách phản hồi và báo mất đồ của sinh viên được tải
 từ API thật để sau khi gửi có thể thấy lại trên UI.
 
+## So với changelog mua vé trước đó, phần mới thêm
+- Changelog trước đã bao gồm logic lớn:
+  - tìm tuyến liên tuyến;
+  - mua vé 1 tuyến/combo;
+  - quote/order SePay;
+  - xử lý trợ giá và vé tháng đã có;
+  - fix QR combo và migration `V16`.
+- Lần cập nhật này chỉ bổ sung phần sau:
+  - sửa context khi đăng ký tuyến mới từ route lookup rồi chuyển sang `Mua vé`;
+  - sửa trường hợp đăng ký trả `409` nhưng vẫn cần chuyển sang mua đúng tuyến đó;
+  - sửa danh sách phản hồi/mất đồ để đọc API thật và reload sau khi gửi.
+
 ## Thay đổi gì
 - Màn `Tìm tuyến xe` / `route lookup` thêm helper lưu payment context cho tuyến vừa đăng ký:
   - cập nhật `unibus.paymentRouteId`;
