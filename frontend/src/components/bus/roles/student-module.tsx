@@ -3383,7 +3383,9 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
         };
       })
     : (journeyTracking?.stopEtas || []).map((stop, index) => ({ ...stop, passed: false, current: index === 0 }));
-  const visibleEtaRows = realtimeEtaRows;
+  const nearestEtaIndex = Math.max(0, realtimeEtaRows.findIndex((stop) => Boolean((stop as { current?: boolean }).current)));
+  const etaWindowStart = showAllEtaStops ? 0 : Math.max(0, Math.min(nearestEtaIndex - 2, realtimeEtaRows.length - 5));
+  const visibleEtaRows = showAllEtaStops ? realtimeEtaRows : realtimeEtaRows.slice(etaWindowStart, etaWindowStart + 5);
   const visibleStopRows = showAllTrackingStops ? stopRows : stopRows.slice(0, 6);
   const trackingUpdatedLabel = journeyTracking?.updatedAt ? `Cập nhật ${formatDateTime(journeyTracking.updatedAt)}` : "Đang đồng bộ";
   const trackingSourceLabel = journeyTracking?.vehicles?.length ? "Chuyến đang chạy" : "Chưa có chuyến";
@@ -3694,6 +3696,11 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                         </div>
                       );
                     })}
+                    {realtimeEtaRows.length > visibleEtaRows.length ? (
+                      <button type="button" onClick={() => setShowAllEtaStops((value) => !value)} className="mt-2 w-full rounded-2xl border border-[#14140f]/10 px-4 py-2 text-sm font-semibold text-[#144fcc] hover:bg-[#F8F6EF]">
+                        {showAllEtaStops ? "Thu gọn thời gian dự kiến" : "Xem thêm trạm"}
+                      </button>
+                    ) : null}
                   </div>
                 ) : (
                   <div className="rounded-2xl bg-[#F8F6EF] px-4 py-4 text-sm font-medium text-[#6B6B6B]">
