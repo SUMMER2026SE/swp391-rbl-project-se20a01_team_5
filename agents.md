@@ -341,3 +341,60 @@ Sinh viên chọn một hành trình nào thì màn mua vé chỉ xử lý đún
   - chỉ hiển thị đúng route/combo vừa chọn.
 - Nếu combo có route đã mua vé tháng, route đó phải hiện `0đ`.
 - Bấm tạo QR combo không còn lỗi `tb_orders.route_id violates not-null constraint`.
+
+---
+
+# Changelog: Fix chọn tuyến mua vé mới và tải lại phản hồi/mất đồ phía sinh viên
+
+## Tóm tắt
+Hoàn thiện các lỗi còn lại sau flow mua vé theo tuyến/hành trình. Khi sinh viên đăng ký
+tuyến mới từ màn tra cứu tuyến, màn `Mua vé` phải nhận đúng tuyến vừa đăng ký thay vì
+giữ context tuyến cũ. Đồng thời danh sách phản hồi và báo mất đồ của sinh viên được tải
+từ API thật để sau khi gửi có thể thấy lại trên UI.
+
+## Thay đổi gì
+- Màn `Tìm tuyến xe` / `route lookup` thêm helper lưu payment context cho tuyến vừa đăng ký:
+  - cập nhật `unibus.paymentRouteId`;
+  - ghi `unibus.studentPaymentContext.v1` với `mode: single-route`;
+  - ghi đầy đủ `routeId`, `boardingStopId`, `alightingStopId`, điểm đi/đến, `serviceDate`, `legs`;
+  - vẫn ghi `unibus.lastRegisteredRouteContext.v1` để các luồng cũ dùng được.
+- Khi đăng ký tuyến thành công:
+  - lưu context tuyến mới trước;
+  - reload dữ liệu sinh viên;
+  - điều hướng sang `stu-payment`.
+- Khi API đăng ký trả `409` do tuyến đã đăng ký:
+  - vẫn cập nhật context tuyến mới;
+  - điều hướng sang `stu-payment`;
+  - tránh màn mua vé tiếp tục hiện tuyến đăng ký trước đó.
+- `useStudentPrototypeData()` không còn hardcode:
+  - `feedback: []`;
+  - `lostItems: []`.
+- Frontend gọi API thật:
+  - `feedbackApi.mine()`;
+  - `experienceApi.studentLostItems()`.
+- Mapping dữ liệu:
+  - phản hồi dùng `mapFeedback`;
+  - báo mất đồ dùng `mapLostItem`.
+- Hàm reload dữ liệu sinh viên gọi thêm:
+  - `feedback.reload()`;
+  - `lostItems.reload()`.
+
+## Phạm vi cố ý không đưa vào PR này
+- Không đưa phần `LiveArrival` / `live-arrivals`.
+- Không đưa UI tracking từ nhánh TruongPhuc.
+- Không thêm menu/card tracking mới.
+- Không đưa các chỉnh sửa icon/map xe của tracking.
+
+## File thay đổi
+- `frontend/src/components/bus/student/journey-planner-desktop.tsx`
+- `frontend/src/lib/prototype-data.tsx`
+
+## Lưu ý khi test
+- Vào `Tìm tuyến xe`.
+- Chọn một tuyến khác tuyến đã từng đăng ký/mua trước đó.
+- Bấm đăng ký tuyến.
+- Sang `Mua vé` phải thấy đúng tuyến vừa chọn, không còn giữ tuyến cũ.
+- Gửi phản hồi chuyến đi, quay lại danh sách phải thấy phản hồi vừa gửi.
+- Gửi báo mất đồ, quay lại danh sách phải thấy báo mất đồ vừa gửi.
+- `npm run lint` chạy qua, còn 3 warning cũ.
+- `npm run build` chạy qua.
