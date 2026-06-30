@@ -3360,7 +3360,30 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
 
   const hasTrackingSnapshot = Boolean(journeyId || trackingContext?.routeId);
   const showRouteChooser = choosingRoute || !hasTrackingSnapshot;
-  const visibleEtaRows = showAllEtaStops ? (journeyTracking?.stopEtas || []) : (journeyTracking?.stopEtas || []).slice(0, 5);
+  const primaryVehicle = journeyTracking?.vehicles?.[0];
+  const nextVehicleStopIndex = primaryVehicle?.nextStopId == null
+    ? -1
+    : trackingStops.findIndex((stop) => String(stop.id) === String(primaryVehicle.nextStopId));
+  const realtimeEtaRows = primaryVehicle && trackingStops.length && nextVehicleStopIndex >= 0
+    ? trackingStops.map((stop, index) => {
+        const passed = index < nextVehicleStopIndex;
+        const current = index === nextVehicleStopIndex;
+        const minutesAway = passed
+          ? -1
+          : Math.max(0, Number(primaryVehicle.etaMinutes ?? 0)) + Math.max(0, index - nextVehicleStopIndex) * 4;
+        return {
+          stopId: Number(stop.id),
+          stopName: stop.name,
+          routeId: Number(journeyTracking?.routeId || trackingContext?.routeId || selectedRouteId || 0),
+          routeCode,
+          estimatedArrivalAt: passed ? undefined : new Date(new Date(journeyTracking?.updatedAt || new Date().toISOString()).getTime() + minutesAway * 60_000).toISOString(),
+          minutesAway,
+          passed,
+          current,
+        };
+      })
+    : (journeyTracking?.stopEtas || []).map((stop, index) => ({ ...stop, passed: false, current: index === 0 }));
+  const visibleEtaRows = realtimeEtaRows;
   const visibleStopRows = showAllTrackingStops ? stopRows : stopRows.slice(0, 6);
   const trackingUpdatedLabel = journeyTracking?.updatedAt ? `Cập nhật ${formatDateTime(journeyTracking.updatedAt)}` : "Đang đồng bộ";
   const trackingSourceLabel = journeyTracking?.vehicles?.length ? "Chuyến đang chạy" : "Chưa có chuyến";
@@ -3478,6 +3501,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                     extraMarkers={trackingMarkers}
                     height="100%"
                     animateCamera
+                    allowFallbackPolyline={false}
                     nextStopIndex={selectedStop ? trackingStops.findIndex((stop) => stop.id === selectedStop.id) : undefined}
                     onSelectStop={selectTrackingStop}
                     arrivalOverlay={
@@ -3652,24 +3676,24 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                 </div>
                 {visibleEtaRows.length ? (
                   <div className="space-y-0">
-                    {visibleEtaRows.map((stop, index) => (
-                      <div key={`${stop.routeId}-${stop.stopId}`} className="grid grid-cols-[28px_minmax(0,1fr)_56px] gap-3">
-                        <div className="flex flex-col items-center">
-                          <span className={cn("mt-1 size-3 rounded-full border-2", index === 0 ? "border-[#beff50] bg-[#beff50]" : "border-[#144fcc] bg-white")} />
-                          {index < visibleEtaRows.length - 1 ? <span className="mt-1 h-11 w-px bg-[#144fcc]/20" /> : null}
+                    {visibleEtaRows.map((stop, index) => {
+                      const passed = Boolean((stop as { passed?: boolean }).passed);
+                      const current = Boolean((stop as { current?: boolean }).current);
+                      const minutesAway = Number(stop.minutesAway ?? 0);
+                      return (
+                        <div key={`${stop.routeId}-${stop.stopId}`} className={cn("grid grid-cols-[28px_minmax(0,1fr)_56px] gap-3", passed && "opacity-45 grayscale")}>
+                          <div className="flex flex-col items-center">
+                            <span className={cn("mt-1 size-3 rounded-full border-2", current ? "border-[#beff50] bg-[#beff50]" : passed ? "border-[#9CA3AF] bg-[#E5E7EB]" : "border-[#144fcc] bg-white")} />
+                            {index < visibleEtaRows.length - 1 ? <span className={cn("mt-1 h-11 w-px", passed ? "bg-[#9CA3AF]/35" : "bg-[#144fcc]/20")} /> : null}
+                          </div>
+                          <div className="pb-4">
+                            <p className={cn("truncate text-sm font-semibold", passed ? "text-[#6B6B6B]" : "text-[#14140f]")}>{stop.stopName}</p>
+                            <p className="mt-0.5 text-xs text-[#6B6B6B]">{stop.routeCode || routeCode} · {stop.estimatedArrivalAt ? new Date(stop.estimatedArrivalAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : passed ? "Đã đi qua" : "Đang tính"}</p>
+                          </div>
+                          <p className={cn("pt-0.5 text-right text-sm font-semibold", current ? "text-[#166534]" : passed ? "text-[#6B6B6B]" : "text-[#144fcc]")}>{passed ? "Đã qua" : `${minutesAway} phút`}</p>
                         </div>
-                        <div className="pb-4">
-                          <p className="truncate text-sm font-semibold text-[#14140f]">{stop.stopName}</p>
-                          <p className="mt-0.5 text-xs text-[#6B6B6B]">{stop.routeCode || routeCode} · {stop.estimatedArrivalAt ? new Date(stop.estimatedArrivalAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "Đang tính"}</p>
-                        </div>
-                        <p className={cn("pt-0.5 text-right text-sm font-semibold", index === 0 ? "text-[#166534]" : "text-[#144fcc]")}>{stop.minutesAway ?? 0} phút</p>
-                      </div>
-                    ))}
-                    {(journeyTracking?.stopEtas || []).length > visibleEtaRows.length ? (
-                      <button type="button" onClick={() => setShowAllEtaStops((value) => !value)} className="mt-2 w-full rounded-2xl border border-[#14140f]/10 px-4 py-2 text-sm font-semibold text-[#144fcc] hover:bg-[#F8F6EF]">
-                        {showAllEtaStops ? "Thu gọn thời gian dự kiến" : "Xem tất cả các trạm"}
-                      </button>
-                    ) : null}
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="rounded-2xl bg-[#F8F6EF] px-4 py-4 text-sm font-medium text-[#6B6B6B]">
