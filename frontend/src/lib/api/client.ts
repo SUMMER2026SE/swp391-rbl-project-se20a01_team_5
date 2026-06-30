@@ -497,22 +497,6 @@ export interface RouteMapPreviewDTO {
   polylines?: { legId: string; mode: string; colorHex?: string; points: CoordinateDTO[] }[];
 }
 
-export interface LiveArrivalDTO {
-  vehicleId: string;
-  plateNumber?: string;
-  routeId: number;
-  routeCode?: string;
-  speedKmh?: number | string;
-  distanceMeters?: number;
-  etaMinutes?: number;
-  latitude?: number | string;
-  longitude?: number | string;
-  targetStopId?: number;
-  targetStopName?: string;
-  status?: "RUNNING" | "SLOWING" | "STOPPED_AT_STOP" | string;
-  updatedAt?: string;
-}
-
 export const transportApi = {
   stops: () => apiFetch.get<StopDTO[]>("/stops"),
   routes: () => apiFetch.get<RouteLookupDTO[]>("/routes"),
@@ -536,8 +520,6 @@ export const transportApi = {
   route: (routeId: number | string) => apiFetch.get<RouteSuggestionDTO>(`/routes/${routeId}`),
   eta: (routeId: number | string, stopId: number | string) =>
     apiFetch.get<EtaDTO[]>(`/routes/${routeId}/stops/${stopId}/eta`),
-  liveArrivals: (routeId: number | string, stopId: number | string, direction?: number) =>
-    apiFetch.get<LiveArrivalDTO[]>(`/routes/${routeId}/stops/${stopId}/live-arrivals`, { direction }),
 };
 
 export interface StudentProfile extends UserProfile {

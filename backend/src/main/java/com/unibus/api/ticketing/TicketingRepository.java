@@ -53,7 +53,7 @@ public class TicketingRepository {
                 LEFT JOIN stops als ON als.stop_id = rr.alighting_stop_id
                 WHERE rr.student_code = ?
                   AND rr.status = 'APPROVED'
-                  AND (?::integer IS NULL OR rr.route_id = ?)
+                  AND (? IS NULL OR rr.route_id = ?)
                 ORDER BY rr.approved_at DESC NULLS LAST, rr.registered_at DESC
                 LIMIT 1
                 """, (rs, rowNum) -> new ApprovedRegistration(
