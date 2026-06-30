@@ -80,8 +80,10 @@ public class JourneyTrackingService {
                 ? List.of(new MapPolyline("route-" + routeId, "BUS", route.colorHex(), shape))
                 : List.of();
 
-        Optional<VehicleSnapshot> liveVehicle = latestVehicle(routeId, route, shape, stops, now);
-        List<VehicleSnapshot> vehicles = liveVehicle.map(List::of).orElseGet(List::of);
+        VehicleSnapshot vehicle = latestVehicle(routeId, route, shape, stops, now)
+                .filter(item -> item.latitude() != null && item.longitude() != null)
+                .orElseGet(() -> simulatedRouteVehicle(route, shape, stops, now));
+        List<VehicleSnapshot> vehicles = List.of(vehicle);
 
         List<StopEta> stopEtas = new ArrayList<>();
         int eta = 0;
@@ -109,7 +111,7 @@ public class JourneyTrackingService {
                 .toList();
         return new JourneyTrackingSnapshot("route-" + routeId, now, vehicles, stopEtas, polylines,
                 route.routeId(), route.routeCode(), route.routeName(), boardingStopId, alightingStopId,
-                trackingStops, liveVehicle.isEmpty());
+                trackingStops, vehicle.vehicleId().startsWith("route-sim-"));
     }
 
     private VehicleSnapshot vehicleForLeg(JourneyLeg leg, int index, OffsetDateTime now) {
@@ -196,6 +198,10 @@ public class JourneyTrackingService {
     private VehicleSnapshot simulatedRouteVehicle(RouteInfo route, List<Coordinate> shape, List<RouteStopPoint> stops, OffsetDateTime now) {
         double progress = progressForRoute(route.routeId(), now);
         Coordinate position = interpolate(shape, progress);
+        if (position == null && !stops.isEmpty()) {
+            RouteStopPoint fallbackStop = stops.get(0);
+            position = new Coordinate(fallbackStop.latitude(), fallbackStop.longitude());
+        }
         RouteStopPoint nextStop = nextStopForProgress(stops, progress);
         int seed = Math.abs(route.routeId() == null ? 0 : route.routeId());
         return new VehicleSnapshot(

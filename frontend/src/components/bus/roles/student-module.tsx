@@ -3099,20 +3099,6 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
     ];
   }, [journeyPolylines]);
 
-  const journeyBuses = useMemo(() => (journeyTracking?.vehicles || [])
-    .map((vehicle) => ({
-      id: vehicle.vehicleId,
-      plate: vehicle.plateNumber || "43B-00000",
-      routeCode: vehicle.routeCode || "BUS",
-      routeColor: journeyRouteColor,
-      lat: numberValue(vehicle.latitude),
-      lng: numberValue(vehicle.longitude),
-      occupancy: vehicle.occupancy,
-      capacity: vehicle.capacity,
-      etaMinutes: vehicle.etaMinutes,
-    }))
-    .filter((vehicle) => vehicle.lat && vehicle.lng), [journeyRouteColor, journeyTracking?.vehicles]);
-
   const trackingStops = useMemo(() => {
     if (journeyTracking?.stops?.length) {
       return journeyTracking.stops
@@ -3154,6 +3140,22 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
   const nextEta = journeyTracking?.stopEtas?.[0];
   const routeTitle = journeyTracking?.routeName || trackingContext?.routeName || selectedRoute?.name || "Tuyến đang theo dõi";
   const routeCode = journeyTracking?.routeCode || trackingContext?.routeCode || journeyTracking?.stopEtas?.[0]?.routeCode || selectedRoute?.code || "BUS";
+  const displayVehicles = journeyTracking?.vehicles || [];
+
+
+  const journeyBuses = useMemo(() => displayVehicles
+    .map((vehicle) => ({
+      id: vehicle.vehicleId,
+      plate: vehicle.plateNumber || "43B-00000",
+      routeCode: vehicle.routeCode || "BUS",
+      routeColor: journeyRouteColor,
+      lat: numberValue(vehicle.latitude),
+      lng: numberValue(vehicle.longitude),
+      occupancy: vehicle.occupancy,
+      capacity: vehicle.capacity,
+      etaMinutes: vehicle.etaMinutes,
+    }))
+    .filter((vehicle) => vehicle.lat && vehicle.lng), [displayVehicles, journeyRouteColor]);
   const etaStopRows = (journeyTracking?.stopEtas || []).map((stop) => ({
     id: `eta-${stop.routeId}-${stop.stopId}`,
     name: stop.stopName,
@@ -3167,7 +3169,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
   const stopRows = hasOnlySyntheticStops && etaStopRows.length ? etaStopRows : trackingStops;
   const boardingName = hasOnlySyntheticStops && nextEta ? nextEta.stopName : boardingStop?.name;
   const alightingName = hasOnlySyntheticStops && etaStopRows.length ? etaStopRows[etaStopRows.length - 1].name : alightingStop?.name;
-  const routeStatus = journeyTracking?.vehicles?.length
+  const routeStatus = displayVehicles.length
     ? "Chuyến đang chạy"
     : journeyTracking?.stopEtas?.length
       ? "Xe sắp tới"
@@ -3360,7 +3362,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
 
   const hasTrackingSnapshot = Boolean(journeyId || trackingContext?.routeId);
   const showRouteChooser = choosingRoute || !hasTrackingSnapshot;
-  const primaryVehicle = journeyTracking?.vehicles?.[0];
+  const primaryVehicle = displayVehicles[0];
   const nextVehicleStopIndex = primaryVehicle?.nextStopId == null
     ? -1
     : trackingStops.findIndex((stop) => String(stop.id) === String(primaryVehicle.nextStopId));
@@ -3375,7 +3377,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
           stopId: Number(stop.id),
           stopName: stop.name,
           routeId: Number(journeyTracking?.routeId || trackingContext?.routeId || selectedRouteId || 0),
-          routeCode,
+          routeCode: journeyTracking?.routeCode || trackingContext?.routeCode || selectedRoute?.code || "BUS",
           estimatedArrivalAt: passed ? undefined : new Date(new Date(journeyTracking?.updatedAt || new Date().toISOString()).getTime() + minutesAway * 60_000).toISOString(),
           minutesAway,
           passed,
@@ -3388,8 +3390,8 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
   const visibleEtaRows = showAllEtaStops ? realtimeEtaRows : realtimeEtaRows.slice(etaWindowStart, etaWindowStart + 5);
   const visibleStopRows = showAllTrackingStops ? stopRows : stopRows.slice(0, 6);
   const trackingUpdatedLabel = journeyTracking?.updatedAt ? `Cập nhật ${formatDateTime(journeyTracking.updatedAt)}` : "Đang đồng bộ";
-  const trackingSourceLabel = journeyTracking?.vehicles?.length ? "Chuyến đang chạy" : "Chưa có chuyến";
-  const trackingModeBadge = journeyTracking?.vehicles?.length ? "Chuyến đang chạy" : "Chưa có chuyến";
+  const trackingSourceLabel = displayVehicles.length ? "Chuyến đang chạy" : "Chưa có chuyến";
+  const trackingModeBadge = displayVehicles.length ? "Chuyến đang chạy" : "Chưa có chuyến";
 
   return (
     <PageTransition className="space-y-6 min-w-0">
@@ -3638,7 +3640,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                 </div>
 
                 <div className="space-y-3">
-                  {(journeyTracking?.vehicles || []).map((vehicle) => (
+                  {displayVehicles.map((vehicle) => (
                     <motion.div
                       key={vehicle.vehicleId}
                       layout
@@ -3659,7 +3661,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                       </div>
                     </motion.div>
                   ))}
-                  {!journeyTracking?.vehicles?.length && (
+                  {!displayVehicles.length && (
                     <EmptyState
                       icon={<Bus className="size-7" />}
                       title="Chưa có chuyến đang chạy"
