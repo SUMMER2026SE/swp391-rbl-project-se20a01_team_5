@@ -251,20 +251,15 @@ function vehicleIcon(
   return L.divIcon({
     className: "unibus-map-marker",
     html: `
-      <div style="position:relative;display:grid;width:42px;height:42px;place-items:center;border-radius:999px;background:#fff;border:3px solid ${color};box-shadow:0 8px 20px rgba(20,20,15,.28)">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="display:block;color:${color}">
-          <path d="M6.5 17.5h11" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-          <path d="M7.5 19.5h.01M16.5 19.5h.01" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
-          <path d="M6 7.5C6 5.57 7.57 4 9.5 4h5C16.43 4 18 5.57 18 7.5v8.25c0 .69-.56 1.25-1.25 1.25h-9.5C6.56 17 6 16.44 6 15.75V7.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
-          <path d="M8 9h8M8 13h2M14 13h2" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-        </svg>
-        <span style="position:absolute;right:-6px;bottom:-4px;min-width:22px;height:18px;border-radius:999px;background:${color};border:2px solid #fff;color:#fff;display:flex;align-items:center;justify-content:center;padding:0 5px;font:800 9px/1 system-ui,sans-serif">${escapeHtml(routeCode)}</span>
+      <div style="display:flex;min-width:36px;height:30px;align-items:center;justify-content:center;border-radius:8px;background:#fff;border:2px solid ${color};padding:0 7px;color:${color};font:800 11px/1 system-ui,sans-serif">
+        ${escapeHtml(routeCode)}
       </div>
     `,
-    iconSize: [42, 42],
-    iconAnchor: [21, 21],
+    iconSize: [42, 30],
+    iconAnchor: [21, 15],
   });
 }
+
 function validPoint(point: { lat: number; lng: number }) {
   return Number.isFinite(point.lat)
     && Number.isFinite(point.lng)

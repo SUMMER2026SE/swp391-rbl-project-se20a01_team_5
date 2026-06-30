@@ -1,7 +1,6 @@
 package com.unibus.api.transport;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -24,7 +23,6 @@ import com.unibus.api.security.CurrentUser;
 import com.unibus.api.transport.dto.TransportDtos.Eta;
 import com.unibus.api.transport.dto.TransportDtos.Coordinate;
 import com.unibus.api.transport.dto.TransportDtos.JourneyStop;
-import com.unibus.api.transport.dto.TransportDtos.LiveArrival;
 import com.unibus.api.transport.dto.TransportDtos.MapPolyline;
 import com.unibus.api.transport.dto.TransportDtos.RouteDirectionSummary;
 import com.unibus.api.transport.dto.TransportDtos.RouteLookup;
@@ -77,52 +75,18 @@ public class TransportService {
     public List<RouteLookup> listRoutes(CurrentUser currentUser) {
         Set<Integer> linkedRouteIds = subsidyService.activeLinkedRouteIds(currentUser);
         List<RouteLookupRow> rows = jdbcTemplate.query("""
-                WITH active_route_stops AS (
-                    SELECT rs.route_id,
-                           COALESCE(rs.station_direction, 0) AS station_direction,
-                           rs.route_stop_id
-                    FROM route_stops rs
-                    JOIN stops s ON s.stop_id = rs.stop_id
-                    WHERE s.status = 'ACTIVE'
-                      AND s.latitude IS NOT NULL
-                      AND s.longitude IS NOT NULL
-                ), route_stop_stats AS (
-                    SELECT route_id,
-                           COUNT(route_stop_id) AS stop_count,
-                           STRING_AGG(DISTINCT station_direction::text, ',' ORDER BY station_direction::text) AS directions
-                    FROM active_route_stops
-                    GROUP BY route_id
-                ), fare_stats AS (
-                    SELECT route_id,
-                           MAX(amount) FILTER (WHERE fare_type = 'SINGLE') AS single_fare,
-                           MAX(amount) FILTER (WHERE fare_type = 'MONTHLY') AS monthly_fare
-                    FROM (
-                        SELECT DISTINCT ON (route_id, fare_type) route_id, fare_type, amount
-                        FROM fares
-                        WHERE effective_from <= CURRENT_DATE
-                          AND (effective_until IS NULL OR effective_until >= CURRENT_DATE)
-                        ORDER BY route_id, fare_type, effective_from DESC, fare_id DESC
-                    ) latest_fares
-                    GROUP BY route_id
-                ), schedule_stats AS (
-                    SELECT route_id,
-                           MIN(departure_time) AS first_trip,
-                           MAX(departure_time) AS last_trip
-                    FROM bus_schedules
-                    WHERE status = 'ACTIVE'
-                    GROUP BY route_id
-                )
                 SELECT r.route_id, r.route_name, r.route_code, r.color_hex,
                        r.distance_km, r.estimated_minutes, r.frequency_min,
                        r.description, COALESCE(r.is_interregional, false) AS is_interregional,
-                       r.external_source, rss.stop_count, rss.directions,
-                       fs.single_fare, fs.monthly_fare,
-                       ss.first_trip, ss.last_trip
+                       r.external_source,
+                       COUNT(rs.route_stop_id) AS stop_count
                 FROM routes r
-                JOIN route_stop_stats rss ON rss.route_id = r.route_id
-                LEFT JOIN fare_stats fs ON fs.route_id = r.route_id
-                LEFT JOIN schedule_stats ss ON ss.route_id = r.route_id
+                JOIN route_stops rs ON rs.route_id = r.route_id
+                JOIN stops s ON s.stop_id = rs.stop_id
                 WHERE r.status = 'ACTIVE'
+                  AND s.status = 'ACTIVE'
+                  AND s.latitude IS NOT NULL
+                  AND s.longitude IS NOT NULL
                   AND COALESCE(r.is_interregional, false) = false
                   AND (
                       r.external_source = 'BUSMAP_DN'
@@ -133,6 +97,9 @@ public class TransportService {
                             AND official_routes.status = 'ACTIVE'
                       )
                   )
+                GROUP BY r.route_id, r.route_name, r.route_code, r.color_hex,
+                         r.distance_km, r.estimated_minutes, r.frequency_min,
+                         r.description, r.is_interregional, r.external_source
                 ORDER BY r.route_code, r.route_name
                 """, (rs, rowNum) -> new RouteLookupRow(
                         rs.getInt("route_id"),
@@ -145,18 +112,11 @@ public class TransportService {
                         rs.getString("description"),
                         rs.getBoolean("is_interregional"),
                         rs.getString("external_source"),
-                        rs.getInt("stop_count"),
-                        rs.getString("directions"),
-                        rs.getBigDecimal("single_fare"),
-                        rs.getBigDecimal("monthly_fare"),
-                        formatTime(rs.getTime("first_trip") == null ? null : rs.getTime("first_trip").toLocalTime()),
-                        formatTime(rs.getTime("last_trip") == null ? null : rs.getTime("last_trip").toLocalTime())));
+                        rs.getInt("stop_count")));
 
         return rows.stream()
                 .map(row -> {
-                    TripWindow fallbackWindow = row.firstTrip() == null && row.lastTrip() == null
-                            ? operationWindowFromDescription(row.description())
-                            : new TripWindow(row.firstTrip(), row.lastTrip());
+                    TripWindow window = operationWindow(row.routeId(), row.description());
                     return new RouteLookup(
                             row.routeId(),
                             row.routeName(),
@@ -165,12 +125,12 @@ public class TransportService {
                             row.distanceKm(),
                             row.estimatedMinutes(),
                             row.frequencyMin(),
-                            row.singleFare(),
-                            row.monthlyFare(),
-                            fallbackWindow.firstTrip(),
-                            fallbackWindow.lastTrip(),
+                            fare(row.routeId(), "SINGLE"),
+                            fare(row.routeId(), "MONTHLY"),
+                            window.firstTrip(),
+                            window.lastTrip(),
                             row.stopCount(),
-                            parseDirections(row.directions()),
+                            availableDirections(row.routeId()).stream().map(RouteDirectionSummary::direction).toList(),
                             linkedRouteIds.contains(row.routeId()),
                             row.interregional(),
                             row.externalSource());
@@ -356,85 +316,6 @@ public class TransportService {
         return realtimeEtas;
     }
 
-    @Transactional(readOnly = true)
-    public List<LiveArrival> getLiveArrivals(CurrentUser currentUser, Integer routeId, Integer stopId, Integer requestedDirection) {
-        BusRoute route = busRouteRepository.findById(routeId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Route not found"));
-        if (route.getStatus() != RouteStatus.ACTIVE) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Route is not active");
-        }
-
-        List<RouteDirectionSummary> directions = availableDirections(routeId);
-        if (directions.isEmpty()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Route does not have usable stop geometry");
-        }
-        int direction = directions.stream()
-                .map(RouteDirectionSummary::direction)
-                .filter(value -> value.equals(requestedDirection))
-                .findFirst()
-                .orElseGet(() -> directionContainingStop(routeId, stopId).orElse(directions.get(0).direction()));
-
-        List<RoutePathRow> rows = routePathRows(routeId, direction);
-        if (rows.size() < 2 || rows.stream().noneMatch(row -> row.stopId().equals(stopId))) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Stop is not on route direction");
-        }
-
-        List<Coordinate> shape = routeShape(rows);
-        if (shape.size() < 2) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Route does not have enough geometry");
-        }
-
-        List<Double> pointMeters = cumulativeMeters(shape);
-        double routeMeters = pointMeters.get(pointMeters.size() - 1);
-        if (routeMeters <= 0) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Route geometry is invalid");
-        }
-
-        List<StopDistance> stopDistances = rows.stream()
-                .map(row -> new StopDistance(row.stopId(), row.stopName(), distanceAlong(shape, pointMeters, row.latitude().doubleValue(), row.longitude().doubleValue())))
-                .sorted(Comparator.comparingDouble(StopDistance::meters))
-                .toList();
-        StopDistance targetStop = stopDistances.stream()
-                .filter(stop -> stop.stopId().equals(stopId))
-                .findFirst()
-                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Stop is not on route direction"));
-
-        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
-        long nowSeconds = now.toEpochSecond();
-        List<LiveArrival> arrivals = new ArrayList<>();
-        int routeSeed = Math.abs(routeId * 37 + direction * 101);
-        for (int index = 0; index < 3; index++) {
-            int seed = routeSeed + index * 113;
-            double cruiseKmh = 24 + (seed % 17);
-            double cruiseMps = cruiseKmh / 3.6;
-            double spacing = routeMeters / 3.0;
-            double rawMeters = positiveModulo((nowSeconds * cruiseMps) + spacing * index + seed * 19.0, routeMeters);
-            StopPhase phase = applyStopPhase(rawMeters, stopDistances, routeMeters, seed, nowSeconds);
-            double busMeters = phase.meters();
-            Coordinate position = coordinateAt(shape, pointMeters, busMeters);
-            double distanceToTarget = forwardDistance(busMeters, targetStop.meters(), routeMeters);
-            String status = phase.stopped() ? "STOPPED_AT_STOP" : distanceToTarget <= 250 ? "SLOWING" : "RUNNING";
-            double speed = phase.stopped() ? 0 : status.equals("SLOWING") ? Math.max(4, cruiseKmh * Math.max(0.18, distanceToTarget / 250.0)) : cruiseKmh;
-            int etaMinutes = speed <= 0 ? 0 : (int) Math.ceil(distanceToTarget / (speed / 3.6) / 60.0);
-            arrivals.add(new LiveArrival(
-                    "sim-" + routeId + "-" + direction + "-" + index,
-                    "43B-" + String.format("%05d", 12000 + seed % 70000),
-                    routeId,
-                    route.getRouteCode(),
-                    BigDecimal.valueOf(speed).setScale(1, RoundingMode.HALF_UP),
-                    (int) Math.round(distanceToTarget),
-                    etaMinutes,
-                    position.latitude(),
-                    position.longitude(),
-                    targetStop.stopId(),
-                    targetStop.stopName(),
-                    status,
-                    now));
-        }
-        return arrivals.stream()
-                .sorted(Comparator.comparingInt(LiveArrival::etaMinutes))
-                .toList();
-    }
     @Transactional(readOnly = true)
     public RouteSelection requireValidSelection(CurrentUser currentUser, Integer routeId, Integer boardingStopId, Integer alightingStopId) {
         BusRoute route = busRouteRepository.findById(routeId)
@@ -652,145 +533,10 @@ public class TransportService {
     private record TripWindow(String firstTrip, String lastTrip) {
     }
 
-    private List<RoutePathRow> routePathRows(Integer routeId, Integer direction) {
-        return jdbcTemplate.query("""
-                SELECT rs.stop_id, rs.stop_order, COALESCE(rs.station_direction, 0) AS station_direction,
-                       rs.minutes_from_previous_stop, rs.path_points,
-                       s.stop_name, s.address, s.latitude, s.longitude
-                FROM route_stops rs
-                JOIN stops s ON s.stop_id = rs.stop_id
-                WHERE rs.route_id = ?
-                  AND COALESCE(rs.station_direction, 0) = ?
-                  AND s.status = 'ACTIVE'
-                  AND s.latitude IS NOT NULL
-                  AND s.longitude IS NOT NULL
-                ORDER BY rs.stop_order
-                """, (rs, rowNum) -> new RoutePathRow(
-                        rs.getInt("stop_id"),
-                        rs.getString("stop_name"),
-                        rs.getString("address"),
-                        rs.getBigDecimal("latitude"),
-                        rs.getBigDecimal("longitude"),
-                        rs.getInt("stop_order"),
-                        rs.getInt("station_direction"),
-                        (Integer) rs.getObject("minutes_from_previous_stop"),
-                        rs.getString("path_points")), routeId, direction);
-    }
-
-    private Optional<Integer> directionContainingStop(Integer routeId, Integer stopId) {
-        return jdbcTemplate.query("""
-                SELECT COALESCE(station_direction, 0) AS station_direction
-                FROM route_stops
-                WHERE route_id = ? AND stop_id = ?
-                ORDER BY stop_order
-                LIMIT 1
-                """, (rs, rowNum) -> rs.getInt("station_direction"), routeId, stopId).stream().findFirst();
-    }
-
-    private List<Double> cumulativeMeters(List<Coordinate> points) {
-        List<Double> meters = new ArrayList<>();
-        meters.add(0.0);
-        for (int i = 1; i < points.size(); i++) {
-            meters.add(meters.get(i - 1) + metersBetween(points.get(i - 1), points.get(i)));
-        }
-        return meters;
-    }
-
-    private double distanceAlong(List<Coordinate> points, List<Double> cumulative, double lat, double lng) {
-        double bestDistance = Double.MAX_VALUE;
-        double bestMeters = 0;
-        for (int i = 1; i < points.size(); i++) {
-            Coordinate a = points.get(i - 1);
-            Coordinate b = points.get(i);
-            double ax = a.longitude().doubleValue();
-            double ay = a.latitude().doubleValue();
-            double bx = b.longitude().doubleValue();
-            double by = b.latitude().doubleValue();
-            double dx = bx - ax;
-            double dy = by - ay;
-            double lengthSq = dx * dx + dy * dy;
-            double ratio = lengthSq == 0 ? 0 : Math.max(0, Math.min(1, ((lng - ax) * dx + (lat - ay) * dy) / lengthSq));
-            double projectedLng = ax + dx * ratio;
-            double projectedLat = ay + dy * ratio;
-            double candidateDistance = metersBetween(lat, lng, projectedLat, projectedLng);
-            if (candidateDistance < bestDistance) {
-                bestDistance = candidateDistance;
-                bestMeters = cumulative.get(i - 1) + metersBetween(a.latitude().doubleValue(), a.longitude().doubleValue(), projectedLat, projectedLng);
-            }
-        }
-        return bestMeters;
-    }
-
-    private Coordinate coordinateAt(List<Coordinate> points, List<Double> cumulative, double meters) {
-        double total = cumulative.get(cumulative.size() - 1);
-        double target = positiveModulo(meters, total);
-        for (int i = 1; i < cumulative.size(); i++) {
-            if (cumulative.get(i) >= target) {
-                double segmentStart = cumulative.get(i - 1);
-                double segmentLength = Math.max(1, cumulative.get(i) - segmentStart);
-                double ratio = (target - segmentStart) / segmentLength;
-                Coordinate a = points.get(i - 1);
-                Coordinate b = points.get(i);
-                double lat = a.latitude().doubleValue() + (b.latitude().doubleValue() - a.latitude().doubleValue()) * ratio;
-                double lng = a.longitude().doubleValue() + (b.longitude().doubleValue() - a.longitude().doubleValue()) * ratio;
-                return new Coordinate(PlaceService.bd(lat), PlaceService.bd(lng));
-            }
-        }
-        return points.get(points.size() - 1);
-    }
-
-    private StopPhase applyStopPhase(double rawMeters, List<StopDistance> stops, double routeMeters, int seed, long nowSeconds) {
-        for (StopDistance stop : stops) {
-            double distance = Math.abs(forwardDistance(rawMeters, stop.meters(), routeMeters));
-            double reverse = Math.abs(forwardDistance(stop.meters(), rawMeters, routeMeters));
-            if (Math.min(distance, reverse) <= 35) {
-                int dwellSeconds = 8 + Math.abs(seed + stop.stopId()) % 8;
-                if (Math.floorMod(nowSeconds + seed + stop.stopId(), dwellSeconds + 7) < dwellSeconds) {
-                    return new StopPhase(stop.meters(), true);
-                }
-            }
-        }
-        return new StopPhase(rawMeters, false);
-    }
-
-    private double forwardDistance(double from, double to, double total) {
-        return positiveModulo(to - from, total);
-    }
-
-    private double positiveModulo(double value, double modulo) {
-        double result = value % modulo;
-        return result < 0 ? result + modulo : result;
-    }
-
-    private double metersBetween(Coordinate a, Coordinate b) {
-        return metersBetween(a.latitude().doubleValue(), a.longitude().doubleValue(), b.latitude().doubleValue(), b.longitude().doubleValue());
-    }
-
-    private double metersBetween(double lat1, double lng1, double lat2, double lng2) {
-        double earth = 6371000.0;
-        double dLat = Math.toRadians(lat2 - lat1);
-        double dLng = Math.toRadians(lng2 - lng1);
-        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
-                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
-                * Math.sin(dLng / 2) * Math.sin(dLng / 2);
-        return earth * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    }
-    private List<Integer> parseDirections(String value) {
-        if (value == null || value.isBlank()) {
-            return List.of(0);
-        }
-        return java.util.Arrays.stream(value.split(","))
-                .map(String::trim)
-                .filter(item -> !item.isBlank())
-                .map(Integer::parseInt)
-                .toList();
-    }
-
     private record RouteLookupRow(Integer routeId, String routeName, String routeCode,
             String colorHex, BigDecimal distanceKm, Integer estimatedMinutes,
             Integer frequencyMin, String description, boolean interregional,
-            String externalSource, Integer stopCount, String directions,
-            BigDecimal singleFare, BigDecimal monthlyFare, String firstTrip, String lastTrip) {
+            String externalSource, Integer stopCount) {
     }
 
     private record RoutePathRow(Integer stopId, String stopName, String address,
@@ -799,12 +545,6 @@ public class TransportService {
     }
 
     private record DirectionStopRow(Integer direction, Integer stopOrder, String stopName) {
-    }
-
-    private record StopDistance(Integer stopId, String stopName, double meters) {
-    }
-
-    private record StopPhase(double meters, boolean stopped) {
     }
 
     private Stop requireActiveStop(Integer stopId) {

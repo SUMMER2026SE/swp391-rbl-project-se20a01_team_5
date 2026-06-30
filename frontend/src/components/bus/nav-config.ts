@@ -1,21 +1,17 @@
 import type { Role } from "@/lib/types";
 import {
   LayoutDashboard,
-  MapPin,
   Route as RouteIcon,
   Navigation,
   TicketCheck,
   History,
   Star,
   PackageSearch,
-  CreditCard,
   Receipt,
   BadgeCheck,
-  Sparkles,
   Bot,
   User as UserIcon,
   Bell,
-  LifeBuoy,
   CalendarClock,
   PlayCircle,
   QrCode,
@@ -89,13 +85,11 @@ export const ROLE_AVATARS: Record<Role, string> = {
 export const NAV_CONFIG: Record<Role, NavItem[]> = {
   student: [
     { id: "stu-dashboard", label: "Trang chủ", icon: LayoutDashboard, group: "Tổng quan" },
-    { id: "stu-university", label: "Trường của tôi", icon: School, group: "Tổng quan" },
     { id: "stu-find", label: "Tìm tuyến xe", icon: RouteIcon, group: "Tuyến xe" },
-    { id: "stu-my-journeys", label: "Chuyến đi của tôi", icon: TicketCheck, group: "Tuyến xe" },
+    { id: "stu-my-journeys", label: "Vé của tôi", icon: TicketCheck, group: "Tuyến xe" },
     { id: "stu-history", label: "Lịch sử chuyến", icon: History, group: "Tuyến xe" },
     { id: "stu-chatbot", label: "Chatbot tra cứu", icon: Bot, group: "Thông minh" },
-    { id: "stu-payment", label: "Mua vé tháng", icon: CreditCard, group: "Tài chính" },
-    { id: "stu-invoices", label: "Hóa đơn", icon: Receipt, group: "Tài chính" },
+    { id: "stu-invoices", label: "Vé tháng & hóa đơn", icon: Receipt, group: "Tài chính" },
   ],
   driver: [
     { id: "drv-dashboard", label: "Lịch hôm nay", icon: LayoutDashboard, group: "Tổng quan" },
@@ -157,9 +151,9 @@ export const NAV_CONFIG: Record<Role, NavItem[]> = {
     { id: "uniadm-stats", label: "Thống kê sử dụng", icon: BarChart3, group: "Theo dõi" },
     { id: "uniadm-notify", label: "Gửi thông báo trường", icon: Megaphone, group: "Theo dõi" },
     { id: "uniadm-recon", label: "Báo cáo đối soát", icon: FileBarChart, group: "Theo dõi" },
-    { id: "uniadm-transactions", label: "Lịch sử giao dịch", icon: Receipt, group: "Theo dõi" },
     { id: "uniadm-notifications", label: "Thông báo", icon: Bell, group: "Tài khoản" },
     { id: "uniadm-transactions", label: "Lịch sử giao dịch", icon: Receipt, group: "Theo dõi" },
     { id: "uniadm-profile", label: "Hồ sơ cá nhân", icon: UserIcon, group: "Tài khoản" },
   ],
 };
+
