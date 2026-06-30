@@ -20,6 +20,7 @@ env:
   ECS_TASK_DEFINITION: unibus-dev
   BACKEND_CONTAINER: backend
   FRONTEND_CONTAINER: frontend
+  ECS_HEALTH_CHECK_GRACE_PERIOD_SECONDS: "180"
   CLOUDFRONT_DISTRIBUTION_ID: E3UXOP9YII5ML8
   CLOUDFRONT_DOMAIN: d8xawk4fn4vfd.cloudfront.net
   NEXT_PUBLIC_GOOGLE_CLIENT_ID: 514047178254-t3vq0t83ad6vph9df3260bd3t0ll7ld6.apps.googleusercontent.com
@@ -170,6 +171,15 @@ jobs:
           container-name: ${{ env.FRONTEND_CONTAINER }}
           image: ${{ steps.images.outputs.frontend }}
 
+      - name: Ensure ECS health check grace period
+        shell: bash
+        run: |
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$ECS_SERVICE" \
+            --health-check-grace-period-seconds "$ECS_HEALTH_CHECK_GRACE_PERIOD_SECONDS" \
+            >/dev/null
+
       - name: Deploy ECS service
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
@@ -177,7 +187,7 @@ jobs:
           service: ${{ env.ECS_SERVICE }}
           cluster: ${{ env.ECS_CLUSTER }}
           wait-for-service-stability: true
-          wait-for-minutes: 15
+          wait-for-minutes: 25
 
       - name: Diagnose ECS deployment failure
         if: failure()
