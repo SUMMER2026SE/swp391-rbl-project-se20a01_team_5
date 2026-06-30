@@ -1169,3 +1169,431 @@ Import traces:
 
     at <unknown> (Error: ./src/components/bus/roles/student-module.tsx:5002:101)
     at <unknown> (Error: (./src/components/bus/roles/student-module.tsx:5002:101)
+[browser] Uncaught TypeError: Cannot read properties of undefined (reading '_leaflet_pos')
+    at RealMap.RealMap.useEffect.t (src/components/m3/real-map.tsx:121:38)
+  119 |       mapRef.current = map;
+  120 |       mapRef.current._L = Lmod; // stash for later effects
+> 121 |       const t = setTimeout(() => map.invalidateSize(), 250);
+      |                                      ^
+  122 |     });
+  123 |     return () => {
+  124 |       cancelled = true;
+⨯ ./src/components/bus/roles/student-module.tsx:649:38
+Expected '</', got 'ident'
+  [90m647 |[0m               <div className=[32m"flex flex-col items-center gap-3 shrink-0"[0m>
+  [90m648 |[0m                 <motion.button
+[31m[1m>[0m [90m649 |[0m                   onClick={() => {[32m`r`[0mn                    [36mif[0m (!activeTicket) {[32m`r`[0mn       ...
+  [90m    |[0m                                      [31m[1m^[0m
+  [90m650 |[0m                   whileHover={{ scale: [35m1.05[0m }}
+  [90m651 |[0m                   whileTap={{ scale: [35m0.95[0m }}
+  [90m652 |[0m                   transition={{ [36mtype[0m: [32m"spring"[0m, stiffness: [35m400[0m, damping: [35m22[0m }}
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/student-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/student-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+⨯ ./src/components/bus/roles/student-module.tsx:649:38
+Expected '</', got 'ident'
+  [90m647 |[0m               <div className=[32m"flex flex-col items-center gap-3 shrink-0"[0m>
+  [90m648 |[0m                 <motion.button
+[31m[1m>[0m [90m649 |[0m                   onClick={() => {[32m`r`[0mn                    [36mif[0m (!activeTicket) {[32m`r`[0mn       ...
+  [90m    |[0m                                      [31m[1m^[0m
+  [90m650 |[0m                   whileHover={{ scale: [35m1.05[0m }}
+  [90m651 |[0m                   whileTap={{ scale: [35m0.95[0m }}
+  [90m652 |[0m                   transition={{ [36mtype[0m: [32m"spring"[0m, stiffness: [35m400[0m, damping: [35m22[0m }}
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/student-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/student-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+⨯ ./src/components/bus/roles/student-module.tsx:649:38
+Expected '</', got 'ident'
+  [90m647 |[0m               <div className=[32m"flex flex-col items-center gap-3 shrink-0"[0m>
+  [90m648 |[0m                 <motion.button
+[31m[1m>[0m [90m649 |[0m                   onClick={() => {[32m`r`[0mn                    [36mif[0m (!activeTicket) {[32m`r`[0mn       ...
+  [90m    |[0m                                      [31m[1m^[0m
+  [90m650 |[0m                   whileHover={{ scale: [35m1.05[0m }}
+  [90m651 |[0m                   whileTap={{ scale: [35m0.95[0m }}
+  [90m652 |[0m                   transition={{ [36mtype[0m: [32m"spring"[0m, stiffness: [35m400[0m, damping: [35m22[0m }}
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/student-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/student-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+⨯ ./src/components/bus/roles/student-module.tsx:649:38
+Expected '</', got 'ident'
+  [90m647 |[0m               <div className=[32m"flex flex-col items-center gap-3 shrink-0"[0m>
+  [90m648 |[0m                 <motion.button
+[31m[1m>[0m [90m649 |[0m                   onClick={() => {[32m`r`[0mn                    [36mif[0m (!activeTicket) {[32m`r`[0mn       ...
+  [90m    |[0m                                      [31m[1m^[0m
+  [90m650 |[0m                   whileHover={{ scale: [35m1.05[0m }}
+  [90m651 |[0m                   whileTap={{ scale: [35m0.95[0m }}
+  [90m652 |[0m                   transition={{ [36mtype[0m: [32m"spring"[0m, stiffness: [35m400[0m, damping: [35m22[0m }}
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/student-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/student-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+⨯ ./src/components/bus/roles/student-module.tsx:649:38
+Expected '</', got 'ident'
+  [90m647 |[0m               <div className=[32m"flex flex-col items-center gap-3 shrink-0"[0m>
+  [90m648 |[0m                 <motion.button
+[31m[1m>[0m [90m649 |[0m                   onClick={() => {[32m`r`[0mn                    [36mif[0m (!activeTicket) {[32m`r`[0mn       ...
+  [90m    |[0m                                      [31m[1m^[0m
+  [90m650 |[0m                   whileHover={{ scale: [35m1.05[0m }}
+  [90m651 |[0m                   whileTap={{ scale: [35m0.95[0m }}
+  [90m652 |[0m                   transition={{ [36mtype[0m: [32m"spring"[0m, stiffness: [35m400[0m, damping: [35m22[0m }}
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/student-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/student-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+[browser] Uncaught Error: ./src/components/bus/roles/student-module.tsx:649:38
+Expected '</', got 'ident'
+  647 |               <div className="flex flex-col items-center gap-3 shrink-0">
+  648 |                 <motion.button
+> 649 |                   onClick={() => {`r`n                    if (!activeTicket) {`r`n       ...
+      |                                      ^
+  650 |                   whileHover={{ scale: 1.05 }}
+  651 |                   whileTap={{ scale: 0.95 }}
+  652 |                   transition={{ type: "spring", stiffness: 400, damping: 22 }}
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/student-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/student-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+    at <unknown> (Error: ./src/components/bus/roles/student-module.tsx:649:38)
+    at <unknown> (Error: (./src/components/bus/roles/student-module.tsx:649:38)
+⨯ ./src/components/bus/roles/student-module.tsx:649:38
+Expected '</', got 'ident'
+  [90m647 |[0m               <div className=[32m"flex flex-col items-center gap-3 shrink-0"[0m>
+  [90m648 |[0m                 <motion.button
+[31m[1m>[0m [90m649 |[0m                   onClick={() => {[32m`r`[0mn                    [36mif[0m (!activeTicket) {[32m`r`[0mn       ...
+  [90m    |[0m                                      [31m[1m^[0m
+  [90m650 |[0m                   whileHover={{ scale: [35m1.05[0m }}
+  [90m651 |[0m                   whileTap={{ scale: [35m0.95[0m }}
+  [90m652 |[0m                   transition={{ [36mtype[0m: [32m"spring"[0m, stiffness: [35m400[0m, damping: [35m22[0m }}
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/student-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/student-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+[browser] Uncaught Error: ./src/components/bus/roles/student-module.tsx:649:38
+Expected '</', got 'ident'
+  647 |               <div className="flex flex-col items-center gap-3 shrink-0">
+  648 |                 <motion.button
+> 649 |                   onClick={() => {`r`n                    if (!activeTicket) {`r`n       ...
+      |                                      ^
+  650 |                   whileHover={{ scale: 1.05 }}
+  651 |                   whileTap={{ scale: 0.95 }}
+  652 |                   transition={{ type: "spring", stiffness: 400, damping: 22 }}
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/student-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/student-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component]
+
+
+    at <unknown> (Error: ./src/components/bus/roles/student-module.tsx:649:38)
+    at <unknown> (Error: (./src/components/bus/roles/student-module.tsx:649:38)
+[browser] ./src/components/bus/roles/student-module.tsx:649:38
+Expected '</', got 'ident'
+  647 |               <div className="flex flex-col items-center gap-3 shrink-0">
+  648 |                 <motion.button
+> 649 |                   onClick={() => {`r`n                    if (!activeTicket) {`r`n       ...
+      |                                      ^
+  650 |                   whileHover={{ scale: 1.05 }}
+  651 |                   whileTap={{ scale: 0.95 }}
+  652 |                   transition={{ type: "spring", stiffness: 400, damping: 22 }}
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/student-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/student-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/components/bus/roles/student-module.tsx:649:38
+Expected '</', got 'ident'
+  647 |               <div className="flex flex-col items-center gap-3 shrink-0">
+  648 |                 <motion.button
+> 649 |                   onClick={() => {`r`n                    if (!activeTicket) {`r`n       ...
+      |                                      ^
+  650 |                   whileHover={{ scale: 1.05 }}
+  651 |                   whileTap={{ scale: 0.95 }}
+  652 |                   transition={{ type: "spring", stiffness: 400, damping: 22 }}
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/student-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/student-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/components/bus/roles/student-module.tsx:649:38
+Expected '</', got 'ident'
+  647 |               <div className="flex flex-col items-center gap-3 shrink-0">
+  648 |                 <motion.button
+> 649 |                   onClick={() => {`r`n                    if (!activeTicket) {`r`n       ...
+      |                                      ^
+  650 |                   whileHover={{ scale: 1.05 }}
+  651 |                   whileTap={{ scale: 0.95 }}
+  652 |                   transition={{ type: "spring", stiffness: 400, damping: 22 }}
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/student-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/student-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/components/bus/roles/student-module.tsx:649:38
+Expected '</', got 'ident'
+  647 |               <div className="flex flex-col items-center gap-3 shrink-0">
+  648 |                 <motion.button
+> 649 |                   onClick={() => {`r`n                    if (!activeTicket) {`r`n       ...
+      |                                      ^
+  650 |                   whileHover={{ scale: 1.05 }}
+  651 |                   whileTap={{ scale: 0.95 }}
+  652 |                   transition={{ type: "spring", stiffness: 400, damping: 22 }}
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/student-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/student-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/components/bus/roles/student-module.tsx:649:38
+Expected '</', got 'ident'
+  647 |               <div className="flex flex-col items-center gap-3 shrink-0">
+  648 |                 <motion.button
+> 649 |                   onClick={() => {`r`n                    if (!activeTicket) {`r`n       ...
+      |                                      ^
+  650 |                   whileHover={{ scale: 1.05 }}
+  651 |                   whileTap={{ scale: 0.95 }}
+  652 |                   transition={{ type: "spring", stiffness: 400, damping: 22 }}
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/student-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/student-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/components/bus/roles/student-module.tsx:649:38
+Expected '</', got 'ident'
+  647 |               <div className="flex flex-col items-center gap-3 shrink-0">
+  648 |                 <motion.button
+> 649 |                   onClick={() => {`r`n                    if (!activeTicket) {`r`n       ...
+      |                                      ^
+  650 |                   whileHover={{ scale: 1.05 }}
+  651 |                   whileTap={{ scale: 0.95 }}
+  652 |                   transition={{ type: "spring", stiffness: 400, damping: 22 }}
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/student-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/student-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] ./src/components/bus/roles/student-module.tsx:649:38
+Expected '</', got 'ident'
+  647 |               <div className="flex flex-col items-center gap-3 shrink-0">
+  648 |                 <motion.button
+> 649 |                   onClick={() => {`r`n                    if (!activeTicket) {`r`n       ...
+      |                                      ^
+  650 |                   whileHover={{ scale: 1.05 }}
+  651 |                   whileTap={{ scale: 0.95 }}
+  652 |                   transition={{ type: "spring", stiffness: 400, damping: 22 }}
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/bus/roles/student-module.tsx [Client Component Browser]
+    ./src/app/page.tsx [Client Component Browser]
+    ./src/app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/bus/roles/student-module.tsx [Client Component SSR]
+    ./src/app/page.tsx [Client Component SSR]
+    ./src/app/page.tsx [Server Component] 
+[browser] Image with src "/logo.png" was detected as the Largest Contentful Paint (LCP). Please add the `loading="eager"` property if this image is above the fold.
+Read more: https://nextjs.org/docs/app/api-reference/components/image#loading
+[browser] Uncaught TypeError: Cannot read properties of undefined (reading '_leaflet_pos')
+    at RealMap.RealMap.useEffect.t (src/components/m3/real-map.tsx:121:38)
+  119 |       mapRef.current = map;
+  120 |       mapRef.current._L = Lmod; // stash for later effects
+> 121 |       const t = setTimeout(() => map.invalidateSize(), 250);
+      |                                      ^
+  122 |     });
+  123 |     return () => {
+  124 |       cancelled = true;
+[browser] Uncaught TypeError: Cannot read properties of undefined (reading '_leaflet_pos')
+    at RealMap.RealMap.useEffect.t (src/components/m3/real-map.tsx:121:38)
+  119 |       mapRef.current = map;
+  120 |       mapRef.current._L = Lmod; // stash for later effects
+> 121 |       const t = setTimeout(() => map.invalidateSize(), 250);
+      |                                      ^
+  122 |     });
+  123 |     return () => {
+  124 |       cancelled = true;
+[browser] Uncaught TypeError: Cannot read properties of undefined (reading '_leaflet_pos')
+    at RealMap.RealMap.useEffect.t (src/components/m3/real-map.tsx:121:38)
+  119 |       mapRef.current = map;
+  120 |       mapRef.current._L = Lmod; // stash for later effects
+> 121 |       const t = setTimeout(() => map.invalidateSize(), 250);
+      |                                      ^
+  122 |     });
+  123 |     return () => {
+  124 |       cancelled = true;
+[browser] Uncaught TypeError: Cannot read properties of undefined (reading '_leaflet_pos')
+    at RealMap.RealMap.useEffect.t (src/components/m3/real-map.tsx:121:38)
+  119 |       mapRef.current = map;
+  120 |       mapRef.current._L = Lmod; // stash for later effects
+> 121 |       const t = setTimeout(() => map.invalidateSize(), 250);
+      |                                      ^
+  122 |     });
+  123 |     return () => {
+  124 |       cancelled = true;
+[browser] Uncaught TypeError: Cannot read properties of undefined (reading '_leaflet_pos')
+    at RealMap.RealMap.useEffect.t (src/components/m3/real-map.tsx:121:38)
+  119 |       mapRef.current = map;
+  120 |       mapRef.current._L = Lmod; // stash for later effects
+> 121 |       const t = setTimeout(() => map.invalidateSize(), 250);
+      |                                      ^
+  122 |     });
+  123 |     return () => {
+  124 |       cancelled = true;
+[browser] Uncaught TypeError: Cannot read properties of undefined (reading '_leaflet_pos')
+    at RealMap.RealMap.useEffect.t (src/components/m3/real-map.tsx:121:38)
+  119 |       mapRef.current = map;
+  120 |       mapRef.current._L = Lmod; // stash for later effects
+> 121 |       const t = setTimeout(() => map.invalidateSize(), 250);
+      |                                      ^
+  122 |     });
+  123 |     return () => {
+  124 |       cancelled = true;
+[browser] The final argument passed to useEffect changed size between renders. The order and size of this array must remain constant.
+
+Previous: []
+Incoming: [false] 
+    at JourneyMap (src/components/m3/journey-map.tsx:291:18)
+    at Set.forEach (<anonymous>)
+  289 |   const effectivePolylines = polylines.length ? polylines : walkPolylines;
+  290 |
+> 291 |   React.useEffect(() => {
+      |                  ^
+  292 |     let disposed = false;
+  293 |     let resizeObserver: ResizeObserver | null = null;
+  294 | (src/components/m3/journey-map.tsx:291:18)
