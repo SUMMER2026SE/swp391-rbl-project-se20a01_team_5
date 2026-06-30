@@ -18,7 +18,6 @@ import {
   AdminUserView,
   ApiError,
   CampusView,
-  CoordinatorDashboardView,
   DomainView,
   DriverDashboardView,
   DriverTripView,
@@ -43,6 +42,8 @@ import {
   UniversityStatsView,
   UniversityView,
   VerificationView,
+  isPaidStatus,
+  isRefundedStatus,
   adminApi,
   experienceApi,
   feedbackApi,
@@ -191,9 +192,14 @@ export function mapStop(s: ExperienceStopCard): BusStop {
 
 export function mapTrip(t: ExperienceTripCard): Trip {
   return {
-    id: String(t.tripId),
-    routeId: String(t.routeId),
-    busId: String(t.busId ?? 0),
+    id: String(t.tripId ?? ""),
+    routeId: String(t.routeId ?? ""),
+    routeName: t.routeName || undefined,
+    routeCode: t.routeCode || undefined,
+    busId: String(t.busId ?? ""),
+    licensePlate: t.licensePlate || undefined,
+    busPlate: t.licensePlate || undefined,
+    rawStatus: t.status || undefined,
     driverId: "",
     assistantId: "",
     date: t.serviceDate || "",
@@ -308,7 +314,7 @@ export function mapInvoice(p: PaymentTransactionView): Invoice {
     description: `${p.ticketType || "Vé tháng"} • ${p.routeName || ""}`.trim(),
     amount: num(p.orderTotal ?? p.amountIn),
     method: (p.gateway || "cash").toLowerCase() as Invoice["method"],
-    status: p.paymentStatus === "PAID" ? "paid" : p.paymentStatus === "REFUNDED" ? "refunded" : "pending",
+    status: isPaidStatus(p.paymentStatus) ? "paid" : isRefundedStatus(p.paymentStatus) ? "refunded" : "pending",
     date: p.paidAt || p.transactionDate || p.createdAt || "",
   };
 }
@@ -587,21 +593,9 @@ export function useAssistantPrototypeData() {
 export function useCoordinatorPrototypeData() {
   const dashboard = useApi(() => experienceApi.coordinatorDashboard(), undefined, []);
 
-  const emptyDashboard: CoordinatorDashboardView = {
-    liveFleet: [],
-    routes: [],
-    stops: [],
-    feedback: [],
-    stats: [
-      { label: "Xe live", value: 0, unit: "xe", tone: "success" },
-      { label: "Tuyến active", value: 0, unit: "tuyến", tone: "primary" },
-      { label: "Trạm", value: 0, unit: "trạm", tone: "secondary" },
-      { label: "Feedback mở", value: 0, unit: "mục", tone: "warning" },
-    ],
-  };
-
   const mapped = (() => {
-    const d = dashboard.raw || emptyDashboard;
+    if (!dashboard.raw) return null;
+    const d = dashboard.raw;
     return {
       user: {
         id: "0",
@@ -639,7 +633,7 @@ export function useCoordinatorPrototypeData() {
   return {
     data: mapped,
     loading: dashboard.loading,
-    error: dashboard.raw ? dashboard.error : null,
+    error: dashboard.error,
     reload: dashboard.reload,
   };
 }
@@ -869,3 +863,4 @@ export function ErrorBlock({ message, onRetry }: { message: string; onRetry?: ()
 export function isApiError(err: unknown): err is ApiError {
   return err instanceof ApiError;
 }
+

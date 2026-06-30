@@ -100,7 +100,14 @@ public final class TransportDtos {
    }
 
    public static record JourneyAction(String type, String label, boolean enabled, String reason,
-         Integer routeId, Integer boardingStopId, Integer alightingStopId) {
+         Integer routeId, Integer boardingStopId, Integer alightingStopId,
+         Boolean subsidyEligible, Boolean universityLinked, Boolean fullPriceAllowed,
+         String availabilityStatus, String availabilityMessage) {
+      public JourneyAction(String type, String label, boolean enabled, String reason,
+            Integer routeId, Integer boardingStopId, Integer alightingStopId) {
+         this(type, label, enabled, reason, routeId, boardingStopId, alightingStopId,
+               null, null, null, null, null);
+      }
    }
 
    public static record MapPolyline(String legId, String mode, String colorHex,
@@ -108,7 +115,20 @@ public final class TransportDtos {
    }
 
    public static record JourneyTrackingSnapshot(String journeyId, OffsetDateTime updatedAt,
-         List<VehicleSnapshot> vehicles, List<StopEta> stopEtas, List<MapPolyline> polylines) {
+         List<VehicleSnapshot> vehicles, List<StopEta> stopEtas, List<MapPolyline> polylines,
+         Integer routeId, String routeCode, String routeName,
+         Integer boardingStopId, Integer alightingStopId, List<TrackingStop> stops,
+         boolean simulated) {
+      public JourneyTrackingSnapshot(String journeyId, OffsetDateTime updatedAt,
+            List<VehicleSnapshot> vehicles, List<StopEta> stopEtas, List<MapPolyline> polylines) {
+         this(journeyId, updatedAt, vehicles, stopEtas, polylines,
+               null, null, null, null, null, List.of(), true);
+      }
+   }
+
+   public static record TrackingStop(Integer stopId, String stopName, String address,
+         BigDecimal latitude, BigDecimal longitude, Integer stopOrder, boolean boarding,
+         boolean alighting) {
    }
 
    public static record VehicleSnapshot(String vehicleId, String plateNumber, Integer routeId,
