@@ -1450,6 +1450,37 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
     }
   };
 
+  const saveRoutePaymentContext = (route: RouteMapPreviewDTO, firstStop: JourneyStopDTO, lastStop: JourneyStopDTO) => {
+    const savedAt = new Date().toISOString();
+    localStorage.setItem("unibus.paymentRouteId", String(route.routeId));
+    localStorage.setItem(PAYMENT_CONTEXT_KEY, JSON.stringify({
+      source: "route-lookup",
+      mode: "single-route",
+      ticketPeriod: "month",
+      routeId: route.routeId,
+      boardingStopId: firstStop.stopId,
+      alightingStopId: lastStop.stopId,
+      originLabel: firstStop.stopName,
+      destinationLabel: lastStop.stopName,
+      serviceDate: new Date().toISOString().slice(0, 10),
+      legs: [{
+        routeId: route.routeId,
+        boardingStopId: firstStop.stopId,
+        alightingStopId: lastStop.stopId,
+        legOrder: 1,
+      }],
+      savedAt,
+    }));
+    localStorage.setItem(LAST_REGISTERED_ROUTE_CONTEXT_KEY, JSON.stringify({
+      source: "route-lookup",
+      routeId: route.routeId,
+      boardingStopId: firstStop.stopId,
+      alightingStopId: lastStop.stopId,
+      direction: route.direction,
+      savedAt,
+    }));
+  };
+
   const registerRoutePreview = async () => {
     if (!routePreview) return;
     const stops = routePreview.stops || [];
@@ -1468,29 +1499,13 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
         boardingStopId: firstStop.stopId,
         alightingStopId: lastStop.stopId,
       });
-      localStorage.setItem("unibus.paymentRouteId", String(routePreview.routeId));
-      localStorage.setItem(LAST_REGISTERED_ROUTE_CONTEXT_KEY, JSON.stringify({
-        source: "route-lookup",
-        routeId: routePreview.routeId,
-        boardingStopId: firstStop.stopId,
-        alightingStopId: lastStop.stopId,
-        direction: routePreview.direction,
-        savedAt: new Date().toISOString(),
-      }));
+      saveRoutePaymentContext(routePreview, firstStop, lastStop);
       await ctx.reload();
       toast.success("Đăng ký tuyến thành công.");
       onNavigate("stu-payment");
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
-        localStorage.setItem("unibus.paymentRouteId", String(routePreview.routeId));
-        localStorage.setItem(LAST_REGISTERED_ROUTE_CONTEXT_KEY, JSON.stringify({
-          source: "route-lookup",
-          routeId: routePreview.routeId,
-          boardingStopId: firstStop.stopId,
-          alightingStopId: lastStop.stopId,
-          direction: routePreview.direction,
-          savedAt: new Date().toISOString(),
-        }));
+        saveRoutePaymentContext(routePreview, firstStop, lastStop);
         onNavigate("stu-payment");
         return;
       }
