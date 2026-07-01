@@ -2,6 +2,7 @@ package com.unibus.api.ai;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -128,6 +129,21 @@ class AiCopilotServiceTests {
         assertThat(response.mode()).isEqualTo("ZAI");
     }
 
+    @Test
+    void generalAdvisoryQuestionsUseLlmInsteadOfRouteClarification() {
+        List<String> prompts = List.of(
+                "Hãy giải thích ưu nhược điểm của việc mua vé tháng so với vé lượt cho sinh viên đi học 5 ngày/tuần. Không cần tìm tuyến cụ thể.",
+                "Hãy đóng vai tư vấn viên UniBus và giải thích cách một sinh viên nên chọn tuyến xe hằng ngày dựa trên tần suất, thời gian chờ, giá vé và trợ giá. Không cần tra tuyến cụ thể.",
+                "Tóm tắt cho tôi cách hệ thống UniBus hoạt động: đăng ký tuyến, mua vé, theo dõi xe, trợ giá sinh viên. Viết tự nhiên, dễ hiểu.");
+
+        for (String prompt : prompts) {
+            ChatResponse response = chatbotService.respond(1, new ChatRequest(prompt, Map.of()));
+
+            assertThat(response.mode()).isEqualTo("BEDROCK");
+            assertThat(response.message()).contains("LLM");
+            assertThat(response.message()).doesNotContain("chọn rõ trạm lên và trạm xuống");
+        }
+    }
     @Test
     void smallTalkUsesFastReplyWithoutPersistingChatHistory() {
         ChatResponse response = chatbotService.respond(1, new ChatRequest(

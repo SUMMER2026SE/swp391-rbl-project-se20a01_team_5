@@ -66,16 +66,7 @@ public class TicketingService {
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Student must have an approved route registration"));
         if ("SINGLE".equalsIgnoreCase(ticketType) || "single".equalsIgnoreCase(ticketType)) {
             BigDecimal amount = ticketingRepository.singleFare(registration.routeId());
-            return new MonthlyPassQuote(
-                    registration.routeId(),
-                    registration.routeName(),
-                    amount,
-                    amount,
-                    BigDecimal.ZERO,
-                    amount,
-                    amount,
-                    SubsidyService.STATUS_ROUTE_NOT_LINKED,
-                    null);
+            return subsidyService.quoteFor(currentUser, registration.routeId(), registration.routeName(), amount);
         }
         BigDecimal amount = ticketingRepository.monthlyFare(registration.routeId());
         return subsidyService.quoteFor(currentUser, registration.routeId(), registration.routeName(), amount);

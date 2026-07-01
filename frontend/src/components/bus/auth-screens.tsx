@@ -74,7 +74,7 @@ export function AuthScreens({
   onLogin: (role: Role) => void;
 }) {
   const [screen, setScreen] = useState<AuthScreen>("login");
-  const [googleReady, setGoogleReady] = useState(false);
+  const [, setGoogleReady] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [partnerNames, setPartnerNames] = useState<string[]>([]);
   const authRef = useRef<HTMLDivElement>(null);
@@ -98,30 +98,28 @@ export function AuthScreens({
       toast.error("Thiếu NEXT_PUBLIC_GOOGLE_CLIENT_ID để đăng nhập Google.");
       return;
     }
-    if (!googleReady || !window.google?.accounts?.oauth2) {
+    const oauth2 = window.google?.accounts?.oauth2;
+    if (!oauth2) {
+      setGoogleReady(false);
       toast.error("Google Identity chưa sẵn sàng. Vui lòng thử lại sau vài giây.");
       return;
     }
 
+    setGoogleReady(true);
     setGoogleLoading(true);
+    let completed = false;
+    const releaseLoading = window.setTimeout(() => {
+      if (!completed) setGoogleLoading(false);
+    }, 45000);
 
-    // Revoke any existing Google OAuth token before requesting a new one.
-    // This fixes the bug where after logout → login again, Google popup
-    // doesn't appear because GIS caches the previous token.
-    try {
-      // @ts-ignore — revoke exists on google.accounts.oauth2
-      window.google.accounts.oauth2.revoke(null, () => {});
-    } catch {
-      // ignore revoke errors
-    }
-
-    const client = window.google.accounts.oauth2.initTokenClient({
+    const client = oauth2.initTokenClient({
       client_id: clientId,
       scope: "openid email profile",
       callback: async (response) => {
+        completed = true;
+        window.clearTimeout(releaseLoading);
         if (response.error || !response.access_token) {
           setGoogleLoading(false);
-          // User closed popup or error — don't show error toast if user cancelled
           if (response.error !== "user_closed") {
             toast.error("Không nhận được token Google hợp lệ.");
           }
@@ -144,12 +142,8 @@ export function AuthScreens({
         }
       },
     });
-    // prompt: '' forces Google to show account picker every time,
-    // even if user previously logged in. Combined with revoke above,
-    // this ensures login-logout-login works without F5.
-    client.requestAccessToken({ prompt: "consent" });
-  }, [googleReady, onLogin]);
-
+    client.requestAccessToken({ prompt: "select_account consent" });
+  }, [onLogin]);
   return (
     <div className="min-h-screen w-full bg-background overflow-x-hidden">
       <Script
@@ -460,6 +454,7 @@ function LoginForm({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const passwordRef = useRef<HTMLInputElement>(null);
 
   const submitLogin = async () => {
     if (!email || !password) {
@@ -516,20 +511,20 @@ function LoginForm({
           <Label htmlFor="email">Email</Label>
           <div className="relative">
             <Mail className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant pointer-events-none" />
-            <Input id="email" type="email" placeholder="ten@duytan.edu.vn" className="pl-11 h-12 rounded-xl bg-surface-container-lowest border-outline-variant" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <Input id="email" type="email" placeholder="ten@duytan.edu.vn" className="pl-11 h-12 rounded-xl bg-surface-container-lowest border-outline-variant" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" || (e.key === "Tab" && !e.shiftKey)) { e.preventDefault(); passwordRef.current?.focus(); } }} />
           </div>
         </div>
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
             <Label htmlFor="password" className="shrink-0">Mật khẩu</Label>
-            <button type="button" onClick={() => onSwitch("forgot")} className="text-xs text-[#144fcc] font-bold hover:underline whitespace-nowrap">
+            <button type="button" tabIndex={-1} onClick={() => onSwitch("forgot")} className="text-xs text-[#144fcc] font-bold hover:underline whitespace-nowrap">
               Quên mật khẩu?
             </button>
           </div>
           <div className="relative">
             <Lock className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant pointer-events-none" />
-            <Input id="password" type={showPwd ? "text" : "password"} placeholder="••••••••" className="pl-11 pr-11 h-12 rounded-xl bg-surface-container-lowest border-outline-variant" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submitLogin(); }} />
-            <button type="button" onClick={() => setShowPwd((s) => !s)} className="absolute right-4 top-1/2 -translate-y-1/2 size-8 flex items-center justify-center text-on-surface-variant hover:text-on-surface rounded-lg">
+            <Input ref={passwordRef} id="password" type={showPwd ? "text" : "password"} placeholder="••••••••" className="pl-11 pr-11 h-12 rounded-xl bg-surface-container-lowest border-outline-variant" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submitLogin(); }} />
+            <button type="button" tabIndex={-1} onClick={() => setShowPwd((s) => !s)} className="absolute right-4 top-1/2 -translate-y-1/2 size-8 flex items-center justify-center text-on-surface-variant hover:text-on-surface rounded-lg">
               {showPwd ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
             </button>
           </div>
@@ -695,7 +690,7 @@ function RegisterForm({
           <div className="relative">
             <Lock className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant pointer-events-none" />
             <Input id="rpassword" type={showPwd ? "text" : "password"} placeholder="Ít nhất 8 ký tự" className="pl-11 pr-11 h-12 rounded-xl bg-surface-container-lowest border-outline-variant" value={password} onChange={(e) => setPassword(e.target.value)} />
-            <button type="button" onClick={() => setShowPwd((s) => !s)} className="absolute right-4 top-1/2 -translate-y-1/2 size-8 flex items-center justify-center text-on-surface-variant hover:text-on-surface rounded-lg">
+            <button type="button" tabIndex={-1} onClick={() => setShowPwd((s) => !s)} className="absolute right-4 top-1/2 -translate-y-1/2 size-8 flex items-center justify-center text-on-surface-variant hover:text-on-surface rounded-lg">
               {showPwd ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
             </button>
           </div>

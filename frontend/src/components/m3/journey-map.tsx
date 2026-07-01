@@ -124,6 +124,13 @@ function ensureStyles() {
       background: #e8efec;
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       outline: none;
+      pointer-events: auto;
+      touch-action: pan-x pan-y pinch-zoom;
+    }
+    .unibus-journey-map .leaflet-control-container,
+    .unibus-journey-map .leaflet-control,
+    .unibus-journey-map .leaflet-control a {
+      pointer-events: auto;
     }
     .unibus-map-popup {
       min-width: 176px;
@@ -298,6 +305,9 @@ export const JourneyMap = React.memo(function JourneyMap({
   React.useEffect(() => {
     let disposed = false;
     let resizeObserver: ResizeObserver | null = null;
+    let resizeFrame = 0;
+    let lastWidth = 0;
+    let lastHeight = 0;
 
     loadLeaflet().then((L) => {
       if (disposed || !containerRef.current || mapRef.current) return;
@@ -326,8 +336,19 @@ export const JourneyMap = React.memo(function JourneyMap({
       vehicleLayerRef.current = L.layerGroup().addTo(map);
       mapRef.current = map;
 
-      resizeObserver = new ResizeObserver(() => {
-        window.requestAnimationFrame(() => map.invalidateSize({ pan: false }));
+      resizeObserver = new ResizeObserver((entries) => {
+        const rect = entries[0]?.contentRect;
+        if (!rect) return;
+        const width = Math.round(rect.width);
+        const height = Math.round(rect.height);
+        if (Math.abs(width - lastWidth) < 4 && Math.abs(height - lastHeight) < 4) return;
+        lastWidth = width;
+        lastHeight = height;
+        if (resizeFrame) window.cancelAnimationFrame(resizeFrame);
+        resizeFrame = window.requestAnimationFrame(() => {
+          resizeFrame = 0;
+          if (!disposed) map.invalidateSize({ pan: false, debounceMoveend: true });
+        });
       });
       resizeObserver.observe(containerRef.current);
 
@@ -339,6 +360,7 @@ export const JourneyMap = React.memo(function JourneyMap({
 
     return () => {
       disposed = true;
+      if (resizeFrame) window.cancelAnimationFrame(resizeFrame);
       resizeObserver?.disconnect();
       if (mapRef.current) {
         mapRef.current.remove();
@@ -538,6 +560,30 @@ export const JourneyMap = React.memo(function JourneyMap({
     }
   }, [mapReadyToken, scrollWheelZoom]);
 
+  React.useEffect(() => {
+    const map = mapRef.current;
+    const container = containerRef.current;
+    if (!map || !container || mapReadyToken === 0 || !scrollWheelZoom) return;
+
+    let lastWheelAt = 0;
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const now = window.performance.now();
+      if (now - lastWheelAt < 80) return;
+      lastWheelAt = now;
+
+      const currentZoom = map.getZoom();
+      const nextZoom = currentZoom + (event.deltaY < 0 ? 0.5 : -0.5);
+      const boundedZoom = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), nextZoom));
+      if (boundedZoom === currentZoom) return;
+      map.setZoomAround(map.mouseEventToContainerPoint(event), boundedZoom, { animate: false });
+    };
+
+    container.addEventListener("wheel", onWheel, { passive: false });
+    return () => container.removeEventListener("wheel", onWheel);
+  }, [mapReadyToken, scrollWheelZoom]);
   return (
     <div
       ref={containerRef}

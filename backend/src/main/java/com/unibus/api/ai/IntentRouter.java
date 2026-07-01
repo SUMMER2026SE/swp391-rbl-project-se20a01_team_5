@@ -13,6 +13,9 @@ public class IntentRouter {
         if (normalized.isBlank()) {
             return AiIntent.OTHER;
         }
+        if (isGeneralAdvisory(normalized)) {
+            return AiIntent.OTHER;
+        }
         if (containsAny(normalized, "tuyen", "duong", "di toi", "di den", "goi y", "nhanh", "re")
                 || (normalized.contains("di tu") && normalized.contains("den"))) {
             return AiIntent.ROUTE_SUGGESTION;
@@ -67,6 +70,28 @@ public class IntentRouter {
         String withoutAccent = Normalizer.normalize(lower, Normalizer.Form.NFD)
                 .replaceAll("\\p{M}", "");
         return withoutAccent.replaceAll("[^a-z0-9]+", " ").trim();
+    }
+
+    private boolean isGeneralAdvisory(String normalized) {
+        boolean reasoningRequest = containsAny(normalized,
+                "giai thich",
+                "phan tich",
+                "so sanh",
+                "uu nhuoc diem",
+                "danh gia",
+                "tu van",
+                "tom tat",
+                "dong vai",
+                "nen chon",
+                "cach mot sinh vien",
+                "khong can tim tuyen",
+                "khong can tra tuyen");
+        if (!reasoningRequest) {
+            return false;
+        }
+        boolean explicitRouteLookup = normalized.contains(" tu ") && normalized.contains(" den ")
+                && containsAny(normalized, "tim tuyen", "goi y tuyen", "tuyen phu hop", "di tu", "di den");
+        return !explicitRouteLookup || containsAny(normalized, "khong can tim tuyen", "khong can tra tuyen");
     }
 
     private boolean containsAny(String text, String... needles) {
