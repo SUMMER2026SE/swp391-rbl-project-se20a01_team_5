@@ -90,6 +90,7 @@ export function AppShell({
   const [scrolled, setScrolled] = useState(false);
   const { scrollY } = useScroll();
   useMotionValueEvent(scrollY, "change", (y) => setScrolled(y > 20));
+  const headerScrolled = !isStudentFindPage && scrolled;
 
   useEffect(() => {
     let mounted = true;
@@ -162,7 +163,7 @@ export function AppShell({
           onClick={() => goTo(nav[0].id)}
           className="flex items-center gap-3 text-left"
         >
-          <Image src="/logo.png" alt="UniBus Logo" width={64} height={64} className="h-12 w-auto shrink-0 object-contain" />
+          <Image src="/logo.png" alt="UniBus Logo" width={64} height={64} loading="eager" className="h-12 w-auto shrink-0 object-contain" />
           <div className="min-w-0">
             <p className="text-xl font-bold tracking-tight text-on-surface">UniBus</p>
             <p className="truncate text-[11px] text-on-surface-variant">{ROLE_LABELS[role]}</p>
@@ -269,11 +270,11 @@ export function AppShell({
       >
         <motion.header
           animate={{
-            height: scrolled ? 52 : 64,
-            marginLeft: scrolled ? 8 : 0,
-            marginRight: scrolled ? 8 : 0,
-            marginTop: scrolled ? 8 : 0,
-            borderRadius: scrolled ? 20 : 0,
+            height: headerScrolled ? 52 : 64,
+            marginLeft: headerScrolled ? 8 : 0,
+            marginRight: headerScrolled ? 8 : 0,
+            marginTop: headerScrolled ? 8 : 0,
+            borderRadius: headerScrolled ? 20 : 0,
           }}
           transition={{ type: "spring", stiffness: 400, damping: 30 }}
           className="glass-m3 sticky top-0 z-[2400] flex items-center gap-2 border border-outline-variant/40 px-3 sm:gap-3 sm:px-6"
@@ -322,12 +323,15 @@ export function AppShell({
           <div className="flex-1" />
 
           <button
-            className="state-layer relative flex size-10 shrink-0 items-center justify-center rounded-full text-on-surface"
+            className="relative flex size-10 shrink-0 items-center justify-center rounded-xl border border-[#111111] bg-white text-[#111111] shadow-[0_2px_8px_rgba(17,17,17,0.06)] transition-colors hover:bg-[#FAF8F2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#beff50] focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
             onClick={() => goTo(notificationsNavId)}
-            aria-label="Thông báo"
+            aria-label={unread && unread > 0 ? `Thông báo, ${unread} chưa đọc` : "Thông báo"}
+            title={unread && unread > 0 ? `${unread} thông báo chưa đọc` : "Thông báo"}
           >
-            <Bell className="size-5" />
-            {!!unread && <span className="absolute right-1.5 top-1.5 flex size-4 items-center justify-center rounded-full bg-error text-[9px] font-bold text-white ring-2 ring-surface">{unread}</span>}
+            <Bell className="size-5 stroke-[2.4]" />
+            {unread != null && unread > 0 ? (
+              <span className="absolute right-2 top-2 size-2.5 rounded-full bg-[#E21B3C] ring-2 ring-white" aria-hidden="true" />
+            ) : null}
           </button>
 
           <DropdownMenu>

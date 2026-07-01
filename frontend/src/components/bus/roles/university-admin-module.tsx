@@ -109,6 +109,10 @@ import { PageHeader, StatCard, Section, EmptyState } from "../primitives";
 
 import {
   useUniversityAdminPrototypeData,
+  useUniAdminCampuses,
+  useUniAdminDomains,
+  useUniAdminRoster,
+  useUniAdminImportBatches,
   formatVND,
   formatDateTime,
   formatDate,
@@ -584,6 +588,8 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
 // =============================================================================
 function InfoScreen({ ctx }: { ctx: Ctx }) {
   const ua = ctx.universityAdmin;
+  const campusesResource = useUniAdminCampuses();
+  const campuses = campusesResource.raw || ctx.campuses;
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
@@ -610,12 +616,14 @@ function InfoScreen({ ctx }: { ctx: Ctx }) {
       )}
 
       <ScrollReveal delay={0.1}>
-        <Section title={`Cơ sở (${ctx.campuses.length})`}>
-          {ctx.campuses.length === 0 ? (
+        <Section title={`Cơ sở (${campuses.length})`}>
+          {campusesResource.loading ? (
+            <LoadingScreen label="Đang tải cơ sở..." />
+          ) : campuses.length === 0 ? (
             <EmptyState icon={<Building2 className="size-7" />} title="Chưa có cơ sở" />
           ) : (
             <StaggerGroup className="grid grid-cols-1 md:grid-cols-2 gap-3 min-w-0">
-              {ctx.campuses.map((c) => (
+              {campuses.map((c) => (
                 <StaggerItem key={c.campusId}>
                   <ExpressiveCard variant="elevated" className="p-4 min-w-0">
                     <div className="flex items-start gap-3 min-w-0">
@@ -644,6 +652,8 @@ function InfoScreen({ ctx }: { ctx: Ctx }) {
 // Screen 3: Domains
 // =============================================================================
 function DomainsScreen({ ctx }: { ctx: Ctx }) {
+  const domainsResource = useUniAdminDomains();
+  const domains = domainsResource.raw || ctx.domains;
   const [adding, setAdding] = useState(false);
   const [domain, setDomain] = useState("");
   const [saving, setSaving] = useState(false);
@@ -659,6 +669,7 @@ function DomainsScreen({ ctx }: { ctx: Ctx }) {
       toast.success("Đã thêm domain");
       setDomain("");
       setAdding(false);
+      domainsResource.reload();
       ctx.reload();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Không thể thêm");
@@ -671,15 +682,17 @@ function DomainsScreen({ ctx }: { ctx: Ctx }) {
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Domain email"
-        description={`${ctx.domains.length} domain`}
+        description={`${domains.length} domain`}
         icon={<Globe className="size-7" />}
         actions={<ExpressiveButton variant="filled" onClick={() => setAdding(true)}><Plus className="size-4" /> Thêm domain</ExpressiveButton>}
       />
-      {ctx.domains.length === 0 ? (
+      {domainsResource.loading ? (
+        <LoadingScreen label="Đang tải domain..." />
+      ) : domains.length === 0 ? (
         <EmptyState icon={<Globe className="size-7" />} title="Chưa có domain" />
       ) : (
         <StaggerGroup className="space-y-2 min-w-0">
-          {ctx.domains.map((d) => (
+          {domains.map((d) => (
             <StaggerItem key={d.domainId}>
               <ExpressiveCard variant="elevated" className="p-4 min-w-0">
                 <div className="flex items-center gap-3 min-w-0">
@@ -725,6 +738,8 @@ function DomainsScreen({ ctx }: { ctx: Ctx }) {
 // Screen 4: Import roster (CSV/XLSX)
 // =============================================================================
 function ImportScreen({ ctx }: { ctx: Ctx }) {
+  const importBatchesResource = useUniAdminImportBatches();
+  const importBatches = importBatchesResource.raw || ctx.importBatches;
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
 
@@ -735,6 +750,7 @@ function ImportScreen({ ctx }: { ctx: Ctx }) {
     try {
       const batch = await universityApi.importRoster(f);
       toast.success(`Đã nhập ${batch.successRows}/${batch.totalRows} dòng`);
+      importBatchesResource.reload();
       ctx.reload();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Không thể nhập");
@@ -777,12 +793,14 @@ function ImportScreen({ ctx }: { ctx: Ctx }) {
         </ExpressiveCard>
       </ScrollReveal>
 
-      <Section title={`Lịch sử nhập (${ctx.importBatches.length})`}>
-        {ctx.importBatches.length === 0 ? (
+      <Section title={`Lịch sử nhập (${importBatches.length})`}>
+        {importBatchesResource.loading ? (
+          <LoadingScreen label="Đang tải lịch sử import..." />
+        ) : importBatches.length === 0 ? (
           <EmptyState icon={<FileSpreadsheet className="size-7" />} title="Chưa có lượt nhập" />
         ) : (
           <StaggerGroup className="space-y-3 min-w-0">
-            {ctx.importBatches.map((b) => (
+            {importBatches.map((b) => (
               <StaggerItem key={b.importBatchId}>
                 <ExpressiveCard variant="elevated" className="p-4 min-w-0">
                   <div className="flex items-start justify-between gap-3 mb-3 min-w-0">
@@ -825,8 +843,10 @@ function ImportScreen({ ctx }: { ctx: Ctx }) {
 function RosterScreen({ ctx }: { ctx: Ctx }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const rosterResource = useUniAdminRoster({ keyword: search || undefined, status: statusFilter === "all" ? undefined : statusFilter });
+  const roster = rosterResource.raw || ctx.roster;
 
-  const filtered = ctx.roster.filter((r) => {
+  const filtered = roster.filter((r) => {
     if (statusFilter !== "all" && r.status !== statusFilter) return false;
     if (search && !`${r.fullName} ${r.email} ${r.studentCode}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
@@ -836,7 +856,7 @@ function RosterScreen({ ctx }: { ctx: Ctx }) {
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Danh sách sinh viên"
-        description={`${ctx.roster.length} sinh viên`}
+        description={`${roster.length} sinh viên`}
         icon={<Users className="size-7" />}
       />
       <div className="flex flex-wrap gap-2 min-w-0">
@@ -855,7 +875,9 @@ function RosterScreen({ ctx }: { ctx: Ctx }) {
           </SelectContent>
         </Select>
       </div>
-      {filtered.length === 0 ? (
+      {rosterResource.loading ? (
+        <LoadingScreen label="Đang tải danh sách sinh viên..." />
+      ) : filtered.length === 0 ? (
         <EmptyState icon={<Users className="size-7" />} title="Không có sinh viên" />
       ) : (
         <ExpressiveCard variant="elevated" className="overflow-hidden min-w-0">

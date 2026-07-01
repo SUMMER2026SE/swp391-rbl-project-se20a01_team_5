@@ -2,3 +2,7 @@
 node_modules/** linguist-generated=true
 frontend/node_modules/** linguist-generated=true
 backend/node_modules/** linguist-generated=true
+
+# Demo SQL/data scripts are repository support assets, not application source language.
+database/**/*.sql linguist-vendored=true
+database/**/*.ps1 linguist-vendored=true

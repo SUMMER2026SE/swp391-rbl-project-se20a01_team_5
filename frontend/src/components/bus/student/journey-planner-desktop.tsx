@@ -1789,7 +1789,7 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
               height="100%"
               animateCamera
               allowFallbackPolyline={false}
-              scrollWheelZoom={false}
+              scrollWheelZoom
             />
             {routePreviewLoading ? (
               <div className="pointer-events-none absolute left-4 top-4 z-[500] rounded-2xl border border-[#111111]/10 bg-white/92 px-3 py-2 text-xs font-semibold text-[#111111] shadow-[0_8px_24px_rgba(17,17,17,0.08)]">

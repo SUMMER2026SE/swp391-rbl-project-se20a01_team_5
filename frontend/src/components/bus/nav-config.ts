@@ -89,7 +89,7 @@ export const NAV_CONFIG: Record<Role, NavItem[]> = {
     { id: "stu-my-journeys", label: "Vé của tôi", icon: TicketCheck, group: "Tuyến xe" },
     { id: "stu-history", label: "Lịch sử chuyến", icon: History, group: "Tuyến xe" },
     { id: "stu-chatbot", label: "Chatbot tra cứu", icon: Bot, group: "Thông minh" },
-    { id: "stu-invoices", label: "Vé tháng & hóa đơn", icon: Receipt, group: "Tài chính" },
+    { id: "stu-invoices", label: "Thanh toán & hóa đơn", icon: Receipt, group: "Tài chính" },
   ],
   driver: [
     { id: "drv-dashboard", label: "Lịch hôm nay", icon: LayoutDashboard, group: "Tổng quan" },

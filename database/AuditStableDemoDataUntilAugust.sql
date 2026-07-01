@@ -167,6 +167,14 @@ ticket_status AS (
     SELECT 'ticketing', 'travel history',
            CASE WHEN EXISTS (SELECT 1 FROM travel_history WHERE student_code = 'SV-STABLE-HIST') THEN 'PASS' ELSE 'FAIL' END,
            'SV-STABLE-HIST should have QR scan travel history'
+    UNION ALL
+    SELECT 'ticketing', 'demo monthly scan validity',
+           CASE WHEN count(*) FILTER (WHERE expires_on <= (SELECT end_date FROM params)) = 0 AND count(*) >= 4 THEN 'PASS' ELSE 'FAIL' END,
+           concat('active_demo_passes=', count(*), '; expiring_too_early=', count(*) FILTER (WHERE expires_on <= (SELECT end_date FROM params)), '; expires_on=', COALESCE(string_agg(DISTINCT expires_on::text, ', ' ORDER BY expires_on::text), 'none'))
+    FROM monthly_passes
+    WHERE student_code LIKE 'SV-STABLE-%'
+      AND status = 'ACTIVE'
+      AND qr_code LIKE 'DEMO-%'
 ),
 uniadmin_visibility AS (
     SELECT

@@ -159,6 +159,10 @@ public class ExperienceRepository {
         return routeCards(universityId);
     }
 
+    public List<RouteCard> studentRouteSuggestions(Integer userId) {
+        return routeCards(studentProfile(userId).universityId());
+    }
+
     public List<LostItemCard> studentLostItems(Integer userId) {
         return jdbcTemplate.query("""
                 SELECT li.lost_item_report_id, reporter.full_name AS reporter_name, li.trip_id,

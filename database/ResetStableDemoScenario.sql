@@ -465,7 +465,7 @@ BEGIN
     END LOOP;
 
     INSERT INTO monthly_passes (student_code, route_id, effective_month, effective_year, valid_from, purchased_at, expires_on, fare_amount, original_fare_amount, subsidy_amount, final_fare_amount, subsidy_policy_id, qr_code, status)
-    VALUES ('SV-STABLE-MONTH', v_route_supported_id, EXTRACT(MONTH FROM CURRENT_DATE)::int, EXTRACT(YEAR FROM CURRENT_DATE)::int, date_trunc('month', CURRENT_DATE)::date, CURRENT_TIMESTAMP - INTERVAL '1 day', LEAST((date_trunc('month', CURRENT_DATE)::date + INTERVAL '1 month - 1 day')::date, v_end_date), v_supported_monthly_final, v_supported_monthly_amount, v_supported_monthly_subsidy, v_supported_monthly_final, v_policy_id, 'DEMO-MONTH-SV-STABLE-MONTH', 'ACTIVE')
+    VALUES ('SV-STABLE-MONTH', v_route_supported_id, EXTRACT(MONTH FROM CURRENT_DATE)::int, EXTRACT(YEAR FROM CURRENT_DATE)::int, date_trunc('month', CURRENT_DATE)::date, CURRENT_TIMESTAMP - INTERVAL '1 day', (v_end_date + INTERVAL '1 day')::date, v_supported_monthly_final, v_supported_monthly_amount, v_supported_monthly_subsidy, v_supported_monthly_final, v_policy_id, 'DEMO-MONTH-SV-STABLE-MONTH', 'ACTIVE')
     RETURNING monthly_pass_id INTO v_monthly_pass_id;
 
     INSERT INTO payments (student_code, amount, method, status, transaction_code, created_at, monthly_pass_id, notes)
@@ -487,7 +487,7 @@ BEGIN
     VALUES (v_payment_id, 'SV-STABLE-DAY', 'Hóa đơn demo vé ngày', v_supported_single_final, v_supported_single_amount, v_supported_single_subsidy, v_supported_single_final, CURRENT_TIMESTAMP);
 
     INSERT INTO monthly_passes (student_code, route_id, effective_month, effective_year, valid_from, purchased_at, expires_on, fare_amount, original_fare_amount, subsidy_amount, final_fare_amount, subsidy_policy_id, qr_code, last_scanned_at, scans_today, status)
-    VALUES ('SV-STABLE-HIST', v_route_supported_id, EXTRACT(MONTH FROM CURRENT_DATE)::int, EXTRACT(YEAR FROM CURRENT_DATE)::int, date_trunc('month', CURRENT_DATE)::date, CURRENT_TIMESTAMP - INTERVAL '3 days', LEAST((date_trunc('month', CURRENT_DATE)::date + INTERVAL '1 month - 1 day')::date, v_end_date), v_supported_monthly_final, v_supported_monthly_amount, v_supported_monthly_subsidy, v_supported_monthly_final, v_policy_id, 'DEMO-HIST-SV-STABLE-HIST', CURRENT_TIMESTAMP - INTERVAL '2 hours', 1, 'ACTIVE');
+    VALUES ('SV-STABLE-HIST', v_route_supported_id, EXTRACT(MONTH FROM CURRENT_DATE)::int, EXTRACT(YEAR FROM CURRENT_DATE)::int, date_trunc('month', CURRENT_DATE)::date, CURRENT_TIMESTAMP - INTERVAL '3 days', (v_end_date + INTERVAL '1 day')::date, v_supported_monthly_final, v_supported_monthly_amount, v_supported_monthly_subsidy, v_supported_monthly_final, v_policy_id, 'DEMO-HIST-SV-STABLE-HIST', CURRENT_TIMESTAMP - INTERVAL '2 hours', 1, 'ACTIVE');
 
     INSERT INTO travel_history (student_code, trip_id, registration_id, boarding_stop_id, alighting_stop_id, boarded_at, alighted_at, confirmation_method, confirmed_by_conductor_id)
     SELECT 'SV-STABLE-HIST', v_trip_today_supported_id, rr.registration_id, v_boarding_supported_id, v_alighting_supported_id, CURRENT_TIMESTAMP - INTERVAL '2 hours', CURRENT_TIMESTAMP - INTERVAL '1 hour 20 minutes', 'QR_SCAN', v_conductor_id
@@ -497,10 +497,10 @@ BEGIN
     LIMIT 1;
 
     INSERT INTO monthly_passes (student_code, route_id, effective_month, effective_year, valid_from, purchased_at, expires_on, fare_amount, original_fare_amount, subsidy_amount, final_fare_amount, subsidy_policy_id, qr_code, status)
-    VALUES ('SV-STABLE-SUB', v_route_supported_id, EXTRACT(MONTH FROM CURRENT_DATE)::int, EXTRACT(YEAR FROM CURRENT_DATE)::int, date_trunc('month', CURRENT_DATE)::date, CURRENT_TIMESTAMP - INTERVAL '1 hour', LEAST((date_trunc('month', CURRENT_DATE)::date + INTERVAL '1 month - 1 day')::date, v_end_date), v_supported_monthly_final, v_supported_monthly_amount, v_supported_monthly_subsidy, v_supported_monthly_final, v_policy_id, 'DEMO-SUB-SV-STABLE-SUB', 'ACTIVE');
+    VALUES ('SV-STABLE-SUB', v_route_supported_id, EXTRACT(MONTH FROM CURRENT_DATE)::int, EXTRACT(YEAR FROM CURRENT_DATE)::int, date_trunc('month', CURRENT_DATE)::date, CURRENT_TIMESTAMP - INTERVAL '1 hour', (v_end_date + INTERVAL '1 day')::date, v_supported_monthly_final, v_supported_monthly_amount, v_supported_monthly_subsidy, v_supported_monthly_final, v_policy_id, 'DEMO-SUB-SV-STABLE-SUB', 'ACTIVE');
 
     INSERT INTO monthly_passes (student_code, route_id, effective_month, effective_year, valid_from, purchased_at, expires_on, fare_amount, original_fare_amount, subsidy_amount, final_fare_amount, subsidy_policy_id, qr_code, status)
-    VALUES ('SV-STABLE-FULL', v_route_full_id, EXTRACT(MONTH FROM CURRENT_DATE)::int, EXTRACT(YEAR FROM CURRENT_DATE)::int, date_trunc('month', CURRENT_DATE)::date, CURRENT_TIMESTAMP - INTERVAL '1 hour', LEAST((date_trunc('month', CURRENT_DATE)::date + INTERVAL '1 month - 1 day')::date, v_end_date), v_full_monthly_amount, v_full_monthly_amount, 0, v_full_monthly_amount, NULL, 'DEMO-FULL-SV-STABLE-FULL', 'ACTIVE');
+    VALUES ('SV-STABLE-FULL', v_route_full_id, EXTRACT(MONTH FROM CURRENT_DATE)::int, EXTRACT(YEAR FROM CURRENT_DATE)::int, date_trunc('month', CURRENT_DATE)::date, CURRENT_TIMESTAMP - INTERVAL '1 hour', (v_end_date + INTERVAL '1 day')::date, v_full_monthly_amount, v_full_monthly_amount, 0, v_full_monthly_amount, NULL, 'DEMO-FULL-SV-STABLE-FULL', 'ACTIVE');
 
     INSERT INTO tb_orders (student_code, ticket_type, route_id, total, payment_status, name, paid_at, created_at, updated_at, order_mode, ticket_period, origin_label, destination_label, original_amount, subsidy_amount, final_amount)
     VALUES ('SV-STABLE-UNPAID', 'monthly', v_route_supported_id, v_supported_monthly_final, 'Unpaid', 'Đơn demo vé tháng chưa thanh toán', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'single-route', 'month', v_supported_boarding_label, v_supported_alighting_label, v_supported_monthly_amount, v_supported_monthly_subsidy, v_supported_monthly_final);

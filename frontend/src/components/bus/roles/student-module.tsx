@@ -265,7 +265,7 @@ export function StudentModule({ activeId, onNavigate, onProfileRefresh }: Studen
       return <ChatbotScreen ctx={ctx} onNavigate={onNavigate} />;
     case "stu-payment":
     case "stu-invoices":
-      return <FinanceScreen ctx={ctx} />;
+      return <FinanceScreen ctx={ctx} onNavigate={onNavigate} />;
     case "stu-feedback":
       return <FeedbackScreen ctx={ctx} />;
     case "stu-lost":
@@ -527,7 +527,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
   const quickActions = [
     { id: "stu-find", label: "Tìm tuyến xe", icon: RouteIcon, bg: "#144fcc", fg: "#fff", iconBg: "#beff50", iconFg: "#14140f" },
     { id: "stu-my-journeys", label: "Vé của tôi", icon: TicketCheck, bg: "#ff8c5f", fg: "#14140f", iconBg: "#14140f", iconFg: "#ff8c5f" },
-    { id: "stu-invoices", label: "Vé tháng & hóa đơn", icon: Receipt, bg: "#14140f", fg: "#fff", iconBg: "#beff50", iconFg: "#14140f" },
+    { id: "stu-invoices", label: "Thanh toán & hóa đơn", icon: Receipt, bg: "#14140f", fg: "#fff", iconBg: "#beff50", iconFg: "#14140f" },
     { id: "stu-chatbot", label: "Hỏi Copilot", icon: Bot, bg: "#c8a0ff", fg: "#14140f", iconBg: "#14140f", iconFg: "#c8a0ff" },
   ];
 
@@ -626,8 +626,6 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
                 </p>
                 <div className="flex items-center gap-3 sm:gap-4 pt-1 flex-wrap">
                   <HeroMetric label="Khởi hành" value={nextTrip?.departTime || activeRoute?.firstTrip || "Hôm nay"} />
-                  <div className="w-px h-8 bg-[#14140f]/20 shrink-0" />
-                  <HeroMetric label="Biển số" value={(nextTrip as any)?.licensePlate || "Đang gán"} />
                   <div className="w-px h-8 bg-[#14140f]/20 shrink-0" />
                   <HeroMetric
                     label="Mật độ"
@@ -1538,7 +1536,7 @@ function UniversityScreen({ ctx, onProfileRefresh }: { ctx: Ctx; onProfileRefres
 // Screen 3: Journey planner desktop wrapper
 // =============================================================================
 function JourneyPlannerDesktopScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
-  const [originQuery, setOriginQuery] = useState("Đại học Việt Hàn");
+  const [originQuery, setOriginQuery] = useState("Trường Đại học Duy Tân");
   const [destinationQuery, setDestinationQuery] = useState("Bến xe Trung tâm Đà Nẵng");
   const [origin, setOrigin] = useState<PlaceSuggestionDTO | null>(null);
   const [destination, setDestination] = useState<PlaceSuggestionDTO | null>(null);
@@ -1574,10 +1572,10 @@ function JourneyPlannerDesktopScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate
     return `${Math.max(1, Math.round(meters / 80))} phút đi bộ`;
   };
   const moneyValue = (value: number | string | undefined | null) => numberValue(value);
-  const coordinate = (point: CoordinateDTO) => ({
+  const coordinate = useCallback((point: CoordinateDTO) => ({
     lat: numberValue(point.latitude),
     lng: numberValue(point.longitude),
-  });
+  }), []);
 
   const placePoint = (place: PlaceSuggestionDTO | null, label: string) => {
     if (!place) return null;
@@ -1655,7 +1653,7 @@ function JourneyPlannerDesktopScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate
     (async () => {
       try {
         const [originList, destinationList] = await Promise.all([
-          transportApi.searchPlaces("Đại học Việt Hàn", undefined, undefined, 3),
+          transportApi.searchPlaces("Trường Đại học Duy Tân", undefined, undefined, 3),
           transportApi.searchPlaces("Bến xe Trung tâm Đà Nẵng", undefined, undefined, 3),
         ]);
         if (cancelled) return;
@@ -1697,7 +1695,9 @@ function JourneyPlannerDesktopScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate
       }
     };
     void load();
-    const timer = window.setInterval(load, 30000);
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void load();
+    }, 30000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
@@ -1771,7 +1771,7 @@ function JourneyPlannerDesktopScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate
     setDestinationQuery(oldOriginQuery);
   };
 
-  const busLegs = selectedJourney?.legs.filter((leg) => leg.mode === "BUS") || [];
+  const busLegs = useMemo(() => selectedJourney?.legs.filter((leg) => leg.mode === "BUS") || [], [selectedJourney?.legs]);
   const selectedStops = useMemo(() => {
     const rawStops = selectedJourney?.stops?.length
       ? selectedJourney.stops
@@ -1800,7 +1800,7 @@ function JourneyPlannerDesktopScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate
     color: line.colorHex || (line.mode === "WALK" ? "#14140f" : "#144fcc"),
     dashed: line.mode === "WALK",
     points: (line.points || []).map(coordinate).filter((p) => p.lat && p.lng),
-  })).filter((line) => line.points.length >= 2), [selectedJourney?.polylines]);
+  })).filter((line) => line.points.length >= 2), [coordinate, selectedJourney?.polylines]);
 
   const journeyBuses = (tracking?.vehicles || []).map((vehicle) => ({
     id: vehicle.vehicleId,
@@ -3750,8 +3750,15 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
 // =============================================================================
 // Screen 5.5: My Journeys — registered routes + tickets + tracking in one place
 // =============================================================================
+
+
 function MyJourneysScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
-  const [tab, setTab] = useState("routes");
+  const [tab, setTab] = useState(() => {
+    if (typeof window === "undefined") return "routes";
+    const preferred = localStorage.getItem("unibus.myJourneysTab");
+    localStorage.removeItem("unibus.myJourneysTab");
+    return preferred === "ticket" || preferred === "tracking" || preferred === "routes" ? preferred : "routes";
+  });
   const tabs = [
     { id: "routes", label: "Tuyến đã đăng ký", icon: TicketCheck },
     { id: "ticket", label: "Vé đã mua", icon: QrCode },
@@ -3826,6 +3833,7 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
 
   const reg = ctx.registration;
   const activeRegistrations = registrations.length ? registrations : reg ? [reg] : [];
+  const routeTickets = ctx.raw.passes?.data?.tickets || [];
 
   const registrationStatusLabel = (status?: string) => ({
     APPROVED: "Đã đăng ký",
@@ -3834,16 +3842,17 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
     REJECTED: "Không được duyệt",
   } as Record<string, string>)[String(status || "").toUpperCase()] || "Đã đăng ký";
   const activeMonthlyForRoute = (routeId?: number | string | null) => {
-    const ticket = ctx.activeTicket;
-    if (!ticket || routeId == null) return null;
-    const active = String(ticket.status || "").toUpperCase() === "ACTIVE";
-    const monthly = String(ticket.ticketType || "MONTHLY").toUpperCase() === "MONTHLY";
-    const expiryRaw = ticket.expiresOn || ticket.expiresAt;
-    const expiry = expiryRaw ? new Date(expiryRaw) : null;
+    if (routeId == null) return null;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const stillValid = !expiry || expiry > today;
-    return active && monthly && stillValid && String(ticket.routeId) === String(routeId) ? ticket : null;
+    return routeTickets.find((ticket: any) => {
+      const active = String(ticket.status || "").toUpperCase() === "ACTIVE";
+      const monthly = String(ticket.ticketType || "MONTHLY").toUpperCase() === "MONTHLY";
+      const expiryRaw = ticket.expiresOn || ticket.expiresAt;
+      const expiry = expiryRaw ? new Date(expiryRaw) : null;
+      const stillValid = !expiry || expiry > today;
+      return active && monthly && stillValid && String(ticket.routeId) === String(routeId);
+    }) || null;
   };
   const targetMonthlyPass = activeMonthlyForRoute(targetCancel?.routeId);
 
@@ -3917,7 +3926,7 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
             const activeMonthlyPass = activeMonthlyForRoute(item.routeId);
             const monthlyExpiresOn = activeMonthlyPass?.expiresOn || activeMonthlyPass?.expiresAt;
             return (
-              <StaggerItem key={item.registrationId}>
+              <StaggerItem key={item.registrationId} className="self-start">
                 <motion.div
                   initial={{ opacity: 0, y: 16, scale: 0.98 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -4190,7 +4199,7 @@ function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
     <Section title="Vé lượt" description="Vé ngày / vé lượt đã mua">
       <div className="grid gap-3 md:grid-cols-2">
         {singleTickets.map((ticket) => (
-          <ExpressiveCard key={ticket.ticketId} variant="filled" className="p-5 min-w-0">
+          <ExpressiveCard key={ticket.ticketId} variant="filled" className="flex h-full flex-col p-5 min-w-0">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-xs font-black uppercase text-on-surface-variant">Vé lượt / vé ngày</p>
@@ -4270,7 +4279,7 @@ function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
                   </span>
                   <span className="inline-flex items-center gap-1 h-7 px-3 rounded-full bg-white text-xs font-bold border border-[#14140f]/10">
                     <Calendar className="size-3.5" />
-                    30 ngày
+                    Theo kỳ vé
                   </span>
                 </div>
               </div>
@@ -4349,7 +4358,7 @@ function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
       <Section title="Hướng dẫn sử dụng">
         <ExpressiveCard variant="filled" className="p-5 space-y-2 text-sm">
           <p className="flex items-start gap-2"><CheckCircle2 className="size-4 text-success mt-0.5 shrink-0" />Mã QR được sử dụng để kiểm tra vé khi lên xe.</p>
-          <p className="flex items-start gap-2"><CheckCircle2 className="size-4 text-success mt-0.5 shrink-0" />Vé tháng có hiệu lực trong 30 ngày kể từ ngày mua.</p>
+          <p className="flex items-start gap-2"><CheckCircle2 className="size-4 text-success mt-0.5 shrink-0" />Vé tháng có hiệu lực theo kỳ vé hiện tại.</p>
           <p className="flex items-start gap-2"><CheckCircle2 className="size-4 text-success mt-0.5 shrink-0" />Có thể đi không giới hạn số chuyến trong tuyến đã đăng ký.</p>
           <p className="flex items-start gap-2"><Info className="size-4 text-primary mt-0.5 shrink-0" />Nếu gặp lỗi quét mã, vui lòng liên hệ điều phối viên.</p>
         </ExpressiveCard>
@@ -5348,10 +5357,10 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
   );
 }
 
-function FinanceScreen({ ctx }: { ctx: Ctx }) {
+function FinanceScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
   return (
     <PageTransition className="space-y-8 min-w-0">
-      <PaymentScreen ctx={ctx} />
+      <PaymentScreen ctx={ctx} onNavigate={onNavigate} />
       <InvoicesScreen ctx={ctx} />
     </PageTransition>
   );
@@ -5360,7 +5369,7 @@ function FinanceScreen({ ctx }: { ctx: Ctx }) {
 // =============================================================================
 // Screen 11: Payment — buy monthly pass (SePay QR)
 // =============================================================================
-function PaymentScreen({ ctx }: { ctx: Ctx }) {
+function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
   const [purchasing, setPurchasing] = useState(false);
   const [registrations, setRegistrations] = useState<RegistrationDTO[]>([]);
   const [selectedRouteId, setSelectedRouteId] = useState<string>("");
@@ -5380,6 +5389,8 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
   const [paidStatus, setPaidStatus] = useState<"idle" | "checking" | "paid" | "expired">("idle");
   const [copying, setCopying] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+  const paymentPollTokenRef = useRef(0);
+  const paymentSettledRef = useRef(false);
 
   const passes = ctx.raw.passes?.data;
   const quote = passes?.monthlyPassQuote;
@@ -5395,6 +5406,9 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
   const singleFinal = singleFare;
   const ticketLabel = ticketKind === "SINGLE" ? "Vé lượt" : "Vé tháng";
   const canBuySingle = Boolean(selectedRegistration?.boardingStopId && selectedRegistration?.alightingStopId && singleFinal > 0);
+  const refreshPaymentData = useCallback(async () => {
+    await ctx.reload();
+  }, [ctx]);
 
   useEffect(() => {
     let cancelled = false;
@@ -5423,11 +5437,14 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
   // Countdown timer
   useEffect(() => {
     if (!sepayOrder || paidStatus === "paid" || paidStatus === "expired") return;
+    paymentSettledRef.current = false;
     setSecondsLeft(300); // 5 minutes
     const id = setInterval(() => {
+      if (paymentSettledRef.current) return;
       setSecondsLeft((s) => {
         if (s == null) return null;
         if (s <= 1) {
+          paymentSettledRef.current = true;
           setPaidStatus("expired");
           return 0;
         }
@@ -5449,6 +5466,9 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
     setPurchasing(true);
     try {
       const order = await studentApi.createSePayOrder(kind, Number(selectedRouteId));
+      const pollToken = paymentPollTokenRef.current + 1;
+      paymentPollTokenRef.current = pollToken;
+      paymentSettledRef.current = false;
       setSepayOrder({ ...order, ticketType: kind });
       setPaidStatus("checking");
       toast.success(`Đã tạo QR ${kind === "SINGLE" ? "vé lượt" : "vé tháng"}. Vui lòng quét mã để thanh toán.`);
@@ -5457,15 +5477,19 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
         for (let i = 0; i < 60; i++) {
           try {
             const s = await studentApi.getSePayOrderStatus(order.orderId);
+            if (paymentPollTokenRef.current !== pollToken || paymentSettledRef.current) return;
             if (s.paid) {
+              paymentSettledRef.current = true;
               setPaidStatus("paid");
               toast.success(`Thanh toán thành công! ${kind === "SINGLE" ? "Vé lượt" : "Vé tháng"} đã được kích hoạt.`);
-              ctx.reload();
+              await refreshPaymentData();
               return;
             }
           } catch { /* ignore */ }
           await new Promise((r) => setTimeout(r, 5000));
         }
+        if (paymentPollTokenRef.current !== pollToken || paymentSettledRef.current) return;
+        paymentSettledRef.current = true;
         setPaidStatus("expired");
       };
       poll();
@@ -5474,7 +5498,7 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
     } finally {
       setPurchasing(false);
     }
-  }, [canBuySingle, ctx, selectedRouteId, ticketKind]);
+  }, [canBuySingle, refreshPaymentData, selectedRouteId, ticketKind]);
 
   const copyAccount = async () => {
     if (!sepayOrder?.accountNo) return;
@@ -5490,6 +5514,8 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
   };
 
   const reset = () => {
+    paymentPollTokenRef.current += 1;
+    paymentSettledRef.current = false;
     setSepayOrder(null);
     setPaidStatus("idle");
     setSecondsLeft(null);
@@ -5544,7 +5570,7 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
         <ScrollReveal>
           <ExpressiveCard variant="elevated" className="p-6 h-full min-w-0">
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-              <TicketCheck className="size-5 text-primary" />
+              <TicketCheck className="size-5 text-[#111111]" />
               Đơn thanh toán
             </h3>
             {selectedRegistration ? (
@@ -5599,7 +5625,7 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
                 <Row label="Tuyến" value={selectedRegistration.routeName} icon={<RouteIcon className="size-4" />} />
                 <Row label="Trạm lên" value={selectedRegistration.boardingStopName} icon={<MapPin className="size-4" />} />
                 <Row label="Trạm xuống" value={selectedRegistration.alightingStopName} icon={<MapPin className="size-4" />} />
-                <Row label="Hiệu lực" value={ticketKind === "SINGLE" ? "Vé lượt trong ngày" : "30 ngày"} icon={<Calendar className="size-4" />} />
+                <Row label="Hiệu lực" value={ticketKind === "SINGLE" ? "Vé lượt trong ngày" : "Theo kỳ vé"} icon={<Calendar className="size-4" />} />
 
                 <div className="h-px bg-outline-variant my-2" />
                 {ticketKind === "MONTHLY" ? (
@@ -5645,9 +5671,21 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
                   </ExpressiveButton>
                 )}
                 {step === 3 && (
-                  <ExpressiveButton variant="text" className="w-full mt-5" onClick={reset}>
-                    Mua vé khác
-                  </ExpressiveButton>
+                  <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                    <ExpressiveButton
+                      variant="filled"
+                      className="w-full"
+                      onClick={() => {
+                        localStorage.setItem("unibus.myJourneysTab", "ticket");
+                        onNavigate("stu-my-journeys");
+                      }}
+                    >
+                      Xem vé của tôi
+                    </ExpressiveButton>
+                    <ExpressiveButton variant="text" className="w-full" onClick={reset}>
+                      Mua vé khác
+                    </ExpressiveButton>
+                  </div>
                 )}
               </div>
             ) : (
@@ -5733,6 +5771,12 @@ function Row({
 // =============================================================================
 function InvoicesScreen({ ctx }: { ctx: Ctx }) {
   const invoices = ctx.invoices;
+  const refreshedOnOpenRef = useRef(false);
+  useEffect(() => {
+    if (refreshedOnOpenRef.current) return;
+    refreshedOnOpenRef.current = true;
+    ctx.reload();
+  });
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader

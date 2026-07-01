@@ -1008,11 +1008,21 @@ function CreateStaffDialog({ onClose, onCreated }: { onClose: () => void; onCrea
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"DRIVER" | "CONDUCTOR" | "DISPATCHER" | "ADMIN">("DRIVER");
   const [phone, setPhone] = useState("");
+  const [employeeCode, setEmployeeCode] = useState("");
+  const [licenseNumber, setLicenseNumber] = useState("");
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
     if (!name.trim() || !email.trim() || !password.trim()) {
       toast.error("Vui lòng nhập đầy đủ họ tên, email, mật khẩu");
+      return;
+    }
+    if (role === "DRIVER" && !licenseNumber.trim()) {
+      toast.error("Tài xế cần số giấy phép lái xe");
+      return;
+    }
+    if ((role === "CONDUCTOR" || role === "DISPATCHER") && !employeeCode.trim()) {
+      toast.error("Phụ xe/điều phối cần mã nhân viên");
       return;
     }
     setSaving(true);
@@ -1022,6 +1032,8 @@ function CreateStaffDialog({ onClose, onCreated }: { onClose: () => void; onCrea
         email: email.trim(),
         password,
         role,
+        employeeCode: employeeCode.trim() || undefined,
+        licenseNumber: licenseNumber.trim() || undefined,
         phoneNumber: phone.trim() || undefined,
       });
       toast.success("Đã tạo tài khoản nhân viên");
@@ -1070,6 +1082,17 @@ function CreateStaffDialog({ onClose, onCreated }: { onClose: () => void; onCrea
             <Input className="mt-1.5" value={phone} onChange={(e) => setPhone(e.target.value)} />
           </div>
         </div>
+        {role === "DRIVER" ? (
+          <div>
+            <Label className="text-xs font-bold">Số giấy phép lái xe</Label>
+            <Input className="mt-1.5" value={licenseNumber} onChange={(e) => setLicenseNumber(e.target.value)} placeholder="Ví dụ: GPLX-DEMO-001" />
+          </div>
+        ) : role === "CONDUCTOR" || role === "DISPATCHER" ? (
+          <div>
+            <Label className="text-xs font-bold">Mã nhân viên</Label>
+            <Input className="mt-1.5" value={employeeCode} onChange={(e) => setEmployeeCode(e.target.value)} placeholder="Ví dụ: NV-DEMO-001" />
+          </div>
+        ) : null}
       </div>
       <DialogFooter>
         <ExpressiveButton variant="text" onClick={onClose} disabled={saving}>Hủy</ExpressiveButton>

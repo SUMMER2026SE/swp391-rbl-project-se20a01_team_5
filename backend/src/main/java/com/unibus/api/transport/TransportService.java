@@ -369,7 +369,7 @@ public class TransportService {
                 .toList();
         BigDecimal singleFare = fare(route.getId(), "SINGLE");
         BigDecimal monthlyFare = fare(route.getId(), "MONTHLY");
-        TripWindow window = tripWindow(route.getId());
+        TripWindow window = operationWindow(route.getId(), route.getDescription());
         return new RouteSuggestion(route.getId(), route.getRouteName(), route.getDistanceKm(),
                 route.getEstimatedMinutes(), stops, route.getRouteCode(), route.getColorHex(),
                 route.getFrequencyMin(), singleFare, monthlyFare, window.firstTrip(), window.lastTrip(),
@@ -391,7 +391,8 @@ public class TransportService {
 
     private TripWindow tripWindow(Integer routeId) {
         return jdbcTemplate.query("""
-                SELECT MIN(departure_time) AS first_trip, MAX(departure_time) AS last_trip
+                SELECT MIN(departure_time) AS first_trip,
+                       MAX(COALESCE(end_time, departure_time)) AS last_trip
                 FROM bus_schedules
                 WHERE route_id = ?
                   AND status = 'ACTIVE'
@@ -403,11 +404,15 @@ public class TransportService {
     }
 
     private TripWindow operationWindow(Integer routeId, String description) {
+        TripWindow described = operationWindowFromDescription(description);
+        if (described.firstTrip() != null || described.lastTrip() != null) {
+            return described;
+        }
         TripWindow scheduled = tripWindow(routeId);
         if (scheduled.firstTrip() != null || scheduled.lastTrip() != null) {
             return scheduled;
         }
-        return operationWindowFromDescription(description);
+        return new TripWindow(null, null);
     }
 
     private TripWindow operationWindowFromDescription(String description) {
