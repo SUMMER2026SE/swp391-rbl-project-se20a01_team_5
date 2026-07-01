@@ -1,4 +1,4 @@
-﻿# Changelog: Xóa chức năng "Trạm dừng" phía sinh viên
+# Changelog: Xóa chức năng "Trạm dừng" phía sinh viên
 
 Ghi lại log thay đổi. Đây là thay đổi có chủ đích, không phải lỗi.
 

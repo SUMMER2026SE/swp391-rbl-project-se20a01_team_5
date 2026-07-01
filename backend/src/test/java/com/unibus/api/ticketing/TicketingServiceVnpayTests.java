@@ -127,6 +127,8 @@ class TicketingServiceVnpayTests {
                 "E_WALLET",
                 status,
                 "VNP123",
+                "MONTHLY",
+                "Route A",
                 null,
                 null,
                 OffsetDateTime.now());
