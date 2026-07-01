@@ -6020,7 +6020,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                   />
                   <p className="relative text-xs font-medium text-[#E5FF9A]">Tổng thanh toán</p>
                   <p className="relative mt-1 text-3xl font-semibold tabular-nums">
-                    {sepayOrder ? formatVND(sepayOrder.amount) : currentPriceLabel}
+                    {currentPriceLabel}
                   </p>
                   {hasSchoolSubsidy && !sepayOrder ? (
                     <p className="relative mt-1 text-xs text-[#D8F58A]">Đã trừ {formatVND(currentSubsidy)} hỗ trợ từ nhà trường.</p>
@@ -6631,6 +6631,3 @@ function FallbackScreen({ activeId }: { activeId: string }) {
     />
   );
 }
-
-
-
