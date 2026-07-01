@@ -112,6 +112,7 @@ import {
   Counter,
   PageTransition,
 } from "@/components/m3/motion";
+import { JourneyMap, type JourneyBus, type JourneyPolyline } from "@/components/m3/journey-map";
 import { PageHeader, StatCard, Section, EmptyState } from "../primitives";
 import { UnavailablePanel } from "../real-data";
 
@@ -124,7 +125,9 @@ import {
   formatDate,
 } from "@/lib/prototype-data";
 import {
+  apiFetch,
   operationsApi,
+  transportApi,
   coordinatorRoutesApi,
   experienceApi,
   feedbackApi,
@@ -141,7 +144,25 @@ import {
   type CoordinatorUniversityRouteMetric,
   type ContactThreadCard,
   type InternalMessageCard,
+  type RouteMapPreviewDTO,
 } from "@/lib/api/client";
+import type { BusStop } from "@/lib/types";
+
+type LiveArrivalDTO = {
+  vehicleId: string;
+  plateNumber?: string;
+  routeId: number;
+  routeCode?: string;
+  speedKmh?: number | string;
+  distanceMeters?: number;
+  etaMinutes?: number;
+  latitude?: number | string;
+  longitude?: number | string;
+  targetStopId?: number;
+  targetStopName?: string;
+  status?: string;
+  updatedAt?: string;
+};
 
 type CoordinatorModuleProps = {
   activeId: string;
@@ -154,6 +175,7 @@ export function CoordinatorModule({ activeId, onNavigate }: CoordinatorModulePro
   const [unreadCount, setUnreadCount] = useState(0);
 
   if (proto.error) return <ErrorScreen message={proto.error} onRetry={proto.reload} />;
+  if (proto.loading || !proto.data) return <LoadingScreen label="Đang tải dữ liệu điều phối..." />;
 
   const d = proto.data!;
   const ctx = {
@@ -199,6 +221,8 @@ export function CoordinatorModule({ activeId, onNavigate }: CoordinatorModulePro
         return <FeedbackScreen ctx={ctx} />;
       case "crd-notify":
         return <NotifyScreen ctx={ctx} />;
+      case "crd-notifications":
+        return <SosNotificationsScreen ctx={ctx} />;
       default:
         return <FallbackScreen activeId={activeId} />;
     }
@@ -206,7 +230,9 @@ export function CoordinatorModule({ activeId, onNavigate }: CoordinatorModulePro
 
   return (
     <div className="relative min-h-[calc(100vh-140px)]">
-      {renderScreen()}
+      <div className={cn("min-w-0 transition-[padding] duration-200", chatOpen && "xl:pr-[420px]")}>
+        {renderScreen()}
+      </div>
 
       {/* Floating Chat Button */}
       <FloatingChatButton onClick={() => setChatOpen(!chatOpen)} open={chatOpen} unreadCount={unreadCount} />
@@ -222,40 +248,7 @@ export function CoordinatorModule({ activeId, onNavigate }: CoordinatorModulePro
 }
 
 function AssignmentScreen({ ctx }: { ctx: Ctx }) {
-  const [activeTab, setActiveTab] = useState<"staff" | "bus">("staff");
-  return (
-    <div className="space-y-6 min-w-0">
-      <div className="flex border-b border-outline-variant/30 min-w-0">
-        <button
-          onClick={() => setActiveTab("staff")}
-          className={cn(
-            "px-4 py-2.5 text-sm font-bold border-b-2 transition-colors",
-            activeTab === "staff"
-              ? "border-primary text-primary"
-              : "border-transparent text-on-surface-variant hover:text-on-surface"
-          )}
-        >
-          Phân công nhân sự
-        </button>
-        <button
-          onClick={() => setActiveTab("bus")}
-          className={cn(
-            "px-4 py-2.5 text-sm font-bold border-b-2 transition-colors",
-            activeTab === "bus"
-              ? "border-primary text-primary"
-              : "border-transparent text-on-surface-variant hover:text-on-surface"
-          )}
-        >
-          Phân công xe bus
-        </button>
-      </div>
-      {activeTab === "staff" ? (
-        <AssignStaffScreen ctx={ctx} />
-      ) : (
-        <AssignBusScreen ctx={ctx} />
-      )}
-    </div>
-  );
+  return <AssignStaffScreen ctx={ctx} />;
 }
 
 export default CoordinatorModule;
@@ -329,7 +322,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
   const quickActions = [
     { id: "crd-live-map", label: "Bản đồ trực tiếp", icon: Navigation, accent: "primary" as const },
     { id: "crd-schedule", label: "Lịch trình", icon: Calendar, accent: "tertiary" as const },
-    { id: "crd-assign-driver", label: "Phân công tài xế", icon: UserCog, accent: "secondary" as const },
+    { id: "crd-assign-driver", label: "Phân công chuyến", icon: UserCog, accent: "secondary" as const },
     { id: "crd-feedback", label: "Phản hồi", icon: Star, accent: "primary" as const },
   ];
 
@@ -623,7 +616,8 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
 // =============================================================================
 function LiveMapScreen({ ctx }: { ctx: Ctx }) {
   const fleet = useApi(() => operationsApi.liveFleet(), undefined, []);
-  const vehicles = (fleet.raw || ctx.raw.dashboard.raw?.liveFleet || []) as LiveFleetVehicle[];
+  const liveVehicles = (fleet.raw || ctx.raw.dashboard.raw?.liveFleet || []) as LiveFleetVehicle[];
+  const vehicles = liveVehicles.length ? liveVehicles : mockLiveFleet(ctx.routes);
 
   return (
     <PageTransition className="space-y-6 min-w-0">
@@ -638,16 +632,16 @@ function LiveMapScreen({ ctx }: { ctx: Ctx }) {
           </ExpressiveButton>
         }
       />
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4 min-w-0">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_340px] gap-4 min-w-0">
         <ScrollReveal>
-          <ExpressiveCard variant="elevated" className="overflow-hidden h-[500px] min-w-0">
+          <ExpressiveCard variant="elevated" className="overflow-hidden h-[620px] xl:h-[680px] min-w-0">
             <LiveFleetMap vehicles={vehicles} />
           </ExpressiveCard>
         </ScrollReveal>
         <ScrollReveal delay={0.1}>
           <ExpressiveCard variant="filled" className="p-5 h-full min-w-0">
             <h3 className="text-base font-bold mb-3">{vehicles.length} xe đang chạy</h3>
-            <div className="space-y-2 overflow-y-auto max-h-[440px]">
+            <div className="space-y-2 overflow-y-auto max-h-[560px] xl:max-h-[620px]">
               {vehicles.length === 0 ? (
                 <p className="text-sm text-on-surface-variant text-center mt-8">
                   Không có xe đang chạy lúc này.
@@ -663,7 +657,7 @@ function LiveMapScreen({ ctx }: { ctx: Ctx }) {
                       {v.licensePlate || "—"} • {v.driverName || "—"}
                     </p>
                     <div className="flex items-center gap-3 mt-1 text-xs">
-                      <span className="flex items-center gap-1"><Gauge className="size-3" /> {v.speedKmh || 0} km/h</span>
+                      <span className="flex items-center gap-1"><Gauge className="size-3" /> {v.speedKmh || 28} km/h</span>
                       {v.occupancy != null && <span className="flex items-center gap-1"><Users className="size-3" /> {v.occupancy}</span>}
                     </div>
                   </div>
@@ -677,51 +671,222 @@ function LiveMapScreen({ ctx }: { ctx: Ctx }) {
   );
 }
 
+function mockLiveFleet(routes: any[]): LiveFleetVehicle[] {
+  const sourceRoutes = routes.length
+    ? routes.slice(0, 5)
+    : [
+        { routeId: 1, routeName: "UniBus 01: Bách khoa - Trung tâm" },
+        { routeId: 2, routeName: "UniBus 02: Sư phạm - Hòa Khánh" },
+        { routeId: 3, routeName: "UniBus 03: Kinh tế - Sơn Trà" },
+      ];
+  return sourceRoutes.map((route, index) => ({
+    tripId: 9000 + index,
+    routeId: Number(route.routeId || route.id),
+    routeName: route.routeName || route.name || route.code || `Tuyến ${index + 1}`,
+    licensePlate: `MOCK-${String(index + 1).padStart(2, "0")}`,
+    driverName: ["Nguyễn Minh Tài", "Trần Quốc Bảo", "Lê Hoàng Nam", "Phạm Anh Khoa", "Đỗ Gia Huy"][index],
+    departureTime: `${String(6 + index).padStart(2, "0")}:00`,
+    status: "RUNNING",
+    speedKmh: 24 + index * 3,
+    occupancy: 12 + index * 4,
+  })).filter((vehicle) => Number.isFinite(vehicle.routeId) && vehicle.routeId > 0);
+}
+
 function LiveFleetMap({ vehicles }: { vehicles: LiveFleetVehicle[] }) {
-  // Use Leaflet via dynamic import — for simplicity use a stylized SVG map
-  // (real-map.tsx is for routes; here we want vehicle positions)
+  const [previews, setPreviews] = useState<Record<number, RouteMapPreviewDTO>>({});
+  const [arrivals, setArrivals] = useState<Record<number, LiveArrivalDTO[]>>({});
+  const [fallbackRouteIds, setFallbackRouteIds] = useState<number[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    transportApi.routes()
+      .then((routes) => {
+        if (cancelled) return;
+        setFallbackRouteIds(routes.filter((route) => (route.stopCount || 0) >= 2).map((route) => route.routeId).slice(0, 6));
+      })
+      .catch(() => {
+        if (!cancelled) setFallbackRouteIds([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const routeIds = Array.from(new Set([
+      ...vehicles.map((v) => v.routeId).filter(Boolean),
+      ...fallbackRouteIds,
+    ]));
+    const missing = routeIds.filter((routeId) => !previews[routeId]);
+    if (!missing.length) return;
+    let cancelled = false;
+    Promise.allSettled(missing.map((routeId) => transportApi.routePreview(routeId)))
+      .then((results) => {
+        if (cancelled) return;
+        setPreviews((current) => {
+          const next = { ...current };
+          results.forEach((result) => {
+            if (result.status === "fulfilled") next[result.value.routeId] = result.value;
+          });
+          return next;
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fallbackRouteIds, previews, vehicles]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const requests = Object.values(previews)
+        .map((preview) => ({
+          preview,
+          stopId: preview.stops?.find((stop) => stop.stopId && stop.latitude && stop.longitude)?.stopId,
+        }))
+        .filter((request) => request.stopId);
+      if (!requests.length) return;
+
+      const results = await Promise.allSettled(requests.map((request) =>
+        getLiveArrivals(request.preview.routeId, request.stopId!, request.preview.direction)
+      ));
+      if (cancelled) return;
+      setArrivals((current) => {
+        const next = { ...current };
+        results.forEach((result, index) => {
+          if (result.status === "fulfilled") {
+            next[requests[index].preview.routeId] = result.value;
+          }
+        });
+        return next;
+      });
+    };
+
+    void load();
+    const timer = window.setInterval(() => void load(), 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [previews]);
+
+  const mapStops = useMemo(() => {
+    const byId = new Map<string, BusStop>();
+    Object.values(previews).forEach((preview) => {
+      (preview.stops || []).forEach((stop) => {
+        const lat = numberValue(stop.latitude);
+        const lng = numberValue(stop.longitude);
+        if (!lat || !lng) return;
+        byId.set(String(stop.stopId), {
+          id: String(stop.stopId),
+          name: stop.stopName,
+          code: String(stop.stopId),
+          address: stop.address || "",
+          lat,
+          lng,
+          routes: [String(preview.routeId)],
+          hasShelter: false,
+        });
+      });
+    });
+    return Array.from(byId.values());
+  }, [previews]);
+
+  const polylines = useMemo<JourneyPolyline[]>(() => Object.values(previews).flatMap((preview) =>
+    (preview.polylines || []).map((line, index) => ({
+      id: `${preview.routeId}-${line.legId || index}`,
+      color: line.colorHex || preview.colorHex || "#144fcc",
+      label: preview.routeCode || preview.routeName,
+      points: (line.points || []).map((point) => ({
+        lat: numberValue(point.latitude),
+        lng: numberValue(point.longitude),
+      })).filter(validCoordinate),
+    })).filter((line) => line.points.length > 1)
+  ), [previews]);
+
+  const buses = useMemo<JourneyBus[]>(() => {
+    const fromArrivals = Object.values(previews).flatMap((preview) =>
+      (arrivals[preview.routeId] || []).map((arrival, index) => {
+        const lat = numberValue(arrival.latitude);
+        const lng = numberValue(arrival.longitude);
+        if (!lat || !lng) return null;
+        const vehicle = vehicles.find((item) => item.routeId === preview.routeId);
+        return {
+          id: arrival.vehicleId,
+          plate: arrival.plateNumber || vehicle?.licensePlate || `Xe ${index + 1}`,
+          routeCode: arrival.routeCode || preview.routeCode || `R${preview.routeId}`,
+          routeColor: preview.colorHex || "#BDFD4F",
+          lat,
+          lng,
+          occupancy: vehicle?.occupancy,
+          capacity: 45,
+          driverName: vehicle?.driverName,
+          etaMinutes: arrival.etaMinutes,
+        } satisfies JourneyBus;
+      }).filter(Boolean)
+    ) as JourneyBus[];
+
+    if (fromArrivals.length) return fromArrivals;
+
+    return vehicles.map((vehicle, index) => {
+      const preview = previews[vehicle.routeId] || Object.values(previews).find((item) =>
+        item.stops?.some((stop) => stop.latitude && stop.longitude)
+      );
+      const actualLat = numberValue(vehicle.latitude);
+      const actualLng = numberValue(vehicle.longitude);
+      const point = actualLat && actualLng ? { lat: actualLat, lng: actualLng } : pointOnPreview(preview, index);
+      if (!point) return null;
+      return {
+        id: String(vehicle.tripId),
+        plate: vehicle.licensePlate || `Xe ${index + 1}`,
+        routeCode: preview?.routeCode || `R${preview?.routeId || vehicle.routeId}`,
+        routeColor: preview?.colorHex || "#BDFD4F",
+        lat: point.lat,
+        lng: point.lng,
+        occupancy: vehicle.occupancy,
+        capacity: 45,
+        driverName: vehicle.driverName,
+      } satisfies JourneyBus;
+    }).filter(Boolean) as JourneyBus[];
+  }, [arrivals, previews, vehicles]);
+
   return (
-    <div className="relative w-full h-full bg-[#0f172a] overflow-hidden">
-      {/* Stylized Đà Nẵng river + districts */}
-      <svg viewBox="0 0 800 500" className="w-full h-full">
-        <defs>
-          <radialGradient id="bg-glow" cx="50%" cy="50%" r="60%">
-            <stop offset="0%" stopColor="#1e293b" />
-            <stop offset="100%" stopColor="#0f172a" />
-          </radialGradient>
-        </defs>
-        <rect width="800" height="500" fill="url(#bg-glow)" />
-        {/* River */}
-        <path d="M0,300 Q200,260 400,290 T800,270" stroke="#1e3a8a" strokeWidth="20" fill="none" opacity="0.5" />
-        {/* District circles */}
-        {[200, 400, 600].map((x, i) => (
-          <circle key={i} cx={x} cy={250} r="60" fill="#1e293b" opacity="0.5" />
-        ))}
-        {/* Vehicles */}
-        {vehicles.map((v, i) => {
-          const lat = Number(v.latitude) || 16.07;
-          const lng = Number(v.longitude) || 108.15;
-          const x = ((lng - 108.0) / 0.3) * 800;
-          const y = ((16.15 - lat) / 0.15) * 500;
-          return (
-            <g key={v.tripId} transform={`translate(${Math.max(20, Math.min(780, x))},${Math.max(20, Math.min(480, y))})`}>
-              <circle r="20" fill="#beff50" opacity="0.2">
-                <animate attributeName="r" from="12" to="24" dur="2s" repeatCount="indefinite" />
-                <animate attributeName="opacity" from="0.4" to="0" dur="2s" repeatCount="indefinite" />
-              </circle>
-              <circle r="10" fill="#beff50" stroke="#14140f" strokeWidth="2" />
-              <text y="-15" textAnchor="middle" fill="#beff50" fontSize="10" fontWeight="bold">
-                {v.licensePlate || `Xe ${i + 1}`}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
-      <div className="absolute bottom-3 left-3 bg-white/10 backdrop-blur-sm text-white text-xs px-3 py-1.5 rounded-full">
-        {vehicles.length} xe • Cập nhật {formatDateTime(new Date().toISOString())}
+    <div className="relative h-full w-full">
+      <JourneyMap
+        stops={mapStops}
+        buses={buses}
+        polylines={polylines}
+        height="100%"
+        className="h-full"
+        allowFallbackPolyline
+      />
+      <div className="absolute bottom-3 left-3 z-[500] rounded-full bg-[#14140f]/90 px-3 py-1.5 text-xs font-bold text-[#BDFD4F]">
+        {buses.length || vehicles.length} xe • Dữ liệu mô phỏng khi xe chưa gửi GPS
       </div>
     </div>
   );
+}
+
+function numberValue(value: unknown) {
+  const n = typeof value === "string" ? Number(value) : Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function getLiveArrivals(routeId: number, stopId: number, direction?: number) {
+  return apiFetch.get<LiveArrivalDTO[]>(`/routes/${routeId}/stops/${stopId}/live-arrivals`, { direction });
+}
+
+function validCoordinate(point: { lat: number; lng: number }) {
+  return Math.abs(point.lat) > 0 && Math.abs(point.lng) > 0;
+}
+
+function pointOnPreview(preview: RouteMapPreviewDTO | undefined, index: number) {
+  const points = (preview?.polylines || [])
+    .flatMap((line) => line.points || [])
+    .map((point) => ({ lat: numberValue(point.latitude), lng: numberValue(point.longitude) }))
+    .filter(validCoordinate);
+  if (!points.length) return null;
+  return points[Math.min(points.length - 1, Math.floor(points.length * (0.25 + (index % 3) * 0.2)))];
 }
 
 // =============================================================================
@@ -805,7 +970,7 @@ function ScheduleScreen({ ctx }: { ctx: Ctx }) {
 }
 
 // =============================================================================
-// Screen 4: Assign staff
+// Screen 4: Assign trips
 // =============================================================================
 function AssignStaffScreen({ ctx }: { ctx: Ctx }) {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
@@ -814,6 +979,7 @@ function AssignStaffScreen({ ctx }: { ctx: Ctx }) {
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [drivers, setDrivers] = useState<Record<string, number | undefined>>({});
   const [conductors, setConductors] = useState<Record<string, number | undefined>>({});
+  const [buses, setBuses] = useState<Record<string, number | undefined>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -822,14 +988,17 @@ function AssignStaffScreen({ ctx }: { ctx: Ctx }) {
       setDashboard(d);
       const initDrivers: Record<string, number | undefined> = {};
       const initConductors: Record<string, number | undefined> = {};
+      const initBuses: Record<string, number | undefined> = {};
       d.shifts.forEach((s) => {
         if (s.scheduleId) {
           initDrivers[s.scheduleId] = s.driverStaffId;
           initConductors[s.scheduleId] = s.conductorStaffId;
+          initBuses[s.scheduleId] = s.busId;
         }
       });
       setDrivers(initDrivers);
       setConductors(initConductors);
+      setBuses(initBuses);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Không tải được lịch");
     } finally {
@@ -842,12 +1011,17 @@ function AssignStaffScreen({ ctx }: { ctx: Ctx }) {
   const save = async (scheduleId: number) => {
     const driverId = drivers[scheduleId];
     const conductorId = conductors[scheduleId];
+    const busId = buses[scheduleId];
     if (!driverId) {
       toast.error("Vui lòng chọn tài xế");
       return;
     }
     if (!conductorId) {
       toast.error("Vui lòng chọn phụ xe");
+      return;
+    }
+    if (!busId) {
+      toast.error("Vui lòng chọn xe");
       return;
     }
     setSaving((s) => ({ ...s, [scheduleId]: true }));
@@ -860,11 +1034,11 @@ function AssignStaffScreen({ ctx }: { ctx: Ctx }) {
           routeId: shift?.routeId,
           driverStaffId: driverId,
           conductorStaffId: conductorId,
-          busId: shift?.busId,
+          busId,
           departureTime: shift?.departureTime || shift?.time,
         }],
       });
-      toast.success("Đã phân công nhân sự");
+      toast.success("Đã lưu phân công chuyến");
       load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Không thể phân công");
@@ -876,25 +1050,28 @@ function AssignStaffScreen({ ctx }: { ctx: Ctx }) {
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
-        title="Phân công nhân sự"
-        description="Gán tài xế và phụ xe cho từng chuyến."
-        icon={<UserCog className="size-7" />}
+        title="Phân công chuyến xe"
+        description="Gán xe, tài xế và phụ xe cho từng chuyến."
+        icon={<BusIcon className="size-7" />}
         actions={<DateField value={date} onChange={setDate} />}
       />
       {loading ? (
         <LoadingScreen />
       ) : !dashboard ? (
-        <EmptyState icon={<UserCog className="size-7" />} title="Không tải được dữ liệu phân công" />
+        <EmptyState icon={<BusIcon className="size-7" />} title="Không tải được dữ liệu phân công" />
       ) : dashboard.shifts.length === 0 ? (
-        <NewShiftCard mode="staff" dashboard={dashboard} date={date} onCreated={load} />
+        <NewShiftCard dashboard={dashboard} date={date} onCreated={load} />
       ) : (
         <StaggerGroup className="space-y-3 min-w-0">
           <StaggerItem>
-            <NewShiftCard mode="staff" dashboard={dashboard} date={date} onCreated={load} compact />
+            <NewShiftCard dashboard={dashboard} date={date} onCreated={load} compact />
           </StaggerItem>
           {dashboard.shifts.map((s, i) => {
             const sid = s.scheduleId;
             const locked = ["RUNNING", "COMPLETED"].includes(String(s.status || "").toUpperCase());
+            const hasDriver = sid ? Boolean(drivers[sid]) : Boolean(s.driverStaffId || s.driverName);
+            const hasConductor = sid ? Boolean(conductors[sid]) : Boolean(s.conductorStaffId || s.conductorName);
+            const hasBus = sid ? Boolean(buses[sid]) : Boolean(s.busId || s.licensePlate);
             return (
               <StaggerItem key={i}>
                 <ExpressiveCard variant="elevated" className="p-5 min-w-0">
@@ -905,13 +1082,15 @@ function AssignStaffScreen({ ctx }: { ctx: Ctx }) {
                     </div>
                     {locked ? (
                       <M3StatusPill label="Đang chạy/đã xong" tone="neutral" />
-                    ) : s.driverName && s.conductorName ? (
-                      <M3StatusPill label="Đã gán" tone="success" />
+                    ) : hasDriver && hasConductor && hasBus ? (
+                      <M3StatusPill label="Đủ phân công" tone="success" />
+                    ) : !hasBus ? (
+                      <M3StatusPill label="Thiếu xe" tone="warning" />
                     ) : (
                       <M3StatusPill label="Thiếu nhân sự" tone="warning" />
                     )}
                   </div>
-                  <div className="grid gap-3 md:grid-cols-2">
+                  <div className="grid gap-3 md:grid-cols-3">
                     <div className="min-w-0">
                       <Label className="text-xs font-bold">Tài xế</Label>
                       <Select
@@ -942,142 +1121,23 @@ function AssignStaffScreen({ ctx }: { ctx: Ctx }) {
                         </SelectContent>
                       </Select>
                     </div>
-                  </div>
-                  <div className="mt-3">
-                    {sid && (
-                      <ExpressiveButton
-                        variant="filled"
-                        size="sm"
-                        onClick={() => save(sid)}
-                        disabled={saving[sid] || locked}
-                      >
-                        {saving[sid] ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
-                        Lưu nhân sự
-                      </ExpressiveButton>
-                    )}
-                  </div>
-                </ExpressiveCard>
-              </StaggerItem>
-            );
-          })}
-        </StaggerGroup>
-      )}
-    </PageTransition>
-  );
-}
-
-// =============================================================================
-// Screen 5: Assign Bus
-// =============================================================================
-function AssignBusScreen({ ctx }: { ctx: Ctx }) {
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [dashboard, setDashboard] = useState<ScheduleDashboard | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState<Record<string, boolean>>({});
-  const [assignments, setAssignments] = useState<Record<string, number | undefined>>({});
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const d = await operationsApi.scheduleDashboard(date);
-      setDashboard(d);
-      const init: Record<string, number | undefined> = {};
-      d.shifts.forEach((s) => {
-        if (s.scheduleId) init[s.scheduleId] = s.busId;
-      });
-      setAssignments(init);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Không tải được lịch");
-    } finally {
-      setLoading(false);
-    }
-  }, [date]);
-
-  useEffect(() => { load(); }, [load]);
-
-  const save = async (scheduleId: number) => {
-    const busId = assignments[scheduleId];
-    if (!busId) {
-      toast.error("Vui lòng chọn xe");
-      return;
-    }
-    setSaving((s) => ({ ...s, [scheduleId]: true }));
-    try {
-      const shift = dashboard!.shifts.find((s) => s.scheduleId === scheduleId);
-      await operationsApi.saveSchedules({
-        serviceDate: date,
-        shifts: [{
-          scheduleId,
-          routeId: shift?.routeId,
-          driverStaffId: shift?.driverStaffId,
-          conductorStaffId: shift?.conductorStaffId,
-          busId,
-          departureTime: shift?.departureTime || shift?.time,
-        }],
-      });
-      toast.success("Đã phân công xe");
-      load();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Không thể phân công");
-    } finally {
-      setSaving((s) => ({ ...s, [scheduleId]: false }));
-    }
-  };
-
-  return (
-    <PageTransition className="space-y-6 min-w-0">
-      <PageHeader
-        title="Phân công xe"
-        description="Gán xe cho các chuyến."
-        icon={<BusIcon className="size-7" />}
-        actions={<DateField value={date} onChange={setDate} />}
-      />
-      {loading ? (
-        <LoadingScreen />
-      ) : !dashboard ? (
-        <EmptyState icon={<BusIcon className="size-7" />} title="Không tải được dữ liệu phân công" />
-      ) : dashboard.shifts.length === 0 ? (
-        <NewShiftCard mode="bus" dashboard={dashboard} date={date} onCreated={load} />
-      ) : (
-        <StaggerGroup className="space-y-3 min-w-0">
-          <StaggerItem>
-            <NewShiftCard mode="bus" dashboard={dashboard} date={date} onCreated={load} compact />
-          </StaggerItem>
-          {dashboard.shifts.map((s, i) => {
-            const sid = s.scheduleId;
-            const locked = ["RUNNING", "COMPLETED"].includes(String(s.status || "").toUpperCase());
-            return (
-              <StaggerItem key={i}>
-                <ExpressiveCard variant="elevated" className="p-5 min-w-0">
-                  <div className="flex items-start justify-between gap-3 mb-3 min-w-0">
                     <div className="min-w-0">
-                      <p className="font-bold truncate">{s.routeName || `Tuyến ${s.routeId}`}</p>
-                      <p className="text-xs text-on-surface-variant">{s.departureTime || s.time || "—"}</p>
-                    </div>
-                    {locked ? (
-                      <M3StatusPill label="Đang chạy/đã xong" tone="neutral" />
-                    ) : s.licensePlate ? (
-                      <M3StatusPill label="Đã gán" tone="success" />
-                    ) : (
-                      <M3StatusPill label="Thiếu xe" tone="warning" />
-                    )}
-                  </div>
-                  <div className="space-y-3">
-                    <div>
-                      <Label className="text-xs font-bold">Xe</Label>
-                        <Select
-                          value={sid && assignments[sid] ? String(assignments[sid]) : ""}
-                          onValueChange={(v) => sid && setAssignments((a) => ({ ...a, [sid]: Number(v) }))}
-                          disabled={locked}
-                        >
+                      <Label className="text-xs font-bold">Xe bus</Label>
+                      <Select
+                        value={sid && buses[sid] ? String(buses[sid]) : ""}
+                        onValueChange={(v) => sid && setBuses((a) => ({ ...a, [sid]: Number(v) }))}
+                        disabled={locked}
+                      >
                         <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn xe" /></SelectTrigger>
                         <SelectContent>
-                          {dashboard.buses.map((b) => (
-                            <SelectItem key={b.busId} value={String(b.busId)}>{b.licensePlate} ({b.seatCount || "?"} chỗ)</SelectItem>
+                          {dashboard.buses.map((bus) => (
+                            <SelectItem key={bus.busId} value={String(bus.busId)}>{bus.licensePlate} ({bus.seatCount || "?"} chỗ)</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
+                  </div>
+                  <div className="mt-3">
                     {sid && (
                       <ExpressiveButton
                         variant="filled"
@@ -1123,13 +1183,11 @@ function formatTime24(hour: string, minute: string, period: string) {
 }
 
 function NewShiftCard({
-  mode,
   dashboard,
   date,
   onCreated,
   compact = false,
 }: {
-  mode: "staff" | "bus";
   dashboard: ScheduleDashboard;
   date: string;
   onCreated: () => void;
@@ -1156,11 +1214,11 @@ function NewShiftCard({
       toast.error("Vui lòng chọn tuyến và giờ chạy");
       return;
     }
-    if (mode === "staff" && (!driverStaffId || !conductorStaffId)) {
+    if (!driverStaffId || !conductorStaffId) {
       toast.error("Vui lòng chọn tài xế và phụ xe");
       return;
     }
-    if (mode === "bus" && !busId) {
+    if (!busId) {
       toast.error("Vui lòng chọn xe");
       return;
     }
@@ -1239,44 +1297,39 @@ function NewShiftCard({
             </Select>
           </div>
         </div>
-        {mode === "staff" ? (
-          <>
-            <div className="min-w-0">
-              <Label className="text-xs font-bold">Tài xế</Label>
-              <Select value={driverStaffId} onValueChange={setDriverStaffId}>
-                <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn tài xế" /></SelectTrigger>
-                <SelectContent>
-                  {dashboard.drivers.map((driver) => (
-                    <SelectItem key={driver.staffId} value={String(driver.staffId)}>{driver.fullName} ({driver.status})</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="min-w-0">
-              <Label className="text-xs font-bold">Phụ xe</Label>
-              <Select value={conductorStaffId} onValueChange={setConductorStaffId}>
-                <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn phụ xe" /></SelectTrigger>
-                <SelectContent>
-                  {dashboard.conductors.map((conductor) => (
-                    <SelectItem key={conductor.staffId} value={String(conductor.staffId)}>{conductor.fullName} ({conductor.status})</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </>
-        ) : (
-          <div className="min-w-0 md:col-span-2">
-            <Label className="text-xs font-bold">Xe</Label>
-            <Select value={busId} onValueChange={setBusId}>
-              <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn xe" /></SelectTrigger>
-              <SelectContent>
-                {dashboard.buses.map((bus) => (
-                  <SelectItem key={bus.busId} value={String(bus.busId)}>{bus.licensePlate} ({bus.seatCount || "?"} chỗ)</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
+        <div className="min-w-0">
+          <Label className="text-xs font-bold">Tài xế</Label>
+          <Select value={driverStaffId} onValueChange={setDriverStaffId}>
+            <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn tài xế" /></SelectTrigger>
+            <SelectContent>
+              {dashboard.drivers.map((driver) => (
+                <SelectItem key={driver.staffId} value={String(driver.staffId)}>{driver.fullName} ({driver.status})</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="min-w-0">
+          <Label className="text-xs font-bold">Phụ xe</Label>
+          <Select value={conductorStaffId} onValueChange={setConductorStaffId}>
+            <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn phụ xe" /></SelectTrigger>
+            <SelectContent>
+              {dashboard.conductors.map((conductor) => (
+                <SelectItem key={conductor.staffId} value={String(conductor.staffId)}>{conductor.fullName} ({conductor.status})</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="min-w-0 md:col-span-2">
+          <Label className="text-xs font-bold">Xe bus</Label>
+          <Select value={busId} onValueChange={setBusId}>
+            <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn xe" /></SelectTrigger>
+            <SelectContent>
+              {dashboard.buses.map((bus) => (
+                <SelectItem key={bus.busId} value={String(bus.busId)}>{bus.licensePlate} ({bus.seatCount || "?"} chỗ)</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
       <div className="mt-4">
         <ExpressiveButton variant="filled" size="sm" onClick={save} disabled={saving}>
@@ -1851,6 +1904,15 @@ function MetricMini({ label, value }: { label: string; value: number | string })
   );
 }
 
+function isSosFeedback(item: any) {
+  return String(item.content || "").toUpperCase().startsWith("[SOS") || String(item.studentName || "").includes("SOS");
+}
+
+function isPrivateMessageNotification(item: any) {
+  const text = `${item.title || ""} ${item.content || item.body || ""}`.toLowerCase();
+  return text.includes("tin nhắn") || text.includes("message") || text.includes("chat");
+}
+
 // =============================================================================
 // Screen 9: Feedback queue (resolve)
 // =============================================================================
@@ -1863,7 +1925,7 @@ function FeedbackScreen({ ctx }: { ctx: Ctx }) {
   const feedbackItems = feedbackResource.data || ctx.feedback;
 
   const filtered = feedbackItems.filter((f: any) => {
-    const isSos = String(f.content || "").toUpperCase().startsWith("[SOS") || String(f.studentName || "").includes("SOS");
+    const isSos = isSosFeedback(f);
     if (filter === "sos") return isSos;
     if (filter === "all") return true;
     return f.status === filter;
@@ -1875,7 +1937,7 @@ function FeedbackScreen({ ctx }: { ctx: Ctx }) {
 
   const resolve = async (item: any) => {
     const id = Number(item.id);
-    const isSos = String(item.content || "").toUpperCase().startsWith("[SOS") || String(item.studentName || "").includes("SOS");
+    const isSos = isSosFeedback(item);
     const response = responses[item.id]?.trim() || (isSos ? "Đã tiếp nhận và xử lý thông báo SOS." : "Đã tiếp nhận và xử lý phản hồi.");
     setResponding(id);
     try {
@@ -1930,7 +1992,7 @@ function FeedbackScreen({ ctx }: { ctx: Ctx }) {
       ) : (
         <StaggerGroup className="space-y-3 min-w-0">
           {filtered.map((f: any) => {
-            const isSos = String(f.content || "").toUpperCase().startsWith("[SOS") || String(f.studentName || "").includes("SOS");
+            const isSos = isSosFeedback(f);
             const isResolved = f.status === "resolved";
             return (
               <StaggerItem key={f.id}>
@@ -2054,7 +2116,97 @@ function FeedbackScreen({ ctx }: { ctx: Ctx }) {
 }
 
 // =============================================================================
-// Screen 10: Notify broadcast
+// Screen 10: SOS notifications
+// =============================================================================
+function SosNotificationsScreen({ ctx }: { ctx: Ctx }) {
+  const [resolving, setResolving] = useState<number | null>(null);
+  const feedbackResource = useApi(() => coordinatorFeedbackApi.all(), (items) => items.map(mapFeedback), []);
+  const sosItems = (feedbackResource.data || ctx.feedback)
+    .filter(isSosFeedback)
+    .sort((a: any, b: any) => (new Date(b.createdAt || 0).getTime() || 0) - (new Date(a.createdAt || 0).getTime() || 0));
+
+  const resolve = async (item: any) => {
+    const id = Number(item.id);
+    setResolving(id);
+    try {
+      await coordinatorFeedbackApi.resolve(id, "Đã tiếp nhận và xử lý thông báo SOS.");
+      toast.success("Đã xử lý SOS");
+      feedbackResource.reload();
+      ctx.reload();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Không thể xử lý SOS");
+    } finally {
+      setResolving(null);
+    }
+  };
+
+  return (
+    <PageTransition className="space-y-6 min-w-0">
+      <PageHeader
+        title="Thông báo SOS"
+        description="Chỉ hiển thị cảnh báo SOS cần điều phối xử lý. Tin nhắn riêng nằm ở biểu tượng chat."
+        icon={<AlertTriangle className="size-7" />}
+        actions={
+          <ExpressiveButton variant="outlined" size="sm" onClick={feedbackResource.reload}>
+            <RefreshCw className={cn("size-4", feedbackResource.loading && "animate-spin")} />
+            Làm mới
+          </ExpressiveButton>
+        }
+      />
+      {feedbackResource.loading && !feedbackResource.data ? (
+        <LoadingScreen label="Đang tải SOS..." />
+      ) : feedbackResource.error ? (
+        <ErrorScreen message={feedbackResource.error} onRetry={feedbackResource.reload} />
+      ) : sosItems.length === 0 ? (
+        <EmptyState icon={<AlertTriangle className="size-7" />} title="Không có SOS" description="Tin nhắn riêng sẽ được gom vào biểu tượng chat ở góc màn hình." />
+      ) : (
+        <StaggerGroup className="space-y-3 min-w-0">
+          {sosItems.map((item: any) => {
+            const resolved = item.status === "resolved";
+            return (
+              <StaggerItem key={item.id}>
+                <ExpressiveCard variant="elevated" className="border-error/40 bg-error-container/10 p-5 min-w-0">
+                  <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-start min-w-0">
+                    <div className="min-w-0">
+                      <div className="mb-2 flex flex-wrap items-center gap-2">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-error px-2.5 py-1 text-xs font-bold text-on-error">
+                          <AlertTriangle className="size-3.5" />
+                          SOS
+                        </span>
+                        <M3StatusPill label={resolved ? "Đã xử lý" : "Khẩn cấp"} tone={resolved ? "success" : "error"} />
+                        <span className="text-xs text-on-surface-variant">{formatDateTime(item.createdAt)}</span>
+                      </div>
+                      <p className="font-bold text-on-surface truncate">{item.studentName || "Sinh viên báo SOS"}</p>
+                      <p className="text-xs text-on-surface-variant mt-0.5">
+                        {item.routeName || item.routeCode || "Chưa rõ tuyến"}{item.tripId ? ` · Chuyến #${item.tripId}` : ""}
+                      </p>
+                      <p className="mt-3 whitespace-pre-wrap break-words text-sm text-on-surface">{item.content}</p>
+                      {item.response && (
+                        <div className="mt-3 rounded-lg bg-success-container/30 p-2 text-xs">
+                          <p className="font-bold text-success">Ghi chú xử lý:</p>
+                          <p>{item.response}</p>
+                        </div>
+                      )}
+                    </div>
+                    {!resolved && (
+                      <ExpressiveButton variant="filled" size="sm" onClick={() => resolve(item)} disabled={resolving === Number(item.id)}>
+                        {resolving === Number(item.id) ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+                        Xử lý
+                      </ExpressiveButton>
+                    )}
+                  </div>
+                </ExpressiveCard>
+              </StaggerItem>
+            );
+          })}
+        </StaggerGroup>
+      )}
+    </PageTransition>
+  );
+}
+
+// =============================================================================
+// Screen 11: Notify broadcast
 // =============================================================================
 function NotifyScreen({ ctx }: { ctx: Ctx }) {
   const [title, setTitle] = useState("");
@@ -2062,6 +2214,7 @@ function NotifyScreen({ ctx }: { ctx: Ctx }) {
   const [target, setTarget] = useState("all");
   const [sending, setSending] = useState(false);
   const notifications = useApi(() => notificationApi.mine(), undefined, []);
+  const recentNotifications = (notifications.raw || ctx.notifications).filter((n: any) => !isPrivateMessageNotification(n));
 
   const send = async () => {
     if (!title.trim() || !content.trim()) {
@@ -2123,12 +2276,12 @@ function NotifyScreen({ ctx }: { ctx: Ctx }) {
         </ScrollReveal>
 
         <ScrollReveal delay={0.1}>
-          <Section title={`Gần đây (${(notifications.raw || ctx.notifications).length})`}>
-            {(notifications.raw || ctx.notifications).length === 0 ? (
+          <Section title={`Gần đây (${recentNotifications.length})`}>
+            {recentNotifications.length === 0 ? (
               <EmptyState icon={<Megaphone className="size-7" />} title="Chưa gửi thông báo" />
             ) : (
               <div className="space-y-2">
-                {(notifications.raw || ctx.notifications).slice(0, 5).map((n: any, index: number) => (
+                {recentNotifications.slice(0, 5).map((n: any, index: number) => (
                   <ExpressiveCard key={n.notificationId ?? n.id ?? `${n.title}-${n.createdAt ?? index}`} variant="filled" className="p-3 min-w-0">
                     <p className="font-bold text-sm truncate">{n.title}</p>
                     <p className="text-xs text-on-surface-variant line-clamp-2">{n.content ?? n.body}</p>
@@ -2193,7 +2346,7 @@ function FloatingChatButton({ onClick, open, unreadCount }: { onClick: () => voi
   return (
     <button
       onClick={onClick}
-      className="fixed bottom-6 right-6 z-50 flex size-14 items-center justify-center rounded-full bg-[#14140f] text-[#beff50] shadow-xl hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer"
+      className="fixed bottom-20 right-4 z-40 flex size-14 items-center justify-center rounded-full bg-[#14140f] text-[#beff50] shadow-xl transition-all duration-200 hover:scale-105 active:scale-95 sm:bottom-6 sm:right-6"
       aria-label={open ? "Đóng chat nội bộ" : "Mở chat nội bộ"}
     >
       {open ? <X className="size-6" /> : <MessageSquare className="size-6" />}
@@ -2395,7 +2548,7 @@ function InternalChatPanel({ open, onOpenChange, onUnreadCountChange }: Internal
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 15 }}
           transition={{ duration: 0.2, ease: "easeOut" }}
-          className="fixed bottom-0 right-0 w-full h-full sm:bottom-6 sm:right-[92px] sm:w-[380px] sm:h-[580px] sm:rounded-3xl border border-outline-variant/40 p-0 z-40 flex flex-col bg-surface-container-lowest shadow-2xl overflow-hidden focus:outline-none"
+          className="fixed inset-x-3 bottom-20 top-20 z-30 flex flex-col overflow-hidden rounded-3xl border border-outline-variant/40 bg-surface-container-lowest p-0 shadow-2xl focus:outline-none sm:inset-auto sm:bottom-6 sm:right-[92px] sm:h-[580px] sm:w-[380px]"
         >
           {/* Header section */}
           <div className="border-b border-outline-variant/30 p-4 bg-surface-container-low flex items-center justify-between">
