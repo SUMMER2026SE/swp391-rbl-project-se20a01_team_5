@@ -59,6 +59,19 @@ public class TicketingService {
                 quote);
     }
 
+    @Transactional(readOnly = true)
+    public MonthlyPassQuote quote(CurrentUser currentUser, Integer routeId, String ticketType) {
+        String studentCode = requireStudentCode(currentUser);
+        ApprovedRegistration registration = ticketingRepository.approvedRegistration(studentCode, routeId)
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Student must have an approved route registration"));
+        if ("SINGLE".equalsIgnoreCase(ticketType) || "single".equalsIgnoreCase(ticketType)) {
+            BigDecimal amount = ticketingRepository.singleFare(registration.routeId());
+            return subsidyService.quoteFor(currentUser, registration.routeId(), registration.routeName(), amount);
+        }
+        BigDecimal amount = ticketingRepository.monthlyFare(registration.routeId());
+        return subsidyService.quoteFor(currentUser, registration.routeId(), registration.routeName(), amount);
+    }
+
     @Transactional
     public TicketView purchaseMonthlyPass(CurrentUser currentUser, PurchaseMonthlyPassRequest request) {
         String studentCode = requireStudentCode(currentUser);

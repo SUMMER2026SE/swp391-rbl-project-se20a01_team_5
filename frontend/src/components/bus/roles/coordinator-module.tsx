@@ -2258,7 +2258,9 @@ function InternalChatPanel({ open, onOpenChange, onUnreadCountChange }: Internal
         setLoadingThreads(false);
       });
       
-      const interval = setInterval(fetchThreads, 15000);
+      const interval = setInterval(() => {
+        if (!document.hidden) void fetchThreads();
+      }, 4000);
       return () => clearInterval(interval);
     }
   }, [open, onUnreadCountChange, threads.length]);
@@ -2291,7 +2293,9 @@ function InternalChatPanel({ open, onOpenChange, onUnreadCountChange }: Internal
       setLoadingMessages(false);
     });
 
-    const interval = setInterval(fetchConversation, 8000);
+    const interval = setInterval(() => {
+      if (!document.hidden) void fetchConversation();
+    }, 3000);
     return () => clearInterval(interval);
   }, [open, activeThread, messages.length]);
 

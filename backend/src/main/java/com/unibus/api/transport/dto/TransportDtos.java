@@ -48,12 +48,6 @@ public final class TransportDtos {
    public static record Eta(Integer tripId, Integer busId, Integer stopId, OffsetDateTime estimatedArrivalAt, OffsetDateTime actualArrivalAt, OffsetDateTime updatedAt) {
    }
 
-   public static record LiveArrival(String vehicleId, String plateNumber, Integer routeId,
-         String routeCode, BigDecimal speedKmh, Integer distanceMeters, Integer etaMinutes,
-         BigDecimal latitude, BigDecimal longitude, Integer targetStopId, String targetStopName,
-         String status, OffsetDateTime updatedAt) {
-   }
-
    public static record Coordinate(BigDecimal latitude, BigDecimal longitude) {
    }
 

@@ -3,7 +3,7 @@
 import { useCallback, useState } from "react";
 import { Bell, Check, KeyRound, LifeBuoy, Save, School, UserCircle } from "lucide-react";
 import { toast } from "sonner";
-import { PageHeader, Section, StatCard, EmptyState } from "@/components/bus/primitives";
+import { PageHeader, Section, EmptyState } from "@/components/bus/primitives";
 import {
   AsyncBlock,
   DataList,
@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { notificationApi, profileApi, studentApi, universityApi, type NotificationView, type UserProfile } from "@/lib/api/client";
+import { cn } from "@/lib/utils";
 
 export function ProfileScreen() {
   const loader = useCallback(() => profileApi.me(), []);
@@ -33,7 +34,7 @@ export function ProfileScreen() {
 
   const data = profile.data;
   const display = { ...data, ...form } as UserProfile;
-  const isStudent = display.role === "STUDENT";
+  const isStudentProfile = String(display.role || "").toUpperCase() === "STUDENT";
 
   const save = async () => {
     if (!data) return;
@@ -56,15 +57,21 @@ export function ProfileScreen() {
   };
 
   const changePassword = async () => {
+    if (!data) return;
     setPasswordSaving(true);
     try {
-      await profileApi.changePassword({ currentPassword, newPassword, confirmPassword });
+      await profileApi.changePassword({
+        currentPassword: data.hasPassword ? currentPassword : undefined,
+        newPassword,
+        confirmPassword,
+      });
+      profile.setData({ ...data, hasPassword: true });
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      toast.success("Đã đổi mật khẩu");
+      toast.success(data.hasPassword ? "Đã đổi mật khẩu" : "Đã tạo mật khẩu đăng nhập");
     } catch (error) {
-      toast.error(getErrorMessage(error, "Không thể đổi mật khẩu"));
+      toast.error(getErrorMessage(error, data.hasPassword ? "Không thể đổi mật khẩu" : "Không thể tạo mật khẩu"));
     } finally {
       setPasswordSaving(false);
     }
@@ -103,33 +110,45 @@ export function ProfileScreen() {
               </ExpressiveCard>
 
               <ExpressiveCard variant="elevated" className="space-y-4 p-5">
-                <div className="flex items-center gap-2">
-                  <KeyRound className="size-5 text-primary" />
-                  <h3 className="font-bold text-on-surface">Mật khẩu</h3>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <KeyRound className="size-5 text-primary" />
+                      <h3 className="font-bold text-on-surface">Mật khẩu</h3>
+                    </div>
+                    <p className="mt-1 text-sm text-on-surface-variant">
+                      {data?.hasPassword
+                        ? "Đổi mật khẩu đăng nhập email của bạn."
+                        : "Tài khoản Google chưa có mật khẩu riêng. Tạo mật khẩu để có thể đăng nhập bằng email."}
+                    </p>
+                  </div>
+                  <StatusPill status={data?.hasPassword ? "ĐÃ CÓ MẬT KHẨU" : "GOOGLE"} />
                 </div>
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <Field label="Mật khẩu hiện tại">
-                    <Input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
-                  </Field>
-                  <Field label="Mật khẩu mới">
+                <div className={data?.hasPassword ? "grid gap-4 sm:grid-cols-3" : "grid gap-4 sm:grid-cols-2"}>
+                  {data?.hasPassword && (
+                    <Field label="Mật khẩu hiện tại">
+                      <Input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+                    </Field>
+                  )}
+                  <Field label={data?.hasPassword ? "Mật khẩu mới" : "Mật khẩu muốn tạo"}>
                     <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
                   </Field>
                   <Field label="Nhập lại">
                     <Input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
                   </Field>
                 </div>
-                <ExpressiveButton onClick={changePassword} disabled={passwordSaving || !newPassword || !confirmPassword}>
+                <ExpressiveButton onClick={changePassword} disabled={passwordSaving || !newPassword || !confirmPassword || (data?.hasPassword && !currentPassword)}>
                   <KeyRound className="size-4" />
-                  {passwordSaving ? "Đang đổi..." : "Đổi mật khẩu"}
+                  {passwordSaving ? (data?.hasPassword ? "Đang đổi..." : "Đang tạo...") : (data?.hasPassword ? "Đổi mật khẩu" : "Tạo mật khẩu")}
                 </ExpressiveButton>
               </ExpressiveCard>
             </div>
 
-            <div className="space-y-4">
-              <StatCard label="Trạng thái tài khoản" value={<StatusPill status={display.status} />} icon={<Check className="size-6" />} accent="success" />
-              {isStudent && (
-                <StatCard label="Xác minh sinh viên" value={<StatusPill status={display.studentVerificationStatus} />} icon={<School className="size-6" />} accent="secondary" />
-              )}
+            <div className="space-y-3">
+              <ProfileStatusCard label="Trạng thái tài khoản" value={display.status} icon={<Check className="size-5" />} tone="success" />
+              {isStudentProfile ? (
+                <ProfileStatusCard label="Xác minh sinh viên" value={display.studentVerificationStatus || "NOT_SUBMITTED"} icon={<School className="size-5" />} tone="secondary" />
+              ) : null}
             </div>
           </div>
         )}
@@ -138,6 +157,37 @@ export function ProfileScreen() {
   );
 }
 
+function ProfileStatusCard({
+  label,
+  value,
+  icon,
+  tone,
+}: {
+  label: string;
+  value?: string;
+  icon: React.ReactNode;
+  tone: "success" | "secondary";
+}) {
+  const isSuccess = tone === "success";
+  return (
+    <ExpressiveCard variant="elevated" className="p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-on-surface-variant">{label}</p>
+          <div className="mt-2">
+            <StatusPill status={value || "UNKNOWN"} />
+          </div>
+        </div>
+        <div className={cn(
+          "grid size-11 shrink-0 place-items-center rounded-2xl",
+          isSuccess ? "bg-success/12 text-success" : "bg-[#144fcc]/10 text-[#144fcc]"
+        )}>
+          {icon}
+        </div>
+      </div>
+    </ExpressiveCard>
+  );
+}
 export function NotificationsScreen() {
   const loader = useCallback(() => notificationApi.mine(), []);
   const resource = useApiResource<NotificationView[]>(loader);

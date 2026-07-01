@@ -32,7 +32,7 @@ public class ExperienceService {
 
     @Transactional(readOnly = true)
     public List<RouteCard> studentRouteSuggestions(CurrentUser currentUser) {
-        return repository.studentDashboard(currentUser.userId()).routes();
+        return repository.studentRouteSuggestions(currentUser.userId());
     }
 
     @Transactional(readOnly = true)
