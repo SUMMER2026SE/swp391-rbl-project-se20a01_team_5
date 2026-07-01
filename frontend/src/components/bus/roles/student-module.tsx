@@ -154,6 +154,7 @@ import {
   formatVND,
   formatDateTime,
   formatDate,
+  mapInvoice,
 } from "@/lib/prototype-data";
 import {
   studentApi,
@@ -4153,9 +4154,9 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
                   whileHover={{ y: -4, scale: 1.006 }}
                   whileTap={{ scale: 0.998 }}
                   transition={{ type: "spring", stiffness: 180, damping: 22, mass: 0.7 }}
-                  className="flex min-h-[270px] min-w-0 flex-col overflow-hidden rounded-[24px] border border-[#E8E2D5] bg-white shadow-[0_8px_30px_rgba(0,0,0,0.05)] transition-shadow duration-300 ease-out hover:shadow-[0_16px_42px_rgba(20,20,15,0.09)]"
+                  className="flex min-h-[330px] min-w-0 flex-col overflow-hidden rounded-[24px] border border-[#E8E2D5] bg-white shadow-[0_8px_30px_rgba(0,0,0,0.05)] transition-shadow duration-300 ease-out hover:shadow-[0_16px_42px_rgba(20,20,15,0.09)]"
                 >
-                  <div className="flex min-h-[270px] flex-col space-y-4 p-4 sm:p-5">
+                  <div className="flex min-h-[330px] flex-col space-y-4 p-4 sm:p-5">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex min-w-0 items-start gap-3">
                         <span className="flex h-10 min-w-10 shrink-0 items-center justify-center rounded-xl bg-[#111111] px-3 text-sm font-semibold text-[#BDFD4F]">
@@ -5884,9 +5885,9 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
         icon={<CreditCard className="size-7" />}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.2fr] gap-4 min-w-0">
+      <div className={cn("grid grid-cols-1 gap-4 min-w-0", sepayOrder ? "lg:grid-cols-1" : "lg:grid-cols-[1fr_1.2fr]") }>
         {/* Order details */}
-        <ScrollReveal>
+        {!sepayOrder && <ScrollReveal>
           <ExpressiveCard variant="elevated" className="p-6 h-full min-w-0">
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
               <TicketCheck className="size-5 text-[#111111]" />
@@ -5921,11 +5922,9 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                     ]).map((item) => {
                       const selected = ticketKind === item.id;
                       return (
-                        <motion.button
+                        <button
                           key={item.id}
                           type="button"
-                          whileHover={{ y: -2 }}
-                          whileTap={{ scale: 0.985 }}
                           onClick={() => { setTicketKind(item.id); setSepayOrder(null); setPaidStatus("idle"); setSecondsLeft(null); }}
                           className={cn(
                             "relative rounded-[18px] border p-4 text-left transition-colors duration-200",
@@ -5942,15 +5941,15 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                           <p className="pr-8 text-sm font-semibold text-[#1F211B]">{item.title}</p>
                           <p className="mt-1 text-xs leading-5 text-[#7A756B]">{item.desc}</p>
                           <p className={cn("mt-3 text-xl font-semibold tabular-nums", selected ? "text-[#111111]" : "text-[#34362F]")}>{item.amount ? formatVND(item.amount) : "Chưa có giá"}</p>
-                        </motion.button>
+                        </button>
                       );
                     })}
                   </div>
                 </div>
 
                 <Row label="Tuyến" value={selectedRegistration.routeName} icon={<RouteIcon className="size-4" />} />
-                <Row label="Trạm lên" value={selectedRegistration.boardingStopName} icon={<MapPin className="size-4" />} />
-                <Row label="Trạm xuống" value={selectedRegistration.alightingStopName} icon={<MapPin className="size-4" />} />
+                {ticketKind === "SINGLE" && <Row label="Trạm lên" value={selectedRegistration.boardingStopName} icon={<MapPin className="size-4" />} />}
+                {ticketKind === "SINGLE" && <Row label="Trạm xuống" value={selectedRegistration.alightingStopName} icon={<MapPin className="size-4" />} />}
                 <Row label="Hiệu lực" value={ticketKind === "SINGLE" ? "Vé lượt trong ngày" : "Theo kỳ vé"} icon={<Calendar className="size-4" />} />
 
                 <div className="h-px bg-[#E7E0D2] my-2" />
@@ -6021,7 +6020,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                   />
                   <p className="relative text-xs font-medium text-[#E5FF9A]">Tổng thanh toán</p>
                   <p className="relative mt-1 text-3xl font-semibold tabular-nums">
-                    {sepayOrder ? formatVND(sepayOrder.amount) : currentPriceLabel}
+                    {currentPriceLabel}
                   </p>
                   {hasSchoolSubsidy && !sepayOrder ? (
                     <p className="relative mt-1 text-xs text-[#D8F58A]">Đã trừ {formatVND(currentSubsidy)} hỗ trợ từ nhà trường.</p>
@@ -6065,7 +6064,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
               />
             )}
           </ExpressiveCard>
-        </ScrollReveal>
+        </ScrollReveal>}
 
         {/* QR / status panel */}
         <ScrollReveal delay={0.1}>
@@ -6139,7 +6138,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                 >
                   <img src={sepayOrder.qrUrl} alt="SePay QR" className="h-[240px] w-[240px] rounded-xl object-contain" />
                 </motion.div>
-                <div className="flex items-center gap-2 text-2xl font-black text-primary">
+                <div className="flex items-center gap-2 text-2xl font-black text-[#111111]">
                   {formatVND(sepayOrder.amount)}
                 </div>
                 <p className="text-xs text-on-surface-variant text-center break-all max-w-xs font-mono">
@@ -6160,11 +6159,11 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                       onClick={copyAccount}
                       className={cn(
                         "font-mono font-bold text-sm flex items-center gap-1.5 transition-colors",
-                        copying ? "text-success" : "text-primary hover:underline"
+                        copying ? "text-[#4D7C0F]" : "text-[#111111] hover:underline"
                       )}
                     >
                       {sepayOrder.accountNo}
-                      {copying ? <CheckCircle2 className="size-3.5" /> : <Banknote className="size-3.5" />}
+                      {copying ? <CheckCircle2 className="size-3.5 text-[#4D7C0F]" /> : <Banknote className="size-3.5 text-[#6B6B6B]" />}
                     </button>
                   </div>
                   {sepayOrder.accountName && (
@@ -6255,18 +6254,31 @@ function Row({
 // Screen 12: Invoices — list of past payments
 // =============================================================================
 function InvoicesScreen({ ctx }: { ctx: Ctx }) {
-  const invoices = ctx.invoices;
-  const refreshedOnOpenRef = useRef(false);
+  const [invoices, setInvoices] = useState(ctx.invoices);
+  const [loadingInvoices, setLoadingInvoices] = useState(false);
   useEffect(() => {
-    if (refreshedOnOpenRef.current) return;
-    refreshedOnOpenRef.current = true;
-    ctx.reload();
-  });
+    let cancelled = false;
+    setInvoices(ctx.invoices);
+    setLoadingInvoices(true);
+    studentApi.payments()
+      .then((items) => {
+        if (!cancelled) setInvoices(items.map(mapInvoice));
+      })
+      .catch(() => {
+        if (!cancelled) setInvoices(ctx.invoices);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingInvoices(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ctx.invoices]);
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Hóa đơn"
-        description={`${invoices.length} giao dịch`}
+        description={loadingInvoices ? "Đang cập nhật giao dịch" : `${invoices.length} giao dịch`}
         icon={<Receipt className="size-7" />}
       />
       {invoices.length === 0 ? (
@@ -6276,34 +6288,38 @@ function InvoicesScreen({ ctx }: { ctx: Ctx }) {
           description="Các giao dịch mua vé sẽ hiển thị tại đây."
         />
       ) : (
-        <StaggerGroup className="space-y-3 min-w-0">
-          {invoices.map((inv: any) => (
-            <StaggerItem key={inv.id}>
-              <ExpressiveCard variant="elevated" className="p-4 min-w-0">
+        <div className="space-y-3 min-w-0">
+          {invoices.map((inv: any) => {
+            const paid = isPaidStatus(inv.status) || inv.status === "paid";
+            const pending = isUnpaidStatus(inv.status) || inv.status === "pending";
+            return (
+              <ExpressiveCard key={inv.id} variant="elevated" className="p-4 min-w-0">
                 <div className="flex items-start justify-between gap-3 min-w-0">
                   <div className="flex items-start gap-3 min-w-0">
-                    <div className="size-10 shrink-0 rounded-xl bg-primary-container text-on-primary-container flex items-center justify-center">
+                    <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#F3F0E8] text-[#111111]">
                       <Receipt className="size-5" />
                     </div>
                     <div className="min-w-0">
-                      <p className="font-bold truncate">{inv.description}</p>
-                      <p className="text-xs text-on-surface-variant mt-0.5">
+                      <p className="truncate font-semibold text-[#111111]">{inv.description}</p>
+                      <p className="mt-0.5 text-xs text-[#6B665C]">
                         {inv.code} • {formatDate(inv.date)}
                       </p>
                     </div>
                   </div>
-                  <div className="text-right shrink-0">
-                    <p className="font-bold text-primary">{formatVND(inv.amount)}</p>
-                    <M3StatusPill
-                      label={inv.status}
-                      tone={isPaidStatus(inv.status) ? "success" : isUnpaidStatus(inv.status) || inv.status === "pending" ? "warning" : "error"}
-                    />
+                  <div className="shrink-0 text-right">
+                    <p className="font-semibold text-[#111111]">{formatVND(inv.amount)}</p>
+                    <span className={cn(
+                      "mt-1 inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium",
+                      paid ? "bg-[#ECFDF3] text-[#166534]" : pending ? "bg-[#FFF7E5] text-[#7A4B00]" : "bg-[#FEE2E2] text-[#991B1B]"
+                    )}>
+                      {paid ? "Đã thanh toán" : pending ? "Đang chờ" : "Có lỗi"}
+                    </span>
                   </div>
                 </div>
               </ExpressiveCard>
-            </StaggerItem>
-          ))}
-        </StaggerGroup>
+            );
+          })}
+        </div>
       )}
     </PageTransition>
   );
@@ -6615,6 +6631,3 @@ function FallbackScreen({ activeId }: { activeId: string }) {
     />
   );
 }
-
-
-
