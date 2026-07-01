@@ -12,6 +12,7 @@
 // =============================================================================
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { QRCodeCanvas } from "qrcode.react";
 import {
@@ -73,7 +74,6 @@ import {
   ImageUp,
   Upload,
   Crosshair,
-  GraduationCap,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -184,8 +184,6 @@ import {
   type EtaDTO,
   type CoordinateDTO,
   type JourneyStopDTO,
-  type RouteSuggestionDTO,
-  type PassesDashboard,
   type PlaceSuggestionDTO,
   type JourneyOptionDTO,
   type JourneyTrackingSnapshotDTO,
@@ -261,8 +259,6 @@ export function StudentModule({ activeId, onNavigate, onProfileRefresh }: Studen
       return <MyTicketScreen ctx={ctx} onNavigate={onNavigate} />;
     case "stu-history":
       return <HistoryScreen ctx={ctx} onNavigate={onNavigate} />;
-    case "stu-notifications":
-      return <NotificationsScreen ctx={ctx} onNavigate={onNavigate} />;
     case "stu-ai":
       return <AIScreen ctx={ctx} onNavigate={onNavigate} />;
     case "stu-chatbot":
@@ -512,24 +508,8 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
   const activeRoute = nextTrip
     ? ctx.routes.find((r) => r.id === String(nextTrip.routeId))
     : ctx.routes[0];
-  const normalizeTripText = (value?: string | null) => {
-    const text = String(value || "").trim();
-    if (!text) return "";
-    if (/^đại học việt$/i.test(text)) return "Chưa xác định";
-    const letters = text.replace(/[^A-Za-zÀ-ỹĐđ]/g, "");
-    const isAllCaps = letters.length > 3 && letters === letters.toLocaleUpperCase("vi-VN");
-    if (!isAllCaps) return text;
-    return text
-      .toLocaleLowerCase("vi-VN")
-      .replace(/(^|[\s\-/])([a-zà-ỹđ])/g, (match, prefix: string, char: string) => `${prefix}${char.toLocaleUpperCase("vi-VN")}`)
-      .replace(/Bx/g, "BX")
-      .replace(/Đh/g, "ĐH")
-      .replace(/VkU/gi, "VKU");
-  };
-  const tripFrom = normalizeTripText(ctx.registration?.boardingStopName || activeTicket?.boardingStopName || activeRoute?.from);
-  const tripTo = normalizeTripText(ctx.registration?.alightingStopName || activeTicket?.alightingStopName || activeRoute?.to);
-  const tripRouteName = normalizeTripText(ctx.registration?.routeName || activeTicket?.routeName || activeRoute?.name || activeRoute?.routeName || "Tuyến UniBus");
-  const tripRouteCode = activeRoute?.code || activeTicket?.routeCode || (ctx.registration as RegistrationDTO & { routeCode?: string } | undefined)?.routeCode || "UNIBUS";
+  const tripFrom = ctx.registration?.boardingStopName || activeTicket?.boardingStopName || activeRoute?.from || "Điểm lên";
+  const tripTo = ctx.registration?.alightingStopName || activeTicket?.alightingStopName || activeRoute?.to || "Điểm xuống";
   const unread = ctx.notifications.filter((n: any) => !n.read).length;
   const tripsThisMonth = ctx.tripsHistory.length;
 
@@ -627,7 +607,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
               <div className="flex-1 min-w-0 space-y-3">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="inline-flex items-center h-6 px-2.5 rounded-full bg-[#14140f] text-white text-[11px] font-bold">
-                    {tripRouteCode}
+                    {activeRoute?.code || "UNIBUS"}
                   </span>
                   <span className="inline-flex items-center gap-1 h-6 px-2.5 rounded-full bg-[#14140f]/10 text-[11px] font-bold">
                     <motion.span
@@ -641,14 +621,9 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
                 <h3 className="text-2xl sm:text-3xl font-bold text-balance leading-tight">
                   Chuyến sắp tới
                 </h3>
-                <p className="text-sm sm:text-base font-medium opacity-80 line-clamp-2">
-                  {tripRouteName}
+                <p className="text-sm sm:text-base font-medium opacity-80 truncate">
+                  {tripFrom} → {tripTo}
                 </p>
-                {(tripFrom || tripTo) && (
-                  <p className="text-xs sm:text-sm font-medium opacity-70 line-clamp-1">
-                    {tripFrom || "Trạm lên"} → {tripTo || "Trạm xuống"}
-                  </p>
-                )}
                 <div className="flex items-center gap-3 sm:gap-4 pt-1 flex-wrap">
                   <HeroMetric label="Khởi hành" value={nextTrip?.departTime || activeRoute?.firstTrip || "Hôm nay"} />
                   <div className="w-px h-8 bg-[#14140f]/20 shrink-0" />
@@ -860,22 +835,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
                   n.type === "warning" ? "#f59e0b" :
                   n.type === "danger" ? "#dc2626" : "#144fcc";
                 return (
-                  <button
-                    key={n.id}
-                    type="button"
-                    onClick={async () => {
-                      if (!n.read && n.id) {
-                        try {
-                          await notificationApi.markRead(Number(n.id));
-                          ctx.reload();
-                        } catch {
-                          toast.error("Không thể cập nhật thông báo");
-                        }
-                      }
-                      onNavigate("stu-notifications");
-                    }}
-                    className="state-layer flex w-full items-start gap-3 rounded-xl p-3 text-left min-w-0"
-                  >
+                  <div key={n.id} className="state-layer flex items-start gap-3 p-3 rounded-xl min-w-0">
                     <div
                       className="flex size-9 shrink-0 items-center justify-center rounded-full mt-0.5"
                       style={{ backgroundColor: iconColor + "20", color: iconColor }}
@@ -890,7 +850,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
                       <p className="text-xs text-on-surface-variant line-clamp-2 mt-0.5">{n.body}</p>
                       <p className="text-[10px] text-on-surface-variant/70 mt-1">{n.createdAt ? formatDateTime(n.createdAt) : ""}</p>
                     </div>
-                  </button>
+                  </div>
                 );
               })
             )}
@@ -990,114 +950,6 @@ function HeroMetric({ label, value }: { label: string; value: string }) {
       <p className="text-[10px] font-bold opacity-70 uppercase tracking-wide truncate">{label}</p>
       <p className="text-sm sm:text-base font-bold truncate">{value}</p>
     </div>
-  );
-}
-
-
-function NotificationsScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
-  const [items, setItems] = useState<any[]>(ctx.notifications);
-  const [updatingId, setUpdatingId] = useState<string | number | null>(null);
-
-  useEffect(() => {
-    setItems(ctx.notifications);
-  }, [ctx.notifications]);
-
-  const unreadCount = items.filter((item) => !item.read).length;
-
-  const markOneRead = async (notification: any) => {
-    if (notification.read || !notification.id) return;
-    setUpdatingId(notification.id);
-    const previous = items;
-    setItems((current) => current.map((item) => String(item.id) === String(notification.id) ? { ...item, read: true } : item));
-    try {
-      await notificationApi.markRead(Number(notification.id));
-      ctx.reload();
-    } catch {
-      setItems(previous);
-      toast.error("Không thể đánh dấu đã đọc");
-    } finally {
-      setUpdatingId(null);
-    }
-  };
-
-  const markAllRead = async () => {
-    const unreadItems = items.filter((item) => !item.read && item.id);
-    if (!unreadItems.length) return;
-    const previous = items;
-    setItems((current) => current.map((item) => ({ ...item, read: true })));
-    try {
-      await Promise.all(unreadItems.map((item) => notificationApi.markRead(Number(item.id))));
-      ctx.reload();
-      toast.success("Đã đánh dấu tất cả thông báo là đã đọc");
-    } catch {
-      setItems(previous);
-      toast.error("Không thể cập nhật tất cả thông báo");
-    }
-  };
-
-  return (
-    <PageTransition className="space-y-6 min-w-0">
-      <PageHeader
-        title="Thông báo"
-        description={unreadCount > 0 ? `${unreadCount} thông báo chưa đọc` : "Bạn đã đọc hết thông báo mới."}
-        icon={<Bell className="size-7" />}
-        actions={(
-          <div className="flex flex-wrap items-center gap-2">
-            <ExpressiveButton variant="tonal" onClick={() => onNavigate("stu-dashboard")}>
-              <ChevronLeft className="size-4" />
-              Trang chủ
-            </ExpressiveButton>
-            <ExpressiveButton variant="filled" onClick={markAllRead} disabled={unreadCount === 0}>
-              <CheckCircle2 className="size-4" />
-              Đánh dấu đã đọc
-            </ExpressiveButton>
-          </div>
-        )}
-      />
-
-      <ExpressiveCard variant="elevated" className="p-3 min-w-0">
-        {items.length === 0 ? (
-          <EmptyState
-            icon={<Bell className="size-7" />}
-            title="Chưa có thông báo"
-            description="Các cập nhật từ UniBus sẽ xuất hiện tại đây."
-          />
-        ) : (
-          <div className="space-y-2">
-            {items.map((notification) => {
-              const Icon = notification.type === "success" ? CheckCircle2 : notification.type === "warning" ? AlertTriangle : notification.type === "danger" ? XCircle : Info;
-              const iconColor = notification.type === "success" ? "#16a34a" : notification.type === "warning" ? "#f59e0b" : notification.type === "danger" ? "#dc2626" : "#7C4DFF";
-              return (
-                <motion.button
-                  key={notification.id}
-                  type="button"
-                  whileHover={{ y: -1 }}
-                  whileTap={{ scale: 0.99 }}
-                  onClick={() => markOneRead(notification)}
-                  className={cn(
-                    "flex w-full items-start gap-3 rounded-2xl border p-4 text-left transition-colors min-w-0",
-                    notification.read ? "border-[#E7E0D2] bg-[#FFFEFA]" : "border-[#D9C8FF] bg-[#F6F0FF]",
-                  )}
-                >
-                  <div className="flex size-10 shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: `${iconColor}20`, color: iconColor }}>
-                    <Icon className="size-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="truncate text-sm font-semibold text-[#1F211B]">{notification.title}</p>
-                      {!notification.read && <span className="size-2 shrink-0 rounded-full bg-[#7C4DFF]" />}
-                    </div>
-                    <p className="mt-1 text-sm leading-6 text-[#6B665C]">{notification.body}</p>
-                    <p className="mt-2 text-xs text-[#8A857A]">{notification.createdAt ? formatDateTime(notification.createdAt) : ""}</p>
-                  </div>
-                  {updatingId === notification.id ? <RefreshCw className="size-4 shrink-0 animate-spin text-[#7C4DFF]" /> : null}
-                </motion.button>
-              );
-            })}
-          </div>
-        )}
-      </ExpressiveCard>
-    </PageTransition>
   );
 }
 
@@ -1966,13 +1818,6 @@ function JourneyPlannerDesktopScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate
   const primaryColor = selectedJourney?.routeBadges?.[0]?.colorHex || "#144fcc";
   const selectedEta = tracking?.stopEtas?.[0];
 
-  const stopNameForAction = (stopId?: number) => {
-    if (!stopId) return "Chưa xác định";
-    return selectedJourney?.stops?.find((stop) => stop.stopId === stopId)?.stopName
-      || tracking?.stops?.find((stop) => stop.stopId === stopId)?.stopName
-      || "Chưa xác định";
-  };
-
   const registerSelected = async () => {
     const action = selectedJourney?.primaryAction;
     if (!action?.enabled || !action.routeId || !action.boardingStopId || !action.alightingStopId) {
@@ -1986,34 +1831,12 @@ function JourneyPlannerDesktopScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate
         alightingStopId: action.alightingStopId,
       });
       localStorage.setItem("unibus.paymentRouteId", String(action.routeId));
-      localStorage.setItem("unibus.pendingPaymentRegistration", JSON.stringify({
-        registrationId: action.routeId,
-        routeId: action.routeId,
-        routeName: selectedJourney?.summary || selectedJourney?.primaryAction?.label || "Tuyến đã đăng ký",
-        boardingStopId: action.boardingStopId,
-        boardingStopName: stopNameForAction(action.boardingStopId),
-        alightingStopId: action.alightingStopId,
-        alightingStopName: stopNameForAction(action.alightingStopId),
-        status: "APPROVED",
-        registeredAt: new Date().toISOString(),
-      }));
       ctx.reload();
       toast.success("Đã đăng ký tuyến. Chuyển sang mua vé tháng.");
       onNavigate("stu-invoices");
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
         localStorage.setItem("unibus.paymentRouteId", String(action.routeId));
-        localStorage.setItem("unibus.pendingPaymentRegistration", JSON.stringify({
-          registrationId: action.routeId,
-          routeId: action.routeId,
-          routeName: selectedJourney?.summary || selectedJourney?.primaryAction?.label || "Tuyến đã đăng ký",
-          boardingStopId: action.boardingStopId,
-          boardingStopName: stopNameForAction(action.boardingStopId),
-          alightingStopId: action.alightingStopId,
-          alightingStopName: stopNameForAction(action.alightingStopId),
-          status: "APPROVED",
-          registeredAt: new Date().toISOString(),
-        }));
         toast.info("Tuyến này đã được đăng ký. Chuyển sang mua vé.");
         onNavigate("stu-invoices");
         return;
@@ -3121,6 +2944,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
   const [showAllVehicles, setShowAllVehicles] = useState(false);
   const locationRequestedRef = useRef(false);
+  const autoSelectedNearestVehicleRef = useRef(false);
 
   const registeredRoutes = registrations.length ? registrations : ctx.registration ? [ctx.registration] : [];
   const selectedRegistration = registeredRoutes.find((item) => String(item.routeId) === String(trackingContext?.routeId))
@@ -3256,7 +3080,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
   const nextEta = journeyTracking?.stopEtas?.[0];
   const routeTitle = journeyTracking?.routeName || trackingContext?.routeName || selectedRoute?.name || "Tuyến đang theo dõi";
   const routeCode = journeyTracking?.routeCode || trackingContext?.routeCode || journeyTracking?.stopEtas?.[0]?.routeCode || selectedRoute?.code || "BUS";
-  const displayVehicles = useMemo(() => journeyTracking?.vehicles || [], [journeyTracking?.vehicles]);
+  const displayVehicles = journeyTracking?.vehicles || [];
   const selectedVehicle = displayVehicles.find((vehicle) => vehicle.vehicleId === selectedVehicleId) || displayVehicles[0];
   const collapsedVehicles = displayVehicles.filter((vehicle) => vehicle.vehicleId !== selectedVehicle?.vehicleId);
 
@@ -3301,9 +3125,10 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
     ? trackingStops.map((stop, index) => {
         const passed = index < nextVehicleStopIndex;
         const current = index === nextVehicleStopIndex;
+        const baseEtaMinutes = Math.max(0, Number(primaryVehicle.etaMinutes ?? 0));
         const minutesAway = passed
           ? -1
-          : Math.max(0, Number(primaryVehicle.etaMinutes ?? 0)) + Math.max(0, index - nextVehicleStopIndex) * 4;
+          : baseEtaMinutes + Math.max(0, index - nextVehicleStopIndex) * 4;
         return {
           stopId: Number(stop.id),
           stopName: stop.name,
@@ -3391,7 +3216,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
     }
   }, [boardingStop, nearestStop?.stop, selectedStopId, trackingStops]);
 
-  const requestMyLocation = useCallback(() => {
+  const requestMyLocation = () => {
     if (!navigator.geolocation) {
       toast.info("Trình duyệt chưa hỗ trợ vị trí.");
       return;
@@ -3401,16 +3226,6 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
       (position) => {
         const location = { lat: position.coords.latitude, lng: position.coords.longitude };
         setUserLocation(location);
-        if (displayVehicles.length) {
-          const closestVehicle = displayVehicles
-            .filter((vehicle) => vehicle.latitude != null && vehicle.longitude != null)
-            .map((vehicle) => ({ vehicle, meters: distanceMeters(location, { lat: numberValue(vehicle.latitude), lng: numberValue(vehicle.longitude) }) }))
-            .sort((left, right) => left.meters - right.meters)[0];
-          if (closestVehicle?.vehicle?.vehicleId) {
-            setSelectedVehicleId(closestVehicle.vehicle.vehicleId);
-            setShowAllVehicles(false);
-          }
-        }
         if (trackingStops.length) {
           const closest = trackingStops
             .map((stop) => ({ stop, meters: distanceMeters(location, { lat: stop.lat, lng: stop.lng }) }))
@@ -3428,17 +3243,36 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
       },
       { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 },
     );
-  }, [displayVehicles, trackingStops]);
+  };
 
   useEffect(() => {
     if (locationRequestedRef.current || showRouteChooser || !hasTrackingSnapshot || typeof navigator === "undefined") return;
     locationRequestedRef.current = true;
     requestMyLocation();
-  }, [hasTrackingSnapshot, requestMyLocation, showRouteChooser]);
+  }, [hasTrackingSnapshot, showRouteChooser]);
 
   useEffect(() => {
     if (!selectedVehicleId && displayVehicles[0]?.vehicleId) setSelectedVehicleId(displayVehicles[0].vehicleId);
   }, [displayVehicles, selectedVehicleId]);
+  useEffect(() => {
+    autoSelectedNearestVehicleRef.current = false;
+  }, [journeyId, trackingContext?.routeId]);
+
+  useEffect(() => {
+    if (!userLocation || !displayVehicles.length || autoSelectedNearestVehicleRef.current) return;
+    const closestVehicle = displayVehicles
+      .filter((vehicle) => vehicle.latitude != null && vehicle.longitude != null)
+      .map((vehicle) => ({
+        vehicle,
+        meters: distanceMeters(userLocation, { lat: numberValue(vehicle.latitude), lng: numberValue(vehicle.longitude) }),
+      }))
+      .sort((left, right) => left.meters - right.meters)[0];
+    if (!closestVehicle?.vehicle?.vehicleId) return;
+    autoSelectedNearestVehicleRef.current = true;
+    setSelectedVehicleId(closestVehicle.vehicle.vehicleId);
+    setShowAllVehicles(false);
+  }, [displayVehicles, userLocation]);
+
 
   const selectTrackingStop = (stopId: string) => {
     setSelectedStopId(stopId);
@@ -3487,7 +3321,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
   useEffect(() => {
     if (!journeyId && !trackingContext?.routeId) return;
     void loadJourneyTracking();
-    const interval = window.setInterval(loadJourneyTracking, 15000);
+    const interval = window.setInterval(loadJourneyTracking, 2000);
     return () => window.clearInterval(interval);
   }, [journeyId, trackingContext?.routeId, loadJourneyTracking]);
 
@@ -3649,32 +3483,12 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                     routeColor={journeyRouteColor}
                     buses={journeyBuses}
                     polylines={journeyPolylines}
+                    allowFallbackPolyline={false}
                     extraMarkers={trackingMarkers}
                     height="100%"
                     animateCamera
                     nextStopIndex={selectedStop ? trackingStops.findIndex((stop) => stop.id === selectedStop.id) : undefined}
                     onSelectStop={selectTrackingStop}
-                    arrivalOverlay={
-                      nextEta ? (
-                        <div className="max-w-[340px] rounded-[24px] border border-[#14140f]/10 bg-white/95 p-4 text-[#14140f] shadow-[0_8px_30px_rgba(0,0,0,0.08)] backdrop-blur">
-                          <div className="flex items-start gap-3">
-                            <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[#14140f] text-[#beff50]">
-                              <Bus className="size-5" />
-                            </span>
-                            <div className="min-w-0">
-                              <p className="text-xs font-semibold text-[#6B6B6B]">
-                                Xe sắp tới
-                              </p>
-                              <p className="mt-1 whitespace-normal break-words text-base font-semibold leading-5 text-[#14140f]">
-                                Tuyến {nextEta.routeCode || routeCode} tới {nextEta.stopName}
-                              </p>
-                              <p className="mt-2 text-sm font-semibold text-[#166534]">{nextEta.minutesAway} phút nữa</p>
-                              <p className="mt-1 text-xs text-[#6B6B6B]">{trackingSourceLabel}</p>
-                            </div>
-                          </div>
-                        </div>
-                      ) : null
-                    }
                   />
                 ) : (
                   <div className="flex h-full items-center justify-center p-8 text-center">
@@ -3686,21 +3500,6 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                   </div>
                 )}
 
-                <div className="pointer-events-none absolute inset-x-5 bottom-5 rounded-[24px] border border-[#14140f]/10 bg-white/95 p-4 shadow-[0_8px_30px_rgba(0,0,0,0.08)] backdrop-blur">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <span className="inline-flex h-10 min-w-12 shrink-0 items-center justify-center rounded-full bg-[#144fcc] px-3 text-sm font-black text-white">{routeCode}</span>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-[#14140f]">{routeTitle}</p>
-                        <p className="mt-0.5 text-xs text-[#6B6B6B]">{trackingSourceLabel}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs font-semibold text-[#6B6B6B]">
-                      <RefreshCw className={cn("size-4", journeyLoading && "animate-spin")} />
-                      {trackingUpdatedLabel}
-                    </div>
-                  </div>
-                </div>
               </div>
             </ExpressiveCard>
           </ScrollReveal>
@@ -3844,20 +3643,34 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                 </div>
                 {visibleEtaRows.length ? (
                   <div className="space-y-0">
-                    {visibleEtaRows.map((stop, index) => (
-                      <div key={`${stop.routeId}-${stop.stopId}`} className="grid grid-cols-[28px_minmax(0,1fr)_56px] gap-3">
-                        <div className="flex flex-col items-center">
-                          <span className={cn("mt-1 size-3 rounded-full border-2", index === 0 ? "border-[#beff50] bg-[#beff50]" : "border-[#144fcc] bg-white")} />
-                          {index < visibleEtaRows.length - 1 ? <span className="mt-1 h-11 w-px bg-[#144fcc]/20" /> : null}
+                    {visibleEtaRows.map((stop, index) => {
+                      const passed = Boolean((stop as { passed?: boolean }).passed);
+                      const current = Boolean((stop as { current?: boolean }).current);
+                      const minutesAway = Math.max(0, Number(stop.minutesAway ?? 0));
+                      const timeLabel = passed
+                        ? "Đã đi qua"
+                        : stop.estimatedArrivalAt
+                          ? new Date(stop.estimatedArrivalAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
+                          : "Đang tính";
+                      const etaLabel = passed ? "Đã qua" : `${minutesAway} phút`;
+                      return (
+                        <div key={`${stop.routeId}-${stop.stopId}`} className={cn("grid grid-cols-[28px_minmax(0,1fr)_64px] gap-3", passed && "opacity-55")}>
+                          <div className="flex flex-col items-center">
+                            <span className={cn(
+                              "mt-1 size-3 rounded-full border-2",
+                              current ? "border-[#beff50] bg-[#beff50]" : passed ? "border-[#9CA3AF] bg-[#9CA3AF]" : "border-[#144fcc] bg-white",
+                            )} />
+                            {index < visibleEtaRows.length - 1 ? <span className={cn("mt-1 h-11 w-px", passed ? "bg-[#9CA3AF]/30" : "bg-[#144fcc]/20")} /> : null}
+                          </div>
+                          <div className="pb-4">
+                            <p className={cn("truncate text-sm font-semibold", passed ? "text-[#6B6B6B]" : "text-[#14140f]")}>{stop.stopName}</p>
+                            <p className="mt-0.5 text-xs text-[#6B6B6B]">{stop.routeCode || routeCode} · {timeLabel}</p>
+                          </div>
+                          <p className={cn("pt-0.5 text-right text-sm font-semibold", current ? "text-[#166534]" : passed ? "text-[#6B6B6B]" : "text-[#144fcc]")}>{etaLabel}</p>
                         </div>
-                        <div className="pb-4">
-                          <p className="truncate text-sm font-semibold text-[#14140f]">{stop.stopName}</p>
-                          <p className="mt-0.5 text-xs text-[#6B6B6B]">{stop.routeCode || routeCode} · {stop.estimatedArrivalAt ? new Date(stop.estimatedArrivalAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "Đang tính"}</p>
-                        </div>
-                        <p className={cn("pt-0.5 text-right text-sm font-semibold", index === 0 ? "text-[#166534]" : "text-[#144fcc]")}>{stop.minutesAway ?? 0} phút</p>
-                      </div>
-                    ))}
-                    {(journeyTracking?.stopEtas || []).length > visibleEtaRows.length ? (
+                      );
+                    })}
+                    {realtimeEtaRows.length > visibleEtaRows.length ? (
                       <button type="button" onClick={() => setShowAllEtaStops((value) => !value)} className="mt-2 w-full rounded-2xl border border-[#14140f]/10 px-4 py-2 text-sm font-semibold text-[#144fcc] hover:bg-[#F8F6EF]">
                         {showAllEtaStops ? "Thu gọn thời gian dự kiến" : "Xem tất cả các trạm"}
                       </button>
@@ -3943,20 +3756,20 @@ function MyJourneysScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
   ];
 
   return (
-    <PageTransition className="min-w-0 rounded-[28px] bg-[#FAF8F2] p-4 sm:p-6">
-      <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-[-0.03em] text-[#111111]">Vé của tôi</h1>
-          <p className="mt-1 text-sm text-[#6B6B6B]">Theo dõi tuyến đăng ký, vé đã mua và mã QR.</p>
-        </div>
-        <ExpressiveButton variant="filled" onClick={() => onNavigate("stu-find")}>
-          <RouteIcon className="size-4" />
-          Tìm tuyến mới
-        </ExpressiveButton>
-      </div>
+    <PageTransition className="space-y-5 min-w-0">
+      <PageHeader
+        title="Vé của tôi"
+        icon={<TicketCheck className="size-7" />}
+        actions={
+          <ExpressiveButton variant="filled" onClick={() => onNavigate("stu-find")}>
+            <RouteIcon className="size-4" />
+            Tìm tuyến mới
+          </ExpressiveButton>
+        }
+      />
 
-      <div className="mb-5 rounded-[22px] border border-[#E8E2D5] bg-white p-1.5 shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
-        <div className="grid grid-cols-1 gap-1 sm:grid-cols-3">
+      <div className="rounded-3xl border border-outline-variant bg-surface p-2">
+        <div className="grid grid-cols-3 gap-1">
           {tabs.map((item) => {
             const Icon = item.icon;
             const active = tab === item.id;
@@ -3966,10 +3779,10 @@ function MyJourneysScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
                 type="button"
                 onClick={() => setTab(item.id)}
                 className={cn(
-                  "state-layer flex min-h-11 items-center justify-center gap-2 rounded-2xl px-3 text-xs font-medium transition-colors sm:text-sm",
+                  "state-layer flex min-h-11 items-center justify-center gap-2 rounded-2xl px-3 text-xs font-bold transition-colors sm:text-sm",
                   active
-                    ? "bg-[#111111] text-[#BDFD4F] shadow-sm"
-                    : "text-[#6B6B6B] hover:bg-[#FAF8F2] hover:text-[#111111]",
+                    ? "bg-[#14140f] text-[#beff50] shadow-sm"
+                    : "text-on-surface-variant hover:bg-[#F8F6EF] hover:text-[#14140f]",
                 )}
               >
                 <Icon className="size-4 shrink-0" />
@@ -3988,25 +3801,9 @@ function MyJourneysScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
           exit={{ opacity: 0, y: -6 }}
           transition={{ duration: 0.18, ease: "easeOut" }}
         >
-          {tab === "routes" && (
-            <MyRoutesScreen
-              ctx={ctx}
-              compact
-              onNavigate={(id) => {
-                if (id === "stu-tracking") {
-                  setTab("tracking");
-                  return;
-                }
-                if (id === "stu-my-ticket") {
-                  setTab("ticket");
-                  return;
-                }
-                onNavigate(id);
-              }}
-            />
-          )}
+          {tab === "routes" && <MyRoutesScreen ctx={ctx} onNavigate={onNavigate} compact />}
           {tab === "ticket" && <MyTicketScreen ctx={ctx} onNavigate={onNavigate} compact />}
-          {tab === "tracking" && <TrackingScreen ctx={ctx} onNavigate={onNavigate} compact />}
+          {tab === "tracking" && <TrackingScreen ctx={ctx} compact />}
         </motion.div>
       </AnimatePresence>
     </PageTransition>
@@ -4023,10 +3820,10 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
   const [working, setWorking] = useState(false);
   const [registrations, setRegistrations] = useState<RegistrationDTO[]>([]);
   const [targetCancel, setTargetCancel] = useState<RegistrationDTO | null>(null);
-  const [expandedRouteId, setExpandedRouteId] = useState<number | null>(null);
 
   const reg = ctx.registration;
   const activeRegistrations = registrations.length ? registrations : reg ? [reg] : [];
+  const routeTickets = ctx.raw.passes?.data?.tickets || [];
 
   const registrationStatusLabel = (status?: string) => ({
     APPROVED: "Đã đăng ký",
@@ -4034,25 +3831,6 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
     CANCELLED: "Đã hủy",
     REJECTED: "Không được duyệt",
   } as Record<string, string>)[String(status || "").toUpperCase()] || "Đã đăng ký";
-  const cleanStopLabel = (value?: string | null) => {
-    const raw = String(value || "").replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
-    if (!raw) return "Chưa xác định";
-    const normalized = raw.toLowerCase();
-    if (["dai hoc", "dai hoc viet", "đại học", "đại học việt"].includes(normalized)) return "Chưa xác định";
-    if (/^[a-z0-9\s]+$/.test(raw) && raw === normalized && raw.length > 12) return "Chưa xác định";
-    return raw;
-  };
-  const routeTickets = useMemo(() => {
-    const tickets = Array.isArray(ctx.raw.passes?.data?.tickets) ? ctx.raw.passes.data.tickets : [];
-    const fallback = ctx.activeTicket ? [ctx.activeTicket] : [];
-    const byId = new Map<string, any>();
-    [...tickets, ...fallback].forEach((ticket: any) => {
-      const key = String(ticket.ticketId ?? ticket.monthlyPassId ?? `${ticket.routeId}-${ticket.ticketType}-${ticket.expiresOn || ticket.expiresAt}`);
-      byId.set(key, ticket);
-    });
-    return Array.from(byId.values());
-  }, [ctx.activeTicket, ctx.raw.passes]);
-
   const activeMonthlyForRoute = (routeId?: number | string | null) => {
     if (routeId == null) return null;
     const today = new Date();
@@ -4104,159 +3882,120 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
   };
 
   return (
-    <PageTransition className={cn("min-w-0", compact ? "space-y-4" : "space-y-6 rounded-[28px] bg-[#FAF8F2] p-4 sm:p-6")}>
+    <PageTransition className="space-y-6 min-w-0">
       {!compact && (
         <PageHeader
           title="Tuyến của tôi"
-          description="Quản lý tuyến đã đăng ký, vé và theo dõi tuyến."
+          description="Quản lý tuyến đã đăng ký và thay đổi trạm lên/xuống."
           icon={<TicketCheck className="size-7" />}
           actions={
-            <ExpressiveButton variant="filled" onClick={() => onNavigate("stu-find")}>
+            <ExpressiveButton variant="filled" onClick={() => setShowRegister(true)}>
               <Plus className="size-4" />
-              Tìm tuyến mới
+              Đăng ký tuyến
             </ExpressiveButton>
           }
         />
       )}
 
       {activeRegistrations.length === 0 ? (
-        <div className="rounded-[24px] border border-[#E8E2D5] bg-white p-8 text-center shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
-          <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-[#111111] text-[#BDFD4F]">
-            <RouteIcon className="size-6" />
-          </div>
-          <h3 className="mt-4 text-lg font-semibold text-[#111111]">Chưa đăng ký tuyến nào</h3>
-          <p className="mx-auto mt-2 max-w-md text-sm text-[#6B6B6B]">Chọn tuyến phù hợp để bắt đầu mua vé và theo dõi tuyến.</p>
-          <ExpressiveButton variant="filled" className="mt-5" onClick={() => onNavigate("stu-find")}>
-            <Plus className="size-4" />
-            Tìm tuyến mới
-          </ExpressiveButton>
-        </div>
+        <EmptyState
+          icon={<TicketCheck className="size-7" />}
+          title="Chưa đăng ký tuyến nào"
+          description="Đăng ký tuyến để sử dụng vé tháng và nhận trợ giá từ trường."
+          action={
+            <ExpressiveButton variant="filled" onClick={() => setShowRegister(true)}>
+              <Plus className="size-4" />
+              Đăng ký tuyến đầu tiên
+            </ExpressiveButton>
+          }
+        />
       ) : (
-        <StaggerGroup className="grid min-w-0 items-start gap-4 xl:grid-cols-2">
+        <StaggerGroup className="grid gap-4 lg:grid-cols-2 min-w-0">
           {activeRegistrations.map((item: RegistrationDTO) => {
-            const regRoute = ctx.routes.find((route: any) => String(route.id ?? route.routeId) === String(item.routeId));
+            const regRoute = ctx.routes.find((r) => r.id === String(item.routeId));
             const activeMonthlyPass = activeMonthlyForRoute(item.routeId);
             const monthlyExpiresOn = activeMonthlyPass?.expiresOn || activeMonthlyPass?.expiresAt;
-            const expanded = expandedRouteId === item.registrationId;
-            const routeName = item.routeName || regRoute?.name || (regRoute as any)?.routeName || "Tuyến đã đăng ký";
-            const routeCode = (item as RegistrationDTO & { routeCode?: string }).routeCode
-              || (regRoute as any)?.routeCode
-              || regRoute?.code
-              || routeName.match(/^\s*(?:Tuyến\s*)?([A-Z]?\d{1,3})/i)?.[1]
-              || "BUS";
-            const ticketStatus = activeMonthlyPass ? "Đã có vé hợp lệ" : "Cần mua vé";
-            const boardingStopLabel = cleanStopLabel(item.boardingStopName);
-            const alightingStopLabel = cleanStopLabel(item.alightingStopName);
             return (
               <StaggerItem key={item.registrationId} className="self-start">
                 <motion.div
-                  whileHover={{ y: -4, scale: 1.006 }}
-                  whileTap={{ scale: 0.998 }}
-                  transition={{ type: "spring", stiffness: 180, damping: 22, mass: 0.7 }}
-                  className="flex min-h-[270px] min-w-0 flex-col overflow-hidden rounded-[24px] border border-[#E8E2D5] bg-white shadow-[0_8px_30px_rgba(0,0,0,0.05)] transition-shadow duration-300 ease-out hover:shadow-[0_16px_42px_rgba(20,20,15,0.09)]"
+                  initial={{ opacity: 0, y: 16, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  transition={{ type: "spring", stiffness: 260, damping: 24 }}
+                  className="relative overflow-hidden rounded-3xl p-6 elev-2 min-w-0"
+                  style={{ backgroundColor: "#beff50", color: "#14140f" }}
                 >
-                  <div className="flex min-h-[270px] flex-col space-y-4 p-4 sm:p-5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex min-w-0 items-start gap-3">
-                        <span className="flex h-10 min-w-10 shrink-0 items-center justify-center rounded-xl bg-[#111111] px-3 text-sm font-semibold text-[#BDFD4F]">
-                          {routeCode}
+                  <div className="absolute -top-12 -right-12 size-48 rounded-full bg-[#14140f]/8 blur-3xl pointer-events-none" />
+                  <div className="relative flex items-start gap-4 min-w-0">
+                    <div
+                      className="size-16 shrink-0 rounded-2xl flex items-center justify-center font-black text-xl shadow-lg"
+                      style={{ backgroundColor: "#14140f", color: regRoute?.color || "#beff50" }}
+                    >
+                      {(regRoute?.code || "UB").slice(0, 2)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap mb-3">
+                        <h2 className="text-xl font-black truncate">{item.routeName}</h2>
+                        <span className="inline-flex items-center h-6 px-2.5 rounded-full text-[10px] font-bold bg-[#14140f] text-[#beff50]">
+                          {registrationStatusLabel(item.status)}
                         </span>
-                        <div className="min-w-0">
-                          <h3 className="line-clamp-2 text-base font-semibold leading-snug text-[#111111]">{routeName}</h3>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            <span className="rounded-full border border-[#DDEBC2] bg-[#F4FFE1] px-2.5 py-1 text-xs font-medium text-[#526D12]">
-                              {registrationStatusLabel(item.status)}
-                            </span>
-                            <span className={cn(
-                              "rounded-full px-2.5 py-1 text-xs font-medium",
-                              activeMonthlyPass ? "bg-[#111111] text-[#BDFD4F]" : "bg-[#FFF7E5] text-[#7A4B00]"
-                            )}>
-                              {ticketStatus}
-                            </span>
-                          </div>
-                        </div>
+                        <span className={cn("inline-flex items-center h-6 px-2.5 rounded-full text-[10px] font-bold", activeMonthlyPass ? "bg-white text-[#166534]" : "bg-[#14140f]/10 text-[#14140f]") }>
+                          {activeMonthlyPass ? "Đã có vé tháng" : "Chưa có vé hợp lệ"}
+                        </span>
+                      </div>
+                      <div className="grid sm:grid-cols-2 gap-2 text-sm">
+                        <InfoCell label="Trạm lên" value={item.boardingStopName || "—"} />
+                        <InfoCell label="Trạm xuống" value={item.alightingStopName || "—"} />
+                        <InfoCell label="Hiệu lực đăng ký" value={formatDate(item.effectiveDate)} />
+                        <InfoCell label="Đăng ký" value={formatDate(item.registeredAt)} />
+                        <InfoCell label="Trạng thái vé" value={activeMonthlyPass ? "Đã có vé tháng" : "Chưa có vé hợp lệ"} />
+                        <InfoCell label="Hiệu lực vé" value={activeMonthlyPass ? `Đến ${formatDate(monthlyExpiresOn)}` : "—"} />
+                      </div>
+                      <div className="flex flex-wrap gap-2 mt-4">
+                        <motion.button
+                          whileHover={{ y: -2 }}
+                          whileTap={{ scale: 0.97 }}
+                          transition={{ type: "spring", stiffness: 400, damping: 22 }}
+                          onClick={() => {
+                            saveRouteTrackingContext(item);
+                            onNavigate("stu-tracking");
+                          }}
+                          className="inline-flex items-center gap-1.5 h-10 px-5 rounded-full bg-[#F8F6EF] text-[#14140f] text-sm font-bold border border-[#14140f]/10 hover:bg-[#beff50]/35"
+                        >
+                          <Navigation className="size-4" />
+                          Theo dõi tuyến
+                        </motion.button>
+                        <motion.button
+                          whileHover={{ y: -2 }}
+                          whileTap={{ scale: 0.97 }}
+                          transition={{ type: "spring", stiffness: 400, damping: 22 }}
+                          onClick={() => {
+                            if (activeMonthlyPass) {
+                              onNavigate("stu-my-ticket");
+                              return;
+                            }
+                            localStorage.setItem("unibus.paymentRouteId", String(item.routeId));
+                            onNavigate("stu-invoices");
+                          }}
+                          className="inline-flex items-center gap-1.5 h-10 px-5 rounded-full bg-[#14140f] text-[#beff50] text-sm font-bold"
+                        >
+                          {activeMonthlyPass ? <QrCode className="size-4" /> : <CreditCard className="size-4" />}
+                          {activeMonthlyPass ? "Xem vé / QR" : "Chọn vé / thanh toán"}
+                        </motion.button>
+                        <motion.button
+                          whileHover={{ y: -2 }}
+                          whileTap={{ scale: 0.97 }}
+                          transition={{ type: "spring", stiffness: 400, damping: 22 }}
+                          onClick={() => {
+                            setTargetCancel(item);
+                            setCancelling(true);
+                          }}
+                          className={cn("inline-flex items-center gap-1.5 h-10 px-5 rounded-full bg-white text-[#14140f] text-sm font-bold border-2 border-[#14140f]", activeMonthlyPass && "opacity-75")}
+                        >
+                          <Trash2 className="size-4" />
+                          Hủy đăng ký
+                        </motion.button>
                       </div>
                     </div>
-
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <RouteStopChip label="Từ" value={boardingStopLabel} />
-                      <RouteStopChip label="Đến" value={alightingStopLabel} />
-                    </div>
-
-                    <div className="mt-auto grid gap-2 sm:grid-cols-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (activeMonthlyPass) {
-                            onNavigate("stu-my-ticket");
-                            return;
-                          }
-                          localStorage.setItem("unibus.paymentRouteId", String(item.routeId));
-                          onNavigate("stu-invoices");
-                        }}
-                        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-[#111111] px-4 text-sm font-semibold text-[#BDFD4F] transition-colors hover:bg-[#24241d]"
-                      >
-                        {activeMonthlyPass ? <QrCode className="size-4" /> : <CreditCard className="size-4" />}
-                        {activeMonthlyPass ? "Xem vé / QR" : "Chọn vé / thanh toán"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          saveRouteTrackingContext({
-                            ...item,
-                            routeCode,
-                            routeName,
-                          });
-                          onNavigate("stu-tracking");
-                        }}
-                        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-[#E8E2D5] bg-white px-4 text-sm font-medium text-[#111111] transition-colors hover:bg-[#FAF8F2]"
-                      >
-                        <Navigation className="size-4" />
-                        Theo dõi tuyến
-                      </button>
-                    </div>
-
-                    <div className="border-t border-[#EEE7DA] pt-3">
-                      <button
-                        type="button"
-                        onClick={() => setExpandedRouteId(expanded ? null : item.registrationId)}
-                        className="inline-flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-xs font-medium text-[#6B6B6B] transition-colors hover:bg-[#FAF8F2] hover:text-[#111111]"
-                      >
-                        {expanded ? "Thu gọn" : "Chi tiết"}
-                        <ChevronRight className={cn("size-3.5 transition-transform", expanded && "rotate-90")} />
-                      </button>
-                    </div>
-
-                    <AnimatePresence initial={false}>
-                      {expanded && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: "auto", opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.18, ease: "easeOut" }}
-                          className="overflow-hidden"
-                        >
-                          <div className="rounded-xl border border-[#EEE7DA] bg-[#FFFEFA] px-4 py-3 text-sm">
-                            <div className="grid gap-x-8 gap-y-2 sm:grid-cols-2">
-                              <RouteDetailLine label="Ngày đăng ký" value={formatDate(item.registeredAt)} />
-                              <RouteDetailLine label="Trạng thái vé" value={ticketStatus} />
-                              {activeMonthlyPass && <RouteDetailLine label="Hiệu lực vé" value={`Đến ${formatDate(monthlyExpiresOn)}`} />}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setTargetCancel(item);
-                                setCancelling(true);
-                              }}
-                              className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-[#8A1C16] transition-colors hover:text-[#B3261E]"
-                            >
-                              <Trash2 className="size-3.5" />
-                              Hủy đăng ký
-                            </button>
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
                   </div>
                 </motion.div>
               </StaggerItem>
@@ -4283,51 +4022,37 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
             <AlertDialogDescription>
               {targetMonthlyPass
                 ? `Không thể hủy khi vé tháng còn hiệu lực. Bạn có thể hủy sau ngày ${formatDate(targetMonthlyPass.expiresOn || targetMonthlyPass.expiresAt)}.`
-                : `Bạn có chắc muốn hủy đăng ký tuyến ${targetCancel?.routeName || reg?.routeName || "này"}?`}
+                : "Bạn có thể đăng ký lại tuyến sau nếu cần. Hành động này không thể hoàn tác."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           {!targetMonthlyPass && (
-            <div className="space-y-2">
-              <Label>Lý do hủy (không bắt buộc)</Label>
-              <Input value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} placeholder="Ví dụ: đổi tuyến khác" />
+            <div className="py-2">
+              <Label className="text-xs">Lý do hủy (tùy chọn)</Label>
+              <Textarea
+                className="mt-1.5"
+                placeholder="Nhập lý do hủy đăng ký..."
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                rows={3}
+              />
             </div>
           )}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={working}>{targetMonthlyPass ? "Đã hiểu" : "Giữ lại"}</AlertDialogCancel>
             {!targetMonthlyPass && (
               <AlertDialogAction
-                onClick={(event) => {
-                  event.preventDefault();
-                  doCancel();
-                }}
+                onClick={doCancel}
                 disabled={working}
+                className="bg-error text-on-error hover:bg-error/90"
               >
                 {working ? <RefreshCw className="size-4 animate-spin" /> : null}
-                Hủy đăng ký
+                Xác nhận hủy
               </AlertDialogAction>
             )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </PageTransition>
-  );
-}
-
-function RouteDetailLine({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-xs">
-      <span className="min-w-0 truncate text-[#8A8276]">{label}</span>
-      <span className="min-w-0 text-right font-semibold text-[#111111]">{value || "Chưa xác định"}</span>
-    </div>
-  );
-}
-
-function RouteStopChip({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="min-w-0 rounded-xl border border-[#EEE7DA] bg-[#FAF8F2] px-4 py-3">
-      <p className="text-xs font-medium text-[#8A8276]">{label}</p>
-      <p className="mt-1 line-clamp-2 text-sm font-semibold leading-snug text-[#111111]">{value}</p>
-    </div>
   );
 }
 
@@ -4444,7 +4169,6 @@ function RegisterRouteDialog({
   );
 }
 
-
 // =============================================================================
 // Screen 7: My Ticket — QR code + ticket details
 // =============================================================================
@@ -4521,23 +4245,27 @@ function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
           initial={{ opacity: 0, y: 16, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ type: "spring", stiffness: 260, damping: 24 }}
-          className="relative overflow-hidden rounded-[24px] border border-[#E8E2D5] bg-white text-[#111111] shadow-[0_8px_30px_rgba(0,0,0,0.05)] min-w-0"
+          className="relative overflow-hidden rounded-3xl border border-[#14140f]/10 bg-[#FAF8F2] text-[#14140f] shadow-[0_18px_50px_rgba(20,20,15,0.08)] min-w-0"
         >
+          {/* decorative dark blobs */}
+          <div className="absolute -top-12 -right-12 size-48 rounded-full bg-[#14140f]/8 blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-16 -left-8 size-40 rounded-full bg-[#beff50]/35 blur-3xl pointer-events-none" />
+
           <div className="relative p-6 sm:p-8 min-w-0">
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6 min-w-0">
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-medium uppercase tracking-[0.18em] text-[#7A756B]">Vé tháng đang sử dụng</p>
-                <h2 className="mt-1 truncate text-2xl font-semibold text-[#111111] sm:text-3xl">{t.routeName}</h2>
+                <p className="text-[10px] font-bold opacity-70 uppercase tracking-wider">Vé tháng đang sử dụng</p>
+                <h2 className="text-2xl sm:text-3xl font-black mt-1 truncate">{t.routeName}</h2>
                 <div className="flex flex-wrap items-center gap-2 mt-3">
                   <span className="inline-flex h-7 px-3 rounded-full bg-[#14140f] text-white text-xs font-bold items-center">
                     {t.routeCode || route?.code || "UNIBUS"}
                   </span>
                   <span className={cn(
-                    "inline-flex items-center gap-1 h-7 px-3 rounded-full text-xs font-medium",
-                    hasActiveMonthlyPass ? "bg-[#111111] text-[#BDFD4F]" : "bg-[#FFF7E5] text-[#7A4B00]"
+                    "inline-flex items-center gap-1 h-7 px-3 rounded-full text-xs font-bold",
+                    hasActiveMonthlyPass ? "bg-[#14140f] text-[#beff50]" : "bg-[#f59e0b] text-[#14140f]"
                   )}>
                     <span className={cn("size-1.5 rounded-full", hasActiveMonthlyPass && "animate-pulse")} style={{ backgroundColor: hasActiveMonthlyPass ? "#beff50" : "#14140f" }} />
-                    {hasActiveMonthlyPass ? "Đã có vé hợp lệ" : "Chưa có vé hợp lệ"}
+                    {hasActiveMonthlyPass ? "Vé tháng còn hiệu lực" : t.status}
                   </span>
                   <span className="inline-flex items-center gap-1 h-7 px-3 rounded-full bg-white text-xs font-bold border border-[#14140f]/10">
                     <Calendar className="size-3.5" />
@@ -4563,22 +4291,22 @@ function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
 
             {/* Info chips — rounded boxes với icon */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5 min-w-0">
-              <div className="rounded-2xl border border-[#EEE7DA] bg-[#FAF8F2] p-3 min-w-0">
+              <div className="bg-[#14140f]/10 rounded-xl p-3 min-w-0">
                 <MapPin className="size-4 mb-1 opacity-70" />
                 <p className="text-[10px] font-bold opacity-70 uppercase">Trạm lên</p>
                 <p className="font-bold text-sm truncate">{t.boardingStopName || "—"}</p>
               </div>
-              <div className="rounded-2xl border border-[#EEE7DA] bg-[#FAF8F2] p-3 min-w-0">
+              <div className="bg-[#14140f]/10 rounded-xl p-3 min-w-0">
                 <MapPin className="size-4 mb-1 opacity-70" />
                 <p className="text-[10px] font-bold opacity-70 uppercase">Trạm xuống</p>
                 <p className="font-bold text-sm truncate">{t.alightingStopName || "—"}</p>
               </div>
-              <div className="rounded-2xl border border-[#EEE7DA] bg-[#FAF8F2] p-3 min-w-0">
+              <div className="bg-[#14140f]/10 rounded-xl p-3 min-w-0">
                 <Calendar className="size-4 mb-1 opacity-70" />
                 <p className="text-[10px] font-bold opacity-70 uppercase">Hiệu lực</p>
                 <p className="font-bold text-sm truncate">{formatDate(t.validFrom)}</p>
               </div>
-              <div className="rounded-2xl border border-[#EEE7DA] bg-[#FAF8F2] p-3 min-w-0">
+              <div className="bg-[#14140f]/10 rounded-xl p-3 min-w-0">
                 <Clock className="size-4 mb-1 opacity-70" />
                 <p className="text-[10px] font-bold opacity-70 uppercase">Hết hạn</p>
                 <p className="font-bold text-sm truncate">{formatDate(t.expiresAt || t.expiresOn)}</p>
@@ -4588,7 +4316,7 @@ function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
             {t.finalFareAmount != null && (
               <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-[#14140f]/15 min-w-0">
                 <div className="flex flex-wrap items-center gap-3 min-w-0">
-                  <div className="bg-[#111111] text-[#BDFD4F] px-4 py-2 rounded-full text-sm font-semibold">
+                  <div className="bg-[#14140f] text-[#beff50] px-4 py-2 rounded-full text-sm font-black">
                     {formatVND(t.finalFareAmount)}
                   </div>
                   {t.subsidyAmount != null && t.subsidyAmount > 0 && (
@@ -5634,7 +5362,6 @@ function FinanceScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
 function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
   const [purchasing, setPurchasing] = useState(false);
   const [registrations, setRegistrations] = useState<RegistrationDTO[]>([]);
-  const [pendingRegistration, setPendingRegistration] = useState<RegistrationDTO | null>(null);
   const [selectedRouteId, setSelectedRouteId] = useState<string>("");
   const [ticketKind, setTicketKind] = useState<"MONTHLY" | "SINGLE">("MONTHLY");
   const [sepayOrder, setSepayOrder] = useState<{
@@ -5652,44 +5379,24 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
   const [paidStatus, setPaidStatus] = useState<"idle" | "checking" | "paid" | "expired">("idle");
   const [copying, setCopying] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
-  const [successDialogOpen, setSuccessDialogOpen] = useState(false);
   const paymentPollTokenRef = useRef(0);
   const paymentSettledRef = useRef(false);
-  const [paymentRouteDetail, setPaymentRouteDetail] = useState<RouteSuggestionDTO | null>(null);
-  const [paymentQuote, setPaymentQuote] = useState<PassesDashboard["monthlyPassQuote"] | null>(null);
 
   const passes = ctx.raw.passes?.data;
-  const dashboardQuote = passes?.monthlyPassQuote;
-  const selectedRegistration = registrations.find((item) => String(item.routeId) === selectedRouteId)
-    || (pendingRegistration && String(pendingRegistration.routeId) === selectedRouteId ? pendingRegistration : null)
-    || (ctx.registration && (!selectedRouteId || String(ctx.registration.routeId) === selectedRouteId) ? ctx.registration : null);
+  const quote = passes?.monthlyPassQuote;
+  const selectedRegistration = registrations.find((item) => String(item.routeId) === selectedRouteId) || ctx.registration;
   const selectedRoute = ctx.routes.find((route: any) => String(route.id ?? route.routeId) === selectedRouteId);
-  const routeScopedDashboardQuote = dashboardQuote && String(dashboardQuote.routeId) === selectedRouteId ? dashboardQuote : null;
-  const activeQuote = paymentQuote && String(paymentQuote.routeId) === selectedRouteId ? paymentQuote : routeScopedDashboardQuote;
-  const singleFare = Number(paymentRouteDetail?.singleFare ?? selectedRoute?.singleFare ?? selectedRoute?.fare ?? 0);
-  const routeMonthlyFare = Number(paymentRouteDetail?.monthlyFare ?? selectedRoute?.monthlyFare ?? selectedRoute?.monthlyPass ?? 0);
-  const monthlyOriginal = Number(activeQuote?.originalFareAmount ?? activeQuote?.baseAmount ?? routeMonthlyFare);
-  const monthlySubsidy = Number(activeQuote?.subsidyAmount ?? 0);
-  const monthlyCalculatedFinal = Math.max(monthlyOriginal - monthlySubsidy, 0);
-  const monthlyFinal = Number(activeQuote?.payableAmount ?? activeQuote?.finalFareAmount ?? (monthlyCalculatedFinal > 0 ? monthlyCalculatedFinal : routeMonthlyFare));
-  const singleOriginal = Number(ticketKind === "SINGLE" ? activeQuote?.originalFareAmount ?? activeQuote?.baseAmount ?? singleFare : singleFare);
-  const singleSubsidy = Number(ticketKind === "SINGLE" ? activeQuote?.subsidyAmount ?? 0 : 0);
-  const singleCalculatedFinal = Math.max(singleOriginal - singleSubsidy, 0);
-  const singleFinal = Number(ticketKind === "SINGLE" ? activeQuote?.payableAmount ?? activeQuote?.finalFareAmount ?? (singleCalculatedFinal > 0 ? singleCalculatedFinal : singleFare) : singleFare);
+  const singleFare = Number(selectedRoute?.singleFare ?? selectedRoute?.fare ?? 0);
+  const routeMonthlyFare = Number(selectedRoute?.monthlyFare ?? selectedRoute?.monthlyPass ?? 0);
+  const monthlyOriginal = Number(quote?.originalFareAmount ?? quote?.baseAmount ?? routeMonthlyFare);
+  const monthlySubsidy = Number(quote?.subsidyAmount ?? 0);
+  const monthlyFinal = Number(quote?.payableAmount ?? quote?.finalFareAmount ?? monthlyOriginal);
+  const singleOriginal = singleFare;
+  const singleSubsidy = 0;
+  const singleFinal = singleFare;
   const ticketLabel = ticketKind === "SINGLE" ? "Vé lượt" : "Vé tháng";
-  const canBuySingle = Boolean(selectedRouteId && (selectedRegistration || pendingRegistration));
-  const currentOriginal = ticketKind === "SINGLE" ? singleOriginal : monthlyOriginal;
-  const currentSubsidy = ticketKind === "SINGLE" ? singleSubsidy : monthlySubsidy;
-  const currentFinal = ticketKind === "SINGLE" ? singleFinal : monthlyFinal;
-  const currentPriceLabel = currentFinal > 0 ? formatVND(currentFinal) : "Theo giá hệ thống";
-  const hasSchoolSubsidy = currentSubsidy > 0;
-  const subsidyPercent = currentOriginal > 0 && hasSchoolSubsidy ? Math.round((currentSubsidy / currentOriginal) * 100) : 0;
-  const monthlyBasePrice = monthlyOriginal > 0 ? monthlyOriginal : routeMonthlyFare;
-  const singleBasePrice = singleOriginal > 0 ? singleOriginal : singleFare;
-
+  const canBuySingle = Boolean(selectedRegistration?.boardingStopId && selectedRegistration?.alightingStopId && singleFinal > 0);
   const refreshPaymentData = useCallback(async () => {
-    await ctx.reload();
-    await new Promise((resolve) => setTimeout(resolve, 1200));
     await ctx.reload();
   }, [ctx]);
 
@@ -5700,42 +5407,12 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
         if (cancelled) return;
         setRegistrations(list);
         const preferred = localStorage.getItem("unibus.paymentRouteId");
-        const pendingRaw = localStorage.getItem("unibus.pendingPaymentRegistration");
-        let pending: RegistrationDTO | null = null;
-        if (pendingRaw) {
-          try {
-            pending = JSON.parse(pendingRaw) as RegistrationDTO;
-          } catch {
-            pending = null;
-          }
-        }
-        if (pending && preferred && String(pending.routeId) === preferred && !list.some((item) => String(item.routeId) === preferred)) {
-          setPendingRegistration(pending);
-        } else {
-          setPendingRegistration(null);
-          localStorage.removeItem("unibus.pendingPaymentRegistration");
-        }
         const firstRoute = preferred || list[0]?.routeId?.toString() || ctx.registration?.routeId?.toString() || "";
         setSelectedRouteId(firstRoute);
-        if (!pending || !preferred || String(pending.routeId) !== preferred) {
-          localStorage.removeItem("unibus.paymentRouteId");
-        }
+        localStorage.removeItem("unibus.paymentRouteId");
       })
       .catch(() => {
-        if (cancelled) return;
-        const preferred = localStorage.getItem("unibus.paymentRouteId");
-        const pendingRaw = localStorage.getItem("unibus.pendingPaymentRegistration");
-        if (preferred && pendingRaw) {
-          try {
-            const pending = JSON.parse(pendingRaw) as RegistrationDTO;
-            if (String(pending.routeId) === preferred) {
-              setPendingRegistration(pending);
-              setSelectedRouteId(preferred);
-              return;
-            }
-          } catch { /* ignore */ }
-        }
-        if (ctx.registration?.routeId) {
+        if (!cancelled && ctx.registration?.routeId) {
           setSelectedRouteId(String(ctx.registration.routeId));
         }
       });
@@ -5743,38 +5420,6 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
       cancelled = true;
     };
   }, [ctx.registration?.routeId]);
-
-  useEffect(() => {
-    let cancelled = false;
-    setPaymentQuote(null);
-    if (!selectedRouteId || !selectedRegistration) return;
-    studentApi.ticketQuote(selectedRouteId, ticketKind)
-      .then((quote) => {
-        if (!cancelled) setPaymentQuote(quote ?? null);
-      })
-      .catch(() => {
-        if (!cancelled) setPaymentQuote(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedRouteId, selectedRegistration, ticketKind]);
-
-  useEffect(() => {
-    let cancelled = false;
-    setPaymentRouteDetail(null);
-    if (!selectedRouteId) return;
-    transportApi.route(selectedRouteId)
-      .then((route) => {
-        if (!cancelled) setPaymentRouteDetail(route);
-      })
-      .catch(() => {
-        if (!cancelled) setPaymentRouteDetail(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedRouteId]);
 
   // Step state: 1 = review, 2 = pay, 3 = done
   const step = !sepayOrder ? 1 : paidStatus === "paid" ? 3 : 2;
@@ -5805,7 +5450,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
       return;
     }
     if (kind === "SINGLE" && !canBuySingle) {
-      toast.error("Hãy chọn tuyến đã đăng ký trước khi mua vé lượt.");
+      toast.error("Cần chọn trạm lên/xuống trước khi mua vé lượt.");
       return;
     }
     setPurchasing(true);
@@ -5828,7 +5473,6 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
               setPaidStatus("paid");
               toast.success(`Thanh toán thành công! ${kind === "SINGLE" ? "Vé lượt" : "Vé tháng"} đã được kích hoạt.`);
               await refreshPaymentData();
-              setSuccessDialogOpen(true);
               return;
             }
           } catch { /* ignore */ }
@@ -5880,11 +5524,38 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Mua vé UniBus"
-        description="Thanh toán qua SePay bằng mã QR VietQR."
+        description="Thanh toán qua SePay bằng mã QR VietQR — nhanh, an toàn."
         icon={<CreditCard className="size-7" />}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.2fr] gap-4 min-w-0">
+      {/* Step indicator */}
+      <ScrollReveal>
+        <div className="flex items-center justify-center gap-2 sm:gap-4">
+          {[
+            { n: 1, label: "Xem đơn", icon: Info },
+            { n: 2, label: "Thanh toán", icon: CreditCard },
+            { n: 3, label: "Hoàn tất", icon: CheckCircle2 },
+          ].map((s, i) => (
+            <React.Fragment key={s.n}>
+              <div className={cn(
+                "flex items-center gap-2 px-3 py-2 rounded-full transition-colors shrink-0",
+                step >= s.n ? "bg-[#beff50] text-[#14140f]" : "bg-surface-container-high text-on-surface-variant"
+              )}>
+                <div className={cn(
+                  "size-6 rounded-full flex items-center justify-center text-xs font-black",
+                  step >= s.n ? "bg-[#14140f] text-[#beff50]" : "bg-surface-container-lowest"
+                )}>
+                  {step > s.n ? <CheckCircle2 className="size-4" /> : s.n}
+                </div>
+                <span className="text-xs font-bold hidden sm:inline">{s.label}</span>
+              </div>
+              {i < 2 && <div className={cn("h-0.5 w-4 sm:w-8", step > s.n ? "bg-[#beff50]" : "bg-outline-variant")} />}
+            </React.Fragment>
+          ))}
+        </div>
+      </ScrollReveal>
+
+      <div className="mx-auto grid w-full max-w-xl grid-cols-1 gap-4 min-w-0">
         {/* Order details */}
         <ScrollReveal>
           <ExpressiveCard variant="elevated" className="p-6 h-full min-w-0">
@@ -5910,41 +5581,34 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                   </div>
                 )}
 
-                <div className="space-y-3">
-                  <div>
-                    <p className="text-sm font-semibold text-[#24251F]">Chọn loại vé</p>
-                  </div>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <p className="mb-2 text-xs font-bold uppercase text-on-surface-variant">Chọn loại vé</p>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {([
-                      { id: "SINGLE" as const, title: "Vé lượt / vé ngày", desc: "Đi một lượt theo tuyến đã đăng ký", amount: singleBasePrice },
-                      { id: "MONTHLY" as const, title: "Vé tháng", desc: "Hiệu lực theo kỳ vé cho tuyến này", amount: monthlyBasePrice },
-                    ]).map((item) => {
-                      const selected = ticketKind === item.id;
-                      return (
-                        <motion.button
-                          key={item.id}
-                          type="button"
-                          whileHover={{ y: -2 }}
-                          whileTap={{ scale: 0.985 }}
-                          onClick={() => { setTicketKind(item.id); setSepayOrder(null); setPaidStatus("idle"); setSecondsLeft(null); }}
-                          className={cn(
-                            "relative rounded-[18px] border p-4 text-left transition-colors duration-200",
-                            selected
-                              ? "border-[#1F211B] bg-white shadow-[0_14px_34px_rgba(20,20,15,0.10)] ring-2 ring-[#beff50]/30"
-                              : "border-[#E4DFD2] bg-[#FFFEFA] hover:border-[#D3CBB8] hover:bg-white",
-                          )}
-                        >
-                          {selected ? (
-                            <span className="absolute right-3 top-3 grid size-6 place-items-center rounded-full bg-[#1F211B] text-[#beff50]">
-                              <CheckCircle2 className="size-3.5" />
-                            </span>
-                          ) : null}
-                          <p className="pr-8 text-sm font-semibold text-[#1F211B]">{item.title}</p>
-                          <p className="mt-1 text-xs leading-5 text-[#7A756B]">{item.desc}</p>
-                          <p className={cn("mt-3 text-xl font-semibold tabular-nums", selected ? "text-[#111111]" : "text-[#34362F]")}>{item.amount ? formatVND(item.amount) : "Chưa có giá"}</p>
-                        </motion.button>
-                      );
-                    })}
+                      { id: "SINGLE" as const, title: "Vé lượt / vé ngày", desc: "Đi một lượt theo tuyến đã đăng ký", amount: singleFinal },
+                      { id: "MONTHLY" as const, title: "Vé tháng", desc: "Dùng trong 30 ngày cho tuyến này", amount: monthlyFinal },
+                    ]).map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => { setTicketKind(item.id); setSepayOrder(null); setPaidStatus("idle"); setSecondsLeft(null); }}
+                        className={cn(
+                          "relative rounded-2xl border p-4 text-left transition-all hover:-translate-y-0.5",
+                          ticketKind === item.id
+                            ? "border-[#14140f] bg-white shadow-[0_8px_24px_rgba(20,20,15,0.08)] ring-2 ring-[#beff50]/35"
+                            : "border-outline-variant bg-surface hover:bg-surface-container-low",
+                        )}
+                      >
+                        {ticketKind === item.id ? (
+                          <span className="absolute right-3 top-3 grid size-6 place-items-center rounded-full bg-[#14140f] text-[#beff50]">
+                            <CheckCircle2 className="size-3.5" />
+                          </span>
+                        ) : null}
+                        <p className="pr-8 text-sm font-black text-on-surface">{item.title}</p>
+                        <p className="mt-1 text-xs text-on-surface-variant">{item.desc}</p>
+                        <p className={cn("mt-3 text-lg font-black", ticketKind === item.id ? "text-[#14140f]" : "text-[#2f332a]")}>{item.amount ? formatVND(item.amount) : "Chưa có giá"}</p>
+                      </button>
+                    ))}
                   </div>
                 </div>
 
@@ -5953,79 +5617,36 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                 <Row label="Trạm xuống" value={selectedRegistration.alightingStopName} icon={<MapPin className="size-4" />} />
                 <Row label="Hiệu lực" value={ticketKind === "SINGLE" ? "Vé lượt trong ngày" : "Theo kỳ vé"} icon={<Calendar className="size-4" />} />
 
-                <div className="h-px bg-[#E7E0D2] my-2" />
-                <div className="space-y-2 rounded-[18px] border border-[#E7E0D2] bg-[#FFFEFA] p-4">
-                  <Row label={ticketKind === "SINGLE" ? "Giá vé lượt" : "Giá niêm yết"} value={currentOriginal ? formatVND(currentOriginal) : "Chưa có giá"} muted />
-                  <AnimatePresence mode="wait">
-                    {hasSchoolSubsidy ? (
-                      <motion.div
-                        key="subsidy-on"
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -6 }}
-                        transition={{ duration: 0.22, ease: "easeOut" }}
-                        className="rounded-[16px] border border-[#CFEA7A] bg-[#F7FFE7] p-3"
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="flex min-w-0 items-center gap-2">
-                            <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[#beff50] text-[#1F211B]">
-                              <GraduationCap className="size-4" />
-                            </span>
-                            <div className="min-w-0">
-                              <p className="text-sm font-semibold text-[#25310E]">Nhà trường hỗ trợ {subsidyPercent > 0 ? `${subsidyPercent}%` : "học phí đi lại"}</p>
-                              <p className="text-xs text-[#5F6E35]">Khoản này được trừ trực tiếp trước khi tạo QR.</p>
-                            </div>
-                          </div>
-                          <motion.p
-                            initial={{ scale: 0.96 }}
-                            animate={{ scale: [0.96, 1.03, 1] }}
-                            transition={{ duration: 0.35, ease: "easeOut" }}
-                            className="shrink-0 text-base font-semibold tabular-nums text-[#315400]"
-                          >
-                            -{formatVND(currentSubsidy)}
-                          </motion.p>
-                        </div>
-                      </motion.div>
-                    ) : (
-                      <motion.div
-                        key="subsidy-off"
-                        initial={{ opacity: 0, y: 6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -6 }}
-                        className="rounded-[16px] bg-[#F7F4EC] px-3 py-2 text-xs text-[#6F6A5F]"
-                      >
-                        Chưa có khoản trợ giá áp dụng cho lựa chọn này.
-                      </motion.div>
+                <div className="h-px bg-outline-variant my-2" />
+                {ticketKind === "MONTHLY" ? (
+                  <>
+                    <Row label="Giá niêm yết" value={formatVND(monthlyOriginal)} muted />
+                    {monthlySubsidy > 0 && <Row label="Trợ giá áp dụng" value={`-${formatVND(monthlySubsidy)}`} accent="success" />}
+                    <Row label="Sinh viên trả" value={formatVND(monthlyFinal)} icon={<Wallet className="size-4" />} />
+                  </>
+                ) : (
+                  <>
+                    <Row label="Giá vé lượt" value={singleOriginal ? formatVND(singleOriginal) : "Chưa có giá"} muted />
+                    <Row label="Trợ giá áp dụng" value={singleSubsidy > 0 ? `-${formatVND(singleSubsidy)}` : "0 ₫"} />
+                    <Row label="Sinh viên trả" value={singleFinal ? formatVND(singleFinal) : "Chưa có giá"} icon={<Wallet className="size-4" />} />
+                    {!canBuySingle && (
+                      <p className="rounded-xl bg-warning-container/50 px-3 py-2 text-xs font-semibold text-on-surface">
+                        Cần chọn trạm lên/xuống trước khi mua vé lượt.
+                      </p>
                     )}
-                  </AnimatePresence>
-                  <Row label="Sinh viên trả" value={currentFinal ? formatVND(currentFinal) : "Chưa có giá"} icon={<Wallet className="size-4" />} />
-                  {ticketKind === "SINGLE" && !canBuySingle && (
-                    <p className="rounded-[14px] bg-warning-container/50 px-3 py-2 text-xs font-medium text-on-surface">
-                      Cần có tuyến đã đăng ký trước khi mua vé lượt.
-                    </p>
-                  )}
-                </div>
+                  </>
+                )}
 
                 <motion.div
-                  key={`${ticketKind}-${currentFinal}-${currentSubsidy}`}
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.24, ease: "easeOut" }}
-                  className="relative mt-2 overflow-hidden rounded-[16px] bg-[#14140f] p-4 text-[#beff50] shadow-[0_16px_36px_rgba(20,20,15,0.16)]"
+                  className="relative overflow-hidden rounded-2xl p-4 mt-2"
+                  style={{ backgroundColor: "#14140f", color: "#beff50" }}
                 >
-                  <motion.div
-                    aria-hidden
-                    className="absolute inset-y-0 left-0 w-20 bg-[#beff50]/10 blur-2xl"
-                    animate={{ x: [0, 18, 0] }}
-                    transition={{ duration: 3.4, repeat: Infinity, ease: "easeInOut" }}
-                  />
-                  <p className="relative text-xs font-medium text-[#E5FF9A]">Tổng thanh toán</p>
-                  <p className="relative mt-1 text-3xl font-semibold tabular-nums">
-                    {sepayOrder ? formatVND(sepayOrder.amount) : currentPriceLabel}
+                  <p className="text-[10px] font-bold opacity-70 uppercase tracking-wide">Tổng thanh toán</p>
+                  <p className="text-3xl font-black mt-1 tabular-nums">
+                    {formatVND(ticketKind === "SINGLE" ? singleFinal : monthlyFinal)}
                   </p>
-                  {hasSchoolSubsidy && !sepayOrder ? (
-                    <p className="relative mt-1 text-xs text-[#D8F58A]">Đã trừ {formatVND(currentSubsidy)} hỗ trợ từ nhà trường.</p>
-                  ) : null}
                 </motion.div>
 
                 {step === 1 && (
@@ -6033,7 +5654,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                     variant="filled"
                     className="w-full mt-2"
                     onClick={() => buy(ticketKind)}
-                    disabled={purchasing || !selectedRouteId || (ticketKind === "SINGLE" && !canBuySingle)}
+                    disabled={purchasing || (ticketKind === "SINGLE" && !canBuySingle)}
                   >
                     {purchasing ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
                     Xác nhận
@@ -6067,161 +5688,45 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
           </ExpressiveCard>
         </ScrollReveal>
 
-        {/* QR / status panel */}
-        <ScrollReveal delay={0.1}>
-          {!sepayOrder ? (
-            <ExpressiveCard variant="filled" className="p-6 h-full flex flex-col items-center justify-center text-center min-w-0">
-              <div className="size-16 rounded-3xl bg-primary-container flex items-center justify-center mb-4">
-                <QrCode className="size-8 text-on-primary-container" />
-              </div>
-              <p className="text-base font-bold">Sẵn sàng thanh toán</p>
-              <p className="text-sm text-on-surface-variant mt-1 max-w-xs">
-                Chọn loại vé bên trái rồi bấm Xác nhận để tạo mã thanh toán VietQR qua SePay.
-                Hỗ trợ mọi app ngân hàng: MBBank, Vietcombank, BIDV, TC Bank, v.v.
-              </p>
-            </ExpressiveCard>
-          ) : step === 3 ? (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ type: "spring", stiffness: 240, damping: 22 }}
-            >
-              <ExpressiveCard variant="elevated" className="p-8 h-full flex flex-col items-center justify-center text-center min-w-0"
-                style={{ backgroundColor: "#beff50", color: "#14140f" }}
-              >
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: "spring", stiffness: 260, damping: 18, delay: 0.1 }}
-                  className="size-24 rounded-full bg-[#14140f] flex items-center justify-center mb-4"
-                >
-                  <CheckCircle2 className="size-12 text-[#beff50]" />
-                </motion.div>
-                <h2 className="text-2xl font-black">Thanh toán thành công!</h2>
-                <p className="text-sm font-semibold opacity-80 mt-2">
-                  {ticketLabel} đã được kích hoạt. Bạn có thể xem vé trong mục “Vé của tôi”.
-                </p>
-                <div className="bg-[#14140f]/10 rounded-2xl p-4 mt-4 w-full max-w-xs">
-                  <p className="text-xs font-bold opacity-70 uppercase">Mã giao dịch</p>
-                  <p className="font-mono font-black text-lg">#{sepayOrder.orderId}</p>
-                  <p className="text-xs font-bold opacity-70 uppercase mt-2">Số tiền</p>
-                  <p className="font-black text-lg">{formatVND(sepayOrder.amount)}</p>
-                </div>
-              </ExpressiveCard>
-            </motion.div>
-          ) : (
-            <ExpressiveCard variant="elevated" className="p-6 h-full min-w-0">
-              {/* Header with countdown */}
-              <div className="flex items-center justify-between mb-4 min-w-0">
-                <div className="min-w-0">
-                  <h3 className="text-lg font-bold flex items-center gap-2">
-                    <QrCode className="size-5 text-primary" />
-                    Quét QR thanh toán {sepayOrder.ticketType === "SINGLE" ? "vé lượt" : "vé tháng"}
-                  </h3>
-                  <p className="text-xs text-on-surface-variant mt-0.5">Mở app ngân hàng bất kỳ → quét QR</p>
-                </div>
-                <div className={cn(
-                  "shrink-0 px-3 py-1.5 rounded-full text-xs font-black tabular-nums",
-                  secondsLeft != null && secondsLeft < 60
-                    ? "bg-error text-white animate-pulse"
-                    : "bg-warning-container text-on-surface"
-                )}>
-                  {fmtCountdown(secondsLeft)}
-                </div>
-              </div>
-
-              {/* QR */}
-              <div className="flex flex-col items-center gap-3">
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="bg-white p-4 rounded-2xl shadow-lg ring-2 ring-[#beff50]/40"
-                >
-                  <img src={sepayOrder.qrUrl} alt="SePay QR" className="h-[240px] w-[240px] rounded-xl object-contain" />
-                </motion.div>
-                <div className="flex items-center gap-2 text-2xl font-black text-primary">
-                  {formatVND(sepayOrder.amount)}
-                </div>
-                <p className="text-xs text-on-surface-variant text-center break-all max-w-xs font-mono">
-                  {sepayOrder.description}
-                </p>
-              </div>
-
-              {/* Bank info */}
-              {sepayOrder.bankCode && sepayOrder.accountNo && (
-                <div className="mt-5 p-4 rounded-2xl bg-surface-container-low space-y-2 min-w-0">
-                  <div className="flex items-center justify-between gap-2 min-w-0">
-                    <span className="text-xs text-on-surface-variant">Ngân hàng</span>
-                    <span className="font-bold text-sm">{sepayOrder.bankCode}</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-2 min-w-0">
-                    <span className="text-xs text-on-surface-variant">Số tài khoản</span>
-                    <button
-                      onClick={copyAccount}
-                      className={cn(
-                        "font-mono font-bold text-sm flex items-center gap-1.5 transition-colors",
-                        copying ? "text-success" : "text-primary hover:underline"
-                      )}
-                    >
-                      {sepayOrder.accountNo}
-                      {copying ? <CheckCircle2 className="size-3.5" /> : <Banknote className="size-3.5" />}
-                    </button>
-                  </div>
-                  {sepayOrder.accountName && (
-                    <div className="flex items-center justify-between gap-2 min-w-0">
-                      <span className="text-xs text-on-surface-variant">Chủ TK</span>
-                      <span className="font-bold text-sm truncate">{sepayOrder.accountName}</span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Status */}
-              <div className="mt-4 flex min-w-0 items-center gap-2 rounded-xl border border-[#2A2A24] bg-[#111111] p-3 text-sm text-[#BDFD4F] shadow-[0_8px_22px_rgba(17,17,17,0.12)]">
-                <RefreshCw className="size-4 shrink-0 animate-spin" />
-                <span className="truncate font-semibold">Đang chờ xác nhận thanh toán từ SePay...</span>
-              </div>
-
-              {paidStatus === "expired" && (
-                <div className="mt-3 p-3 rounded-xl bg-error-container/40 text-error text-sm flex items-center gap-2 min-w-0">
-                  <AlertTriangle className="size-4 shrink-0" />
-                  <span className="font-medium">Đơn hàng hết hạn. Vui lòng tạo lại.</span>
-                  <ExpressiveButton variant="text" size="sm" className="ml-auto" onClick={reset}>Tạo lại</ExpressiveButton>
-                </div>
-              )}
-            </ExpressiveCard>
-          )}
-        </ScrollReveal>
       </div>
 
-      <Dialog open={successDialogOpen} onOpenChange={setSuccessDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <CheckCircle2 className="size-5 text-[#4D7C0F]" />
-              Thanh toán thành công
-            </DialogTitle>
-            <DialogDescription>
-              {ticketLabel} đã được kích hoạt. Hóa đơn và vé của bạn đã được cập nhật trong hệ thống.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2 sm:gap-2">
-            <ExpressiveButton variant="text" onClick={() => setSuccessDialogOpen(false)}>
-              Ở lại
-            </ExpressiveButton>
-            <ExpressiveButton
-              variant="filled"
-              onClick={() => {
-                setSuccessDialogOpen(false);
-                localStorage.setItem("unibus.myJourneysTab", "ticket");
-                onNavigate("stu-my-journeys");
-              }}
-            >
-              Xem vé của tôi
-            </ExpressiveButton>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {typeof document !== "undefined" && sepayOrder && createPortal((
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-900">Thanh toán SePay</h3>
+              <button onClick={reset} className="rounded-full px-3 py-1 text-sm font-semibold text-gray-500 hover:bg-gray-100">Đóng</button>
+            </div>
+            {step === 3 ? (
+              <div className="rounded-xl border border-green-200 bg-green-50 p-5 text-center text-green-700">
+                <CheckCircle2 className="mx-auto mb-2 size-10" />
+                <p className="font-bold">Thanh toán thành công!</p>
+                <p className="text-sm">{ticketLabel} đã được kích hoạt.</p>
+              </div>
+            ) : (
+              <div className="space-y-4 text-center">
+                {sepayOrder.qrUrl && (
+                  <div className="flex justify-center">
+                    <img src={sepayOrder.qrUrl} alt="SePay QR" className="max-w-[240px] rounded-lg" />
+                  </div>
+                )}
+                <div className="rounded-xl bg-gray-50 p-4 text-left text-sm text-gray-700">
+                  <p className="flex justify-between gap-3"><span>Số tiền</span><span className="font-bold text-blue-600">{formatVND(sepayOrder.amount)}</span></p>
+                  <p className="mt-2 flex justify-between gap-3"><span>Nội dung CK</span><span className="font-bold text-red-600 select-all">{sepayOrder.description}</span></p>
+                  {sepayOrder.bankCode && <p className="mt-2 flex justify-between gap-3"><span>Ngân hàng</span><span className="font-semibold">{sepayOrder.bankCode}</span></p>}
+                  {sepayOrder.accountNo && <p className="mt-2 flex justify-between gap-3"><span>Số TK</span><span className="font-semibold select-all">{sepayOrder.accountNo}</span></p>}
+                  {sepayOrder.accountName && <p className="mt-2 flex justify-between gap-3"><span>Chủ TK</span><span className="font-semibold text-right">{sepayOrder.accountName}</span></p>}
+                </div>
+                <p className="text-xs text-gray-500">Đang chờ xác nhận thanh toán từ SePay...</p>
+                {paidStatus === "expired" && (
+                  <div className="rounded-xl bg-red-50 p-3 text-sm font-medium text-red-600">Đơn hàng hết hạn. Vui lòng đóng popup và tạo lại.</div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      ), document.body)}
+
     </PageTransition>
   );
 }
