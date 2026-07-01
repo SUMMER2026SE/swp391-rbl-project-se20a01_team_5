@@ -475,11 +475,7 @@ export const JourneyMap = React.memo(function JourneyMap({
       ...cleanStops.map((stop) => ({ lat: stop.lat, lng: stop.lng })),
       ...extraMarkers.filter(validPoint),
     ];
-    const geometryPoints = [
-      ...linesToDraw.flatMap((line) => line.points),
-      ...cleanStops.map((stop) => ({ lat: stop.lat, lng: stop.lng })),
-    ];
-    const geometryKey = geometryPoints
+    const geometryKey = allPoints
       .map((point) => `${point.lat.toFixed(5)},${point.lng.toFixed(5)}`)
       .join("|");
 
@@ -564,6 +560,30 @@ export const JourneyMap = React.memo(function JourneyMap({
     }
   }, [mapReadyToken, scrollWheelZoom]);
 
+  React.useEffect(() => {
+    const map = mapRef.current;
+    const container = containerRef.current;
+    if (!map || !container || mapReadyToken === 0 || !scrollWheelZoom) return;
+
+    let lastWheelAt = 0;
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const now = window.performance.now();
+      if (now - lastWheelAt < 80) return;
+      lastWheelAt = now;
+
+      const currentZoom = map.getZoom();
+      const nextZoom = currentZoom + (event.deltaY < 0 ? 0.5 : -0.5);
+      const boundedZoom = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), nextZoom));
+      if (boundedZoom === currentZoom) return;
+      map.setZoomAround(map.mouseEventToContainerPoint(event), boundedZoom, { animate: false });
+    };
+
+    container.addEventListener("wheel", onWheel, { passive: false });
+    return () => container.removeEventListener("wheel", onWheel);
+  }, [mapReadyToken, scrollWheelZoom]);
   return (
     <div
       ref={containerRef}

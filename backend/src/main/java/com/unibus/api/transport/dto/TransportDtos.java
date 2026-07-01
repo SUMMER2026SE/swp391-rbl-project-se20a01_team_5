@@ -128,7 +128,7 @@ public final class TransportDtos {
    public static record VehicleSnapshot(String vehicleId, String plateNumber, Integer routeId,
          String routeCode, BigDecimal latitude, BigDecimal longitude, BigDecimal speedKmh,
          Integer occupancy, Integer capacity, Integer nextStopId, String nextStopName,
-         Integer etaMinutes, Integer distanceMeters) {
+         Integer etaMinutes) {
    }
 
    public static record StopEta(Integer stopId, String stopName, Integer routeId,
