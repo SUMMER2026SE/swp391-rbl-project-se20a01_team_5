@@ -4153,9 +4153,9 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
                   whileHover={{ y: -4, scale: 1.006 }}
                   whileTap={{ scale: 0.998 }}
                   transition={{ type: "spring", stiffness: 180, damping: 22, mass: 0.7 }}
-                  className="flex min-h-[270px] min-w-0 flex-col overflow-hidden rounded-[24px] border border-[#E8E2D5] bg-white shadow-[0_8px_30px_rgba(0,0,0,0.05)] transition-shadow duration-300 ease-out hover:shadow-[0_16px_42px_rgba(20,20,15,0.09)]"
+                  className="flex min-h-[330px] min-w-0 flex-col overflow-hidden rounded-[24px] border border-[#E8E2D5] bg-white shadow-[0_8px_30px_rgba(0,0,0,0.05)] transition-shadow duration-300 ease-out hover:shadow-[0_16px_42px_rgba(20,20,15,0.09)]"
                 >
-                  <div className="flex min-h-[270px] flex-col space-y-4 p-4 sm:p-5">
+                  <div className="flex min-h-[330px] flex-col space-y-4 p-4 sm:p-5">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex min-w-0 items-start gap-3">
                         <span className="flex h-10 min-w-10 shrink-0 items-center justify-center rounded-xl bg-[#111111] px-3 text-sm font-semibold text-[#BDFD4F]">
@@ -5921,11 +5921,9 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                     ]).map((item) => {
                       const selected = ticketKind === item.id;
                       return (
-                        <motion.button
+                        <button
                           key={item.id}
                           type="button"
-                          whileHover={{ y: -2 }}
-                          whileTap={{ scale: 0.985 }}
                           onClick={() => { setTicketKind(item.id); setSepayOrder(null); setPaidStatus("idle"); setSecondsLeft(null); }}
                           className={cn(
                             "relative rounded-[18px] border p-4 text-left transition-colors duration-200",
@@ -5942,7 +5940,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                           <p className="pr-8 text-sm font-semibold text-[#1F211B]">{item.title}</p>
                           <p className="mt-1 text-xs leading-5 text-[#7A756B]">{item.desc}</p>
                           <p className={cn("mt-3 text-xl font-semibold tabular-nums", selected ? "text-[#111111]" : "text-[#34362F]")}>{item.amount ? formatVND(item.amount) : "Chưa có giá"}</p>
-                        </motion.button>
+                        </button>
                       );
                     })}
                   </div>
@@ -6139,7 +6137,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                 >
                   <img src={sepayOrder.qrUrl} alt="SePay QR" className="h-[240px] w-[240px] rounded-xl object-contain" />
                 </motion.div>
-                <div className="flex items-center gap-2 text-2xl font-black text-primary">
+                <div className="flex items-center gap-2 text-2xl font-black text-[#111111]">
                   {formatVND(sepayOrder.amount)}
                 </div>
                 <p className="text-xs text-on-surface-variant text-center break-all max-w-xs font-mono">
@@ -6160,11 +6158,11 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                       onClick={copyAccount}
                       className={cn(
                         "font-mono font-bold text-sm flex items-center gap-1.5 transition-colors",
-                        copying ? "text-success" : "text-primary hover:underline"
+                        copying ? "text-[#4D7C0F]" : "text-[#111111] hover:underline"
                       )}
                     >
                       {sepayOrder.accountNo}
-                      {copying ? <CheckCircle2 className="size-3.5" /> : <Banknote className="size-3.5" />}
+                      {copying ? <CheckCircle2 className="size-3.5 text-[#4D7C0F]" /> : <Banknote className="size-3.5 text-[#6B6B6B]" />}
                     </button>
                   </div>
                   {sepayOrder.accountName && (
