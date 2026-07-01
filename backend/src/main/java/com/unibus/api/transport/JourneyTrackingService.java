@@ -139,8 +139,14 @@ public class JourneyTrackingService {
     }
 
     private VehicleSnapshot scheduledRouteVehicle(RouteInfo route, List<Coordinate> shape, List<RouteStopPoint> stops, ActiveTrip trip, OffsetDateTime now) {
-        Coordinate position = interpolate(shape, progressForTrip(trip, now));
-        RouteStopPoint nextStop = nextStopForProgress(stops, progressForTrip(trip, now));
+        double progress = progressForTrip(trip, now);
+        Coordinate position = interpolate(shape, progress);
+        RouteStopPoint nextStop = nextStopForProgress(stops, progress);
+        int seed = Math.abs((route.routeId() == null ? 0 : route.routeId()) * 31);
+        int distanceMeters = position == null || nextStop == null ? 0 : distanceMeters(position, nextStop);
+        double segmentPosition = stops.size() <= 1 ? 0 : progress * (stops.size() - 1);
+        double segmentRatio = segmentPosition - Math.floor(segmentPosition);
+        double speedKmh = simulatedSpeedKmh(seed, segmentRatio, distanceMeters, now);
         return new VehicleSnapshot(
                 "route-trip-" + route.routeId(),
                 trip.plateNumber() == null ? route.plateNumber() : trip.plateNumber(),
@@ -148,13 +154,13 @@ public class JourneyTrackingService {
                 route.routeCode(),
                 position == null ? null : position.latitude(),
                 position == null ? null : position.longitude(),
-                BigDecimal.valueOf(24),
+                BigDecimal.valueOf(speedKmh).setScale(1, RoundingMode.HALF_UP),
                 null,
                 45,
                 nextStop == null ? null : nextStop.stopId(),
                 nextStop == null ? null : nextStop.stopName(),
-                nextStop == null ? null : Math.max(0, (int) Math.round((1.0 - progressForTrip(trip, now)) * 8)),
-                null);
+                nextStop == null ? null : etaMinutes(distanceMeters, speedKmh),
+                distanceMeters);
     }
 
     private Optional<VehicleSnapshot> latestVehicle(Integer routeId, RouteInfo route, List<Coordinate> shape, List<RouteStopPoint> stops, OffsetDateTime now) {
@@ -228,11 +234,11 @@ public class JourneyTrackingService {
         int distanceMeters = position == null || nextStop == null ? 0 : distanceMeters(position, nextStop);
         double segmentPosition = stops.size() <= 1 ? 0 : progress * (stops.size() - 1);
         double segmentRatio = segmentPosition - Math.floor(segmentPosition);
-        double speedKmh = simulatedSpeedKmh(seed, segmentRatio, distanceMeters);
+        double speedKmh = simulatedSpeedKmh(seed, segmentRatio, distanceMeters, now);
         int etaMinutes = nextStop == null ? 0 : etaMinutes(distanceMeters, speedKmh);
         return new VehicleSnapshot(
                 index == 0 ? "route-sim-" + route.routeId() : "route-sim-" + route.routeId() + "-" + index,
-                route.plateNumber() == null ? "43B-" + String.format("%05d", 16000 + seed % 70000) : route.plateNumber(),
+                "43B-" + String.format("%05d", 16000 + seed % 70000),
                 route.routeId(),
                 route.routeCode(),
                 position == null ? null : position.latitude(),
@@ -246,20 +252,23 @@ public class JourneyTrackingService {
                 distanceMeters);
     }
 
-    private double simulatedSpeedKmh(int seed, double segmentRatio, int distanceMeters) {
+    private double simulatedSpeedKmh(int seed, double segmentRatio, int distanceMeters, OffsetDateTime now) {
+        int secondOfDay = now.getHour() * 3600 + now.getMinute() * 60 + now.getSecond();
         double cruise = 35 + Math.abs(seed % 16);
-        double wave = Math.sin((seed % 360) * Math.PI / 180.0) * 3.0;
-        double speed = cruise + wave;
-        if (distanceMeters <= 18 || segmentRatio < 0.018) {
+        double seedWave = Math.sin((seed % 360) * Math.PI / 180.0) * 2.0;
+        double timeWave = Math.sin((secondOfDay + seed * 13) / 5.0) * 3.5;
+        double pulse = Math.sin((secondOfDay + seed * 7) / 2.3) * 1.2;
+        double speed = Math.max(35, Math.min(50, cruise + seedWave + timeWave + pulse));
+        if (distanceMeters <= 18) {
             return 0;
         }
-        if (segmentRatio < 0.12) {
-            return Math.max(8, speed * (segmentRatio / 0.12));
+        if (distanceMeters <= 250) {
+            return Math.max(4, speed * distanceMeters / 250.0);
         }
-        if (segmentRatio > 0.82) {
-            return Math.max(4, speed * ((1.0 - segmentRatio) / 0.18));
+        if (segmentRatio < 0.08) {
+            return Math.max(8, speed * (segmentRatio / 0.08));
         }
-        return Math.max(35, Math.min(50, speed));
+        return speed;
     }
 
     private int etaMinutes(int distanceMeters, double speedKmh) {
