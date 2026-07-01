@@ -454,7 +454,6 @@ export interface JourneyTrackingSnapshotDTO {
     nextStopId?: number;
     nextStopName?: string;
     etaMinutes?: number;
-    distanceMeters?: number;
   }[];
   stopEtas?: {
     stopId: number;
