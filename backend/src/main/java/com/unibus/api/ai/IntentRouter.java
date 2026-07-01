@@ -13,12 +13,15 @@ public class IntentRouter {
         if (normalized.isBlank()) {
             return AiIntent.OTHER;
         }
-        if (isGeneralAdvisory(normalized)) {
+        if (containsAny(normalized, "khong can tim tuyen", "khong can tra tuyen")) {
             return AiIntent.OTHER;
         }
         if (containsAny(normalized, "tuyen", "duong", "di toi", "di den", "goi y", "nhanh", "re")
                 || (normalized.contains("di tu") && normalized.contains("den"))) {
             return AiIntent.ROUTE_SUGGESTION;
+        }
+        if (isGeneralAdvisory(normalized)) {
+            return AiIntent.OTHER;
         }
         if (containsAny(normalized, "gia", "bao nhieu tien", "ve thang", "ve le")) {
             return AiIntent.FARE_LOOKUP;
