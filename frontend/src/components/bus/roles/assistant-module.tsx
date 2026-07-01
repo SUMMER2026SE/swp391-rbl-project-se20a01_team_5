@@ -421,14 +421,14 @@ function AssistantDashboard({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: st
             ) : (
               <div className="space-y-2">
                 {ctx.incidents.slice(0, 3).map((inc: any) => (
-                  <ExpressiveCard key={inc.id} variant="filled" className="p-3 min-w-0">
+                  <ExpressiveCard key={inc.incidentId ?? inc.id} variant="filled" className="p-3 min-w-0">
                     <div className="flex items-start gap-2 min-w-0">
                       <AlertTriangle className="size-4 text-error mt-0.5 shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-bold truncate">{inc.description}</p>
-                        <p className="text-xs text-on-surface-variant">{formatDate(inc.createdAt)}</p>
+                        <p className="text-xs text-on-surface-variant">{formatDate(inc.reportedAt || inc.createdAt)}</p>
                       </div>
-                      <M3StatusPill label={inc.status} tone={inc.status === "closed" ? "neutral" : "warning"} />
+                      <M3StatusPill label={incidentStatusLabel(inc.status)} tone={String(inc.status || "").toUpperCase() === "RESOLVED" ? "neutral" : "warning"} />
                     </div>
                   </ExpressiveCard>
                 ))}
@@ -863,12 +863,25 @@ function AssistantLost({ ctx }: { ctx: Ctx }) {
   );
 }
 
+
+const incidentTypeLabel = (type?: string) => ({
+  OVERCROWDED: "Quá tải",
+  EMERGENCY: "Khẩn cấp",
+  TECHNICAL: "Hỏng xe",
+  OTHER: "Khác",
+} as Record<string, string>)[String(type || "").toUpperCase()] || "Khác";
+
+const incidentStatusLabel = (status?: string) => ({
+  NEW: "Mới báo",
+  IN_PROGRESS: "Đang xử lý",
+  RESOLVED: "Đã xử lý",
+} as Record<string, string>)[String(status || "").toUpperCase()] || "Mới báo";
 // =============================================================================
 // Screen 5: Incident — report incident + list
 // =============================================================================
 function AssistantIncident({ ctx }: { ctx: Ctx }) {
   const [tripId, setTripId] = useState<number | null>(null);
-  const [type, setType] = useState("delay");
+  const [type, setType] = useState("OTHER");
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -922,11 +935,10 @@ function AssistantIncident({ ctx }: { ctx: Ctx }) {
                 <Select value={type} onValueChange={setType}>
                   <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="delay">Chậm trễ</SelectItem>
-                    <SelectItem value="breakdown">Hỏng xe</SelectItem>
-                    <SelectItem value="accident">Tai nạn</SelectItem>
-                    <SelectItem value="behavior">Hành vi</SelectItem>
-                    <SelectItem value="other">Khác</SelectItem>
+                    <SelectItem value="OVERCROWDED">Quá tải</SelectItem>
+                    <SelectItem value="TECHNICAL">Hỏng xe</SelectItem>
+                    <SelectItem value="EMERGENCY">Khẩn cấp</SelectItem>
+                    <SelectItem value="OTHER">Khác</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -959,13 +971,13 @@ function AssistantIncident({ ctx }: { ctx: Ctx }) {
             ) : (
               <div className="space-y-3">
                 {ctx.incidents.map((inc: any) => (
-                  <ExpressiveCard key={inc.id} variant="filled" className="p-4 min-w-0">
+                  <ExpressiveCard key={inc.incidentId ?? inc.id} variant="filled" className="p-4 min-w-0">
                     <div className="flex items-start justify-between gap-2 mb-2 min-w-0">
-                      <p className="text-sm font-bold capitalize truncate">{inc.type}</p>
-                      <M3StatusPill label={inc.status} tone={inc.status === "closed" ? "neutral" : "warning"} />
+                      <p className="text-sm font-bold truncate">{incidentTypeLabel(inc.incidentType || inc.type)}</p>
+                      <M3StatusPill label={incidentStatusLabel(inc.status)} tone={String(inc.status || "").toUpperCase() === "RESOLVED" ? "neutral" : "warning"} />
                     </div>
                     <p className="text-sm line-clamp-2">{inc.description}</p>
-                    <p className="text-xs text-on-surface-variant mt-1">{formatDate(inc.createdAt)}</p>
+                    <p className="text-xs text-on-surface-variant mt-1">{formatDate(inc.reportedAt || inc.createdAt)}</p>
                   </ExpressiveCard>
                 ))}
               </div>
@@ -999,7 +1011,9 @@ function AssistantContact({ ctx }: { ctx: Ctx }) {
 
   useEffect(() => {
     loadContact();
-    const timer = window.setInterval(loadContact, 4000);
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void loadContact();
+    }, 4000);
     return () => window.clearInterval(timer);
   }, [loadContact]);
 

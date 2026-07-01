@@ -412,7 +412,7 @@ function ContactPersonCard({
 function DriverDashboard({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
   const firstName = (ctx.user.name || "bạn").split(" ").slice(-1)[0];
   const activeTrip = ctx.activeTrip;
-  const upcomingTrips = ctx.trips.filter((t: any) => t.status === "scheduled").slice(0, 3);
+  const upcomingTrips = ctx.trips.filter((t: any) => String(t.status || "").toUpperCase() === "NOT_STARTED").slice(0, 3);
   const statCards = ctx.stats.slice(0, 4);
 
   return (
@@ -984,7 +984,7 @@ function DriverHistory({ ctx }: { ctx: Ctx }) {
           <TabsTrigger value="feedback">Phản hồi</TabsTrigger>
         </TabsList>
         <TabsContent value="trips">
-          {ctx.trips.filter((t: any) => t.status === "completed").length === 0 ? (
+          {ctx.trips.filter((t: any) => String(t.status || "").toUpperCase() === "COMPLETED").length === 0 ? (
             <EmptyState
               icon={<History className="size-7" />}
               title="Chưa có chuyến hoàn thành"
@@ -992,16 +992,16 @@ function DriverHistory({ ctx }: { ctx: Ctx }) {
             />
           ) : (
             <div className="space-y-3">
-              {ctx.trips.filter((t: any) => t.status === "completed").map((t: any) => (
+              {ctx.trips.filter((t: any) => String(t.status || "").toUpperCase() === "COMPLETED").map((t: any) => (
                 <ExpressiveCard key={t.id} variant="elevated" className="p-4 min-w-0">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="size-10 shrink-0 rounded-xl bg-success-container text-success flex items-center justify-center">
                       <CheckCircle2 className="size-5" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-bold truncate">{t.routeName}</p>
+                      <p className="font-bold truncate">{t.routeCode ? `Tuyến ${t.routeCode} — ${t.routeName}` : t.routeName}</p>
                       <p className="text-xs text-on-surface-variant">
-                        {formatDate(t.date)} • {t.departTime}
+                        {formatDate(t.serviceDate || t.date)} • {t.departureTime || t.departTime || "Chưa có giờ"}
                       </p>
                     </div>
                   </div>
@@ -1074,7 +1074,7 @@ function DriverContact() {
       loadContact();
     }, 0);
     const interval = setInterval(() => {
-      loadContact();
+      if (!document.hidden) void loadContact();
     }, 4000);
     return () => {
       clearTimeout(timer);

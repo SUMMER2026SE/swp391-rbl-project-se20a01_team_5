@@ -53,8 +53,12 @@ public class SePayController {
     public ResponseEntity<Map<String, Object>> handleWebhook(
             @RequestBody Map<String, Object> payload) {
         try {
-            sePayService.processWebhook(payload);
-            return ResponseEntity.ok(Map.of("success", true, "message", "Webhook processed successfully"));
+            Map<String, Object> result = sePayService.processWebhook(payload);
+            boolean processed = Boolean.TRUE.equals(result.get("processed"));
+            return ResponseEntity.ok(Map.of(
+                    "success", processed,
+                    "message", processed ? "Webhook processed successfully" : "Webhook received but no order was paid",
+                    "result", result));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("success", false, "message", "Error processing webhook: " + e.getMessage()));
