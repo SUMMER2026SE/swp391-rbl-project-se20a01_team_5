@@ -154,6 +154,7 @@ import {
   formatVND,
   formatDateTime,
   formatDate,
+  mapInvoice,
 } from "@/lib/prototype-data";
 import {
   studentApi,
@@ -5884,9 +5885,9 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
         icon={<CreditCard className="size-7" />}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.2fr] gap-4 min-w-0">
+      <div className={cn("grid grid-cols-1 gap-4 min-w-0", sepayOrder ? "lg:grid-cols-1" : "lg:grid-cols-[1fr_1.2fr]") }>
         {/* Order details */}
-        <ScrollReveal>
+        {!sepayOrder && <ScrollReveal>
           <ExpressiveCard variant="elevated" className="p-6 h-full min-w-0">
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
               <TicketCheck className="size-5 text-[#111111]" />
@@ -5947,8 +5948,8 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                 </div>
 
                 <Row label="Tuyến" value={selectedRegistration.routeName} icon={<RouteIcon className="size-4" />} />
-                <Row label="Trạm lên" value={selectedRegistration.boardingStopName} icon={<MapPin className="size-4" />} />
-                <Row label="Trạm xuống" value={selectedRegistration.alightingStopName} icon={<MapPin className="size-4" />} />
+                {ticketKind === "SINGLE" && <Row label="Trạm lên" value={selectedRegistration.boardingStopName} icon={<MapPin className="size-4" />} />}
+                {ticketKind === "SINGLE" && <Row label="Trạm xuống" value={selectedRegistration.alightingStopName} icon={<MapPin className="size-4" />} />}
                 <Row label="Hiệu lực" value={ticketKind === "SINGLE" ? "Vé lượt trong ngày" : "Theo kỳ vé"} icon={<Calendar className="size-4" />} />
 
                 <div className="h-px bg-[#E7E0D2] my-2" />
@@ -6063,7 +6064,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
               />
             )}
           </ExpressiveCard>
-        </ScrollReveal>
+        </ScrollReveal>}
 
         {/* QR / status panel */}
         <ScrollReveal delay={0.1}>
@@ -6253,18 +6254,31 @@ function Row({
 // Screen 12: Invoices — list of past payments
 // =============================================================================
 function InvoicesScreen({ ctx }: { ctx: Ctx }) {
-  const invoices = ctx.invoices;
-  const refreshedOnOpenRef = useRef(false);
+  const [invoices, setInvoices] = useState(ctx.invoices);
+  const [loadingInvoices, setLoadingInvoices] = useState(false);
   useEffect(() => {
-    if (refreshedOnOpenRef.current) return;
-    refreshedOnOpenRef.current = true;
-    ctx.reload();
-  });
+    let cancelled = false;
+    setInvoices(ctx.invoices);
+    setLoadingInvoices(true);
+    studentApi.payments()
+      .then((items) => {
+        if (!cancelled) setInvoices(items.map(mapInvoice));
+      })
+      .catch(() => {
+        if (!cancelled) setInvoices(ctx.invoices);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingInvoices(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ctx.invoices]);
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Hóa đơn"
-        description={`${invoices.length} giao dịch`}
+        description={loadingInvoices ? "Đang cập nhật giao dịch" : `${invoices.length} giao dịch`}
         icon={<Receipt className="size-7" />}
       />
       {invoices.length === 0 ? (
@@ -6274,34 +6288,38 @@ function InvoicesScreen({ ctx }: { ctx: Ctx }) {
           description="Các giao dịch mua vé sẽ hiển thị tại đây."
         />
       ) : (
-        <StaggerGroup className="space-y-3 min-w-0">
-          {invoices.map((inv: any) => (
-            <StaggerItem key={inv.id}>
-              <ExpressiveCard variant="elevated" className="p-4 min-w-0">
+        <div className="space-y-3 min-w-0">
+          {invoices.map((inv: any) => {
+            const paid = isPaidStatus(inv.status) || inv.status === "paid";
+            const pending = isUnpaidStatus(inv.status) || inv.status === "pending";
+            return (
+              <ExpressiveCard key={inv.id} variant="elevated" className="p-4 min-w-0">
                 <div className="flex items-start justify-between gap-3 min-w-0">
                   <div className="flex items-start gap-3 min-w-0">
-                    <div className="size-10 shrink-0 rounded-xl bg-primary-container text-on-primary-container flex items-center justify-center">
+                    <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#F3F0E8] text-[#111111]">
                       <Receipt className="size-5" />
                     </div>
                     <div className="min-w-0">
-                      <p className="font-bold truncate">{inv.description}</p>
-                      <p className="text-xs text-on-surface-variant mt-0.5">
+                      <p className="truncate font-semibold text-[#111111]">{inv.description}</p>
+                      <p className="mt-0.5 text-xs text-[#6B665C]">
                         {inv.code} • {formatDate(inv.date)}
                       </p>
                     </div>
                   </div>
-                  <div className="text-right shrink-0">
-                    <p className="font-bold text-primary">{formatVND(inv.amount)}</p>
-                    <M3StatusPill
-                      label={inv.status}
-                      tone={isPaidStatus(inv.status) ? "success" : isUnpaidStatus(inv.status) || inv.status === "pending" ? "warning" : "error"}
-                    />
+                  <div className="shrink-0 text-right">
+                    <p className="font-semibold text-[#111111]">{formatVND(inv.amount)}</p>
+                    <span className={cn(
+                      "mt-1 inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium",
+                      paid ? "bg-[#ECFDF3] text-[#166534]" : pending ? "bg-[#FFF7E5] text-[#7A4B00]" : "bg-[#FEE2E2] text-[#991B1B]"
+                    )}>
+                      {paid ? "Đã thanh toán" : pending ? "Đang chờ" : "Có lỗi"}
+                    </span>
                   </div>
                 </div>
               </ExpressiveCard>
-            </StaggerItem>
-          ))}
-        </StaggerGroup>
+            );
+          })}
+        </div>
       )}
     </PageTransition>
   );
