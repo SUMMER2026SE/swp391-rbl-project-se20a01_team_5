@@ -6274,14 +6274,17 @@ function InvoicesScreen({ ctx }: { ctx: Ctx }) {
       cancelled = true;
     };
   }, [ctx.invoices]);
+
+  const visibleInvoices = invoices.filter((inv: any) => !(isUnpaidStatus(inv.status) || inv.status === "pending"));
+
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Hóa đơn"
-        description={loadingInvoices ? "Đang cập nhật giao dịch" : `${invoices.length} giao dịch`}
+        description={loadingInvoices ? "Đang cập nhật giao dịch" : `${visibleInvoices.length} giao dịch`}
         icon={<Receipt className="size-7" />}
       />
-      {invoices.length === 0 ? (
+      {visibleInvoices.length === 0 ? (
         <EmptyState
           icon={<Receipt className="size-7" />}
           title="Chưa có hóa đơn"
@@ -6289,9 +6292,8 @@ function InvoicesScreen({ ctx }: { ctx: Ctx }) {
         />
       ) : (
         <div className="space-y-3 min-w-0">
-          {invoices.map((inv: any) => {
+          {visibleInvoices.map((inv: any) => {
             const paid = isPaidStatus(inv.status) || inv.status === "paid";
-            const pending = isUnpaidStatus(inv.status) || inv.status === "pending";
             return (
               <ExpressiveCard key={inv.id} variant="elevated" className="p-4 min-w-0">
                 <div className="flex items-start justify-between gap-3 min-w-0">
@@ -6310,9 +6312,9 @@ function InvoicesScreen({ ctx }: { ctx: Ctx }) {
                     <p className="font-semibold text-[#111111]">{formatVND(inv.amount)}</p>
                     <span className={cn(
                       "mt-1 inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium",
-                      paid ? "bg-[#ECFDF3] text-[#166534]" : pending ? "bg-[#FFF7E5] text-[#7A4B00]" : "bg-[#FEE2E2] text-[#991B1B]"
+                      paid ? "bg-[#ECFDF3] text-[#166534]" : "bg-[#FEE2E2] text-[#991B1B]"
                     )}>
-                      {paid ? "Đã thanh toán" : pending ? "Đang chờ" : "Có lỗi"}
+                      {paid ? "Đã thanh toán" : "Có lỗi"}
                     </span>
                   </div>
                 </div>
