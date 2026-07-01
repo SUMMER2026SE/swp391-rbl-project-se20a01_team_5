@@ -269,7 +269,7 @@ export function StudentModule({ activeId, onNavigate, onProfileRefresh }: Studen
       return <ChatbotScreen ctx={ctx} onNavigate={onNavigate} />;
     case "stu-payment":
     case "stu-invoices":
-      return <FinanceScreen ctx={ctx} />;
+      return <FinanceScreen ctx={ctx} onNavigate={onNavigate} />;
     case "stu-feedback":
       return <FeedbackScreen ctx={ctx} />;
     case "stu-lost":
@@ -547,7 +547,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
   const quickActions = [
     { id: "stu-find", label: "Tìm tuyến xe", icon: RouteIcon, bg: "#144fcc", fg: "#fff", iconBg: "#beff50", iconFg: "#14140f" },
     { id: "stu-my-journeys", label: "Vé của tôi", icon: TicketCheck, bg: "#ff8c5f", fg: "#14140f", iconBg: "#14140f", iconFg: "#ff8c5f" },
-    { id: "stu-invoices", label: "Vé tháng & hóa đơn", icon: Receipt, bg: "#14140f", fg: "#fff", iconBg: "#beff50", iconFg: "#14140f" },
+    { id: "stu-invoices", label: "Thanh toán & hóa đơn", icon: Receipt, bg: "#14140f", fg: "#fff", iconBg: "#beff50", iconFg: "#14140f" },
     { id: "stu-chatbot", label: "Hỏi Copilot", icon: Bot, bg: "#c8a0ff", fg: "#14140f", iconBg: "#14140f", iconFg: "#c8a0ff" },
   ];
 
@@ -651,8 +651,6 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
                 )}
                 <div className="flex items-center gap-3 sm:gap-4 pt-1 flex-wrap">
                   <HeroMetric label="Khởi hành" value={nextTrip?.departTime || activeRoute?.firstTrip || "Hôm nay"} />
-                  <div className="w-px h-8 bg-[#14140f]/20 shrink-0" />
-                  <HeroMetric label="Biển số" value={(nextTrip as any)?.licensePlate || "Đang gán"} />
                   <div className="w-px h-8 bg-[#14140f]/20 shrink-0" />
                   <HeroMetric
                     label="Mật độ"
@@ -3932,7 +3930,12 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
 
 
 function MyJourneysScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
-  const [tab, setTab] = useState("routes");
+  const [tab, setTab] = useState(() => {
+    if (typeof window === "undefined") return "routes";
+    const preferred = localStorage.getItem("unibus.myJourneysTab");
+    localStorage.removeItem("unibus.myJourneysTab");
+    return preferred === "ticket" || preferred === "tracking" || preferred === "routes" ? preferred : "routes";
+  });
   const tabs = [
     { id: "routes", label: "Tuyến đã đăng ký", icon: TicketCheck },
     { id: "ticket", label: "Vé đã mua", icon: QrCode },
@@ -4129,7 +4132,7 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
           </ExpressiveButton>
         </div>
       ) : (
-        <StaggerGroup className="grid min-w-0 gap-4 xl:grid-cols-2">
+        <StaggerGroup className="grid min-w-0 items-start gap-4 xl:grid-cols-2">
           {activeRegistrations.map((item: RegistrationDTO) => {
             const regRoute = ctx.routes.find((route: any) => String(route.id ?? route.routeId) === String(item.routeId));
             const activeMonthlyPass = activeMonthlyForRoute(item.routeId);
@@ -4145,14 +4148,14 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
             const boardingStopLabel = cleanStopLabel(item.boardingStopName);
             const alightingStopLabel = cleanStopLabel(item.alightingStopName);
             return (
-              <StaggerItem key={item.registrationId} className="h-full">
+              <StaggerItem key={item.registrationId} className="self-start">
                 <motion.div
                   whileHover={{ y: -4, scale: 1.006 }}
                   whileTap={{ scale: 0.998 }}
                   transition={{ type: "spring", stiffness: 180, damping: 22, mass: 0.7 }}
-                  className="flex h-full min-w-0 flex-col overflow-hidden rounded-[24px] border border-[#E8E2D5] bg-white shadow-[0_8px_30px_rgba(0,0,0,0.05)] transition-shadow duration-300 ease-out hover:shadow-[0_16px_42px_rgba(20,20,15,0.09)]"
+                  className="flex min-h-[270px] min-w-0 flex-col overflow-hidden rounded-[24px] border border-[#E8E2D5] bg-white shadow-[0_8px_30px_rgba(0,0,0,0.05)] transition-shadow duration-300 ease-out hover:shadow-[0_16px_42px_rgba(20,20,15,0.09)]"
                 >
-                  <div className="flex min-h-full flex-1 flex-col space-y-4 p-4 sm:p-5">
+                  <div className="flex min-h-[270px] flex-col space-y-4 p-4 sm:p-5">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex min-w-0 items-start gap-3">
                         <span className="flex h-10 min-w-10 shrink-0 items-center justify-center rounded-xl bg-[#111111] px-3 text-sm font-semibold text-[#BDFD4F]">
@@ -5616,10 +5619,10 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
   );
 }
 
-function FinanceScreen({ ctx }: { ctx: Ctx }) {
+function FinanceScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
   return (
     <PageTransition className="space-y-8 min-w-0">
-      <PaymentScreen ctx={ctx} />
+      <PaymentScreen ctx={ctx} onNavigate={onNavigate} />
       <InvoicesScreen ctx={ctx} />
     </PageTransition>
   );
@@ -5628,7 +5631,7 @@ function FinanceScreen({ ctx }: { ctx: Ctx }) {
 // =============================================================================
 // Screen 11: Payment — buy monthly pass (SePay QR)
 // =============================================================================
-function PaymentScreen({ ctx }: { ctx: Ctx }) {
+function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
   const [purchasing, setPurchasing] = useState(false);
   const [registrations, setRegistrations] = useState<RegistrationDTO[]>([]);
   const [pendingRegistration, setPendingRegistration] = useState<RegistrationDTO | null>(null);
@@ -5649,6 +5652,7 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
   const [paidStatus, setPaidStatus] = useState<"idle" | "checking" | "paid" | "expired">("idle");
   const [copying, setCopying] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+  const [successDialogOpen, setSuccessDialogOpen] = useState(false);
   const paymentPollTokenRef = useRef(0);
   const paymentSettledRef = useRef(false);
   const [paymentRouteDetail, setPaymentRouteDetail] = useState<RouteSuggestionDTO | null>(null);
@@ -5680,8 +5684,14 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
   const currentPriceLabel = currentFinal > 0 ? formatVND(currentFinal) : "Theo giá hệ thống";
   const hasSchoolSubsidy = currentSubsidy > 0;
   const subsidyPercent = currentOriginal > 0 && hasSchoolSubsidy ? Math.round((currentSubsidy / currentOriginal) * 100) : 0;
-  const monthlyPriceLabel = monthlyFinal > 0 ? formatVND(monthlyFinal) : routeMonthlyFare > 0 ? formatVND(routeMonthlyFare) : "Theo giá hệ thống";
-  const singlePriceLabel = singleFinal > 0 ? formatVND(singleFinal) : "Theo giá hệ thống";
+  const monthlyBasePrice = monthlyOriginal > 0 ? monthlyOriginal : routeMonthlyFare;
+  const singleBasePrice = singleOriginal > 0 ? singleOriginal : singleFare;
+
+  const refreshPaymentData = useCallback(async () => {
+    await ctx.reload();
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    await ctx.reload();
+  }, [ctx]);
 
   useEffect(() => {
     let cancelled = false;
@@ -5817,7 +5827,8 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
               paymentSettledRef.current = true;
               setPaidStatus("paid");
               toast.success(`Thanh toán thành công! ${kind === "SINGLE" ? "Vé lượt" : "Vé tháng"} đã được kích hoạt.`);
-              await ctx.reload();
+              await refreshPaymentData();
+              setSuccessDialogOpen(true);
               return;
             }
           } catch { /* ignore */ }
@@ -5833,7 +5844,7 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
     } finally {
       setPurchasing(false);
     }
-  }, [canBuySingle, ctx, selectedRouteId, ticketKind]);
+  }, [canBuySingle, refreshPaymentData, selectedRouteId, ticketKind]);
 
   const copyAccount = async () => {
     if (!sepayOrder?.accountNo) return;
@@ -5873,39 +5884,12 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
         icon={<CreditCard className="size-7" />}
       />
 
-      {/* Step indicator */}
-      <ScrollReveal>
-        <div className="flex items-center justify-center gap-2 sm:gap-4">
-          {[
-            { n: 1, label: "Xem đơn", icon: Info },
-            { n: 2, label: "Thanh toán", icon: CreditCard },
-            { n: 3, label: "Hoàn tất", icon: CheckCircle2 },
-          ].map((s, i) => (
-            <React.Fragment key={s.n}>
-              <div className={cn(
-                "flex items-center gap-2 px-3 py-2 rounded-full transition-colors shrink-0",
-                step >= s.n ? "bg-[#beff50] text-[#14140f]" : "bg-surface-container-high text-on-surface-variant"
-              )}>
-                <div className={cn(
-                  "size-6 rounded-full flex items-center justify-center text-xs font-black",
-                  step >= s.n ? "bg-[#14140f] text-[#beff50]" : "bg-surface-container-lowest"
-                )}>
-                  {step > s.n ? <CheckCircle2 className="size-4" /> : s.n}
-                </div>
-                <span className="text-xs font-bold hidden sm:inline">{s.label}</span>
-              </div>
-              {i < 2 && <div className={cn("h-0.5 w-4 sm:w-8", step > s.n ? "bg-[#beff50]" : "bg-outline-variant")} />}
-            </React.Fragment>
-          ))}
-        </div>
-      </ScrollReveal>
-
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.2fr] gap-4 min-w-0">
         {/* Order details */}
         <ScrollReveal>
           <ExpressiveCard variant="elevated" className="p-6 h-full min-w-0">
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-              <TicketCheck className="size-5 text-primary" />
+              <TicketCheck className="size-5 text-[#111111]" />
               Đơn thanh toán
             </h3>
             {selectedRegistration ? (
@@ -5929,12 +5913,11 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
                 <div className="space-y-3">
                   <div>
                     <p className="text-sm font-semibold text-[#24251F]">Chọn loại vé</p>
-                    <p className="mt-0.5 text-xs text-[#7A756B]">Giá bên dưới đã tính theo tuyến bạn đang chọn.</p>
                   </div>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {([
-                      { id: "SINGLE" as const, title: "Vé lượt / vé ngày", desc: "Đi một lượt theo tuyến đã đăng ký", amount: singleFinal, priceLabel: singlePriceLabel },
-                      { id: "MONTHLY" as const, title: "Vé tháng", desc: "Hiệu lực theo kỳ vé cho tuyến này", amount: monthlyFinal, priceLabel: monthlyPriceLabel },
+                      { id: "SINGLE" as const, title: "Vé lượt / vé ngày", desc: "Đi một lượt theo tuyến đã đăng ký", amount: singleBasePrice },
+                      { id: "MONTHLY" as const, title: "Vé tháng", desc: "Hiệu lực theo kỳ vé cho tuyến này", amount: monthlyBasePrice },
                     ]).map((item) => {
                       const selected = ticketKind === item.id;
                       return (
@@ -6057,9 +6040,21 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
                   </ExpressiveButton>
                 )}
                 {step === 3 && (
-                  <ExpressiveButton variant="text" className="w-full mt-5" onClick={reset}>
-                    Mua vé khác
-                  </ExpressiveButton>
+                  <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                    <ExpressiveButton
+                      variant="filled"
+                      className="w-full"
+                      onClick={() => {
+                        localStorage.setItem("unibus.myJourneysTab", "ticket");
+                        onNavigate("stu-my-journeys");
+                      }}
+                    >
+                      Xem vé của tôi
+                    </ExpressiveButton>
+                    <ExpressiveButton variant="text" className="w-full" onClick={reset}>
+                      Mua vé khác
+                    </ExpressiveButton>
+                  </div>
                 )}
               </div>
             ) : (
@@ -6182,9 +6177,9 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
               )}
 
               {/* Status */}
-              <div className="mt-4 p-3 rounded-xl bg-primary-container/30 text-primary text-sm flex items-center gap-2 min-w-0">
-                <RefreshCw className="size-4 animate-spin shrink-0" />
-                <span className="font-medium truncate">Đang chờ xác nhận thanh toán từ SePay...</span>
+              <div className="mt-4 flex min-w-0 items-center gap-2 rounded-xl border border-[#2A2A24] bg-[#111111] p-3 text-sm text-[#BDFD4F] shadow-[0_8px_22px_rgba(17,17,17,0.12)]">
+                <RefreshCw className="size-4 shrink-0 animate-spin" />
+                <span className="truncate font-semibold">Đang chờ xác nhận thanh toán từ SePay...</span>
               </div>
 
               {paidStatus === "expired" && (
@@ -6198,6 +6193,35 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
           )}
         </ScrollReveal>
       </div>
+
+      <Dialog open={successDialogOpen} onOpenChange={setSuccessDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="size-5 text-[#4D7C0F]" />
+              Thanh toán thành công
+            </DialogTitle>
+            <DialogDescription>
+              {ticketLabel} đã được kích hoạt. Hóa đơn và vé của bạn đã được cập nhật trong hệ thống.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <ExpressiveButton variant="text" onClick={() => setSuccessDialogOpen(false)}>
+              Ở lại
+            </ExpressiveButton>
+            <ExpressiveButton
+              variant="filled"
+              onClick={() => {
+                setSuccessDialogOpen(false);
+                localStorage.setItem("unibus.myJourneysTab", "ticket");
+                onNavigate("stu-my-journeys");
+              }}
+            >
+              Xem vé của tôi
+            </ExpressiveButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageTransition>
   );
 }
@@ -6232,6 +6256,12 @@ function Row({
 // =============================================================================
 function InvoicesScreen({ ctx }: { ctx: Ctx }) {
   const invoices = ctx.invoices;
+  const refreshedOnOpenRef = useRef(false);
+  useEffect(() => {
+    if (refreshedOnOpenRef.current) return;
+    refreshedOnOpenRef.current = true;
+    ctx.reload();
+  });
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader

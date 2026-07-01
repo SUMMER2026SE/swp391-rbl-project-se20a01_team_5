@@ -323,14 +323,14 @@ export function AppShell({
           <div className="flex-1" />
 
           <button
-            className="relative flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#0B0B0A] text-white transition-colors hover:bg-[#1A1A18] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#beff50] focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+            className="relative flex size-10 shrink-0 items-center justify-center rounded-xl border border-[#111111] bg-white text-[#111111] shadow-[0_2px_8px_rgba(17,17,17,0.06)] transition-colors hover:bg-[#FAF8F2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#beff50] focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
             onClick={() => goTo(notificationsNavId)}
             aria-label={unread && unread > 0 ? `Thông báo, ${unread} chưa đọc` : "Thông báo"}
             title={unread && unread > 0 ? `${unread} thông báo chưa đọc` : "Thông báo"}
           >
             <Bell className="size-5 stroke-[2.4]" />
             {unread != null && unread > 0 ? (
-              <span className="absolute right-2 top-2 size-2.5 rounded-full bg-[#E21B3C] ring-2 ring-[#0B0B0A]" aria-hidden="true" />
+              <span className="absolute right-2 top-2 size-2.5 rounded-full bg-[#E21B3C] ring-2 ring-white" aria-hidden="true" />
             ) : null}
           </button>
 

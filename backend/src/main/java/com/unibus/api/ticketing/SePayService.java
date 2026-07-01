@@ -321,7 +321,7 @@ public class SePayService {
         }
 
         List<Map<String, Object>> orders = jdbcTemplate.queryForList(
-                "SELECT id, student_code, ticket_type, route_id, total, payment_status, name FROM tb_orders WHERE id = ? FOR UPDATE",
+                "SELECT id, student_code, ticket_type, route_id, total, payment_status, name, original_amount, subsidy_amount, final_amount FROM tb_orders WHERE id = ? FOR UPDATE",
                 orderId);
 
         if (orders.isEmpty()) {
@@ -352,7 +352,10 @@ public class SePayService {
             return Map.of("processed", true, "reason", "TEST_ORDER_PAID", "orderId", orderId);
         }
 
-        provisionTickets(studentCode, ticketType, routeId, total, refCode);
+        BigDecimal originalAmount = (BigDecimal) order.getOrDefault("original_amount", total);
+        BigDecimal subsidyAmount = (BigDecimal) order.getOrDefault("subsidy_amount", BigDecimal.ZERO);
+        BigDecimal finalAmount = (BigDecimal) order.getOrDefault("final_amount", total);
+        provisionTickets(studentCode, ticketType, routeId, finalAmount, originalAmount, subsidyAmount, refCode);
         return Map.of("processed", true, "reason", "ORDER_PAID", "orderId", orderId);
     }
 
@@ -401,7 +404,8 @@ public class SePayService {
         return BigDecimal.ZERO;
     }
 
-    private void provisionTickets(String studentCode, String ticketType, Integer routeId, BigDecimal finalAmount, String transactionCode) {
+    private void provisionTickets(String studentCode, String ticketType, Integer routeId, BigDecimal finalAmount,
+            BigDecimal orderOriginalAmount, BigDecimal orderSubsidyAmount, String transactionCode) {
         if ("test".equalsIgnoreCase(ticketType)) {
             return;
         }
@@ -420,8 +424,8 @@ public class SePayService {
                     studentCode, routeId);
 
             Integer subsidyPolicyId = null;
-            BigDecimal originalFare = finalAmount;
-            BigDecimal subsidyAmount = BigDecimal.ZERO;
+            BigDecimal originalFare = orderOriginalAmount == null ? finalAmount : orderOriginalAmount;
+            BigDecimal subsidyAmount = orderSubsidyAmount == null ? BigDecimal.ZERO : orderSubsidyAmount;
 
             // Try to resolve dynamic subsidy info again for DB insertion consistency
             try {
@@ -550,8 +554,11 @@ public class SePayService {
                 if (payId != null) {
                     // Create invoice
                     jdbcTemplate.update(
-                            "INSERT INTO invoices(payment_id, student_code, description, amount, original_amount, subsidy_amount, final_amount) VALUES (?, ?, 'Single bus ticket paid via SePay', ?, ?, 0, ?)",
-                            payId.intValue(), studentCode, finalAmount, finalAmount, finalAmount);
+                            "INSERT INTO invoices(payment_id, student_code, description, amount, original_amount, subsidy_amount, final_amount) VALUES (?, ?, 'Single bus ticket paid via SePay', ?, ?, ?, ?)",
+                            payId.intValue(), studentCode, finalAmount,
+                            orderOriginalAmount == null ? finalAmount : orderOriginalAmount,
+                            orderSubsidyAmount == null ? BigDecimal.ZERO : orderSubsidyAmount,
+                            finalAmount);
                 }
             }
         }
