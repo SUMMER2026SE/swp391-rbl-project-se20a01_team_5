@@ -1686,7 +1686,7 @@ function UniversityScreen({ ctx, onProfileRefresh }: { ctx: Ctx; onProfileRefres
 // Screen 3: Journey planner desktop wrapper
 // =============================================================================
 function JourneyPlannerDesktopScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
-  const [originQuery, setOriginQuery] = useState("Đại học Việt Hàn");
+  const [originQuery, setOriginQuery] = useState("Trường Đại học Duy Tân");
   const [destinationQuery, setDestinationQuery] = useState("Bến xe Trung tâm Đà Nẵng");
   const [origin, setOrigin] = useState<PlaceSuggestionDTO | null>(null);
   const [destination, setDestination] = useState<PlaceSuggestionDTO | null>(null);
@@ -1803,7 +1803,7 @@ function JourneyPlannerDesktopScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate
     (async () => {
       try {
         const [originList, destinationList] = await Promise.all([
-          transportApi.searchPlaces("Đại học Việt Hàn", undefined, undefined, 3),
+          transportApi.searchPlaces("Trường Đại học Duy Tân", undefined, undefined, 3),
           transportApi.searchPlaces("Bến xe Trung tâm Đà Nẵng", undefined, undefined, 3),
         ]);
         if (cancelled) return;
@@ -3708,17 +3708,29 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
     if (/^[a-z0-9\s]+$/.test(raw) && raw === normalized && raw.length > 12) return "Chưa xác định";
     return raw;
   };
+  const routeTickets = useMemo(() => {
+    const tickets = Array.isArray(ctx.raw.passes?.data?.tickets) ? ctx.raw.passes.data.tickets : [];
+    const fallback = ctx.activeTicket ? [ctx.activeTicket] : [];
+    const byId = new Map<string, any>();
+    [...tickets, ...fallback].forEach((ticket: any) => {
+      const key = String(ticket.ticketId ?? ticket.monthlyPassId ?? `${ticket.routeId}-${ticket.ticketType}-${ticket.expiresOn || ticket.expiresAt}`);
+      byId.set(key, ticket);
+    });
+    return Array.from(byId.values());
+  }, [ctx.activeTicket, ctx.raw.passes]);
+
   const activeMonthlyForRoute = (routeId?: number | string | null) => {
-    const ticket = ctx.activeTicket;
-    if (!ticket || routeId == null) return null;
-    const active = String(ticket.status || "").toUpperCase() === "ACTIVE";
-    const monthly = String(ticket.ticketType || "MONTHLY").toUpperCase() === "MONTHLY";
-    const expiryRaw = ticket.expiresOn || ticket.expiresAt;
-    const expiry = expiryRaw ? new Date(expiryRaw) : null;
+    if (routeId == null) return null;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const stillValid = !expiry || expiry > today;
-    return active && monthly && stillValid && String(ticket.routeId) === String(routeId) ? ticket : null;
+    return routeTickets.find((ticket: any) => {
+      const active = String(ticket.status || "").toUpperCase() === "ACTIVE";
+      const monthly = String(ticket.ticketType || "MONTHLY").toUpperCase() === "MONTHLY";
+      const expiryRaw = ticket.expiresOn || ticket.expiresAt;
+      const expiry = expiryRaw ? new Date(expiryRaw) : null;
+      const stillValid = !expiry || expiry > today;
+      return active && monthly && stillValid && String(ticket.routeId) === String(routeId);
+    }) || null;
   };
   const targetMonthlyPass = activeMonthlyForRoute(targetCancel?.routeId);
 
@@ -4197,7 +4209,7 @@ function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
                   </span>
                   <span className="inline-flex items-center gap-1 h-7 px-3 rounded-full bg-white text-xs font-bold border border-[#14140f]/10">
                     <Calendar className="size-3.5" />
-                    30 ngày
+                    Theo kỳ vé
                   </span>
                 </div>
               </div>
@@ -4276,7 +4288,7 @@ function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
       <Section title="Hướng dẫn sử dụng">
         <ExpressiveCard variant="filled" className="p-5 space-y-2 text-sm">
           <p className="flex items-start gap-2"><CheckCircle2 className="size-4 text-success mt-0.5 shrink-0" />Mã QR được sử dụng để kiểm tra vé khi lên xe.</p>
-          <p className="flex items-start gap-2"><CheckCircle2 className="size-4 text-success mt-0.5 shrink-0" />Vé tháng có hiệu lực trong 30 ngày kể từ ngày mua.</p>
+          <p className="flex items-start gap-2"><CheckCircle2 className="size-4 text-success mt-0.5 shrink-0" />Vé tháng có hiệu lực theo kỳ vé hiện tại.</p>
           <p className="flex items-start gap-2"><CheckCircle2 className="size-4 text-success mt-0.5 shrink-0" />Có thể đi không giới hạn số chuyến trong tuyến đã đăng ký.</p>
           <p className="flex items-start gap-2"><Info className="size-4 text-primary mt-0.5 shrink-0" />Nếu gặp lỗi quét mã, vui lòng liên hệ điều phối viên.</p>
         </ExpressiveCard>
@@ -5308,6 +5320,8 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
   const [paidStatus, setPaidStatus] = useState<"idle" | "checking" | "paid" | "expired">("idle");
   const [copying, setCopying] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+  const paymentPollTokenRef = useRef(0);
+  const paymentSettledRef = useRef(false);
   const [paymentRouteDetail, setPaymentRouteDetail] = useState<RouteSuggestionDTO | null>(null);
   const [paymentQuote, setPaymentQuote] = useState<PassesDashboard["monthlyPassQuote"] | null>(null);
 
@@ -5325,9 +5339,10 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
   const monthlySubsidy = Number(activeQuote?.subsidyAmount ?? 0);
   const monthlyCalculatedFinal = Math.max(monthlyOriginal - monthlySubsidy, 0);
   const monthlyFinal = Number(activeQuote?.payableAmount ?? activeQuote?.finalFareAmount ?? (monthlyCalculatedFinal > 0 ? monthlyCalculatedFinal : routeMonthlyFare));
-  const singleOriginal = singleFare;
-  const singleSubsidy = 0;
-  const singleFinal = singleFare;
+  const singleOriginal = Number(ticketKind === "SINGLE" ? activeQuote?.originalFareAmount ?? activeQuote?.baseAmount ?? singleFare : singleFare);
+  const singleSubsidy = Number(ticketKind === "SINGLE" ? activeQuote?.subsidyAmount ?? 0 : 0);
+  const singleCalculatedFinal = Math.max(singleOriginal - singleSubsidy, 0);
+  const singleFinal = Number(ticketKind === "SINGLE" ? activeQuote?.payableAmount ?? activeQuote?.finalFareAmount ?? (singleCalculatedFinal > 0 ? singleCalculatedFinal : singleFare) : singleFare);
   const ticketLabel = ticketKind === "SINGLE" ? "Vé lượt" : "Vé tháng";
   const canBuySingle = Boolean(selectedRouteId && (selectedRegistration || pendingRegistration));
   const currentOriginal = ticketKind === "SINGLE" ? singleOriginal : monthlyOriginal;
@@ -5428,11 +5443,14 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
   // Countdown timer
   useEffect(() => {
     if (!sepayOrder || paidStatus === "paid" || paidStatus === "expired") return;
+    paymentSettledRef.current = false;
     setSecondsLeft(300); // 5 minutes
     const id = setInterval(() => {
+      if (paymentSettledRef.current) return;
       setSecondsLeft((s) => {
         if (s == null) return null;
         if (s <= 1) {
+          paymentSettledRef.current = true;
           setPaidStatus("expired");
           return 0;
         }
@@ -5454,6 +5472,9 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
     setPurchasing(true);
     try {
       const order = await studentApi.createSePayOrder(kind, Number(selectedRouteId));
+      const pollToken = paymentPollTokenRef.current + 1;
+      paymentPollTokenRef.current = pollToken;
+      paymentSettledRef.current = false;
       setSepayOrder({ ...order, ticketType: kind });
       setPaidStatus("checking");
       toast.success(`Đã tạo QR ${kind === "SINGLE" ? "vé lượt" : "vé tháng"}. Vui lòng quét mã để thanh toán.`);
@@ -5462,15 +5483,19 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
         for (let i = 0; i < 60; i++) {
           try {
             const s = await studentApi.getSePayOrderStatus(order.orderId);
+            if (paymentPollTokenRef.current !== pollToken || paymentSettledRef.current) return;
             if (s.paid) {
+              paymentSettledRef.current = true;
               setPaidStatus("paid");
               toast.success(`Thanh toán thành công! ${kind === "SINGLE" ? "Vé lượt" : "Vé tháng"} đã được kích hoạt.`);
-              ctx.reload();
+              await ctx.reload();
               return;
             }
           } catch { /* ignore */ }
           await new Promise((r) => setTimeout(r, 5000));
         }
+        if (paymentPollTokenRef.current !== pollToken || paymentSettledRef.current) return;
+        paymentSettledRef.current = true;
         setPaidStatus("expired");
       };
       poll();
@@ -5495,6 +5520,8 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
   };
 
   const reset = () => {
+    paymentPollTokenRef.current += 1;
+    paymentSettledRef.current = false;
     setSepayOrder(null);
     setPaidStatus("idle");
     setSecondsLeft(null);
@@ -5578,7 +5605,7 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {([
                       { id: "SINGLE" as const, title: "Vé lượt / vé ngày", desc: "Đi một lượt theo tuyến đã đăng ký", amount: singleFinal, priceLabel: singlePriceLabel },
-                      { id: "MONTHLY" as const, title: "Vé tháng", desc: "Dùng trong 30 ngày cho tuyến này", amount: monthlyFinal, priceLabel: monthlyPriceLabel },
+                      { id: "MONTHLY" as const, title: "Vé tháng", desc: "Hiệu lực theo kỳ vé cho tuyến này", amount: monthlyFinal, priceLabel: monthlyPriceLabel },
                     ]).map((item) => {
                       const selected = ticketKind === item.id;
                       return (
@@ -5612,7 +5639,7 @@ function PaymentScreen({ ctx }: { ctx: Ctx }) {
                 <Row label="Tuyến" value={selectedRegistration.routeName} icon={<RouteIcon className="size-4" />} />
                 <Row label="Trạm lên" value={selectedRegistration.boardingStopName} icon={<MapPin className="size-4" />} />
                 <Row label="Trạm xuống" value={selectedRegistration.alightingStopName} icon={<MapPin className="size-4" />} />
-                <Row label="Hiệu lực" value={ticketKind === "SINGLE" ? "Vé lượt trong ngày" : "30 ngày"} icon={<Calendar className="size-4" />} />
+                <Row label="Hiệu lực" value={ticketKind === "SINGLE" ? "Vé lượt trong ngày" : "Theo kỳ vé"} icon={<Calendar className="size-4" />} />
 
                 <div className="h-px bg-[#E7E0D2] my-2" />
                 <div className="space-y-2 rounded-[18px] border border-[#E7E0D2] bg-[#FFFEFA] p-4">

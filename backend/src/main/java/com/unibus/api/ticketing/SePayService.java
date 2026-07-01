@@ -127,10 +127,13 @@ public class SePayService {
                         "SELECT amount FROM fares WHERE route_id = ? AND fare_type = 'SINGLE' AND effective_from <= CURRENT_DATE AND (effective_until IS NULL OR effective_until >= CURRENT_DATE) ORDER BY effective_from DESC LIMIT 1",
                         BigDecimal.class, routeId);
                 BigDecimal singleFare = fares.isEmpty() ? new BigDecimal("7000") : fares.get(0);
+                MonthlyPassQuote quote = subsidyService.quoteFor(currentUser, routeId, registration.routeName(), singleFare);
 
-                amount = singleFare;
-                originalFare = singleFare;
-                finalAmount = singleFare;
+                amount = quote.finalFareAmount();
+                originalFare = quote.originalFareAmount();
+                subsidyAmount = quote.subsidyAmount();
+                finalAmount = quote.finalFareAmount();
+                subsidyPolicyId = quote.subsidyPolicyId();
             } else {
                 throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid ticket type: " + ticketType);
             }
@@ -265,30 +268,25 @@ public class SePayService {
     }
 
     @Transactional
-    public void processWebhook(Map<String, Object> payload) {
-        String content = (String) payload.get("content");
-        if (content == null || content.isBlank()) {
-            content = (String) payload.get("transactionContent");
-        }
-        if (content == null) {
-            content = "";
-        }
+    public Map<String, Object> processWebhook(Map<String, Object> payload) {
+        String content = firstText(payload, "content", "transactionContent", "description", "code", "referenceCode", "body");
 
         Long orderId = null;
         Pattern pattern = Pattern.compile("DH([0-9]+)");
-        Matcher matcher = pattern.matcher(content);
+        String searchableContent = String.join(" ",
+                content,
+                firstText(payload, "description"),
+                firstText(payload, "code"),
+                firstText(payload, "referenceCode"),
+                firstText(payload, "body"));
+        Matcher matcher = pattern.matcher(searchableContent);
         if (matcher.find()) {
             orderId = Long.parseLong(matcher.group(1));
         }
 
         // Save webhook transaction
         Long sepayTransId = null;
-        Object rawId = payload.get("id");
-        if (rawId instanceof Number) {
-            sepayTransId = ((Number) rawId).longValue();
-        } else if (rawId instanceof String) {
-            sepayTransId = Long.parseLong((String) rawId);
-        }
+        sepayTransId = parseLong(payload.get("id"));
 
         String gateway = (String) payload.get("gateway");
         String transDateStr = (String) payload.get("transactionDate");
@@ -296,13 +294,7 @@ public class SePayService {
         String subAccount = (String) payload.get("subAccount");
         String transferType = (String) payload.get("transferType");
         
-        BigDecimal transferAmount = BigDecimal.ZERO;
-        Object rawAmount = payload.get("transferAmount");
-        if (rawAmount instanceof Number) {
-            transferAmount = new BigDecimal(rawAmount.toString());
-        } else if (rawAmount instanceof String) {
-            transferAmount = new BigDecimal((String) rawAmount);
-        }
+        BigDecimal transferAmount = firstAmount(payload, "transferAmount", "amount", "amountIn", "amount_in");
 
         BigDecimal amountIn = "out".equalsIgnoreCase(transferType) ? BigDecimal.ZERO : transferAmount;
         BigDecimal amountOut = "out".equalsIgnoreCase(transferType) ? transferAmount : BigDecimal.ZERO;
@@ -317,7 +309,7 @@ public class SePayService {
 
         String code = (String) payload.get("code");
         String refCode = (String) payload.get("referenceCode");
-        String description = (String) payload.get("description");
+        String description = firstText(payload, "description", "body");
 
         // Insert transaction log
         jdbcTemplate.update(
@@ -325,7 +317,7 @@ public class SePayService {
                 sepayTransId, gateway, transDateStr, accountNum, subAccount, amountIn, amountOut, accumulated, code, content, refCode, description, orderId);
 
         if (orderId == null) {
-            return;
+            return Map.of("processed", false, "reason", "ORDER_CODE_NOT_FOUND");
         }
 
         List<Map<String, Object>> orders = jdbcTemplate.queryForList(
@@ -333,19 +325,19 @@ public class SePayService {
                 orderId);
 
         if (orders.isEmpty()) {
-            return;
+            return Map.of("processed", false, "reason", "ORDER_NOT_FOUND", "orderId", orderId);
         }
 
         Map<String, Object> order = orders.get(0);
         String currentStatus = (String) order.get("payment_status");
         if (!"Unpaid".equalsIgnoreCase(currentStatus)) {
-            return;
+            return Map.of("processed", true, "reason", "ORDER_ALREADY_PROCESSED", "orderId", orderId, "status", currentStatus);
         }
 
         // Verify paid amount matches order total
         BigDecimal total = (BigDecimal) order.get("total");
         if (total.compareTo(amountIn) != 0) {
-            return;
+            return Map.of("processed", false, "reason", "AMOUNT_MISMATCH", "orderId", orderId, "expected", total, "actual", amountIn);
         }
 
         // Update order status to Paid
@@ -357,10 +349,56 @@ public class SePayService {
         Integer routeId = (Integer) order.get("route_id");
         String orderName = (String) order.get("name");
         if (orderName != null && orderName.startsWith("Test UniBus")) {
-            return;
+            return Map.of("processed", true, "reason", "TEST_ORDER_PAID", "orderId", orderId);
         }
 
         provisionTickets(studentCode, ticketType, routeId, total, refCode);
+        return Map.of("processed", true, "reason", "ORDER_PAID", "orderId", orderId);
+    }
+
+    private String firstText(Map<String, Object> payload, String... keys) {
+        for (String key : keys) {
+            Object value = payload.get(key);
+            if (value != null) {
+                String text = String.valueOf(value).trim();
+                if (!text.isBlank()) {
+                    return text;
+                }
+            }
+        }
+        return "";
+    }
+
+    private Long parseLong(Object raw) {
+        if (raw instanceof Number number) {
+            return number.longValue();
+        }
+        if (raw instanceof String text && !text.isBlank()) {
+            try {
+                return Long.parseLong(text.trim());
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private BigDecimal firstAmount(Map<String, Object> payload, String... keys) {
+        for (String key : keys) {
+            Object value = payload.get(key);
+            if (value instanceof Number number) {
+                return new BigDecimal(number.toString());
+            }
+            if (value instanceof String text && !text.isBlank()) {
+                String normalized = text.trim().replace(",", "");
+                try {
+                    return new BigDecimal(normalized);
+                } catch (NumberFormatException ignored) {
+                    // try the next candidate field
+                }
+            }
+        }
+        return BigDecimal.ZERO;
     }
 
     private void provisionTickets(String studentCode, String ticketType, Integer routeId, BigDecimal finalAmount, String transactionCode) {
