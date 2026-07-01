@@ -2944,6 +2944,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
   const [showAllVehicles, setShowAllVehicles] = useState(false);
   const locationRequestedRef = useRef(false);
+  const autoSelectedNearestVehicleRef = useRef(false);
 
   const registeredRoutes = registrations.length ? registrations : ctx.registration ? [ctx.registration] : [];
   const selectedRegistration = registeredRoutes.find((item) => String(item.routeId) === String(trackingContext?.routeId))
@@ -3124,9 +3125,10 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
     ? trackingStops.map((stop, index) => {
         const passed = index < nextVehicleStopIndex;
         const current = index === nextVehicleStopIndex;
+        const baseEtaMinutes = Math.max(0, Number(primaryVehicle.etaMinutes ?? 0));
         const minutesAway = passed
           ? -1
-          : Math.max(0, Number(primaryVehicle.etaMinutes ?? 0)) + Math.max(0, index - nextVehicleStopIndex) * 4;
+          : baseEtaMinutes + Math.max(0, index - nextVehicleStopIndex) * 4;
         return {
           stopId: Number(stop.id),
           stopName: stop.name,
@@ -3224,16 +3226,6 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
       (position) => {
         const location = { lat: position.coords.latitude, lng: position.coords.longitude };
         setUserLocation(location);
-        if (displayVehicles.length) {
-          const closestVehicle = displayVehicles
-            .filter((vehicle) => vehicle.latitude != null && vehicle.longitude != null)
-            .map((vehicle) => ({ vehicle, meters: distanceMeters(location, { lat: numberValue(vehicle.latitude), lng: numberValue(vehicle.longitude) }) }))
-            .sort((left, right) => left.meters - right.meters)[0];
-          if (closestVehicle?.vehicle?.vehicleId) {
-            setSelectedVehicleId(closestVehicle.vehicle.vehicleId);
-            setShowAllVehicles(false);
-          }
-        }
         if (trackingStops.length) {
           const closest = trackingStops
             .map((stop) => ({ stop, meters: distanceMeters(location, { lat: stop.lat, lng: stop.lng }) }))
@@ -3262,6 +3254,25 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
   useEffect(() => {
     if (!selectedVehicleId && displayVehicles[0]?.vehicleId) setSelectedVehicleId(displayVehicles[0].vehicleId);
   }, [displayVehicles, selectedVehicleId]);
+  useEffect(() => {
+    autoSelectedNearestVehicleRef.current = false;
+  }, [journeyId, trackingContext?.routeId]);
+
+  useEffect(() => {
+    if (!userLocation || !displayVehicles.length || autoSelectedNearestVehicleRef.current) return;
+    const closestVehicle = displayVehicles
+      .filter((vehicle) => vehicle.latitude != null && vehicle.longitude != null)
+      .map((vehicle) => ({
+        vehicle,
+        meters: distanceMeters(userLocation, { lat: numberValue(vehicle.latitude), lng: numberValue(vehicle.longitude) }),
+      }))
+      .sort((left, right) => left.meters - right.meters)[0];
+    if (!closestVehicle?.vehicle?.vehicleId) return;
+    autoSelectedNearestVehicleRef.current = true;
+    setSelectedVehicleId(closestVehicle.vehicle.vehicleId);
+    setShowAllVehicles(false);
+  }, [displayVehicles, userLocation]);
+
 
   const selectTrackingStop = (stopId: string) => {
     setSelectedStopId(stopId);
@@ -3310,7 +3321,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
   useEffect(() => {
     if (!journeyId && !trackingContext?.routeId) return;
     void loadJourneyTracking();
-    const interval = window.setInterval(loadJourneyTracking, 15000);
+    const interval = window.setInterval(loadJourneyTracking, 2000);
     return () => window.clearInterval(interval);
   }, [journeyId, trackingContext?.routeId, loadJourneyTracking]);
 
@@ -3472,32 +3483,12 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                     routeColor={journeyRouteColor}
                     buses={journeyBuses}
                     polylines={journeyPolylines}
+                    allowFallbackPolyline={false}
                     extraMarkers={trackingMarkers}
                     height="100%"
                     animateCamera
                     nextStopIndex={selectedStop ? trackingStops.findIndex((stop) => stop.id === selectedStop.id) : undefined}
                     onSelectStop={selectTrackingStop}
-                    arrivalOverlay={
-                      nextEta ? (
-                        <div className="max-w-[340px] rounded-[24px] border border-[#14140f]/10 bg-white/95 p-4 text-[#14140f] shadow-[0_8px_30px_rgba(0,0,0,0.08)] backdrop-blur">
-                          <div className="flex items-start gap-3">
-                            <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[#14140f] text-[#beff50]">
-                              <Bus className="size-5" />
-                            </span>
-                            <div className="min-w-0">
-                              <p className="text-xs font-semibold text-[#6B6B6B]">
-                                Xe sắp tới
-                              </p>
-                              <p className="mt-1 whitespace-normal break-words text-base font-semibold leading-5 text-[#14140f]">
-                                Tuyến {nextEta.routeCode || routeCode} tới {nextEta.stopName}
-                              </p>
-                              <p className="mt-2 text-sm font-semibold text-[#166534]">{nextEta.minutesAway} phút nữa</p>
-                              <p className="mt-1 text-xs text-[#6B6B6B]">{trackingSourceLabel}</p>
-                            </div>
-                          </div>
-                        </div>
-                      ) : null
-                    }
                   />
                 ) : (
                   <div className="flex h-full items-center justify-center p-8 text-center">
@@ -3509,21 +3500,6 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                   </div>
                 )}
 
-                <div className="pointer-events-none absolute inset-x-5 bottom-5 rounded-[24px] border border-[#14140f]/10 bg-white/95 p-4 shadow-[0_8px_30px_rgba(0,0,0,0.08)] backdrop-blur">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <span className="inline-flex h-10 min-w-12 shrink-0 items-center justify-center rounded-full bg-[#144fcc] px-3 text-sm font-black text-white">{routeCode}</span>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-[#14140f]">{routeTitle}</p>
-                        <p className="mt-0.5 text-xs text-[#6B6B6B]">{trackingSourceLabel}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs font-semibold text-[#6B6B6B]">
-                      <RefreshCw className={cn("size-4", journeyLoading && "animate-spin")} />
-                      {trackingUpdatedLabel}
-                    </div>
-                  </div>
-                </div>
               </div>
             </ExpressiveCard>
           </ScrollReveal>
@@ -3667,20 +3643,34 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                 </div>
                 {visibleEtaRows.length ? (
                   <div className="space-y-0">
-                    {visibleEtaRows.map((stop, index) => (
-                      <div key={`${stop.routeId}-${stop.stopId}`} className="grid grid-cols-[28px_minmax(0,1fr)_56px] gap-3">
-                        <div className="flex flex-col items-center">
-                          <span className={cn("mt-1 size-3 rounded-full border-2", index === 0 ? "border-[#beff50] bg-[#beff50]" : "border-[#144fcc] bg-white")} />
-                          {index < visibleEtaRows.length - 1 ? <span className="mt-1 h-11 w-px bg-[#144fcc]/20" /> : null}
+                    {visibleEtaRows.map((stop, index) => {
+                      const passed = Boolean((stop as { passed?: boolean }).passed);
+                      const current = Boolean((stop as { current?: boolean }).current);
+                      const minutesAway = Math.max(0, Number(stop.minutesAway ?? 0));
+                      const timeLabel = passed
+                        ? "Đã đi qua"
+                        : stop.estimatedArrivalAt
+                          ? new Date(stop.estimatedArrivalAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
+                          : "Đang tính";
+                      const etaLabel = passed ? "Đã qua" : `${minutesAway} phút`;
+                      return (
+                        <div key={`${stop.routeId}-${stop.stopId}`} className={cn("grid grid-cols-[28px_minmax(0,1fr)_64px] gap-3", passed && "opacity-55")}>
+                          <div className="flex flex-col items-center">
+                            <span className={cn(
+                              "mt-1 size-3 rounded-full border-2",
+                              current ? "border-[#beff50] bg-[#beff50]" : passed ? "border-[#9CA3AF] bg-[#9CA3AF]" : "border-[#144fcc] bg-white",
+                            )} />
+                            {index < visibleEtaRows.length - 1 ? <span className={cn("mt-1 h-11 w-px", passed ? "bg-[#9CA3AF]/30" : "bg-[#144fcc]/20")} /> : null}
+                          </div>
+                          <div className="pb-4">
+                            <p className={cn("truncate text-sm font-semibold", passed ? "text-[#6B6B6B]" : "text-[#14140f]")}>{stop.stopName}</p>
+                            <p className="mt-0.5 text-xs text-[#6B6B6B]">{stop.routeCode || routeCode} · {timeLabel}</p>
+                          </div>
+                          <p className={cn("pt-0.5 text-right text-sm font-semibold", current ? "text-[#166534]" : passed ? "text-[#6B6B6B]" : "text-[#144fcc]")}>{etaLabel}</p>
                         </div>
-                        <div className="pb-4">
-                          <p className="truncate text-sm font-semibold text-[#14140f]">{stop.stopName}</p>
-                          <p className="mt-0.5 text-xs text-[#6B6B6B]">{stop.routeCode || routeCode} · {stop.estimatedArrivalAt ? new Date(stop.estimatedArrivalAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "Đang tính"}</p>
-                        </div>
-                        <p className={cn("pt-0.5 text-right text-sm font-semibold", index === 0 ? "text-[#166534]" : "text-[#144fcc]")}>{stop.minutesAway ?? 0} phút</p>
-                      </div>
-                    ))}
-                    {(journeyTracking?.stopEtas || []).length > visibleEtaRows.length ? (
+                      );
+                    })}
+                    {realtimeEtaRows.length > visibleEtaRows.length ? (
                       <button type="button" onClick={() => setShowAllEtaStops((value) => !value)} className="mt-2 w-full rounded-2xl border border-[#14140f]/10 px-4 py-2 text-sm font-semibold text-[#144fcc] hover:bg-[#F8F6EF]">
                         {showAllEtaStops ? "Thu gọn thời gian dự kiến" : "Xem tất cả các trạm"}
                       </button>

@@ -134,7 +134,8 @@ public class JourneyTrackingService {
                 45,
                 nextStop == null ? leg.toStopId() : nextStop.stopId(),
                 nextStop == null ? leg.toStopName() : nextStop.stopName(),
-                nextStop == null ? leg.waitMinutes() : nextStop.etaMinutes());
+                nextStop == null ? leg.waitMinutes() : nextStop.etaMinutes(),
+                null);
     }
 
     private VehicleSnapshot scheduledRouteVehicle(RouteInfo route, List<Coordinate> shape, List<RouteStopPoint> stops, ActiveTrip trip, OffsetDateTime now) {
@@ -152,7 +153,8 @@ public class JourneyTrackingService {
                 45,
                 nextStop == null ? null : nextStop.stopId(),
                 nextStop == null ? null : nextStop.stopName(),
-                nextStop == null ? null : Math.max(0, (int) Math.round((1.0 - progressForTrip(trip, now)) * 8)));
+                nextStop == null ? null : Math.max(0, (int) Math.round((1.0 - progressForTrip(trip, now)) * 8)),
+                null);
     }
 
     private Optional<VehicleSnapshot> latestVehicle(Integer routeId, RouteInfo route, List<Coordinate> shape, List<RouteStopPoint> stops, OffsetDateTime now) {
@@ -185,7 +187,8 @@ public class JourneyTrackingService {
                     45,
                     nextStop == null ? null : nextStop.stopId(),
                     nextStop == null ? null : nextStop.stopName(),
-                    nextStop == null ? null : 3);
+                    nextStop == null ? null : 3,
+                    null);
         }, routeId);
         if (!rows.isEmpty()) {
             return Optional.of(rows.get(0));
@@ -222,6 +225,11 @@ public class JourneyTrackingService {
         }
         RouteStopPoint nextStop = nextStopForProgress(stops, progress);
         int seed = Math.abs((route.routeId() == null ? 0 : route.routeId()) * 31 + index * 97);
+        int distanceMeters = position == null || nextStop == null ? 0 : distanceMeters(position, nextStop);
+        double segmentPosition = stops.size() <= 1 ? 0 : progress * (stops.size() - 1);
+        double segmentRatio = segmentPosition - Math.floor(segmentPosition);
+        double speedKmh = simulatedSpeedKmh(seed, segmentRatio, distanceMeters);
+        int etaMinutes = nextStop == null ? 0 : etaMinutes(distanceMeters, speedKmh);
         return new VehicleSnapshot(
                 index == 0 ? "route-sim-" + route.routeId() : "route-sim-" + route.routeId() + "-" + index,
                 route.plateNumber() == null ? "43B-" + String.format("%05d", 16000 + seed % 70000) : route.plateNumber(),
@@ -229,12 +237,47 @@ public class JourneyTrackingService {
                 route.routeCode(),
                 position == null ? null : position.latitude(),
                 position == null ? null : position.longitude(),
-                BigDecimal.valueOf(22 + seed % 17),
+                BigDecimal.valueOf(speedKmh).setScale(1, RoundingMode.HALF_UP),
                 10 + seed % 24,
                 45,
                 nextStop == null ? null : nextStop.stopId(),
                 nextStop == null ? null : nextStop.stopName(),
-                nextStop == null ? null : Math.max(1, (int) Math.round((1.0 - progress) * 10)));
+                etaMinutes,
+                distanceMeters);
+    }
+
+    private double simulatedSpeedKmh(int seed, double segmentRatio, int distanceMeters) {
+        double cruise = 35 + Math.abs(seed % 16);
+        double wave = Math.sin((seed % 360) * Math.PI / 180.0) * 3.0;
+        double speed = cruise + wave;
+        if (distanceMeters <= 18 || segmentRatio < 0.018) {
+            return 0;
+        }
+        if (segmentRatio < 0.12) {
+            return Math.max(8, speed * (segmentRatio / 0.12));
+        }
+        if (segmentRatio > 0.82) {
+            return Math.max(4, speed * ((1.0 - segmentRatio) / 0.18));
+        }
+        return Math.max(35, Math.min(50, speed));
+    }
+
+    private int etaMinutes(int distanceMeters, double speedKmh) {
+        if (distanceMeters <= 0 || speedKmh <= 0) {
+            return 0;
+        }
+        double metersPerMinute = speedKmh * 1000 / 60.0;
+        return Math.max(1, (int) Math.ceil(distanceMeters / metersPerMinute));
+    }
+
+    private int distanceMeters(Coordinate from, RouteStopPoint to) {
+        double lat1 = from.latitude().doubleValue() * Math.PI / 180.0;
+        double lat2 = to.latitude().doubleValue() * Math.PI / 180.0;
+        double dLat = lat2 - lat1;
+        double dLng = (to.longitude().doubleValue() - from.longitude().doubleValue()) * Math.PI / 180.0;
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+                + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+        return (int) Math.round(6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
     }
 
     private Optional<ActiveTrip> activeTrip(Integer routeId, OffsetDateTime now) {
@@ -410,9 +453,9 @@ public class JourneyTrackingService {
 
     private double progressFor(JourneyLeg leg, int index, OffsetDateTime now) {
         int duration = Math.max(1, leg.durationMinutes() == null ? 20 : leg.durationMinutes());
-        int cycle = duration + Math.max(5, leg.waitMinutes() == null ? 10 : leg.waitMinutes());
-        int minuteOfDay = now.getHour() * 60 + now.getMinute();
-        return ((minuteOfDay + index * 7) % cycle) / (double) cycle;
+        int cycleSeconds = (duration + Math.max(5, leg.waitMinutes() == null ? 10 : leg.waitMinutes())) * 60;
+        int secondOfDay = now.getHour() * 3600 + now.getMinute() * 60 + now.getSecond();
+        return ((secondOfDay + index * 420) % cycleSeconds) / (double) cycleSeconds;
     }
 
     private double progressForRoute(Integer routeId, OffsetDateTime now) {
@@ -420,10 +463,11 @@ public class JourneyTrackingService {
     }
 
     private double progressForRoute(Integer routeId, OffsetDateTime now, int index) {
-        int minuteOfDay = now.getHour() * 60 + now.getMinute();
-        int cycle = 55 + Math.abs((routeId == null ? 0 : routeId) % 25);
-        int offset = Math.abs(routeId == null ? 0 : routeId) + index * Math.max(8, cycle / 3);
-        return ((minuteOfDay + offset) % cycle) / (double) cycle;
+        int cycleMinutes = 55 + Math.abs((routeId == null ? 0 : routeId) % 25);
+        int cycleSeconds = cycleMinutes * 60;
+        int secondOfDay = now.getHour() * 3600 + now.getMinute() * 60 + now.getSecond();
+        int offsetSeconds = (Math.abs(routeId == null ? 0 : routeId) * 60) + index * Math.max(480, cycleSeconds / 3);
+        return ((secondOfDay + offsetSeconds) % cycleSeconds) / (double) cycleSeconds;
     }
 
     private Coordinate interpolate(List<Coordinate> points, double progress) {
