@@ -35,6 +35,48 @@ import { authApi, setTokens, universityApi } from "@/lib/api/client";
 
 type AuthScreen = "login" | "register" | "forgot";
 
+const GOOGLE_IDENTITY_SCRIPT_ID = "google-identity-services";
+
+function loadGoogleIdentity(): Promise<void> {
+  if (typeof window === "undefined") return Promise.reject(new Error("Google Identity chỉ chạy trên trình duyệt."));
+  if (window.google?.accounts?.oauth2) return Promise.resolve();
+
+  return new Promise((resolve, reject) => {
+    const existing = document.getElementById(GOOGLE_IDENTITY_SCRIPT_ID) as HTMLScriptElement | null;
+    const script = existing ?? document.createElement("script");
+
+    const done = () => {
+      if (window.google?.accounts?.oauth2) resolve();
+      else reject(new Error("Google Identity chưa sẵn sàng."));
+    };
+    const waitUntilReady = (attempt = 0) => {
+      if (window.google?.accounts?.oauth2) {
+        resolve();
+        return;
+      }
+      if (attempt >= 30) {
+        reject(new Error("Google Identity chưa sẵn sàng."));
+        return;
+      }
+      window.setTimeout(() => waitUntilReady(attempt + 1), 100);
+    };
+
+    script.addEventListener("load", done, { once: true });
+    script.addEventListener("error", () => reject(new Error("Không tải được Google Identity.")), { once: true });
+
+    if (!existing) {
+      script.id = GOOGLE_IDENTITY_SCRIPT_ID;
+      script.src = "https://accounts.google.com/gsi/client";
+      script.async = true;
+      script.defer = true;
+      document.head.appendChild(script);
+      return;
+    }
+
+    waitUntilReady();
+  });
+}
+
 declare global {
   interface Window {
     google?: {
@@ -90,23 +132,37 @@ export function AuthScreens({
     universityApi.daNang()
       .then(setPartnerNames)
       .catch(() => setPartnerNames([]));
+    loadGoogleIdentity()
+      .then(() => setGoogleReady(true))
+      .catch(() => setGoogleReady(false));
   }, []);
 
-  const handleGoogleLogin = useCallback(() => {
+  const handleGoogleLogin = useCallback(async () => {
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
     if (!clientId) {
       toast.error("Thiếu NEXT_PUBLIC_GOOGLE_CLIENT_ID để đăng nhập Google.");
       return;
     }
+
+    setGoogleLoading(true);
+    try {
+      await loadGoogleIdentity();
+    } catch {
+      setGoogleReady(false);
+      setGoogleLoading(false);
+      toast.error("Google Identity chưa sẵn sàng. Vui lòng thử lại sau vài giây.");
+      return;
+    }
+
     const oauth2 = window.google?.accounts?.oauth2;
     if (!oauth2) {
       setGoogleReady(false);
+      setGoogleLoading(false);
       toast.error("Google Identity chưa sẵn sàng. Vui lòng thử lại sau vài giây.");
       return;
     }
 
     setGoogleReady(true);
-    setGoogleLoading(true);
     let completed = false;
     const releaseLoading = window.setTimeout(() => {
       if (!completed) setGoogleLoading(false);
@@ -147,6 +203,7 @@ export function AuthScreens({
   return (
     <div className="min-h-screen w-full bg-background overflow-x-hidden">
       <Script
+        id={GOOGLE_IDENTITY_SCRIPT_ID}
         src="https://accounts.google.com/gsi/client"
         strategy="afterInteractive"
         onLoad={() => setGoogleReady(true)}
