@@ -55,6 +55,7 @@ import {
   Gauge,
   Users,
   Gift,
+  GraduationCap,
   School,
   BadgeCheck,
   Trash2,
@@ -187,6 +188,8 @@ import {
   type PlaceSuggestionDTO,
   type JourneyOptionDTO,
   type JourneyTrackingSnapshotDTO,
+  type RouteSuggestionDTO,
+  type PassesDashboard,
   type AiSource,
   type AiTraceEvent,
   type AiProviderStatus,
@@ -2937,6 +2940,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
   const [showAllTrackingStops, setShowAllTrackingStops] = useState(false);
   const [showAllEtaStops, setShowAllEtaStops] = useState(false);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [nearestStopWalkLine, setNearestStopWalkLine] = useState<{ lat: number; lng: number }[]>([]);
   const [locationLoading, setLocationLoading] = useState(false);
   const [selectedStopId, setSelectedStopId] = useState<string>("");
   const [selectedStopEtas, setSelectedStopEtas] = useState<EtaDTO[] | null>(null);
@@ -3121,14 +3125,47 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
   const nextVehicleStopIndex = primaryVehicle?.nextStopId == null
     ? -1
     : trackingStops.findIndex((stop) => String(stop.id) === String(primaryVehicle.nextStopId));
-  const realtimeEtaRows = primaryVehicle && trackingStops.length && nextVehicleStopIndex >= 0
+  const vehicleProjectedNextStopIndex = primaryVehicle && trackingStops.length > 1
+    ? (() => {
+        const vehicleLat = numberValue(primaryVehicle.latitude);
+        const vehicleLng = numberValue(primaryVehicle.longitude);
+        if (!vehicleLat || !vehicleLng) return -1;
+        const scale = Math.cos(vehicleLat * Math.PI / 180);
+        let bestSegmentIndex = -1;
+        let bestDistance = Number.POSITIVE_INFINITY;
+        for (let index = 0; index < trackingStops.length - 1; index += 1) {
+          const from = trackingStops[index];
+          const to = trackingStops[index + 1];
+          const ax = from.lng * scale;
+          const ay = from.lat;
+          const bx = to.lng * scale;
+          const by = to.lat;
+          const px = vehicleLng * scale;
+          const py = vehicleLat;
+          const dx = bx - ax;
+          const dy = by - ay;
+          const lengthSquared = dx * dx + dy * dy;
+          const progress = lengthSquared ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSquared)) : 0;
+          const projectedX = ax + progress * dx;
+          const projectedY = ay + progress * dy;
+          const distance = (px - projectedX) ** 2 + (py - projectedY) ** 2;
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            bestSegmentIndex = index;
+          }
+        }
+        return bestSegmentIndex < 0 ? -1 : Math.min(trackingStops.length - 1, bestSegmentIndex + 1);
+      })()
+    : -1;
+  const effectiveNextVehicleStopIndex = Math.max(nextVehicleStopIndex, vehicleProjectedNextStopIndex);
+  const realtimeEtaRows = primaryVehicle && trackingStops.length && effectiveNextVehicleStopIndex >= 0
     ? trackingStops.map((stop, index) => {
-        const passed = index < nextVehicleStopIndex;
-        const current = index === nextVehicleStopIndex;
+        const passed = index < effectiveNextVehicleStopIndex;
+        const current = index === effectiveNextVehicleStopIndex;
         const baseEtaMinutes = Math.max(0, Number(primaryVehicle.etaMinutes ?? 0));
         const minutesAway = passed
           ? -1
-          : baseEtaMinutes + Math.max(0, index - nextVehicleStopIndex) * 4;
+          : baseEtaMinutes + Math.max(0, index - effectiveNextVehicleStopIndex) * 4;
         return {
           stopId: Number(stop.id),
           stopName: stop.name,
@@ -3174,6 +3211,48 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
     boardingStop ? { id: "boarding", label: `Trạm lên: ${boardingStop.name}`, lat: boardingStop.lat, lng: boardingStop.lng, tone: "boarding" } : null,
     alightingStop ? { id: "alighting", label: `Trạm xuống: ${alightingStop.name}`, lat: alightingStop.lat, lng: alightingStop.lng, tone: "destination" } : null,
   ].filter(Boolean) as JourneyExtraMarker[];
+
+  const trackingPolylines = useMemo(() => {
+    if (!nearestStopWalkLine.length) return journeyPolylines;
+    return [
+      ...journeyPolylines,
+      {
+        id: "user-nearest-stop",
+        label: "Đường đi bộ tới trạm gần nhất",
+        color: "#16a34a",
+        dashed: true,
+        points: nearestStopWalkLine,
+      },
+    ];
+  }, [journeyPolylines, nearestStopWalkLine]);
+
+  useEffect(() => {
+    if (!userLocation || !nearestStop?.stop) {
+      setNearestStopWalkLine([]);
+      return;
+    }
+    let cancelled = false;
+    const controller = new AbortController();
+    const from = `${userLocation.lng},${userLocation.lat}`;
+    const to = `${nearestStop.stop.lng},${nearestStop.stop.lat}`;
+    fetch(`https://router.project-osrm.org/route/v1/foot/${from};${to}?overview=full&geometries=geojson&steps=false`, { signal: controller.signal })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("Routing failed")))
+      .then((data) => {
+        const coordinates = data?.routes?.[0]?.geometry?.coordinates;
+        if (!Array.isArray(coordinates) || coordinates.length < 2) throw new Error("No route geometry");
+        const points = coordinates
+          .map((point: [number, number]) => ({ lat: Number(point[1]), lng: Number(point[0]) }))
+          .filter((point: { lat: number; lng: number }) => Number.isFinite(point.lat) && Number.isFinite(point.lng));
+        if (!cancelled) setNearestStopWalkLine(points.length >= 2 ? points : []);
+      })
+      .catch((error) => {
+        if (!cancelled && error?.name !== "AbortError") setNearestStopWalkLine([]);
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [nearestStop?.stop?.lat, nearestStop?.stop?.lng, userLocation?.lat, userLocation?.lng]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3260,18 +3339,60 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
 
   useEffect(() => {
     if (!userLocation || !displayVehicles.length || autoSelectedNearestVehicleRef.current) return;
-    const closestVehicle = displayVehicles
+    const nearestStopIndex = nearestStop?.stop
+      ? trackingStops.findIndex((stop) => String(stop.id) === String(nearestStop.stop.id))
+      : -1;
+    const vehicleNextIndex = (vehicle: NonNullable<JourneyTrackingSnapshotDTO["vehicles"]>[number]) => {
+      const apiIndex = vehicle.nextStopId == null
+        ? -1
+        : trackingStops.findIndex((stop) => String(stop.id) === String(vehicle.nextStopId));
+      const vehicleLat = numberValue(vehicle.latitude);
+      const vehicleLng = numberValue(vehicle.longitude);
+      if (!vehicleLat || !vehicleLng || trackingStops.length < 2) return apiIndex;
+      const scale = Math.cos(vehicleLat * Math.PI / 180);
+      let bestSegmentIndex = -1;
+      let bestDistance = Number.POSITIVE_INFINITY;
+      for (let index = 0; index < trackingStops.length - 1; index += 1) {
+        const from = trackingStops[index];
+        const to = trackingStops[index + 1];
+        const ax = from.lng * scale;
+        const ay = from.lat;
+        const bx = to.lng * scale;
+        const by = to.lat;
+        const px = vehicleLng * scale;
+        const py = vehicleLat;
+        const dx = bx - ax;
+        const dy = by - ay;
+        const lengthSquared = dx * dx + dy * dy;
+        const progress = lengthSquared ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSquared)) : 0;
+        const projectedX = ax + progress * dx;
+        const projectedY = ay + progress * dy;
+        const distance = (px - projectedX) ** 2 + (py - projectedY) ** 2;
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestSegmentIndex = index;
+        }
+      }
+      const projectedIndex = bestSegmentIndex < 0 ? -1 : Math.min(trackingStops.length - 1, bestSegmentIndex + 1);
+      return Math.max(apiIndex, projectedIndex);
+    };
+    const rankedVehicles = displayVehicles
       .filter((vehicle) => vehicle.latitude != null && vehicle.longitude != null)
-      .map((vehicle) => ({
-        vehicle,
-        meters: distanceMeters(userLocation, { lat: numberValue(vehicle.latitude), lng: numberValue(vehicle.longitude) }),
-      }))
-      .sort((left, right) => left.meters - right.meters)[0];
-    if (!closestVehicle?.vehicle?.vehicleId) return;
+      .map((vehicle) => {
+        const nextIndex = vehicleNextIndex(vehicle);
+        return {
+          vehicle,
+          hasNotPassedNearestStop: nearestStopIndex < 0 || nextIndex < 0 || nextIndex <= nearestStopIndex,
+          meters: distanceMeters(userLocation, { lat: numberValue(vehicle.latitude), lng: numberValue(vehicle.longitude) }),
+        };
+      })
+      .sort((left, right) => Number(right.hasNotPassedNearestStop) - Number(left.hasNotPassedNearestStop) || left.meters - right.meters);
+    const preferredVehicle = rankedVehicles[0];
+    if (!preferredVehicle?.vehicle?.vehicleId) return;
     autoSelectedNearestVehicleRef.current = true;
-    setSelectedVehicleId(closestVehicle.vehicle.vehicleId);
+    setSelectedVehicleId(preferredVehicle.vehicle.vehicleId);
     setShowAllVehicles(false);
-  }, [displayVehicles, userLocation]);
+  }, [displayVehicles, nearestStop?.stop, trackingStops, userLocation]);
 
 
   const selectTrackingStop = (stopId: string) => {
@@ -3472,17 +3593,17 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
       )}
 
       {!showRouteChooser && hasTrackingSnapshot && (
-        <div className="grid grid-cols-1 gap-6 min-w-0 xl:grid-cols-[minmax(0,1fr)_380px] 2xl:grid-cols-[minmax(0,1fr)_420px]">
+        <div className="grid grid-cols-1 gap-5 min-w-0 xl:grid-cols-[minmax(0,1fr)_390px] 2xl:grid-cols-[minmax(0,1fr)_430px]">
           <div className="min-w-0 space-y-5">
           <ScrollReveal>
-            <ExpressiveCard variant="elevated" className="overflow-hidden min-w-0 rounded-[28px] border border-[#14140f]/10 bg-white shadow-[0_8px_30px_rgba(0,0,0,0.05)]">
+            <ExpressiveCard variant="elevated" className="overflow-hidden min-w-0 rounded-[28px] border border-[#E8E2D5] bg-white shadow-[0_8px_30px_rgba(0,0,0,0.05)]">
               <div className="relative h-[520px] bg-[#F8F6EF] lg:h-[680px]">
                 {trackingStops.length >= 2 || journeyPolylines.length ? (
                   <JourneyMap
                     stops={trackingStops}
                     routeColor={journeyRouteColor}
                     buses={journeyBuses}
-                    polylines={journeyPolylines}
+                    polylines={trackingPolylines}
                     allowFallbackPolyline={false}
                     extraMarkers={trackingMarkers}
                     height="100%"
@@ -3500,18 +3621,19 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                   </div>
                 )}
 
+
               </div>
             </ExpressiveCard>
           </ScrollReveal>
             <ScrollReveal delay={0.08}>
-              <ExpressiveCard variant="filled" className="rounded-[24px] border border-[#14140f]/10 bg-white p-5 shadow-[0_8px_30px_rgba(0,0,0,0.05)]">
+              <ExpressiveCard variant="filled" className="rounded-[24px] border border-[#E8E2D5] bg-white p-5 shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
                 <div className="mb-4 flex items-center justify-between gap-3">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6B6B6B]">Các trạm đi qua</p>
                     <h3 className="mt-1 text-xl font-semibold text-[#14140f]">Lộ trình tuyến</h3>
                   </div>
                   {stopRows.length > 6 ? (
-                    <button type="button" onClick={() => setShowAllTrackingStops((value) => !value)} className="rounded-full border border-[#14140f]/10 px-3 py-1.5 text-xs font-semibold text-[#144fcc] hover:bg-[#F8F6EF]">
+                    <button type="button" onClick={() => setShowAllTrackingStops((value) => !value)} className="rounded-full border border-[#E8E2D5] bg-[#FAF8F2] px-3 py-1.5 text-xs font-semibold text-[#144fcc] transition hover:bg-[#beff50]/25">
                       {showAllTrackingStops ? "Thu gọn" : "Xem tất cả"}
                     </button>
                   ) : null}
@@ -3548,7 +3670,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
 
           <aside className="min-w-0 space-y-5">
             <ScrollReveal delay={0.08}>
-              <ExpressiveCard variant="filled" className="rounded-[24px] border border-[#14140f]/10 bg-white p-5 shadow-[0_8px_30px_rgba(0,0,0,0.05)]">
+              <ExpressiveCard variant="filled" className="rounded-[24px] border border-[#E8E2D5] bg-white p-5 shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
                 <div className="mb-5 flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6B6B6B]">Xe sắp tới trạm của bạn</p>
@@ -3573,7 +3695,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
             </ScrollReveal>
 
             <ScrollReveal delay={0.12}>
-              <ExpressiveCard variant="filled" className="rounded-[24px] border border-[#14140f]/10 bg-white p-5 shadow-[0_8px_30px_rgba(0,0,0,0.05)]">
+              <ExpressiveCard variant="filled" className="rounded-[24px] border border-[#E8E2D5] bg-white p-5 shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
                 <div className="mb-4 flex items-start justify-between gap-3">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6B6B6B]">Xe trên tuyến</p>
@@ -3589,7 +3711,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                     <motion.div
                       key={selectedVehicle.vehicleId}
                       layout
-                      className="relative rounded-[22px] border border-[#14140f]/10 bg-[#FAF8F2] p-4 transition hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(0,0,0,0.05)]"
+                      className="relative overflow-hidden rounded-[22px] border border-[#E8E2D5] bg-[#FAF8F2] p-4 transition hover:-translate-y-0.5 hover:shadow-[0_10px_30px_rgba(20,20,15,0.07)]"
                     >
                       <span className="absolute right-4 top-4 grid size-14 place-items-center rounded-full bg-[#beff50] text-sm font-black text-[#14140f]">
                         {selectedVehicle.etaMinutes ?? 0} phút
@@ -3613,7 +3735,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                     />
                   )}
                   {collapsedVehicles.length > 0 && (
-                    <button type="button" onClick={() => setShowAllVehicles((value) => !value)} className="w-full rounded-2xl border border-[#14140f]/10 px-4 py-2 text-sm font-semibold text-[#144fcc] hover:bg-[#F8F6EF]">
+                    <button type="button" onClick={() => setShowAllVehicles((value) => !value)} className="w-full rounded-2xl border border-[#E8E2D5] bg-white px-4 py-2 text-sm font-semibold text-[#144fcc] transition hover:bg-[#beff50]/20">
                       {showAllVehicles ? "Thu gọn xe trên tuyến" : "Xem thêm xe trên tuyến này"}
                     </button>
                   )}
@@ -3625,7 +3747,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                         setSelectedVehicleId(vehicle.vehicleId);
                         setShowAllVehicles(false);
                       }}
-                      className="w-full rounded-[18px] border border-[#14140f]/10 bg-[#FAF8F2] p-4 text-left transition hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(0,0,0,0.05)]"
+                      className="w-full rounded-[18px] border border-[#E8E2D5] bg-[#FAF8F2] p-4 text-left transition hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_8px_30px_rgba(0,0,0,0.05)]"
                     >
                       <p className="truncate text-base font-semibold text-[#14140f]">{vehicle.plateNumber || "Xe theo lịch tuyến"}</p>
                       <p className="mt-1 text-xs text-[#6B6B6B]">Xe sắp tới · Trạm kế: {vehicle.nextStopName || "đang xác định"}</p>
@@ -3636,7 +3758,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
             </ScrollReveal>
 
             <ScrollReveal delay={0.16}>
-              <ExpressiveCard variant="filled" className="rounded-[24px] border border-[#14140f]/10 bg-white p-5 shadow-[0_8px_30px_rgba(0,0,0,0.05)]">
+              <ExpressiveCard variant="filled" className="rounded-[24px] border border-[#E8E2D5] bg-white p-5 shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
                 <div className="mb-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6B6B6B]">Thời gian dự kiến</p>
                   <h3 className="mt-1 text-xl font-semibold text-[#14140f]">Các điểm sắp tới</h3>
@@ -3671,7 +3793,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                       );
                     })}
                     {realtimeEtaRows.length > visibleEtaRows.length ? (
-                      <button type="button" onClick={() => setShowAllEtaStops((value) => !value)} className="mt-2 w-full rounded-2xl border border-[#14140f]/10 px-4 py-2 text-sm font-semibold text-[#144fcc] hover:bg-[#F8F6EF]">
+                      <button type="button" onClick={() => setShowAllEtaStops((value) => !value)} className="mt-2 w-full rounded-2xl border border-[#E8E2D5] bg-white px-4 py-2 text-sm font-semibold text-[#144fcc] transition hover:bg-[#beff50]/20">
                         {showAllEtaStops ? "Thu gọn thời gian dự kiến" : "Xem tất cả các trạm"}
                       </button>
                     ) : null}
@@ -3755,16 +3877,25 @@ function MyJourneysScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
     { id: "tracking", label: "Theo dõi tuyến", icon: Navigation },
   ];
 
+  const showRoutePicker = () => setTab("routes");
   return (
     <PageTransition className="space-y-5 min-w-0">
       <PageHeader
         title="Vé của tôi"
         icon={<TicketCheck className="size-7" />}
         actions={
-          <ExpressiveButton variant="filled" onClick={() => onNavigate("stu-find")}>
-            <RouteIcon className="size-4" />
-            Tìm tuyến mới
-          </ExpressiveButton>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {tab === "tracking" && (
+              <ExpressiveButton variant="outlined" className="text-[#14140f]" onClick={showRoutePicker}>
+                <ChevronLeft className="size-4" />
+                Chọn tuyến khác
+              </ExpressiveButton>
+            )}
+            <ExpressiveButton variant="filled" onClick={() => onNavigate("stu-find")}>
+              <RouteIcon className="size-4" />
+              Tìm tuyến mới
+            </ExpressiveButton>
+          </div>
         }
       />
 
@@ -3801,7 +3932,7 @@ function MyJourneysScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
           exit={{ opacity: 0, y: -6 }}
           transition={{ duration: 0.18, ease: "easeOut" }}
         >
-          {tab === "routes" && <MyRoutesScreen ctx={ctx} onNavigate={onNavigate} compact />}
+          {tab === "routes" && <MyRoutesScreen ctx={ctx} onNavigate={onNavigate} compact onTrackRoute={() => setTab("tracking")} />}
           {tab === "ticket" && <MyTicketScreen ctx={ctx} onNavigate={onNavigate} compact />}
           {tab === "tracking" && <TrackingScreen ctx={ctx} compact />}
         </motion.div>
@@ -3813,17 +3944,17 @@ function MyJourneysScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
 // =============================================================================
 // Screen 6: My Routes — registration management
 // =============================================================================
-function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavigate: (id: string) => void; compact?: boolean }) {
+function MyRoutesScreen({ ctx, onNavigate, compact = false, onTrackRoute }: { ctx: Ctx; onNavigate: (id: string) => void; compact?: boolean; onTrackRoute?: () => void }) {
   const [showRegister, setShowRegister] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [working, setWorking] = useState(false);
   const [registrations, setRegistrations] = useState<RegistrationDTO[]>([]);
   const [targetCancel, setTargetCancel] = useState<RegistrationDTO | null>(null);
+  const [expandedRouteId, setExpandedRouteId] = useState<number | null>(null);
 
   const reg = ctx.registration;
   const activeRegistrations = registrations.length ? registrations : reg ? [reg] : [];
-  const routeTickets = ctx.raw.passes?.data?.tickets || [];
 
   const registrationStatusLabel = (status?: string) => ({
     APPROVED: "Đã đăng ký",
@@ -3831,6 +3962,25 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
     CANCELLED: "Đã hủy",
     REJECTED: "Không được duyệt",
   } as Record<string, string>)[String(status || "").toUpperCase()] || "Đã đăng ký";
+  const cleanStopLabel = (value?: string | null) => {
+    const raw = String(value || "").replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+    if (!raw) return "Chưa xác định";
+    const normalized = raw.toLowerCase();
+    if (["dai hoc", "dai hoc viet", "đại học", "đại học việt"].includes(normalized)) return "Chưa xác định";
+    if (/^[a-z0-9\s]+$/.test(raw) && raw === normalized && raw.length > 12) return "Chưa xác định";
+    return raw;
+  };
+  const routeTickets = useMemo(() => {
+    const tickets = Array.isArray(ctx.raw.passes?.data?.tickets) ? ctx.raw.passes.data.tickets : [];
+    const fallback = ctx.activeTicket ? [ctx.activeTicket] : [];
+    const byId = new Map<string, any>();
+    [...tickets, ...fallback].forEach((ticket: any) => {
+      const key = String(ticket.ticketId ?? ticket.monthlyPassId ?? `${ticket.routeId}-${ticket.ticketType}-${ticket.expiresOn || ticket.expiresAt}`);
+      byId.set(key, ticket);
+    });
+    return Array.from(byId.values());
+  }, [ctx.activeTicket, ctx.raw.passes]);
+
   const activeMonthlyForRoute = (routeId?: number | string | null) => {
     if (routeId == null) return null;
     const today = new Date();
@@ -3882,120 +4032,163 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
   };
 
   return (
-    <PageTransition className="space-y-6 min-w-0">
+    <PageTransition className={cn("min-w-0", compact ? "space-y-4" : "space-y-6 rounded-[28px] bg-[#FAF8F2] p-4 sm:p-6")}>
       {!compact && (
         <PageHeader
           title="Tuyến của tôi"
-          description="Quản lý tuyến đã đăng ký và thay đổi trạm lên/xuống."
+          description="Quản lý tuyến đã đăng ký, vé và theo dõi tuyến."
           icon={<TicketCheck className="size-7" />}
           actions={
-            <ExpressiveButton variant="filled" onClick={() => setShowRegister(true)}>
+            <ExpressiveButton variant="filled" onClick={() => onNavigate("stu-find")}>
               <Plus className="size-4" />
-              Đăng ký tuyến
+              Tìm tuyến mới
             </ExpressiveButton>
           }
         />
       )}
 
       {activeRegistrations.length === 0 ? (
-        <EmptyState
-          icon={<TicketCheck className="size-7" />}
-          title="Chưa đăng ký tuyến nào"
-          description="Đăng ký tuyến để sử dụng vé tháng và nhận trợ giá từ trường."
-          action={
-            <ExpressiveButton variant="filled" onClick={() => setShowRegister(true)}>
-              <Plus className="size-4" />
-              Đăng ký tuyến đầu tiên
-            </ExpressiveButton>
-          }
-        />
+        <div className="rounded-[24px] border border-[#E8E2D5] bg-white p-8 text-center shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
+          <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-[#111111] text-[#BDFD4F]">
+            <RouteIcon className="size-6" />
+          </div>
+          <h3 className="mt-4 text-lg font-semibold text-[#111111]">Chưa đăng ký tuyến nào</h3>
+          <p className="mx-auto mt-2 max-w-md text-sm text-[#6B6B6B]">Chọn tuyến phù hợp để bắt đầu mua vé và theo dõi tuyến.</p>
+          <ExpressiveButton variant="filled" className="mt-5" onClick={() => onNavigate("stu-find")}>
+            <Plus className="size-4" />
+            Tìm tuyến mới
+          </ExpressiveButton>
+        </div>
       ) : (
-        <StaggerGroup className="grid gap-4 lg:grid-cols-2 min-w-0">
+        <StaggerGroup className="grid min-w-0 items-start gap-4 xl:grid-cols-2">
           {activeRegistrations.map((item: RegistrationDTO) => {
-            const regRoute = ctx.routes.find((r) => r.id === String(item.routeId));
+            const regRoute = ctx.routes.find((route: any) => String(route.id ?? route.routeId) === String(item.routeId));
             const activeMonthlyPass = activeMonthlyForRoute(item.routeId);
             const monthlyExpiresOn = activeMonthlyPass?.expiresOn || activeMonthlyPass?.expiresAt;
+            const expanded = expandedRouteId === item.registrationId;
+            const routeName = item.routeName || regRoute?.name || (regRoute as any)?.routeName || "Tuyến đã đăng ký";
+            const routeCode = (item as RegistrationDTO & { routeCode?: string }).routeCode
+              || (regRoute as any)?.routeCode
+              || regRoute?.code
+              || routeName.match(/^\s*(?:Tuyến\s*)?([A-Z]?\d{1,3})/i)?.[1]
+              || "BUS";
+            const ticketStatus = activeMonthlyPass ? "Đã có vé hợp lệ" : "Cần mua vé";
+            const boardingStopLabel = cleanStopLabel(item.boardingStopName);
+            const alightingStopLabel = cleanStopLabel(item.alightingStopName);
             return (
               <StaggerItem key={item.registrationId} className="self-start">
                 <motion.div
-                  initial={{ opacity: 0, y: 16, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  transition={{ type: "spring", stiffness: 260, damping: 24 }}
-                  className="relative overflow-hidden rounded-3xl p-6 elev-2 min-w-0"
-                  style={{ backgroundColor: "#beff50", color: "#14140f" }}
+                  whileHover={{ y: -4, scale: 1.006 }}
+                  whileTap={{ scale: 0.998 }}
+                  transition={{ type: "spring", stiffness: 180, damping: 22, mass: 0.7 }}
+                  className="flex min-h-[270px] min-w-0 flex-col overflow-hidden rounded-[24px] border border-[#E8E2D5] bg-white shadow-[0_8px_30px_rgba(0,0,0,0.05)] transition-shadow duration-300 ease-out hover:shadow-[0_16px_42px_rgba(20,20,15,0.09)]"
                 >
-                  <div className="absolute -top-12 -right-12 size-48 rounded-full bg-[#14140f]/8 blur-3xl pointer-events-none" />
-                  <div className="relative flex items-start gap-4 min-w-0">
-                    <div
-                      className="size-16 shrink-0 rounded-2xl flex items-center justify-center font-black text-xl shadow-lg"
-                      style={{ backgroundColor: "#14140f", color: regRoute?.color || "#beff50" }}
-                    >
-                      {(regRoute?.code || "UB").slice(0, 2)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap mb-3">
-                        <h2 className="text-xl font-black truncate">{item.routeName}</h2>
-                        <span className="inline-flex items-center h-6 px-2.5 rounded-full text-[10px] font-bold bg-[#14140f] text-[#beff50]">
-                          {registrationStatusLabel(item.status)}
+                  <div className="flex min-h-[270px] flex-col space-y-4 p-4 sm:p-5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <span className="flex h-10 min-w-10 shrink-0 items-center justify-center rounded-xl bg-[#111111] px-3 text-sm font-semibold text-[#BDFD4F]">
+                          {routeCode}
                         </span>
-                        <span className={cn("inline-flex items-center h-6 px-2.5 rounded-full text-[10px] font-bold", activeMonthlyPass ? "bg-white text-[#166534]" : "bg-[#14140f]/10 text-[#14140f]") }>
-                          {activeMonthlyPass ? "Đã có vé tháng" : "Chưa có vé hợp lệ"}
-                        </span>
-                      </div>
-                      <div className="grid sm:grid-cols-2 gap-2 text-sm">
-                        <InfoCell label="Trạm lên" value={item.boardingStopName || "—"} />
-                        <InfoCell label="Trạm xuống" value={item.alightingStopName || "—"} />
-                        <InfoCell label="Hiệu lực đăng ký" value={formatDate(item.effectiveDate)} />
-                        <InfoCell label="Đăng ký" value={formatDate(item.registeredAt)} />
-                        <InfoCell label="Trạng thái vé" value={activeMonthlyPass ? "Đã có vé tháng" : "Chưa có vé hợp lệ"} />
-                        <InfoCell label="Hiệu lực vé" value={activeMonthlyPass ? `Đến ${formatDate(monthlyExpiresOn)}` : "—"} />
-                      </div>
-                      <div className="flex flex-wrap gap-2 mt-4">
-                        <motion.button
-                          whileHover={{ y: -2 }}
-                          whileTap={{ scale: 0.97 }}
-                          transition={{ type: "spring", stiffness: 400, damping: 22 }}
-                          onClick={() => {
-                            saveRouteTrackingContext(item);
-                            onNavigate("stu-tracking");
-                          }}
-                          className="inline-flex items-center gap-1.5 h-10 px-5 rounded-full bg-[#F8F6EF] text-[#14140f] text-sm font-bold border border-[#14140f]/10 hover:bg-[#beff50]/35"
-                        >
-                          <Navigation className="size-4" />
-                          Theo dõi tuyến
-                        </motion.button>
-                        <motion.button
-                          whileHover={{ y: -2 }}
-                          whileTap={{ scale: 0.97 }}
-                          transition={{ type: "spring", stiffness: 400, damping: 22 }}
-                          onClick={() => {
-                            if (activeMonthlyPass) {
-                              onNavigate("stu-my-ticket");
-                              return;
-                            }
-                            localStorage.setItem("unibus.paymentRouteId", String(item.routeId));
-                            onNavigate("stu-invoices");
-                          }}
-                          className="inline-flex items-center gap-1.5 h-10 px-5 rounded-full bg-[#14140f] text-[#beff50] text-sm font-bold"
-                        >
-                          {activeMonthlyPass ? <QrCode className="size-4" /> : <CreditCard className="size-4" />}
-                          {activeMonthlyPass ? "Xem vé / QR" : "Chọn vé / thanh toán"}
-                        </motion.button>
-                        <motion.button
-                          whileHover={{ y: -2 }}
-                          whileTap={{ scale: 0.97 }}
-                          transition={{ type: "spring", stiffness: 400, damping: 22 }}
-                          onClick={() => {
-                            setTargetCancel(item);
-                            setCancelling(true);
-                          }}
-                          className={cn("inline-flex items-center gap-1.5 h-10 px-5 rounded-full bg-white text-[#14140f] text-sm font-bold border-2 border-[#14140f]", activeMonthlyPass && "opacity-75")}
-                        >
-                          <Trash2 className="size-4" />
-                          Hủy đăng ký
-                        </motion.button>
+                        <div className="min-w-0">
+                          <h3 className="line-clamp-2 text-base font-semibold leading-snug text-[#111111]">{routeName}</h3>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <span className="rounded-full border border-[#DDEBC2] bg-[#F4FFE1] px-2.5 py-1 text-xs font-medium text-[#526D12]">
+                              {registrationStatusLabel(item.status)}
+                            </span>
+                            <span className={cn(
+                              "rounded-full px-2.5 py-1 text-xs font-medium",
+                              activeMonthlyPass ? "bg-[#111111] text-[#BDFD4F]" : "bg-[#FFF7E5] text-[#7A4B00]"
+                            )}>
+                              {ticketStatus}
+                            </span>
+                          </div>
+                        </div>
                       </div>
                     </div>
+
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <RouteStopChip label="Từ" value={boardingStopLabel} />
+                      <RouteStopChip label="Đến" value={alightingStopLabel} />
+                    </div>
+
+                    <div className="mt-auto grid gap-2 sm:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (activeMonthlyPass) {
+                            onNavigate("stu-my-ticket");
+                            return;
+                          }
+                          localStorage.setItem("unibus.paymentRouteId", String(item.routeId));
+                          onNavigate("stu-invoices");
+                        }}
+                        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-[#111111] px-4 text-sm font-semibold text-[#BDFD4F] transition-colors hover:bg-[#24241d]"
+                      >
+                        {activeMonthlyPass ? <QrCode className="size-4" /> : <CreditCard className="size-4" />}
+                        {activeMonthlyPass ? "Xem vé / QR" : "Chọn vé / thanh toán"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          saveRouteTrackingContext({
+                            ...item,
+                            routeCode,
+                            routeName,
+                          });
+                          if (onTrackRoute) {
+                            onTrackRoute();
+                            return;
+                          }
+                          onNavigate("stu-tracking");
+                        }}
+                        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-[#E8E2D5] bg-white px-4 text-sm font-medium text-[#111111] transition-colors hover:bg-[#FAF8F2]"
+                      >
+                        <Navigation className="size-4" />
+                        Theo dõi tuyến
+                      </button>
+                    </div>
+
+                    <div className="border-t border-[#EEE7DA] pt-3">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedRouteId(expanded ? null : item.registrationId)}
+                        className="inline-flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-xs font-medium text-[#6B6B6B] transition-colors hover:bg-[#FAF8F2] hover:text-[#111111]"
+                      >
+                        {expanded ? "Thu gọn" : "Chi tiết"}
+                        <ChevronRight className={cn("size-3.5 transition-transform", expanded && "rotate-90")} />
+                      </button>
+                    </div>
+
+                    <AnimatePresence initial={false}>
+                      {expanded && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.18, ease: "easeOut" }}
+                          className="overflow-hidden"
+                        >
+                          <div className="rounded-xl border border-[#EEE7DA] bg-[#FFFEFA] px-4 py-3 text-sm">
+                            <div className="grid gap-x-8 gap-y-2 sm:grid-cols-2">
+                              <RouteDetailLine label="Ngày đăng ký" value={formatDate(item.registeredAt)} />
+                              <RouteDetailLine label="Trạng thái vé" value={ticketStatus} />
+                              {activeMonthlyPass && <RouteDetailLine label="Hiệu lực vé" value={`Đến ${formatDate(monthlyExpiresOn)}`} />}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setTargetCancel(item);
+                                setCancelling(true);
+                              }}
+                              className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-[#8A1C16] transition-colors hover:text-[#B3261E]"
+                            >
+                              <Trash2 className="size-3.5" />
+                              Hủy đăng ký
+                            </button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 </motion.div>
               </StaggerItem>
@@ -4022,37 +4215,51 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
             <AlertDialogDescription>
               {targetMonthlyPass
                 ? `Không thể hủy khi vé tháng còn hiệu lực. Bạn có thể hủy sau ngày ${formatDate(targetMonthlyPass.expiresOn || targetMonthlyPass.expiresAt)}.`
-                : "Bạn có thể đăng ký lại tuyến sau nếu cần. Hành động này không thể hoàn tác."}
+                : `Bạn có chắc muốn hủy đăng ký tuyến ${targetCancel?.routeName || reg?.routeName || "này"}?`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           {!targetMonthlyPass && (
-            <div className="py-2">
-              <Label className="text-xs">Lý do hủy (tùy chọn)</Label>
-              <Textarea
-                className="mt-1.5"
-                placeholder="Nhập lý do hủy đăng ký..."
-                value={cancelReason}
-                onChange={(e) => setCancelReason(e.target.value)}
-                rows={3}
-              />
+            <div className="space-y-2">
+              <Label>Lý do hủy (không bắt buộc)</Label>
+              <Input value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} placeholder="Ví dụ: đổi tuyến khác" />
             </div>
           )}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={working}>{targetMonthlyPass ? "Đã hiểu" : "Giữ lại"}</AlertDialogCancel>
             {!targetMonthlyPass && (
               <AlertDialogAction
-                onClick={doCancel}
+                onClick={(event) => {
+                  event.preventDefault();
+                  doCancel();
+                }}
                 disabled={working}
-                className="bg-error text-on-error hover:bg-error/90"
               >
                 {working ? <RefreshCw className="size-4 animate-spin" /> : null}
-                Xác nhận hủy
+                Hủy đăng ký
               </AlertDialogAction>
             )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </PageTransition>
+  );
+}
+
+function RouteDetailLine({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-xs">
+      <span className="min-w-0 truncate text-[#8A8276]">{label}</span>
+      <span className="min-w-0 text-right font-semibold text-[#111111]">{value || "Chưa xác định"}</span>
+    </div>
+  );
+}
+
+function RouteStopChip({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="min-w-0 rounded-xl border border-[#EEE7DA] bg-[#FAF8F2] px-4 py-3">
+      <p className="text-xs font-medium text-[#8A8276]">{label}</p>
+      <p className="mt-1 line-clamp-2 text-sm font-semibold leading-snug text-[#111111]">{value}</p>
+    </div>
   );
 }
 
@@ -5363,6 +5570,8 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
   const [purchasing, setPurchasing] = useState(false);
   const [registrations, setRegistrations] = useState<RegistrationDTO[]>([]);
   const [selectedRouteId, setSelectedRouteId] = useState<string>("");
+  const [singleBoardingStopId, setSingleBoardingStopId] = useState<string>("");
+  const [singleAlightingStopId, setSingleAlightingStopId] = useState<string>("");
   const [ticketKind, setTicketKind] = useState<"MONTHLY" | "SINGLE">("MONTHLY");
   const [sepayOrder, setSepayOrder] = useState<{
     orderId: number;
@@ -5379,6 +5588,8 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
   const [paidStatus, setPaidStatus] = useState<"idle" | "checking" | "paid" | "expired">("idle");
   const [copying, setCopying] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+  const [paymentQuote, setPaymentQuote] = useState<PassesDashboard["monthlyPassQuote"] | null>(null);
+  const [paymentRouteDetail, setPaymentRouteDetail] = useState<RouteSuggestionDTO | null>(null);
   const paymentPollTokenRef = useRef(0);
   const paymentSettledRef = useRef(false);
 
@@ -5386,16 +5597,52 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
   const quote = passes?.monthlyPassQuote;
   const selectedRegistration = registrations.find((item) => String(item.routeId) === selectedRouteId) || ctx.registration;
   const selectedRoute = ctx.routes.find((route: any) => String(route.id ?? route.routeId) === selectedRouteId);
+  const paymentRoute = paymentRouteDetail && String(paymentRouteDetail.routeId) === selectedRouteId ? paymentRouteDetail : selectedRoute;
+  const routeQuote = paymentQuote && String(paymentQuote.routeId) === selectedRouteId ? paymentQuote : null;
+  const dashboardQuote = quote && String(quote.routeId) === selectedRouteId ? quote : null;
+  const monthlyQuote = ticketKind === "MONTHLY" && routeQuote ? routeQuote : dashboardQuote;
+  const singleQuote = ticketKind === "SINGLE" ? routeQuote : null;
   const singleFare = Number(selectedRoute?.singleFare ?? selectedRoute?.fare ?? 0);
   const routeMonthlyFare = Number(selectedRoute?.monthlyFare ?? selectedRoute?.monthlyPass ?? 0);
-  const monthlyOriginal = Number(quote?.originalFareAmount ?? quote?.baseAmount ?? routeMonthlyFare);
-  const monthlySubsidy = Number(quote?.subsidyAmount ?? 0);
-  const monthlyFinal = Number(quote?.payableAmount ?? quote?.finalFareAmount ?? monthlyOriginal);
-  const singleOriginal = singleFare;
-  const singleSubsidy = 0;
-  const singleFinal = singleFare;
+  const monthlyOriginal = Number(monthlyQuote?.originalFareAmount ?? monthlyQuote?.baseAmount ?? routeMonthlyFare);
+  const monthlySubsidy = Number(monthlyQuote?.subsidyAmount ?? 0);
+  const monthlyCalculatedFinal = Math.max(monthlyOriginal - monthlySubsidy, 0);
+  const monthlyFinal = Number(monthlyQuote?.payableAmount ?? monthlyQuote?.finalFareAmount ?? (monthlyCalculatedFinal > 0 ? monthlyCalculatedFinal : routeMonthlyFare));
   const ticketLabel = ticketKind === "SINGLE" ? "Vé lượt" : "Vé tháng";
-  const canBuySingle = Boolean(selectedRegistration?.boardingStopId && selectedRegistration?.alightingStopId && singleFinal > 0);
+  const routeDisplayName = (name?: string | null) => String(name || "Tuyến đã đăng ký").split(/\s+[\u2014\u2013]\s+/)[0]?.trim() || "Tuyến đã đăng ký";
+  const paymentRouteStops = useMemo(() => {
+    const rawStops = Array.isArray((paymentRoute as any)?.stops) ? (paymentRoute as any).stops : [];
+    return rawStops
+      .map((entry: any, index: number) => {
+        const stopId = String(entry?.id ?? entry?.stopId ?? entry);
+        const stop = typeof entry === "object" ? entry : ctx.stops.find((item: any) => String(item.id ?? item.stopId) === stopId);
+        if (!stopId || !stop) return null;
+        const order = Number(entry?.stopOrder ?? entry?.order ?? index);
+        return { id: `${stopId}-${order}-${index}`, stopId, name: stop.name ?? stop.stopName ?? `Tr?m ${index + 1}`, order };
+      })
+      .filter(Boolean)
+      .sort((left: any, right: any) => left.order - right.order) as { id: string; stopId: string; name: string; order: number }[];
+  }, [ctx.stops, paymentRoute]);
+  const boardingStopOrder = paymentRouteStops.find((stop) => stop.id === singleBoardingStopId)?.order;
+  const alightingStopOrder = paymentRouteStops.find((stop) => stop.id === singleAlightingStopId)?.order;
+  const boardingOptions = paymentRouteStops.filter((stop) => alightingStopOrder == null || stop.order < alightingStopOrder);
+  const alightingOptions = paymentRouteStops.filter((stop) => boardingStopOrder == null || stop.order > boardingStopOrder);
+  const selectedBoardingStopName = paymentRouteStops.find((stop) => stop.id === singleBoardingStopId)?.name || selectedRegistration?.boardingStopName;
+  const selectedAlightingStopName = paymentRouteStops.find((stop) => stop.id === singleAlightingStopId)?.name || selectedRegistration?.alightingStopName;
+  const selectedBoardingStopRealId = paymentRouteStops.find((stop) => stop.id === singleBoardingStopId)?.stopId;
+  const selectedAlightingStopRealId = paymentRouteStops.find((stop) => stop.id === singleAlightingStopId)?.stopId;
+  const hasSingleStops = Boolean(selectedBoardingStopRealId && selectedAlightingStopRealId);
+  const singleOriginal = hasSingleStops ? Number(singleQuote?.originalFareAmount ?? singleQuote?.baseAmount ?? singleFare) : 0;
+  const singleSubsidy = hasSingleStops ? Number(singleQuote?.subsidyAmount ?? 0) : 0;
+  const singleCalculatedFinal = Math.max(singleOriginal - singleSubsidy, 0);
+  const singleFinal = hasSingleStops ? Number(singleQuote?.payableAmount ?? singleQuote?.finalFareAmount ?? (singleCalculatedFinal > 0 ? singleCalculatedFinal : singleFare)) : 0;
+  const canBuySingle = Boolean(hasSingleStops && singleFinal > 0);
+  const currentOriginal = ticketKind === "SINGLE" ? singleOriginal : monthlyOriginal;
+  const currentSubsidy = ticketKind === "SINGLE" ? singleSubsidy : monthlySubsidy;
+  const currentFinal = ticketKind === "SINGLE" ? singleFinal : monthlyFinal;
+  const currentPriceLabel = currentFinal > 0 ? formatVND(currentFinal) : "Theo giá hệ thống";
+  const hasSchoolSubsidy = currentSubsidy > 0;
+  const subsidyPercent = currentOriginal > 0 && hasSchoolSubsidy ? Math.round((currentSubsidy / currentOriginal) * 100) : 0;
   const refreshPaymentData = useCallback(async () => {
     await ctx.reload();
   }, [ctx]);
@@ -5420,6 +5667,44 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
       cancelled = true;
     };
   }, [ctx.registration?.routeId]);
+
+  useEffect(() => {
+    if (ticketKind !== "SINGLE") return;
+    setSingleBoardingStopId(selectedRegistration?.boardingStopId == null ? "" : String(selectedRegistration.boardingStopId));
+    setSingleAlightingStopId(selectedRegistration?.alightingStopId == null ? "" : String(selectedRegistration.alightingStopId));
+  }, [selectedRegistration?.boardingStopId, selectedRegistration?.alightingStopId, selectedRouteId, ticketKind]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setPaymentRouteDetail(null);
+    if (!selectedRouteId) return;
+    transportApi.route(selectedRouteId)
+      .then((route) => {
+        if (!cancelled) setPaymentRouteDetail(route);
+      })
+      .catch(() => {
+        if (!cancelled) setPaymentRouteDetail(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedRouteId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setPaymentQuote(null);
+    if (!selectedRouteId || !selectedRegistration) return;
+    studentApi.ticketQuote(selectedRouteId, ticketKind)
+      .then((nextQuote) => {
+        if (!cancelled) setPaymentQuote(nextQuote ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setPaymentQuote(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedRouteId, selectedRegistration, ticketKind]);
 
   // Step state: 1 = review, 2 = pay, 3 = done
   const step = !sepayOrder ? 1 : paidStatus === "paid" ? 3 : 2;
@@ -5449,13 +5734,13 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
       toast.error("Hãy chọn tuyến cần mua vé.");
       return;
     }
-    if (kind === "SINGLE" && !canBuySingle) {
+    if (kind === "SINGLE" && (!canBuySingle || !selectedBoardingStopRealId || !selectedAlightingStopRealId)) {
       toast.error("Cần chọn trạm lên/xuống trước khi mua vé lượt.");
       return;
     }
     setPurchasing(true);
     try {
-      const order = await studentApi.createSePayOrder(kind, Number(selectedRouteId));
+      const order = await studentApi.createSePayOrder(kind, Number(selectedRouteId), kind === "SINGLE" ? { boardingStopId: Number(selectedBoardingStopRealId), alightingStopId: Number(selectedAlightingStopRealId) } : undefined);
       const pollToken = paymentPollTokenRef.current + 1;
       paymentPollTokenRef.current = pollToken;
       paymentSettledRef.current = false;
@@ -5530,7 +5815,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
 
       {/* Step indicator */}
       <ScrollReveal>
-        <div className="flex items-center justify-center gap-2 sm:gap-4">
+        <div className="mx-auto flex max-w-xl items-center justify-center gap-2 sm:gap-4">
           {[
             { n: 1, label: "Xem đơn", icon: Info },
             { n: 2, label: "Thanh toán", icon: CreditCard },
@@ -5555,7 +5840,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
         </div>
       </ScrollReveal>
 
-      <div className="mx-auto grid w-full max-w-xl grid-cols-1 gap-4 min-w-0">
+      <div className="mx-auto grid w-full max-w-2xl grid-cols-1 gap-4 min-w-0">
         {/* Order details */}
         <ScrollReveal>
           <ExpressiveCard variant="elevated" className="p-6 h-full min-w-0">
@@ -5573,7 +5858,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                       <SelectContent>
                         {registrations.map((item) => (
                           <SelectItem key={item.registrationId} value={String(item.routeId)}>
-                            {item.routeName} — {item.boardingStopName} → {item.alightingStopName}
+                            {routeDisplayName(item.routeName)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -5593,18 +5878,18 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                         type="button"
                         onClick={() => { setTicketKind(item.id); setSepayOrder(null); setPaidStatus("idle"); setSecondsLeft(null); }}
                         className={cn(
-                          "relative rounded-2xl border p-4 text-left transition-all hover:-translate-y-0.5",
+                          "relative rounded-[22px] border p-4 text-left transition-all hover:-translate-y-0.5",
                           ticketKind === item.id
-                            ? "border-[#14140f] bg-white shadow-[0_8px_24px_rgba(20,20,15,0.08)] ring-2 ring-[#beff50]/35"
-                            : "border-outline-variant bg-surface hover:bg-surface-container-low",
+                            ? "border-[#14140f] bg-white shadow-[0_8px_24px_rgba(20,20,15,0.08)] ring-2 ring-[#beff50]/45"
+                            : "border-[#E8E2D5] bg-[#FAF8F2] hover:bg-white hover:shadow-[0_8px_24px_rgba(20,20,15,0.05)]",
                         )}
                       >
                         {ticketKind === item.id ? (
-                          <span className="absolute right-3 top-3 grid size-6 place-items-center rounded-full bg-[#14140f] text-[#beff50]">
-                            <CheckCircle2 className="size-3.5" />
+                          <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-[#14140f] px-2 py-1 text-[10px] font-black uppercase tracking-wide text-[#beff50]">
+                            <CheckCircle2 className="size-3.5" /> Đang chọn
                           </span>
                         ) : null}
-                        <p className="pr-8 text-sm font-black text-on-surface">{item.title}</p>
+                        <p className="pr-24 text-sm font-black text-on-surface">{item.title}</p>
                         <p className="mt-1 text-xs text-on-surface-variant">{item.desc}</p>
                         <p className={cn("mt-3 text-lg font-black", ticketKind === item.id ? "text-[#14140f]" : "text-[#2f332a]")}>{item.amount ? formatVND(item.amount) : "Chưa có giá"}</p>
                       </button>
@@ -5612,30 +5897,88 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                   </div>
                 </div>
 
-                <Row label="Tuyến" value={selectedRegistration.routeName} icon={<RouteIcon className="size-4" />} />
-                <Row label="Trạm lên" value={selectedRegistration.boardingStopName} icon={<MapPin className="size-4" />} />
-                <Row label="Trạm xuống" value={selectedRegistration.alightingStopName} icon={<MapPin className="size-4" />} />
+                <Row label="Tuyến" value={routeDisplayName(selectedRegistration.routeName)} icon={<RouteIcon className="size-4" />} />
+                {ticketKind === "SINGLE" ? (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <Label className="text-xs font-bold">Trạm lên</Label>
+                      <Select value={singleBoardingStopId} onValueChange={(value) => { const nextOrder = paymentRouteStops.find((stop) => stop.id === value)?.order; setSingleBoardingStopId(value); if (nextOrder != null && alightingStopOrder != null && nextOrder >= alightingStopOrder) setSingleAlightingStopId(""); }}>
+                        <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn trạm lên" /></SelectTrigger>
+                        <SelectContent>
+                          {boardingOptions.map((stop) => <SelectItem key={stop.id} value={stop.id}>{stop.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs font-bold">Trạm xuống</Label>
+                      <Select value={singleAlightingStopId} onValueChange={(value) => { const nextOrder = paymentRouteStops.find((stop) => stop.id === value)?.order; setSingleAlightingStopId(value); if (nextOrder != null && boardingStopOrder != null && nextOrder <= boardingStopOrder) setSingleBoardingStopId(""); }}>
+                        <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn trạm xuống" /></SelectTrigger>
+                        <SelectContent>
+                          {alightingOptions.map((stop) => <SelectItem key={stop.id} value={stop.id}>{stop.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                ) : null}
+                {ticketKind === "SINGLE" && singleBoardingStopId && singleAlightingStopId ? (
+                  <>
+                    <Row label="Trạm lên" value={selectedBoardingStopName} icon={<MapPin className="size-4" />} />
+                    <Row label="Trạm xuống" value={selectedAlightingStopName} icon={<MapPin className="size-4" />} />
+                  </>
+                ) : null}
                 <Row label="Hiệu lực" value={ticketKind === "SINGLE" ? "Vé lượt trong ngày" : "Theo kỳ vé"} icon={<Calendar className="size-4" />} />
-
-                <div className="h-px bg-outline-variant my-2" />
-                {ticketKind === "MONTHLY" ? (
-                  <>
-                    <Row label="Giá niêm yết" value={formatVND(monthlyOriginal)} muted />
-                    {monthlySubsidy > 0 && <Row label="Trợ giá áp dụng" value={`-${formatVND(monthlySubsidy)}`} accent="success" />}
-                    <Row label="Sinh viên trả" value={formatVND(monthlyFinal)} icon={<Wallet className="size-4" />} />
-                  </>
-                ) : (
-                  <>
-                    <Row label="Giá vé lượt" value={singleOriginal ? formatVND(singleOriginal) : "Chưa có giá"} muted />
-                    <Row label="Trợ giá áp dụng" value={singleSubsidy > 0 ? `-${formatVND(singleSubsidy)}` : "0 ₫"} />
-                    <Row label="Sinh viên trả" value={singleFinal ? formatVND(singleFinal) : "Chưa có giá"} icon={<Wallet className="size-4" />} />
-                    {!canBuySingle && (
-                      <p className="rounded-xl bg-warning-container/50 px-3 py-2 text-xs font-semibold text-on-surface">
-                        Cần chọn trạm lên/xuống trước khi mua vé lượt.
-                      </p>
+                <div className="h-px bg-[#E7E0D2] my-2" />
+                <div className="space-y-2 rounded-[18px] border border-[#E7E0D2] bg-[#FFFEFA] p-4">
+                  <Row label={ticketKind === "SINGLE" ? "Giá vé lượt" : "Giá niêm yết"} value={currentOriginal ? formatVND(currentOriginal) : "Chưa có giá"} muted />
+                  <AnimatePresence mode="wait">
+                    {hasSchoolSubsidy ? (
+                      <motion.div
+                        key="subsidy-on"
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -6 }}
+                        transition={{ duration: 0.22, ease: "easeOut" }}
+                        className="rounded-[16px] border border-[#CFEA7A] bg-[#F7FFE7] p-3"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[#beff50] text-[#1F211B]">
+                              <GraduationCap className="size-4" />
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-[#25310E]">Nhà trường hỗ trợ {subsidyPercent > 0 ? `${subsidyPercent}%` : "học phí đi lại"}</p>
+                              <p className="text-xs text-[#5F6E35]">Khoản này được trừ trực tiếp trước khi tạo QR.</p>
+                            </div>
+                          </div>
+                          <motion.p
+                            initial={{ scale: 0.96 }}
+                            animate={{ scale: [0.96, 1.03, 1] }}
+                            transition={{ duration: 0.35, ease: "easeOut" }}
+                            className="shrink-0 text-base font-semibold tabular-nums text-[#315400]"
+                          >
+                            -{formatVND(currentSubsidy)}
+                          </motion.p>
+                        </div>
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="subsidy-off"
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -6 }}
+                        className="rounded-[16px] bg-[#F7F4EC] px-3 py-2 text-xs text-[#6F6A5F]"
+                      >
+                        Chưa có khoản trợ giá áp dụng cho lựa chọn này.
+                      </motion.div>
                     )}
-                  </>
-                )}
+                  </AnimatePresence>
+                  <Row label="Sinh viên trả" value={currentFinal ? formatVND(currentFinal) : "Chưa có giá"} icon={<Wallet className="size-4" />} />
+                  {ticketKind === "SINGLE" && !canBuySingle && (
+                    <p className="rounded-[14px] bg-warning-container/50 px-3 py-2 text-xs font-medium text-on-surface">
+                      Cần chọn trạm lên/xuống trước khi mua vé lượt.
+                    </p>
+                  )}
+                </div>
 
                 <motion.div
                   initial={{ opacity: 0, y: 8 }}
@@ -5645,14 +5988,14 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                 >
                   <p className="text-[10px] font-bold opacity-70 uppercase tracking-wide">Tổng thanh toán</p>
                   <p className="text-3xl font-black mt-1 tabular-nums">
-                    {formatVND(ticketKind === "SINGLE" ? singleFinal : monthlyFinal)}
+                    {sepayOrder ? formatVND(sepayOrder.amount) : currentPriceLabel}
                   </p>
                 </motion.div>
 
                 {step === 1 && (
                   <ExpressiveButton
                     variant="filled"
-                    className="w-full mt-2"
+                    className="mt-2 w-full shadow-[0_10px_24px_rgba(190,255,80,0.22)] transition active:scale-[0.99]"
                     onClick={() => buy(ticketKind)}
                     disabled={purchasing || (ticketKind === "SINGLE" && !canBuySingle)}
                   >
@@ -5781,38 +6124,59 @@ function InvoicesScreen({ ctx }: { ctx: Ctx }) {
           description="Các giao dịch mua vé sẽ hiển thị tại đây."
         />
       ) : (
-        <StaggerGroup className="space-y-3 min-w-0">
-          {invoices.map((inv: any) => (
-            <StaggerItem key={inv.id}>
-              <ExpressiveCard variant="elevated" className="p-4 min-w-0">
-                <div className="flex items-start justify-between gap-3 min-w-0">
-                  <div className="flex items-start gap-3 min-w-0">
-                    <div className="size-10 shrink-0 rounded-xl bg-primary-container text-on-primary-container flex items-center justify-center">
-                      <Receipt className="size-5" />
+        <StaggerGroup className="grid gap-3 min-w-0">
+          {invoices.map((inv: any) => {
+            const paid = isPaidStatus(inv.status);
+            const pending = isUnpaidStatus(inv.status) || inv.status === "pending";
+            const statusLabel = paid ? "Đã thanh toán" : pending ? "Chờ thanh toán" : inv.status;
+            return (
+              <StaggerItem key={inv.id}>
+                <ExpressiveCard variant="elevated" className="overflow-hidden rounded-[28px] border border-[#14140f]/10 bg-white p-0 min-w-0 shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
+                  <div className="flex min-w-0 flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+                    <div className="flex min-w-0 items-start gap-4">
+                      <div className={cn(
+                        "grid size-12 shrink-0 place-items-center rounded-[18px] text-[#14140f] shadow-sm",
+                        paid ? "bg-[#beff50]" : pending ? "bg-[#fff1c2]" : "bg-surface-container-high",
+                      )}>
+                        {paid ? <CheckCircle2 className="size-6" /> : <Receipt className="size-6" />}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
+                          <h3 className="truncate text-base font-black tracking-[-0.01em] text-[#14140f]">{inv.description}</h3>
+                          <span className="rounded-full bg-[#14140f]/5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-[#6B6B6B]">
+                            {inv.method || "BANK_TRANSFER"}
+                          </span>
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-medium text-[#6B6B6B]">
+                          <span className="inline-flex items-center gap-1.5">
+                            <Banknote className="size-3.5" />
+                            {inv.code}
+                          </span>
+                          <span className="inline-flex items-center gap-1.5">
+                            <Calendar className="size-3.5" />
+                            {formatDate(inv.date)}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <p className="font-bold truncate">{inv.description}</p>
-                      <p className="text-xs text-on-surface-variant mt-0.5">
-                        {inv.code} • {formatDate(inv.date)}
-                      </p>
+                    <div className="flex shrink-0 items-center justify-between gap-3 sm:flex-col sm:items-end">
+                      <p className="text-xl font-black tabular-nums text-[#14140f] sm:text-2xl">{formatVND(inv.amount)}</p>
+                      <M3StatusPill
+                        label={statusLabel}
+                        tone={paid ? "success" : pending ? "warning" : "error"}
+                      />
                     </div>
                   </div>
-                  <div className="text-right shrink-0">
-                    <p className="font-bold text-primary">{formatVND(inv.amount)}</p>
-                    <M3StatusPill
-                      label={inv.status}
-                      tone={isPaidStatus(inv.status) ? "success" : isUnpaidStatus(inv.status) || inv.status === "pending" ? "warning" : "error"}
-                    />
-                  </div>
-                </div>
-              </ExpressiveCard>
-            </StaggerItem>
-          ))}
+                </ExpressiveCard>
+              </StaggerItem>
+            );
+          })}
         </StaggerGroup>
       )}
     </PageTransition>
   );
 }
+
 
 // =============================================================================
 // Screen 13: Feedback — submit + list

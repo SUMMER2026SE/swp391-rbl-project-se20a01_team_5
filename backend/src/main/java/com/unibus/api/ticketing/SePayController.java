@@ -36,7 +36,9 @@ public class SePayController {
             ticketType = "monthly";
         }
         Integer routeId = parseRouteId(request.get("routeId"));
-        Map<String, Object> orderDetails = sePayService.createOrder(currentUser, ticketType, routeId);
+        Integer boardingStopId = parseRouteId(request.get("boardingStopId"));
+        Integer alightingStopId = parseRouteId(request.get("alightingStopId"));
+        Map<String, Object> orderDetails = sePayService.createOrder(currentUser, ticketType, routeId, boardingStopId, alightingStopId);
         return ApiResponse.ok("Payment order created", orderDetails);
     }
 

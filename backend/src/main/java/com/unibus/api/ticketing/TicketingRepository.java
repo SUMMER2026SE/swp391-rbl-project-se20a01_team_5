@@ -494,6 +494,8 @@ public class TicketingRepository {
                            COALESCE(i.subsidy_amount, 0) AS subsidy_amount,
                            COALESCE(i.final_amount, p.amount) AS final_amount,
                            COALESCE('DH' || tx.matched_order_id, p.transaction_code) AS transaction_code,
+                           COALESCE(o.ticket_type, CASE WHEN p.monthly_pass_id IS NOT NULL THEN 'monthly' WHEN p.single_trip_ticket_id IS NOT NULL THEN 'single' ELSE NULL END) AS ticket_type,
+                           COALESCE(o.name, mp_r.route_name, st_r.route_name) AS route_name,
                            i.invoice_id,
                            i.issued_at AS invoice_issued_at,
                            p.created_at,
@@ -501,6 +503,11 @@ public class TicketingRepository {
                     FROM payments p
                     LEFT JOIN invoices i ON i.payment_id = p.payment_id
                     LEFT JOIN tb_transactions tx ON tx.reference_number = p.transaction_code
+                    LEFT JOIN tb_orders o ON o.id = tx.matched_order_id
+                    LEFT JOIN monthly_passes mp ON mp.monthly_pass_id = p.monthly_pass_id
+                    LEFT JOIN routes mp_r ON mp_r.route_id = mp.route_id
+                    LEFT JOIN single_trip_tickets st ON st.single_trip_ticket_id = p.single_trip_ticket_id
+                    LEFT JOIN routes st_r ON st_r.route_id = st.route_id
                     WHERE p.student_code = ?
                     UNION ALL
                     SELECT -o.id::integer AS payment_id,
@@ -512,11 +519,14 @@ public class TicketingRepository {
                            0 AS subsidy_amount,
                            o.total AS final_amount,
                            'DH' || o.id AS transaction_code,
+                           o.ticket_type AS ticket_type,
+                           COALESCE(o.name, r.route_name) AS route_name,
                            NULL::integer AS invoice_id,
                            NULL::timestamptz AS invoice_issued_at,
                            o.created_at,
                            0 AS sort_group
                     FROM tb_orders o
+                    LEFT JOIN routes r ON r.route_id = o.route_id
                     WHERE o.student_code = ?
                       AND o.payment_status = 'Unpaid'
                 ) rows
@@ -616,6 +626,8 @@ public class TicketingRepository {
                 rs.getString("method"),
                 rs.getString("status"),
                 rs.getString("transaction_code"),
+                rs.getString("ticket_type"),
+                rs.getString("route_name"),
                 invoiceId == null ? null : "INV-" + invoiceId,
                 toOffsetDateTime(rs.getTimestamp("invoice_issued_at")),
                 toOffsetDateTime(rs.getTimestamp("created_at")));

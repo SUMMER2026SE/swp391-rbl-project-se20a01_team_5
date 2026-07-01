@@ -32,6 +32,7 @@ import {
   ImportBatchView,
   NotificationView,
   PaymentTransactionView,
+  PaymentView,
   ReconciliationView,
   RouteUniversityView,
   RosterStudentView,
@@ -306,18 +307,31 @@ export function mapComplaint(c: { complaintId: number; title: string; content: s
   };
 }
 
-export function mapInvoice(p: PaymentTransactionView): Invoice {
+export function mapInvoice(p: PaymentTransactionView | PaymentView): Invoice {
+  const payment = p as PaymentView;
+  const transaction = p as PaymentTransactionView;
+  const id = transaction.orderId ?? payment.paymentId;
+  const code = transaction.referenceNumber || payment.invoiceNumber || payment.transactionCode || `INV-${id}`;
+  const rawTicketType = transaction.ticketType || payment.ticketType || (payment.ticketId ? "monthly" : "ticket");
+  const loweredTicketType = rawTicketType.toLowerCase();
+  const ticketLabel = loweredTicketType.includes("single") || loweredTicketType.includes("day")
+    ? "Vé thường"
+    : loweredTicketType.includes("month")
+      ? "Vé tháng"
+      : rawTicketType;
+  const routeName = transaction.routeName || payment.routeName || "";
   return {
-    id: String(p.orderId),
-    code: p.referenceNumber || `INV-${p.orderId}`,
-    studentId: String(p.studentCode || p.studentName || ""),
-    description: `${p.ticketType || "Vé tháng"} • ${p.routeName || ""}`.trim(),
-    amount: num(p.orderTotal ?? p.amountIn),
-    method: (p.gateway || "cash").toLowerCase() as Invoice["method"],
-    status: isPaidStatus(p.paymentStatus) ? "paid" : isRefundedStatus(p.paymentStatus) ? "refunded" : "pending",
-    date: p.paidAt || p.transactionDate || p.createdAt || "",
+    id: String(id),
+    code,
+    studentId: String(transaction.studentCode || transaction.studentName || ""),
+    description: routeName.toLowerCase().startsWith("vé ") ? routeName : `${ticketLabel}${routeName ? ` • ${routeName}` : ""}`,
+    amount: num(transaction.orderTotal ?? transaction.amountIn ?? payment.finalAmount ?? payment.amount),
+    method: (transaction.gateway || payment.method || "cash").toLowerCase() as Invoice["method"],
+    status: isPaidStatus(transaction.paymentStatus || payment.status) ? "paid" : isRefundedStatus(transaction.paymentStatus || payment.status) ? "refunded" : "pending",
+    date: transaction.paidAt || transaction.transactionDate || payment.invoiceIssuedAt || transaction.createdAt || payment.createdAt || "",
   };
 }
+
 
 export function mapVerification(v: VerificationView): User {
   return {

@@ -103,6 +103,8 @@ public final class TicketingDtos {
             String method,
             String status,
             String transactionCode,
+            String ticketType,
+            String routeName,
             String invoiceNumber,
             OffsetDateTime invoiceIssuedAt,
             OffsetDateTime createdAt) {
