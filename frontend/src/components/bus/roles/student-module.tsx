@@ -3122,6 +3122,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
   const [showAllVehicles, setShowAllVehicles] = useState(false);
   const locationRequestedRef = useRef(false);
+  const autoSelectedNearestVehicleRef = useRef(false);
 
   const registeredRoutes = registrations.length ? registrations : ctx.registration ? [ctx.registration] : [];
   const selectedRegistration = registeredRoutes.find((item) => String(item.routeId) === String(trackingContext?.routeId))
@@ -3294,10 +3295,43 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
       : "Chưa có chuyến";
   const hasTrackingSnapshot = Boolean(journeyId || trackingContext?.routeId);
   const showRouteChooser = choosingRoute || !hasTrackingSnapshot;
+  const resolveVehicleNextStopIndex = useCallback((vehicle: NonNullable<JourneyTrackingSnapshotDTO["vehicles"]>[number]) => {
+    const apiIndex = vehicle.nextStopId == null
+      ? -1
+      : trackingStops.findIndex((stop) => String(stop.id) === String(vehicle.nextStopId));
+    const vehicleLat = numberValue(vehicle.latitude);
+    const vehicleLng = numberValue(vehicle.longitude);
+    if (!vehicleLat || !vehicleLng || trackingStops.length < 2) return apiIndex;
+
+    const scale = Math.cos(vehicleLat * Math.PI / 180);
+    let bestSegmentIndex = -1;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    for (let index = 0; index < trackingStops.length - 1; index += 1) {
+      const from = trackingStops[index];
+      const to = trackingStops[index + 1];
+      const ax = from.lng * scale;
+      const ay = from.lat;
+      const bx = to.lng * scale;
+      const by = to.lat;
+      const px = vehicleLng * scale;
+      const py = vehicleLat;
+      const dx = bx - ax;
+      const dy = by - ay;
+      const lengthSquared = dx * dx + dy * dy;
+      const progress = lengthSquared ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSquared)) : 0;
+      const projectedX = ax + progress * dx;
+      const projectedY = ay + progress * dy;
+      const distance = (px - projectedX) ** 2 + (py - projectedY) ** 2;
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestSegmentIndex = index;
+      }
+    }
+    const projectedIndex = bestSegmentIndex < 0 ? -1 : Math.min(trackingStops.length - 1, bestSegmentIndex + 1);
+    return Math.max(apiIndex, projectedIndex);
+  }, [trackingStops]);
   const primaryVehicle = selectedVehicle;
-  const nextVehicleStopIndex = primaryVehicle?.nextStopId == null
-    ? -1
-    : trackingStops.findIndex((stop) => String(stop.id) === String(primaryVehicle.nextStopId));
+  const nextVehicleStopIndex = primaryVehicle ? resolveVehicleNextStopIndex(primaryVehicle) : -1;
   const realtimeEtaRows = primaryVehicle && trackingStops.length && nextVehicleStopIndex >= 0
     ? trackingStops.map((stop, index) => {
         const passed = index < nextVehicleStopIndex;
@@ -3440,6 +3474,32 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
   useEffect(() => {
     if (!selectedVehicleId && displayVehicles[0]?.vehicleId) setSelectedVehicleId(displayVehicles[0].vehicleId);
   }, [displayVehicles, selectedVehicleId]);
+
+  useEffect(() => {
+    autoSelectedNearestVehicleRef.current = false;
+  }, [journeyId, trackingContext?.routeId]);
+
+  useEffect(() => {
+    if (!userLocation || !displayVehicles.length || autoSelectedNearestVehicleRef.current) return;
+    const nearestStopIndex = nearestStop?.stop
+      ? trackingStops.findIndex((stop) => String(stop.id) === String(nearestStop.stop.id))
+      : -1;
+    const preferredVehicle = displayVehicles
+      .filter((vehicle) => vehicle.latitude != null && vehicle.longitude != null)
+      .map((vehicle) => {
+        const nextIndex = resolveVehicleNextStopIndex(vehicle);
+        return {
+          vehicle,
+          hasNotPassedNearestStop: nearestStopIndex < 0 || nextIndex < 0 || nextIndex <= nearestStopIndex,
+          meters: distanceMeters(userLocation, { lat: numberValue(vehicle.latitude), lng: numberValue(vehicle.longitude) }),
+        };
+      })
+      .sort((left, right) => Number(right.hasNotPassedNearestStop) - Number(left.hasNotPassedNearestStop) || left.meters - right.meters)[0];
+    if (!preferredVehicle?.vehicle?.vehicleId) return;
+    autoSelectedNearestVehicleRef.current = true;
+    setSelectedVehicleId(preferredVehicle.vehicle.vehicleId);
+    setShowAllVehicles(false);
+  }, [displayVehicles, nearestStop?.stop, resolveVehicleNextStopIndex, trackingStops, userLocation]);
 
   const selectTrackingStop = (stopId: string) => {
     setSelectedStopId(stopId);
@@ -5637,6 +5697,8 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
   const [registrations, setRegistrations] = useState<RegistrationDTO[]>([]);
   const [pendingRegistration, setPendingRegistration] = useState<RegistrationDTO | null>(null);
   const [selectedRouteId, setSelectedRouteId] = useState<string>("");
+  const [singleBoardingStopId, setSingleBoardingStopId] = useState<string>("");
+  const [singleAlightingStopId, setSingleAlightingStopId] = useState<string>("");
   const [ticketKind, setTicketKind] = useState<"MONTHLY" | "SINGLE">("MONTHLY");
   const [sepayOrder, setSepayOrder] = useState<{
     orderId: number;
@@ -5687,6 +5749,31 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
   const subsidyPercent = currentOriginal > 0 && hasSchoolSubsidy ? Math.round((currentSubsidy / currentOriginal) * 100) : 0;
   const monthlyBasePrice = monthlyOriginal > 0 ? monthlyOriginal : routeMonthlyFare;
   const singleBasePrice = singleOriginal > 0 ? singleOriginal : singleFare;
+  const paymentRouteStops = useMemo(() => {
+    const rawStops = Array.isArray((paymentRouteDetail as any)?.stops)
+      ? (paymentRouteDetail as any).stops
+      : Array.isArray((selectedRoute as any)?.stops)
+        ? (selectedRoute as any).stops
+        : [];
+    return rawStops
+      .map((entry: any, index: number) => {
+        const stopId = Number(entry?.stopId ?? entry?.id ?? entry);
+        if (!Number.isFinite(stopId)) return null;
+        const fallbackStop = ctx.stops.find((stop: any) => Number(stop.id ?? stop.stopId) === stopId);
+        const name = entry?.stopName ?? entry?.name ?? fallbackStop?.name ?? fallbackStop?.stopName ?? `Trạm ${index + 1}`;
+        const order = Number(entry?.stopOrder ?? entry?.order ?? index);
+        return { id: String(stopId), stopId, name, order };
+      })
+      .filter(Boolean)
+      .sort((left: any, right: any) => left.order - right.order) as { id: string; stopId: number; name: string; order: number }[];
+  }, [ctx.stops, paymentRouteDetail, selectedRoute]);
+  const boardingStopOrder = paymentRouteStops.find((stop) => stop.id === singleBoardingStopId)?.order;
+  const alightingStopOrder = paymentRouteStops.find((stop) => stop.id === singleAlightingStopId)?.order;
+  const hasSelectableRouteStops = paymentRouteStops.length >= 2;
+  const boardingOptions = paymentRouteStops.filter((stop) => alightingStopOrder == null || stop.order < alightingStopOrder);
+  const alightingOptions = paymentRouteStops.filter((stop) => boardingStopOrder == null || stop.order > boardingStopOrder);
+  const selectedBoardingStopName = paymentRouteStops.find((stop) => stop.id === singleBoardingStopId)?.name || selectedRegistration?.boardingStopName || "—";
+  const selectedAlightingStopName = paymentRouteStops.find((stop) => stop.id === singleAlightingStopId)?.name || selectedRegistration?.alightingStopName || "—";
 
   const refreshPaymentData = useCallback(async () => {
     await ctx.reload();
@@ -5762,6 +5849,16 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
   }, [selectedRouteId, selectedRegistration, ticketKind]);
 
   useEffect(() => {
+    if (ticketKind !== "SINGLE") return;
+    const routeStopIds = paymentRouteStops.map((stop) => stop.id);
+    const registrationBoarding = selectedRegistration?.boardingStopId == null ? "" : String(selectedRegistration.boardingStopId);
+    const registrationAlighting = selectedRegistration?.alightingStopId == null ? "" : String(selectedRegistration.alightingStopId);
+    const nextBoarding = routeStopIds.includes(registrationBoarding) ? registrationBoarding : paymentRouteStops[0]?.id ?? registrationBoarding;
+    const nextAlighting = routeStopIds.includes(registrationAlighting) ? registrationAlighting : paymentRouteStops[paymentRouteStops.length - 1]?.id ?? registrationAlighting;
+    setSingleBoardingStopId(nextBoarding || "");
+    setSingleAlightingStopId(nextAlighting || "");
+  }, [paymentRouteStops, selectedRegistration?.boardingStopId, selectedRegistration?.alightingStopId, selectedRouteId, ticketKind]);
+  useEffect(() => {
     let cancelled = false;
     setPaymentRouteDetail(null);
     if (!selectedRouteId) return;
@@ -5811,7 +5908,10 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
     }
     setPurchasing(true);
     try {
-      const order = await studentApi.createSePayOrder(kind, Number(selectedRouteId));
+      const stopMetadata = kind === "SINGLE" && hasSelectableRouteStops && singleBoardingStopId && singleAlightingStopId
+        ? { boardingStopId: Number(singleBoardingStopId), alightingStopId: Number(singleAlightingStopId) }
+        : undefined;
+      const order = await studentApi.createSePayOrder(kind, Number(selectedRouteId), stopMetadata);
       const pollToken = paymentPollTokenRef.current + 1;
       paymentPollTokenRef.current = pollToken;
       paymentSettledRef.current = false;
@@ -5845,7 +5945,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
     } finally {
       setPurchasing(false);
     }
-  }, [canBuySingle, refreshPaymentData, selectedRouteId, ticketKind]);
+  }, [canBuySingle, hasSelectableRouteStops, refreshPaymentData, selectedRouteId, singleAlightingStopId, singleBoardingStopId, ticketKind]);
 
   const copyAccount = async () => {
     if (!sepayOrder?.accountNo) return;
@@ -5948,8 +6048,52 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                 </div>
 
                 <Row label="Tuyến" value={selectedRegistration.routeName} icon={<RouteIcon className="size-4" />} />
-                {ticketKind === "SINGLE" && <Row label="Trạm lên" value={selectedRegistration.boardingStopName} icon={<MapPin className="size-4" />} />}
-                {ticketKind === "SINGLE" && <Row label="Trạm xuống" value={selectedRegistration.alightingStopName} icon={<MapPin className="size-4" />} />}
+                {ticketKind === "SINGLE" ? (
+                  <div className="space-y-3 rounded-[18px] border border-[#E7E0D2] bg-[#FFFEFA] p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-[#24251F]">Chọn trạm cho vé lượt</p>
+                        <p className="mt-0.5 text-xs text-[#7A756B]">Áp dụng cho tuyến đã chọn. Giá vé không đổi theo trạm.</p>
+                      </div>
+                    </div>
+                    {hasSelectableRouteStops ? (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <Label className="text-xs font-bold">Trạm lên</Label>
+                          <Select
+                            value={singleBoardingStopId}
+                            onValueChange={(value) => {
+                              const nextOrder = paymentRouteStops.find((stop) => stop.id === value)?.order;
+                              setSingleBoardingStopId(value);
+                              if (nextOrder != null && alightingStopOrder != null && nextOrder >= alightingStopOrder) {
+                                setSingleAlightingStopId("");
+                              }
+                            }}
+                          >
+                            <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn trạm lên" /></SelectTrigger>
+                            <SelectContent>
+                              {boardingOptions.map((stop) => <SelectItem key={stop.id} value={stop.id}>{stop.name}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label className="text-xs font-bold">Trạm xuống</Label>
+                          <Select value={singleAlightingStopId} onValueChange={setSingleAlightingStopId}>
+                            <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn trạm xuống" /></SelectTrigger>
+                            <SelectContent>
+                              {alightingOptions.map((stop) => <SelectItem key={stop.id} value={stop.id}>{stop.name}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <Row label="Trạm lên" value={selectedBoardingStopName} icon={<MapPin className="size-4" />} />
+                        <Row label="Trạm xuống" value={selectedAlightingStopName} icon={<MapPin className="size-4" />} />
+                      </div>
+                    )}
+                  </div>
+                ) : null}
                 <Row label="Hiệu lực" value={ticketKind === "SINGLE" ? "Vé lượt trong ngày" : "Theo kỳ vé"} icon={<Calendar className="size-4" />} />
 
                 <div className="h-px bg-[#E7E0D2] my-2" />
@@ -6032,7 +6176,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                     variant="filled"
                     className="w-full mt-2"
                     onClick={() => buy(ticketKind)}
-                    disabled={purchasing || !selectedRouteId || (ticketKind === "SINGLE" && !canBuySingle)}
+                    disabled={purchasing || !selectedRouteId || (ticketKind === "SINGLE" && (!canBuySingle || (hasSelectableRouteStops && (!singleBoardingStopId || !singleAlightingStopId))))}
                   >
                     {purchasing ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
                     Xác nhận
@@ -6275,7 +6419,14 @@ function InvoicesScreen({ ctx }: { ctx: Ctx }) {
     };
   }, [ctx.invoices]);
 
-  const visibleInvoices = invoices.filter((inv: any) => !(isUnpaidStatus(inv.status) || inv.status === "pending"));
+  const visibleInvoices = invoices
+    .filter((inv: any) => !(isUnpaidStatus(inv.status) || inv.status === "pending"))
+    .slice()
+    .sort((a: any, b: any) => {
+      const left = Date.parse(a.date || "") || 0;
+      const right = Date.parse(b.date || "") || 0;
+      return right - left;
+    });
 
   return (
     <PageTransition className="space-y-6 min-w-0">
