@@ -3149,6 +3149,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
   const [showAllTrackingStops, setShowAllTrackingStops] = useState(false);
   const [showAllEtaStops, setShowAllEtaStops] = useState(false);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [nearestStopWalkLine, setNearestStopWalkLine] = useState<{ lat: number; lng: number }[]>([]);
   const [locationLoading, setLocationLoading] = useState(false);
   const [selectedStopId, setSelectedStopId] = useState<string>("");
   const [selectedStopEtas, setSelectedStopEtas] = useState<EtaDTO[] | null>(null);
@@ -3292,7 +3293,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
   const nextEta = journeyTracking?.stopEtas?.[0];
   const routeTitle = journeyTracking?.routeName || trackingContext?.routeName || selectedRoute?.name || "Tuyến đang theo dõi";
   const routeCode = journeyTracking?.routeCode || trackingContext?.routeCode || journeyTracking?.stopEtas?.[0]?.routeCode || selectedRoute?.code || "BUS";
-  const displayVehicles = useMemo(() => journeyTracking?.vehicles || [], [journeyTracking?.vehicles]);
+  const displayVehicles = journeyTracking?.vehicles || [];
   const selectedVehicle = displayVehicles.find((vehicle) => vehicle.vehicleId === selectedVehicleId) || displayVehicles[0];
   const collapsedVehicles = displayVehicles.filter((vehicle) => vehicle.vehicleId !== selectedVehicle?.vehicleId);
 
@@ -3329,50 +3330,51 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
       : "Chưa có chuyến";
   const hasTrackingSnapshot = Boolean(journeyId || trackingContext?.routeId);
   const showRouteChooser = choosingRoute || !hasTrackingSnapshot;
-  const resolveVehicleNextStopIndex = useCallback((vehicle: NonNullable<JourneyTrackingSnapshotDTO["vehicles"]>[number]) => {
-    const apiIndex = vehicle.nextStopId == null
-      ? -1
-      : trackingStops.findIndex((stop) => String(stop.id) === String(vehicle.nextStopId));
-    const vehicleLat = numberValue(vehicle.latitude);
-    const vehicleLng = numberValue(vehicle.longitude);
-    if (!vehicleLat || !vehicleLng || trackingStops.length < 2) return apiIndex;
-
-    const scale = Math.cos(vehicleLat * Math.PI / 180);
-    let bestSegmentIndex = -1;
-    let bestDistance = Number.POSITIVE_INFINITY;
-    for (let index = 0; index < trackingStops.length - 1; index += 1) {
-      const from = trackingStops[index];
-      const to = trackingStops[index + 1];
-      const ax = from.lng * scale;
-      const ay = from.lat;
-      const bx = to.lng * scale;
-      const by = to.lat;
-      const px = vehicleLng * scale;
-      const py = vehicleLat;
-      const dx = bx - ax;
-      const dy = by - ay;
-      const lengthSquared = dx * dx + dy * dy;
-      const progress = lengthSquared ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSquared)) : 0;
-      const projectedX = ax + progress * dx;
-      const projectedY = ay + progress * dy;
-      const distance = (px - projectedX) ** 2 + (py - projectedY) ** 2;
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        bestSegmentIndex = index;
-      }
-    }
-    const projectedIndex = bestSegmentIndex < 0 ? -1 : Math.min(trackingStops.length - 1, bestSegmentIndex + 1);
-    return Math.max(apiIndex, projectedIndex);
-  }, [trackingStops]);
   const primaryVehicle = selectedVehicle;
-  const nextVehicleStopIndex = primaryVehicle ? resolveVehicleNextStopIndex(primaryVehicle) : -1;
-  const realtimeEtaRows = primaryVehicle && trackingStops.length && nextVehicleStopIndex >= 0
+  const nextVehicleStopIndex = primaryVehicle?.nextStopId == null
+    ? -1
+    : trackingStops.findIndex((stop) => String(stop.id) === String(primaryVehicle.nextStopId));
+  const vehicleProjectedNextStopIndex = primaryVehicle && trackingStops.length > 1
+    ? (() => {
+        const vehicleLat = numberValue(primaryVehicle.latitude);
+        const vehicleLng = numberValue(primaryVehicle.longitude);
+        if (!vehicleLat || !vehicleLng) return -1;
+        const scale = Math.cos(vehicleLat * Math.PI / 180);
+        let bestSegmentIndex = -1;
+        let bestDistance = Number.POSITIVE_INFINITY;
+        for (let index = 0; index < trackingStops.length - 1; index += 1) {
+          const from = trackingStops[index];
+          const to = trackingStops[index + 1];
+          const ax = from.lng * scale;
+          const ay = from.lat;
+          const bx = to.lng * scale;
+          const by = to.lat;
+          const px = vehicleLng * scale;
+          const py = vehicleLat;
+          const dx = bx - ax;
+          const dy = by - ay;
+          const lengthSquared = dx * dx + dy * dy;
+          const progress = lengthSquared ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSquared)) : 0;
+          const projectedX = ax + progress * dx;
+          const projectedY = ay + progress * dy;
+          const distance = (px - projectedX) ** 2 + (py - projectedY) ** 2;
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            bestSegmentIndex = index;
+          }
+        }
+        return bestSegmentIndex < 0 ? -1 : Math.min(trackingStops.length - 1, bestSegmentIndex + 1);
+      })()
+    : -1;
+  const effectiveNextVehicleStopIndex = Math.max(nextVehicleStopIndex, vehicleProjectedNextStopIndex);
+  const realtimeEtaRows = primaryVehicle && trackingStops.length && effectiveNextVehicleStopIndex >= 0
     ? trackingStops.map((stop, index) => {
-        const passed = index < nextVehicleStopIndex;
-        const current = index === nextVehicleStopIndex;
+        const passed = index < effectiveNextVehicleStopIndex;
+        const current = index === effectiveNextVehicleStopIndex;
+        const baseEtaMinutes = Math.max(0, Number(primaryVehicle.etaMinutes ?? 0));
         const minutesAway = passed
           ? -1
-          : Math.max(0, Number(primaryVehicle.etaMinutes ?? 0)) + Math.max(0, index - nextVehicleStopIndex) * 4;
+          : baseEtaMinutes + Math.max(0, index - effectiveNextVehicleStopIndex) * 4;
         return {
           stopId: Number(stop.id),
           stopName: stop.name,
@@ -3390,9 +3392,10 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
       .map((stop) => ({ stop, meters: distanceMeters(userLocation, { lat: stop.lat, lng: stop.lng }) }))
       .sort((left, right) => left.meters - right.meters)[0]
     : null;
+  const preferredWalkStop = userLocation && boardingStop ? { stop: boardingStop, meters: distanceMeters(userLocation, { lat: boardingStop.lat, lng: boardingStop.lng }) } : nearestStop;
   const selectedStop = trackingStops.find((stop) => stop.id === selectedStopId)
-    || nearestStop?.stop
     || boardingStop
+    || nearestStop?.stop
     || trackingStops[0];
   const selectedStopDistance = userLocation && selectedStop
     ? distanceMeters(userLocation, { lat: selectedStop.lat, lng: selectedStop.lng })
@@ -3418,6 +3421,48 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
     boardingStop ? { id: "boarding", label: `Trạm lên: ${boardingStop.name}`, lat: boardingStop.lat, lng: boardingStop.lng, tone: "boarding" } : null,
     alightingStop ? { id: "alighting", label: `Trạm xuống: ${alightingStop.name}`, lat: alightingStop.lat, lng: alightingStop.lng, tone: "destination" } : null,
   ].filter(Boolean) as JourneyExtraMarker[];
+
+  const trackingPolylines = useMemo(() => {
+    if (!nearestStopWalkLine.length) return journeyPolylines;
+    return [
+      ...journeyPolylines,
+      {
+        id: "user-nearest-stop",
+        label: boardingStop ? "Đường đi bộ tới trạm lên" : "Đường đi bộ tới trạm gần nhất",
+        color: "#16a34a",
+        dashed: true,
+        points: nearestStopWalkLine,
+      },
+    ];
+  }, [boardingStop, journeyPolylines, nearestStopWalkLine]);
+
+  useEffect(() => {
+    if (!userLocation || !preferredWalkStop?.stop) {
+      setNearestStopWalkLine([]);
+      return;
+    }
+    let cancelled = false;
+    const controller = new AbortController();
+    const from = `${userLocation.lng},${userLocation.lat}`;
+    const to = `${preferredWalkStop.stop.lng},${preferredWalkStop.stop.lat}`;
+    fetch(`https://router.project-osrm.org/route/v1/foot/${from};${to}?overview=full&geometries=geojson&steps=false`, { signal: controller.signal })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("Routing failed")))
+      .then((data) => {
+        const coordinates = data?.routes?.[0]?.geometry?.coordinates;
+        if (!Array.isArray(coordinates) || coordinates.length < 2) throw new Error("No route geometry");
+        const points = coordinates
+          .map((point: [number, number]) => ({ lat: Number(point[1]), lng: Number(point[0]) }))
+          .filter((point: { lat: number; lng: number }) => Number.isFinite(point.lat) && Number.isFinite(point.lng));
+        if (!cancelled) setNearestStopWalkLine(points.length >= 2 ? points : []);
+      })
+      .catch((error) => {
+        if (!cancelled && error?.name !== "AbortError") setNearestStopWalkLine([]);
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [preferredWalkStop?.stop?.lat, preferredWalkStop?.stop?.lng, userLocation?.lat, userLocation?.lng]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3455,12 +3500,12 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
 
   useEffect(() => {
     if (!selectedStopId && trackingStops.length) {
-      const fallbackStop = nearestStop?.stop || boardingStop || trackingStops[0];
+      const fallbackStop = boardingStop || nearestStop?.stop || trackingStops[0];
       if (fallbackStop) setSelectedStopId(fallbackStop.id);
     }
   }, [boardingStop, nearestStop?.stop, selectedStopId, trackingStops]);
 
-  const requestMyLocation = useCallback(() => {
+  const requestMyLocation = () => {
     if (!navigator.geolocation) {
       toast.info("Trình duyệt chưa hỗ trợ vị trí.");
       return;
@@ -3470,20 +3515,12 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
       (position) => {
         const location = { lat: position.coords.latitude, lng: position.coords.longitude };
         setUserLocation(location);
-        if (displayVehicles.length) {
-          const closestVehicle = displayVehicles
-            .filter((vehicle) => vehicle.latitude != null && vehicle.longitude != null)
-            .map((vehicle) => ({ vehicle, meters: distanceMeters(location, { lat: numberValue(vehicle.latitude), lng: numberValue(vehicle.longitude) }) }))
-            .sort((left, right) => left.meters - right.meters)[0];
-          if (closestVehicle?.vehicle?.vehicleId) {
-            setSelectedVehicleId(closestVehicle.vehicle.vehicleId);
-            setShowAllVehicles(false);
-          }
-        }
         if (trackingStops.length) {
-          const closest = trackingStops
-            .map((stop) => ({ stop, meters: distanceMeters(location, { lat: stop.lat, lng: stop.lng }) }))
-            .sort((left, right) => left.meters - right.meters)[0];
+          const closest = boardingStop
+            ? { stop: boardingStop }
+            : trackingStops
+              .map((stop) => ({ stop, meters: distanceMeters(location, { lat: stop.lat, lng: stop.lng }) }))
+              .sort((left, right) => left.meters - right.meters)[0];
           if (closest?.stop?.id) {
             setSelectedStopId(closest.stop.id);
             setSelectedStopEtas(null);
@@ -3497,43 +3534,79 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
       },
       { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 },
     );
-  }, [displayVehicles, trackingStops]);
+  };
 
   useEffect(() => {
     if (locationRequestedRef.current || showRouteChooser || !hasTrackingSnapshot || typeof navigator === "undefined") return;
     locationRequestedRef.current = true;
     requestMyLocation();
-  }, [hasTrackingSnapshot, requestMyLocation, showRouteChooser]);
+  }, [hasTrackingSnapshot, showRouteChooser]);
 
   useEffect(() => {
     if (!selectedVehicleId && displayVehicles[0]?.vehicleId) setSelectedVehicleId(displayVehicles[0].vehicleId);
   }, [displayVehicles, selectedVehicleId]);
-
   useEffect(() => {
     autoSelectedNearestVehicleRef.current = false;
   }, [journeyId, trackingContext?.routeId]);
 
   useEffect(() => {
     if (!userLocation || !displayVehicles.length || autoSelectedNearestVehicleRef.current) return;
-    const nearestStopIndex = nearestStop?.stop
-      ? trackingStops.findIndex((stop) => String(stop.id) === String(nearestStop.stop.id))
+    const targetStop = boardingStop || nearestStop?.stop;
+    const nearestStopIndex = targetStop
+      ? trackingStops.findIndex((stop) => String(stop.id) === String(targetStop.id))
       : -1;
-    const preferredVehicle = displayVehicles
+    const vehicleNextIndex = (vehicle: NonNullable<JourneyTrackingSnapshotDTO["vehicles"]>[number]) => {
+      const apiIndex = vehicle.nextStopId == null
+        ? -1
+        : trackingStops.findIndex((stop) => String(stop.id) === String(vehicle.nextStopId));
+      const vehicleLat = numberValue(vehicle.latitude);
+      const vehicleLng = numberValue(vehicle.longitude);
+      if (!vehicleLat || !vehicleLng || trackingStops.length < 2) return apiIndex;
+      const scale = Math.cos(vehicleLat * Math.PI / 180);
+      let bestSegmentIndex = -1;
+      let bestDistance = Number.POSITIVE_INFINITY;
+      for (let index = 0; index < trackingStops.length - 1; index += 1) {
+        const from = trackingStops[index];
+        const to = trackingStops[index + 1];
+        const ax = from.lng * scale;
+        const ay = from.lat;
+        const bx = to.lng * scale;
+        const by = to.lat;
+        const px = vehicleLng * scale;
+        const py = vehicleLat;
+        const dx = bx - ax;
+        const dy = by - ay;
+        const lengthSquared = dx * dx + dy * dy;
+        const progress = lengthSquared ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSquared)) : 0;
+        const projectedX = ax + progress * dx;
+        const projectedY = ay + progress * dy;
+        const distance = (px - projectedX) ** 2 + (py - projectedY) ** 2;
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestSegmentIndex = index;
+        }
+      }
+      const projectedIndex = bestSegmentIndex < 0 ? -1 : Math.min(trackingStops.length - 1, bestSegmentIndex + 1);
+      return Math.max(apiIndex, projectedIndex);
+    };
+    const rankedVehicles = displayVehicles
       .filter((vehicle) => vehicle.latitude != null && vehicle.longitude != null)
       .map((vehicle) => {
-        const nextIndex = resolveVehicleNextStopIndex(vehicle);
+        const nextIndex = vehicleNextIndex(vehicle);
         return {
           vehicle,
           hasNotPassedNearestStop: nearestStopIndex < 0 || nextIndex < 0 || nextIndex <= nearestStopIndex,
           meters: distanceMeters(userLocation, { lat: numberValue(vehicle.latitude), lng: numberValue(vehicle.longitude) }),
         };
       })
-      .sort((left, right) => Number(right.hasNotPassedNearestStop) - Number(left.hasNotPassedNearestStop) || left.meters - right.meters)[0];
+      .sort((left, right) => Number(right.hasNotPassedNearestStop) - Number(left.hasNotPassedNearestStop) || left.meters - right.meters);
+    const preferredVehicle = rankedVehicles[0];
     if (!preferredVehicle?.vehicle?.vehicleId) return;
     autoSelectedNearestVehicleRef.current = true;
     setSelectedVehicleId(preferredVehicle.vehicle.vehicleId);
     setShowAllVehicles(false);
-  }, [displayVehicles, nearestStop?.stop, resolveVehicleNextStopIndex, trackingStops, userLocation]);
+  }, [boardingStop, displayVehicles, nearestStop?.stop, trackingStops, userLocation]);
+
 
   const selectTrackingStop = (stopId: string) => {
     setSelectedStopId(stopId);
@@ -3582,7 +3655,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
   useEffect(() => {
     if (!journeyId && !trackingContext?.routeId) return;
     void loadJourneyTracking();
-    const interval = window.setInterval(loadJourneyTracking, 15000);
+    const interval = window.setInterval(loadJourneyTracking, 2000);
     return () => window.clearInterval(interval);
   }, [journeyId, trackingContext?.routeId, loadJourneyTracking]);
 
@@ -3733,43 +3806,23 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
       )}
 
       {!showRouteChooser && hasTrackingSnapshot && (
-        <div className="grid grid-cols-1 gap-6 min-w-0 xl:grid-cols-[minmax(0,1fr)_380px] 2xl:grid-cols-[minmax(0,1fr)_420px]">
+        <div className="grid grid-cols-1 gap-5 min-w-0 xl:grid-cols-[minmax(0,1fr)_390px] 2xl:grid-cols-[minmax(0,1fr)_430px]">
           <div className="min-w-0 space-y-5">
           <ScrollReveal>
-            <ExpressiveCard variant="elevated" className="overflow-hidden min-w-0 rounded-[28px] border border-[#14140f]/10 bg-white shadow-[0_8px_30px_rgba(0,0,0,0.05)]">
+            <ExpressiveCard variant="elevated" className="overflow-hidden min-w-0 rounded-[28px] border border-[#E8E2D5] bg-white shadow-[0_8px_30px_rgba(0,0,0,0.05)]">
               <div className="relative h-[520px] bg-[#F8F6EF] lg:h-[680px]">
                 {trackingStops.length >= 2 || journeyPolylines.length ? (
                   <JourneyMap
                     stops={trackingStops}
                     routeColor={journeyRouteColor}
                     buses={journeyBuses}
-                    polylines={journeyPolylines}
+                    polylines={trackingPolylines}
+                    allowFallbackPolyline={false}
                     extraMarkers={trackingMarkers}
                     height="100%"
                     animateCamera
                     nextStopIndex={selectedStop ? trackingStops.findIndex((stop) => stop.id === selectedStop.id) : undefined}
                     onSelectStop={selectTrackingStop}
-                    arrivalOverlay={
-                      nextEta ? (
-                        <div className="max-w-[340px] rounded-[24px] border border-[#14140f]/10 bg-white/95 p-4 text-[#14140f] shadow-[0_8px_30px_rgba(0,0,0,0.08)] backdrop-blur">
-                          <div className="flex items-start gap-3">
-                            <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[#14140f] text-[#beff50]">
-                              <Bus className="size-5" />
-                            </span>
-                            <div className="min-w-0">
-                              <p className="text-xs font-semibold text-[#6B6B6B]">
-                                Xe sắp tới
-                              </p>
-                              <p className="mt-1 whitespace-normal break-words text-base font-semibold leading-5 text-[#14140f]">
-                                Tuyến {nextEta.routeCode || routeCode} tới {nextEta.stopName}
-                              </p>
-                              <p className="mt-2 text-sm font-semibold text-[#166534]">{nextEta.minutesAway} phút nữa</p>
-                              <p className="mt-1 text-xs text-[#6B6B6B]">{trackingSourceLabel}</p>
-                            </div>
-                          </div>
-                        </div>
-                      ) : null
-                    }
                   />
                 ) : (
                   <div className="flex h-full items-center justify-center p-8 text-center">
@@ -3781,70 +3834,73 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                   </div>
                 )}
 
-                <div className="pointer-events-none absolute inset-x-5 bottom-5 rounded-[24px] border border-[#14140f]/10 bg-white/95 p-4 shadow-[0_8px_30px_rgba(0,0,0,0.08)] backdrop-blur">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <span className="inline-flex h-10 min-w-12 shrink-0 items-center justify-center rounded-full bg-[#144fcc] px-3 text-sm font-black text-white">{routeCode}</span>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-[#14140f]">{routeTitle}</p>
-                        <p className="mt-0.5 text-xs text-[#6B6B6B]">{trackingSourceLabel}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs font-semibold text-[#6B6B6B]">
-                      <RefreshCw className={cn("size-4", journeyLoading && "animate-spin")} />
-                      {trackingUpdatedLabel}
-                    </div>
-                  </div>
-                </div>
+
               </div>
             </ExpressiveCard>
           </ScrollReveal>
             <ScrollReveal delay={0.08}>
-              <ExpressiveCard variant="filled" className="rounded-[24px] border border-[#14140f]/10 bg-white p-5 shadow-[0_8px_30px_rgba(0,0,0,0.05)]">
-                <div className="mb-4 flex items-center justify-between gap-3">
+              <ExpressiveCard variant="filled" className="rounded-[24px] border border-[#E8E2D5] bg-white p-5 shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
+                <div className="mb-4 flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6B6B6B]">Các trạm đi qua</p>
-                    <h3 className="mt-1 text-xl font-semibold text-[#14140f]">Lộ trình tuyến</h3>
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6B6B6B]">Thời gian dự kiến</p>
+                    <h3 className="mt-1 text-xl font-semibold text-[#14140f]">Các điểm sắp tới</h3>
                   </div>
-                  {stopRows.length > 6 ? (
-                    <button type="button" onClick={() => setShowAllTrackingStops((value) => !value)} className="rounded-full border border-[#14140f]/10 px-3 py-1.5 text-xs font-semibold text-[#144fcc] hover:bg-[#F8F6EF]">
-                      {showAllTrackingStops ? "Thu gọn" : "Xem tất cả"}
-                    </button>
-                  ) : null}
                 </div>
-                <div className="grid max-h-64 gap-2 overflow-y-auto pr-1 scrollbar-soft md:grid-cols-2 xl:grid-cols-3">
-                  {visibleStopRows.map((stop, index) => {
-                    const isSelected = selectedStop?.id === stop.id;
-                    const isNearest = nearestStop?.stop.id === stop.id;
-                    return (
-                    <button type="button" onClick={() => selectTrackingStop(stop.id)} key={stop.id} className={cn("flex items-start gap-3 rounded-2xl px-3 py-2.5 text-left transition hover:bg-[#F8F6EF]", isSelected ? "bg-[#beff50]/25 ring-1 ring-[#14140f]/10" : "bg-[#FAF8F2]") }>
-                      <div className={cn(
-                        "mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold",
-                        isSelected ? "bg-[#14140f] text-[#beff50]" : stop.boarding ? "bg-[#beff50] text-[#14140f]" : stop.alighting ? "bg-[#FEE2E2] text-[#B91C1C]" : "border border-[#144fcc]/40 bg-white text-[#144fcc]",
-                      )}>
-                        {index + 1}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-[#14140f]">{stop.name}</p>
-                        <p className="text-xs text-[#6B6B6B]">
-                          {isNearest ? "Gần bạn nhất" : stop.boarding ? "Trạm lên" : stop.alighting ? "Trạm xuống" : stop.address || "Trạm đi qua"}
-                        </p>
-                      </div>
-                    </button>
-                  );})}
-                  {!stopRows.length && (
-                    <p className="rounded-2xl bg-[#FAF8F2] px-4 py-4 text-sm font-medium text-[#6B6B6B]">
-                      Chưa có dữ liệu trạm cho tuyến này.
-                    </p>
-                  )}
-                </div>
+                {visibleEtaRows.length ? (
+                  <div className="max-h-64 overflow-y-auto pr-1 scrollbar-soft">
+                    <div className="space-y-0">
+                      {visibleEtaRows.map((stop, index) => {
+                        const passed = Boolean((stop as { passed?: boolean }).passed);
+                        const current = Boolean((stop as { current?: boolean }).current);
+                        const displayIndex = showAllEtaStops ? index : etaWindowStart + index;
+                        const minutesAway = Math.max(0, Number(stop.minutesAway ?? 0));
+                        const timeLabel = passed
+                          ? "Đã đi qua"
+                          : stop.estimatedArrivalAt
+                            ? new Date(stop.estimatedArrivalAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
+                            : "Đang tính";
+                        const etaLabel = passed ? "Đã qua" : `${minutesAway} phút`;
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => selectTrackingStop(String(stop.stopId))}
+                            key={`${stop.routeId}-${stop.stopId}-${displayIndex}`}
+                            className={cn("grid w-full grid-cols-[28px_minmax(0,1fr)_72px] gap-3 text-left", passed && "opacity-55")}
+                          >
+                            <div className="flex flex-col items-center">
+                              <span className={cn(
+                                "mt-1 size-3 rounded-full border-2",
+                                current ? "border-[#beff50] bg-[#beff50]" : passed ? "border-[#9CA3AF] bg-[#9CA3AF]" : "border-[#144fcc] bg-white",
+                              )} />
+                              {index < visibleEtaRows.length - 1 ? <span className={cn("mt-1 h-11 w-px", passed ? "bg-[#9CA3AF]/30" : "bg-[#144fcc]/20")} /> : null}
+                            </div>
+                            <div className="pb-4">
+                              <p className={cn("truncate text-sm font-semibold", passed ? "text-[#6B6B6B]" : "text-[#14140f]")}>{stop.stopName}</p>
+                              <p className="mt-0.5 text-xs text-[#6B6B6B]">{stop.routeCode || routeCode} · {timeLabel}</p>
+                            </div>
+                            <p className={cn("pt-0.5 text-right text-sm font-semibold", current ? "text-[#166534]" : passed ? "text-[#6B6B6B]" : "text-[#144fcc]")}>{etaLabel}</p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="rounded-2xl bg-[#FAF8F2] px-4 py-4 text-sm font-medium text-[#6B6B6B]">
+                    Chưa có thời gian dự kiến cho tuyến này.
+                  </p>
+                )}
+                {realtimeEtaRows.length > visibleEtaRows.length ? (
+                  <button type="button" onClick={() => setShowAllEtaStops((value) => !value)} className="mt-4 w-full rounded-2xl border border-[#E8E2D5] bg-white px-4 py-2 text-sm font-semibold text-[#144fcc] transition hover:bg-[#beff50]/20">
+                    {showAllEtaStops ? "Thu g?n th?i gian d? ki?n" : "Xem t?t c? c?c tr?m"}
+                  </button>
+                ) : null}
               </ExpressiveCard>
             </ScrollReveal>
           </div>
 
           <aside className="min-w-0 space-y-5">
             <ScrollReveal delay={0.08}>
-              <ExpressiveCard variant="filled" className="rounded-[24px] border border-[#14140f]/10 bg-white p-5 shadow-[0_8px_30px_rgba(0,0,0,0.05)]">
+              <ExpressiveCard variant="filled" className="rounded-[24px] border border-[#E8E2D5] bg-white p-5 shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
                 <div className="mb-5 flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6B6B6B]">Xe sắp tới trạm của bạn</p>
@@ -3869,7 +3925,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
             </ScrollReveal>
 
             <ScrollReveal delay={0.12}>
-              <ExpressiveCard variant="filled" className="rounded-[24px] border border-[#14140f]/10 bg-white p-5 shadow-[0_8px_30px_rgba(0,0,0,0.05)]">
+              <ExpressiveCard variant="filled" className="rounded-[24px] border border-[#E8E2D5] bg-white p-5 shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
                 <div className="mb-4 flex items-start justify-between gap-3">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6B6B6B]">Xe trên tuyến</p>
@@ -3885,7 +3941,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                     <motion.div
                       key={selectedVehicle.vehicleId}
                       layout
-                      className="relative rounded-[22px] border border-[#14140f]/10 bg-[#FAF8F2] p-4 transition hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(0,0,0,0.05)]"
+                      className="relative overflow-hidden rounded-[22px] border border-[#E8E2D5] bg-[#FAF8F2] p-4 transition hover:-translate-y-0.5 hover:shadow-[0_10px_30px_rgba(20,20,15,0.07)]"
                     >
                       <span className="absolute right-4 top-4 grid size-14 place-items-center rounded-full bg-[#beff50] text-sm font-black text-[#14140f]">
                         {selectedVehicle.etaMinutes ?? 0} phút
@@ -3909,7 +3965,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                     />
                   )}
                   {collapsedVehicles.length > 0 && (
-                    <button type="button" onClick={() => setShowAllVehicles((value) => !value)} className="w-full rounded-2xl border border-[#14140f]/10 px-4 py-2 text-sm font-semibold text-[#144fcc] hover:bg-[#F8F6EF]">
+                    <button type="button" onClick={() => setShowAllVehicles((value) => !value)} className="w-full rounded-2xl border border-[#E8E2D5] bg-white px-4 py-2 text-sm font-semibold text-[#144fcc] transition hover:bg-[#beff50]/20">
                       {showAllVehicles ? "Thu gọn xe trên tuyến" : "Xem thêm xe trên tuyến này"}
                     </button>
                   )}
@@ -3921,7 +3977,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                         setSelectedVehicleId(vehicle.vehicleId);
                         setShowAllVehicles(false);
                       }}
-                      className="w-full rounded-[18px] border border-[#14140f]/10 bg-[#FAF8F2] p-4 text-left transition hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(0,0,0,0.05)]"
+                      className="w-full rounded-[18px] border border-[#E8E2D5] bg-[#FAF8F2] p-4 text-left transition hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_8px_30px_rgba(0,0,0,0.05)]"
                     >
                       <p className="truncate text-base font-semibold text-[#14140f]">{vehicle.plateNumber || "Xe theo lịch tuyến"}</p>
                       <p className="mt-1 text-xs text-[#6B6B6B]">Xe sắp tới · Trạm kế: {vehicle.nextStopName || "đang xác định"}</p>
@@ -3931,40 +3987,6 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
               </ExpressiveCard>
             </ScrollReveal>
 
-            <ScrollReveal delay={0.16}>
-              <ExpressiveCard variant="filled" className="rounded-[24px] border border-[#14140f]/10 bg-white p-5 shadow-[0_8px_30px_rgba(0,0,0,0.05)]">
-                <div className="mb-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6B6B6B]">Thời gian dự kiến</p>
-                  <h3 className="mt-1 text-xl font-semibold text-[#14140f]">Các điểm sắp tới</h3>
-                </div>
-                {visibleEtaRows.length ? (
-                  <div className="space-y-0">
-                    {visibleEtaRows.map((stop, index) => (
-                      <div key={`${stop.routeId}-${stop.stopId}`} className="grid grid-cols-[28px_minmax(0,1fr)_56px] gap-3">
-                        <div className="flex flex-col items-center">
-                          <span className={cn("mt-1 size-3 rounded-full border-2", index === 0 ? "border-[#beff50] bg-[#beff50]" : "border-[#144fcc] bg-white")} />
-                          {index < visibleEtaRows.length - 1 ? <span className="mt-1 h-11 w-px bg-[#144fcc]/20" /> : null}
-                        </div>
-                        <div className="pb-4">
-                          <p className="truncate text-sm font-semibold text-[#14140f]">{stop.stopName}</p>
-                          <p className="mt-0.5 text-xs text-[#6B6B6B]">{stop.routeCode || routeCode} · {stop.estimatedArrivalAt ? new Date(stop.estimatedArrivalAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "Đang tính"}</p>
-                        </div>
-                        <p className={cn("pt-0.5 text-right text-sm font-semibold", index === 0 ? "text-[#166534]" : "text-[#144fcc]")}>{stop.minutesAway ?? 0} phút</p>
-                      </div>
-                    ))}
-                    {(journeyTracking?.stopEtas || []).length > visibleEtaRows.length ? (
-                      <button type="button" onClick={() => setShowAllEtaStops((value) => !value)} className="mt-2 w-full rounded-2xl border border-[#14140f]/10 px-4 py-2 text-sm font-semibold text-[#144fcc] hover:bg-[#F8F6EF]">
-                        {showAllEtaStops ? "Thu gọn thời gian dự kiến" : "Xem tất cả các trạm"}
-                      </button>
-                    ) : null}
-                  </div>
-                ) : (
-                  <div className="rounded-2xl bg-[#F8F6EF] px-4 py-4 text-sm font-medium text-[#6B6B6B]">
-                    Chưa có thời gian dự kiến cho trạm này.
-                  </div>
-                )}
-              </ExpressiveCard>
-            </ScrollReveal>
 
           </aside>
         </div>
@@ -4037,21 +4059,30 @@ function MyJourneysScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
     { id: "tracking", label: "Theo dõi tuyến", icon: Navigation },
   ];
 
+  const showRoutePicker = () => setTab("routes");
   return (
-    <PageTransition className="min-w-0 rounded-[28px] bg-[#FAF8F2] p-4 sm:p-6">
-      <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-[-0.03em] text-[#111111]">Vé của tôi</h1>
-          <p className="mt-1 text-sm text-[#6B6B6B]">Theo dõi tuyến đăng ký, vé đã mua và mã QR.</p>
-        </div>
-        <ExpressiveButton variant="filled" onClick={() => onNavigate("stu-find")}>
-          <RouteIcon className="size-4" />
-          Tìm tuyến mới
-        </ExpressiveButton>
-      </div>
+    <PageTransition className="space-y-5 min-w-0">
+      <PageHeader
+        title="Vé của tôi"
+        icon={<TicketCheck className="size-7" />}
+        actions={
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {tab === "tracking" && (
+              <ExpressiveButton variant="outlined" className="text-[#14140f]" onClick={showRoutePicker}>
+                <ChevronLeft className="size-4" />
+                Chọn tuyến khác
+              </ExpressiveButton>
+            )}
+            <ExpressiveButton variant="filled" onClick={() => onNavigate("stu-find")}>
+              <RouteIcon className="size-4" />
+              Tìm tuyến mới
+            </ExpressiveButton>
+          </div>
+        }
+      />
 
-      <div className="mb-5 rounded-[22px] border border-[#E8E2D5] bg-white p-1.5 shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
-        <div className="grid grid-cols-1 gap-1 sm:grid-cols-3">
+      <div className="rounded-3xl border border-outline-variant bg-surface p-2">
+        <div className="grid grid-cols-3 gap-1">
           {tabs.map((item) => {
             const Icon = item.icon;
             const active = tab === item.id;
@@ -4061,10 +4092,10 @@ function MyJourneysScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
                 type="button"
                 onClick={() => setTab(item.id)}
                 className={cn(
-                  "state-layer flex min-h-11 items-center justify-center gap-2 rounded-2xl px-3 text-xs font-medium transition-colors sm:text-sm",
+                  "state-layer flex min-h-11 items-center justify-center gap-2 rounded-2xl px-3 text-xs font-bold transition-colors sm:text-sm",
                   active
-                    ? "bg-[#111111] text-[#BDFD4F] shadow-sm"
-                    : "text-[#6B6B6B] hover:bg-[#FAF8F2] hover:text-[#111111]",
+                    ? "bg-[#14140f] text-[#beff50] shadow-sm"
+                    : "text-on-surface-variant hover:bg-[#F8F6EF] hover:text-[#14140f]",
                 )}
               >
                 <Icon className="size-4 shrink-0" />
@@ -4083,25 +4114,9 @@ function MyJourneysScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
           exit={{ opacity: 0, y: -6 }}
           transition={{ duration: 0.18, ease: "easeOut" }}
         >
-          {tab === "routes" && (
-            <MyRoutesScreen
-              ctx={ctx}
-              compact
-              onNavigate={(id) => {
-                if (id === "stu-tracking") {
-                  setTab("tracking");
-                  return;
-                }
-                if (id === "stu-my-ticket") {
-                  setTab("ticket");
-                  return;
-                }
-                onNavigate(id);
-              }}
-            />
-          )}
+          {tab === "routes" && <MyRoutesScreen ctx={ctx} onNavigate={onNavigate} compact onTrackRoute={() => setTab("tracking")} />}
           {tab === "ticket" && <MyTicketScreen ctx={ctx} onNavigate={onNavigate} compact />}
-          {tab === "tracking" && <TrackingScreen ctx={ctx} onNavigate={onNavigate} compact />}
+          {tab === "tracking" && <TrackingScreen ctx={ctx} compact />}
         </motion.div>
       </AnimatePresence>
     </PageTransition>
@@ -4111,7 +4126,7 @@ function MyJourneysScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
 // =============================================================================
 // Screen 6: My Routes — registration management
 // =============================================================================
-function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavigate: (id: string) => void; compact?: boolean }) {
+function MyRoutesScreen({ ctx, onNavigate, compact = false, onTrackRoute }: { ctx: Ctx; onNavigate: (id: string) => void; compact?: boolean; onTrackRoute?: () => void }) {
   const [showRegister, setShowRegister] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
@@ -6878,7 +6893,3 @@ function FallbackScreen({ activeId }: { activeId: string }) {
     />
   );
 }
-
-
-
-
