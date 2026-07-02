@@ -63,11 +63,16 @@ public class SePayService {
 
     @Transactional
     public Map<String, Object> createOrder(CurrentUser currentUser, String ticketType) {
-        return createOrder(currentUser, ticketType, null);
+        return createOrder(currentUser, ticketType, null, null, null);
     }
 
     @Transactional
     public Map<String, Object> createOrder(CurrentUser currentUser, String ticketType, Integer requestedRouteId) {
+        return createOrder(currentUser, ticketType, requestedRouteId, null, null);
+    }
+
+    @Transactional
+    public Map<String, Object> createOrder(CurrentUser currentUser, String ticketType, Integer requestedRouteId, Integer requestedBoardingStopId, Integer requestedAlightingStopId) {
         String studentCode = ticketingRepository.studentCodeForUser(currentUser.userId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Student profile not found"));
 
@@ -83,6 +88,8 @@ public class SePayService {
         BigDecimal subsidyAmount = BigDecimal.ZERO;
         BigDecimal finalAmount;
         Integer subsidyPolicyId = null;
+        Integer orderBoardingStopId = null;
+        Integer orderAlightingStopId = null;
 
         if ("test".equalsIgnoreCase(ticketType)) {
             routeId = jdbcTemplate.queryForObject("SELECT route_id FROM routes ORDER BY route_id LIMIT 1", Integer.class);
@@ -134,6 +141,14 @@ public class SePayService {
                 subsidyAmount = quote.subsidyAmount();
                 finalAmount = quote.finalFareAmount();
                 subsidyPolicyId = quote.subsidyPolicyId();
+                if (requestedBoardingStopId != null || requestedAlightingStopId != null) {
+                    if (requestedBoardingStopId == null || requestedAlightingStopId == null) {
+                        throw new ApiException(HttpStatus.BAD_REQUEST, "Both boardingStopId and alightingStopId are required for single ticket");
+                    }
+                    validateStopDirection(routeId, requestedBoardingStopId, requestedAlightingStopId);
+                    orderBoardingStopId = requestedBoardingStopId;
+                    orderAlightingStopId = requestedAlightingStopId;
+                }
             } else {
                 throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid ticket type: " + ticketType);
             }
@@ -144,7 +159,8 @@ public class SePayService {
                 "SELECT id, total FROM tb_orders WHERE student_code = ? AND ticket_type = ? AND route_id IS NOT DISTINCT FROM ? AND LOWER(payment_status) = 'unpaid' ORDER BY created_at DESC LIMIT 1",
                 studentCode, storedTicketType, routeId);
 
-        if (!existingOrders.isEmpty()) {
+        boolean hasCustomSingleStops = "single".equalsIgnoreCase(storedTicketType) && orderBoardingStopId != null && orderAlightingStopId != null;
+        if (!hasCustomSingleStops && !existingOrders.isEmpty()) {
             Map<String, Object> existing = existingOrders.get(0);
             BigDecimal existingTotal = (BigDecimal) existing.get("total");
             if (existingTotal.compareTo(amount) == 0) {
@@ -160,15 +176,17 @@ public class SePayService {
         Integer orderRouteId = routeId;
         String orderMode = "single-route";
         String ticketPeriod = "single".equalsIgnoreCase(storedTicketType) ? "day" : "month";
-        String originLabel = registration == null ? null : registration.boardingStopName();
-        String destinationLabel = registration == null ? null : registration.alightingStopName();
+        String originLabel = orderBoardingStopId == null ? (registration == null ? null : registration.boardingStopName()) : stopName(orderBoardingStopId);
+        String destinationLabel = orderAlightingStopId == null ? (registration == null ? null : registration.alightingStopName()) : stopName(orderAlightingStopId);
+        String legsJson = orderBoardingStopId == null || orderAlightingStopId == null ? null
+                : "{\"boardingStopId\":" + orderBoardingStopId + ",\"alightingStopId\":" + orderAlightingStopId + "}";
         BigDecimal orderOriginalAmount = originalFare == null ? amount : originalFare;
         BigDecimal orderSubsidyAmount = subsidyAmount == null ? BigDecimal.ZERO : subsidyAmount;
         BigDecimal orderFinalAmount = finalAmount == null ? amount : finalAmount;
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update(connection -> {
             PreparedStatement statement = connection.prepareStatement(
-                    "INSERT INTO tb_orders (student_code, ticket_type, route_id, total, payment_status, name, order_mode, ticket_period, origin_label, destination_label, original_amount, subsidy_amount, final_amount) VALUES (?, ?, ?, ?, 'Unpaid', ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO tb_orders (student_code, ticket_type, route_id, total, payment_status, name, order_mode, ticket_period, origin_label, destination_label, legs_json, original_amount, subsidy_amount, final_amount) VALUES (?, ?, ?, ?, 'Unpaid', ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?)",
                     new String[] { "id" });
             statement.setString(1, studentCode);
             statement.setString(2, storedTicketType);
@@ -179,9 +197,10 @@ public class SePayService {
             statement.setString(7, ticketPeriod);
             statement.setString(8, originLabel);
             statement.setString(9, destinationLabel);
-            statement.setBigDecimal(10, orderOriginalAmount);
-            statement.setBigDecimal(11, orderSubsidyAmount);
-            statement.setBigDecimal(12, orderFinalAmount);
+            statement.setString(10, legsJson);
+            statement.setBigDecimal(11, orderOriginalAmount);
+            statement.setBigDecimal(12, orderSubsidyAmount);
+            statement.setBigDecimal(13, orderFinalAmount);
             return statement;
         }, keyHolder);
 
@@ -321,7 +340,7 @@ public class SePayService {
         }
 
         List<Map<String, Object>> orders = jdbcTemplate.queryForList(
-                "SELECT id, student_code, ticket_type, route_id, total, payment_status, name, original_amount, subsidy_amount, final_amount FROM tb_orders WHERE id = ? FOR UPDATE",
+                "SELECT id, student_code, ticket_type, route_id, total, payment_status, name, original_amount, subsidy_amount, final_amount, legs_json FROM tb_orders WHERE id = ? FOR UPDATE",
                 orderId);
 
         if (orders.isEmpty()) {
@@ -355,8 +374,41 @@ public class SePayService {
         BigDecimal originalAmount = (BigDecimal) order.getOrDefault("original_amount", total);
         BigDecimal subsidyAmount = (BigDecimal) order.getOrDefault("subsidy_amount", BigDecimal.ZERO);
         BigDecimal finalAmount = (BigDecimal) order.getOrDefault("final_amount", total);
-        provisionTickets(studentCode, ticketType, routeId, finalAmount, originalAmount, subsidyAmount, refCode);
+        Integer boardingStopId = intFromJson(order.get("legs_json"), "boardingStopId");
+        Integer alightingStopId = intFromJson(order.get("legs_json"), "alightingStopId");
+        provisionTickets(studentCode, ticketType, routeId, finalAmount, originalAmount, subsidyAmount, refCode, boardingStopId, alightingStopId);
         return Map.of("processed", true, "reason", "ORDER_PAID", "orderId", orderId);
+    }
+
+
+    private void validateStopDirection(Integer routeId, Integer boardingStopId, Integer alightingStopId) {
+        Boolean valid = jdbcTemplate.queryForObject("""
+                SELECT EXISTS(
+                    SELECT 1
+                    FROM route_stops boarding
+                    JOIN route_stops alighting
+                      ON alighting.route_id = boarding.route_id
+                     AND COALESCE(alighting.station_direction, 0) = COALESCE(boarding.station_direction, 0)
+                    WHERE boarding.route_id = ?
+                      AND boarding.stop_id = ?
+                      AND alighting.stop_id = ?
+                      AND boarding.stop_order < alighting.stop_order
+                )
+                """, Boolean.class, routeId, boardingStopId, alightingStopId);
+        if (!Boolean.TRUE.equals(valid)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid stop order for selected route");
+        }
+    }
+
+    private String stopName(Integer stopId) {
+        List<String> names = jdbcTemplate.queryForList("SELECT stop_name FROM stops WHERE stop_id = ?", String.class, stopId);
+        return names.isEmpty() ? null : names.get(0);
+    }
+
+    private Integer intFromJson(Object raw, String key) {
+        if (raw == null) return null;
+        Matcher matcher = Pattern.compile("\\\"" + key + "\\\"\\s*:\\s*(\\d+)").matcher(raw.toString());
+        return matcher.find() ? Integer.valueOf(matcher.group(1)) : null;
     }
 
     private String firstText(Map<String, Object> payload, String... keys) {
@@ -405,7 +457,8 @@ public class SePayService {
     }
 
     private void provisionTickets(String studentCode, String ticketType, Integer routeId, BigDecimal finalAmount,
-            BigDecimal orderOriginalAmount, BigDecimal orderSubsidyAmount, String transactionCode) {
+            BigDecimal orderOriginalAmount, BigDecimal orderSubsidyAmount, String transactionCode,
+            Integer requestedBoardingStopId, Integer requestedAlightingStopId) {
         if ("test".equalsIgnoreCase(ticketType)) {
             return;
         }
@@ -510,9 +563,9 @@ public class SePayService {
                     "SELECT boarding_stop_id, alighting_stop_id FROM route_registrations WHERE student_code = ? AND route_id = ? AND status = 'APPROVED' ORDER BY approved_at DESC NULLS LAST LIMIT 1",
                     studentCode, routeId);
             
-            Integer bStop = null;
-            Integer aStop = null;
-            if (!registrations.isEmpty()) {
+            Integer bStop = requestedBoardingStopId;
+            Integer aStop = requestedAlightingStopId;
+            if ((bStop == null || aStop == null) && !registrations.isEmpty()) {
                 bStop = (Integer) registrations.get(0).get("boarding_stop_id");
                 aStop = (Integer) registrations.get(0).get("alighting_stop_id");
             }

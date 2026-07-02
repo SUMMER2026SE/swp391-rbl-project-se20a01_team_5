@@ -534,6 +534,7 @@ export interface StudentProfile extends UserProfile {
 export interface RegistrationDTO {
   registrationId: number;
   routeId: number;
+  routeCode?: string;
   routeName: string;
   boardingStopId: number;
   boardingStopName: string;
@@ -542,12 +543,15 @@ export interface RegistrationDTO {
   effectiveDate?: string;
   status: string;
   registeredAt?: string;
+  hasActiveMonthlyPass?: boolean;
+  monthlyPassExpiresOn?: string;
 }
 
 export interface TicketView {
   ticketId: number;
   ticketType: string;
   routeId: number;
+  routeCode?: string;
   routeName: string;
   boardingStopName?: string;
   alightingStopName?: string;
@@ -713,8 +717,8 @@ export const studentApi = {
   ticketQuote: (routeId: number | string, ticketType = "MONTHLY") =>
     apiFetch.get<PassesDashboard["monthlyPassQuote"]>("/students/me/tickets/quote", { routeId, ticketType }),
   payments: () => apiFetch.get<PaymentView[]>("/students/me/payments"),
-  createSePayOrder: (ticketType: string, routeId?: number) =>
-    apiFetch.post<{ orderId: number; routeId?: number; routeName?: string; qrUrl: string; amount: number; description: string; bankCode: string; accountNo: string; accountName: string }>("/students/me/payments/sepay/order", { ticketType, routeId }),
+  createSePayOrder: (ticketType: string, routeId?: number, stops?: { boardingStopId?: number; alightingStopId?: number }) =>
+    apiFetch.post<{ orderId: number; routeId?: number; routeName?: string; qrUrl: string; amount: number; description: string; bankCode: string; accountNo: string; accountName: string }>("/students/me/payments/sepay/order", { ticketType, routeId, ...stops }),
   getSePayOrderStatus: (orderId: number) => apiFetch.get<{ orderId: number; ticketType: string; routeId?: number; total: number; amount?: number; description?: string; qrUrl?: string; bankCode?: string; accountNo?: string; accountName?: string; status: string; paid: boolean; paidAt?: string }>(`/students/me/payments/sepay/order/${orderId}/status`),
   travelHistory: (page = 0, size = 20) => apiFetch.get<TravelHistoryView[]>("/students/me/travel-history", { page, size }),
 };
@@ -1769,4 +1773,3 @@ export const api = {
   driverDispatch: driverDispatchApi,
   conductor: conductorApi,
 };
-
