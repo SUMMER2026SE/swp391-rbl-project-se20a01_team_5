@@ -713,8 +713,8 @@ export const studentApi = {
   ticketQuote: (routeId: number | string, ticketType = "MONTHLY") =>
     apiFetch.get<PassesDashboard["monthlyPassQuote"]>("/students/me/tickets/quote", { routeId, ticketType }),
   payments: () => apiFetch.get<PaymentView[]>("/students/me/payments"),
-  createSePayOrder: (ticketType: string, routeId?: number) =>
-    apiFetch.post<{ orderId: number; routeId?: number; routeName?: string; qrUrl: string; amount: number; description: string; bankCode: string; accountNo: string; accountName: string }>("/students/me/payments/sepay/order", { ticketType, routeId }),
+  createSePayOrder: (ticketType: string, routeId?: number, stops?: { boardingStopId?: number; alightingStopId?: number }) =>
+    apiFetch.post<{ orderId: number; routeId?: number; routeName?: string; qrUrl: string; amount: number; description: string; bankCode: string; accountNo: string; accountName: string }>("/students/me/payments/sepay/order", { ticketType, routeId, ...stops }),
   getSePayOrderStatus: (orderId: number) => apiFetch.get<{ orderId: number; ticketType: string; routeId?: number; total: number; amount?: number; description?: string; qrUrl?: string; bankCode?: string; accountNo?: string; accountName?: string; status: string; paid: boolean; paidAt?: string }>(`/students/me/payments/sepay/order/${orderId}/status`),
   travelHistory: (page = 0, size = 20) => apiFetch.get<TravelHistoryView[]>("/students/me/travel-history", { page, size }),
 };
@@ -1769,4 +1769,7 @@ export const api = {
   driverDispatch: driverDispatchApi,
   conductor: conductorApi,
 };
+
+
+
 
