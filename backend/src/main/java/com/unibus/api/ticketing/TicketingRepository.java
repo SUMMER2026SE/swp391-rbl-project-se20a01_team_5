@@ -211,14 +211,26 @@ public class TicketingRepository {
     public List<SingleTripTicketView> findSingleTripTickets(String studentCode) {
         return jdbcTemplate.query("""
                 SELECT stt.single_trip_ticket_id, stt.student_code, stt.route_id, r.route_name,
-                       stt.boarding_stop_id, bs.stop_name AS boarding_stop_name,
-                       stt.alighting_stop_id, als.stop_name AS alighting_stop_name,
+                       COALESCE(order_stops.boarding_stop_id, stt.boarding_stop_id) AS boarding_stop_id,
+                       bs.stop_name AS boarding_stop_name,
+                       COALESCE(order_stops.alighting_stop_id, stt.alighting_stop_id) AS alighting_stop_id,
+                       als.stop_name AS alighting_stop_name,
                        stt.fare_amount, stt.original_fare_amount, stt.subsidy_amount, stt.final_fare_amount,
                        stt.qr_code, stt.status, stt.purchased_at, stt.expires_at
                 FROM single_trip_tickets stt
                 JOIN routes r ON r.route_id = stt.route_id
-                LEFT JOIN stops bs ON bs.stop_id = stt.boarding_stop_id
-                LEFT JOIN stops als ON als.stop_id = stt.alighting_stop_id
+                LEFT JOIN payments p ON p.single_trip_ticket_id = stt.single_trip_ticket_id AND p.status = 'PAID'
+                LEFT JOIN tb_transactions tx ON tx.reference_number = p.transaction_code
+                LEFT JOIN tb_orders o ON o.id = tx.matched_order_id AND o.ticket_type = 'single'
+                LEFT JOIN LATERAL (
+                    SELECT
+                        CASE WHEN jsonb_typeof(o.legs_json) = 'object' AND o.legs_json ->> 'boardingStopId' IS NOT NULL
+                             THEN (o.legs_json ->> 'boardingStopId')::integer END AS boarding_stop_id,
+                        CASE WHEN jsonb_typeof(o.legs_json) = 'object' AND o.legs_json ->> 'alightingStopId' IS NOT NULL
+                             THEN (o.legs_json ->> 'alightingStopId')::integer END AS alighting_stop_id
+                ) order_stops ON TRUE
+                LEFT JOIN stops bs ON bs.stop_id = COALESCE(order_stops.boarding_stop_id, stt.boarding_stop_id)
+                LEFT JOIN stops als ON als.stop_id = COALESCE(order_stops.alighting_stop_id, stt.alighting_stop_id)
                 WHERE stt.student_code = ?
                 ORDER BY stt.purchased_at DESC
                 LIMIT 50

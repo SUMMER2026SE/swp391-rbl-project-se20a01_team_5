@@ -3183,9 +3183,10 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
       .map((stop) => ({ stop, meters: distanceMeters(userLocation, { lat: stop.lat, lng: stop.lng }) }))
       .sort((left, right) => left.meters - right.meters)[0]
     : null;
+  const preferredWalkStop = userLocation && boardingStop ? { stop: boardingStop, meters: distanceMeters(userLocation, { lat: boardingStop.lat, lng: boardingStop.lng }) } : nearestStop;
   const selectedStop = trackingStops.find((stop) => stop.id === selectedStopId)
-    || nearestStop?.stop
     || boardingStop
+    || nearestStop?.stop
     || trackingStops[0];
   const selectedStopDistance = userLocation && selectedStop
     ? distanceMeters(userLocation, { lat: selectedStop.lat, lng: selectedStop.lng })
@@ -3218,23 +3219,23 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
       ...journeyPolylines,
       {
         id: "user-nearest-stop",
-        label: "Đường đi bộ tới trạm gần nhất",
+        label: boardingStop ? "Đường đi bộ tới trạm lên" : "Đường đi bộ tới trạm gần nhất",
         color: "#16a34a",
         dashed: true,
         points: nearestStopWalkLine,
       },
     ];
-  }, [journeyPolylines, nearestStopWalkLine]);
+  }, [boardingStop, journeyPolylines, nearestStopWalkLine]);
 
   useEffect(() => {
-    if (!userLocation || !nearestStop?.stop) {
+    if (!userLocation || !preferredWalkStop?.stop) {
       setNearestStopWalkLine([]);
       return;
     }
     let cancelled = false;
     const controller = new AbortController();
     const from = `${userLocation.lng},${userLocation.lat}`;
-    const to = `${nearestStop.stop.lng},${nearestStop.stop.lat}`;
+    const to = `${preferredWalkStop.stop.lng},${preferredWalkStop.stop.lat}`;
     fetch(`https://router.project-osrm.org/route/v1/foot/${from};${to}?overview=full&geometries=geojson&steps=false`, { signal: controller.signal })
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("Routing failed")))
       .then((data) => {
@@ -3252,7 +3253,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
       cancelled = true;
       controller.abort();
     };
-  }, [nearestStop?.stop?.lat, nearestStop?.stop?.lng, userLocation?.lat, userLocation?.lng]);
+  }, [preferredWalkStop?.stop?.lat, preferredWalkStop?.stop?.lng, userLocation?.lat, userLocation?.lng]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3290,7 +3291,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
 
   useEffect(() => {
     if (!selectedStopId && trackingStops.length) {
-      const fallbackStop = nearestStop?.stop || boardingStop || trackingStops[0];
+      const fallbackStop = boardingStop || nearestStop?.stop || trackingStops[0];
       if (fallbackStop) setSelectedStopId(fallbackStop.id);
     }
   }, [boardingStop, nearestStop?.stop, selectedStopId, trackingStops]);
@@ -3306,9 +3307,11 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
         const location = { lat: position.coords.latitude, lng: position.coords.longitude };
         setUserLocation(location);
         if (trackingStops.length) {
-          const closest = trackingStops
-            .map((stop) => ({ stop, meters: distanceMeters(location, { lat: stop.lat, lng: stop.lng }) }))
-            .sort((left, right) => left.meters - right.meters)[0];
+          const closest = boardingStop
+            ? { stop: boardingStop }
+            : trackingStops
+              .map((stop) => ({ stop, meters: distanceMeters(location, { lat: stop.lat, lng: stop.lng }) }))
+              .sort((left, right) => left.meters - right.meters)[0];
           if (closest?.stop?.id) {
             setSelectedStopId(closest.stop.id);
             setSelectedStopEtas(null);
@@ -3339,8 +3342,9 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
 
   useEffect(() => {
     if (!userLocation || !displayVehicles.length || autoSelectedNearestVehicleRef.current) return;
-    const nearestStopIndex = nearestStop?.stop
-      ? trackingStops.findIndex((stop) => String(stop.id) === String(nearestStop.stop.id))
+    const targetStop = boardingStop || nearestStop?.stop;
+    const nearestStopIndex = targetStop
+      ? trackingStops.findIndex((stop) => String(stop.id) === String(targetStop.id))
       : -1;
     const vehicleNextIndex = (vehicle: NonNullable<JourneyTrackingSnapshotDTO["vehicles"]>[number]) => {
       const apiIndex = vehicle.nextStopId == null
@@ -3392,7 +3396,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
     autoSelectedNearestVehicleRef.current = true;
     setSelectedVehicleId(preferredVehicle.vehicle.vehicleId);
     setShowAllVehicles(false);
-  }, [displayVehicles, nearestStop?.stop, trackingStops, userLocation]);
+  }, [boardingStop, displayVehicles, nearestStop?.stop, trackingStops, userLocation]);
 
 
   const selectTrackingStop = (stopId: string) => {
@@ -3627,43 +3631,60 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
           </ScrollReveal>
             <ScrollReveal delay={0.08}>
               <ExpressiveCard variant="filled" className="rounded-[24px] border border-[#E8E2D5] bg-white p-5 shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
-                <div className="mb-4 flex items-center justify-between gap-3">
+                <div className="mb-4 flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6B6B6B]">Các trạm đi qua</p>
-                    <h3 className="mt-1 text-xl font-semibold text-[#14140f]">Lộ trình tuyến</h3>
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6B6B6B]">Thời gian dự kiến</p>
+                    <h3 className="mt-1 text-xl font-semibold text-[#14140f]">Các điểm sắp tới</h3>
                   </div>
-                  {stopRows.length > 6 ? (
-                    <button type="button" onClick={() => setShowAllTrackingStops((value) => !value)} className="rounded-full border border-[#E8E2D5] bg-[#FAF8F2] px-3 py-1.5 text-xs font-semibold text-[#144fcc] transition hover:bg-[#beff50]/25">
-                      {showAllTrackingStops ? "Thu gọn" : "Xem tất cả"}
-                    </button>
-                  ) : null}
                 </div>
-                <div className="grid max-h-64 gap-2 overflow-y-auto pr-1 scrollbar-soft md:grid-cols-2 xl:grid-cols-3">
-                  {visibleStopRows.map((stop, index) => {
-                    const isSelected = selectedStop?.id === stop.id;
-                    const isNearest = nearestStop?.stop.id === stop.id;
-                    return (
-                    <button type="button" onClick={() => selectTrackingStop(stop.id)} key={stop.id} className={cn("flex items-start gap-3 rounded-2xl px-3 py-2.5 text-left transition hover:bg-[#F8F6EF]", isSelected ? "bg-[#beff50]/25 ring-1 ring-[#14140f]/10" : "bg-[#FAF8F2]") }>
-                      <div className={cn(
-                        "mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold",
-                        isSelected ? "bg-[#14140f] text-[#beff50]" : stop.boarding ? "bg-[#beff50] text-[#14140f]" : stop.alighting ? "bg-[#FEE2E2] text-[#B91C1C]" : "border border-[#144fcc]/40 bg-white text-[#144fcc]",
-                      )}>
-                        {index + 1}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-[#14140f]">{stop.name}</p>
-                        <p className="text-xs text-[#6B6B6B]">
-                          {isNearest ? "Gần bạn nhất" : stop.boarding ? "Trạm lên" : stop.alighting ? "Trạm xuống" : stop.address || "Trạm đi qua"}
-                        </p>
-                      </div>
-                    </button>
-                  );})}
-                  {!stopRows.length && (
-                    <p className="rounded-2xl bg-[#FAF8F2] px-4 py-4 text-sm font-medium text-[#6B6B6B]">
-                      Chưa có dữ liệu trạm cho tuyến này.
-                    </p>
-                  )}
-                </div>
+                {visibleEtaRows.length ? (
+                  <div className="max-h-64 overflow-y-auto pr-1 scrollbar-soft">
+                    <div className="space-y-0">
+                      {visibleEtaRows.map((stop, index) => {
+                        const passed = Boolean((stop as { passed?: boolean }).passed);
+                        const current = Boolean((stop as { current?: boolean }).current);
+                        const displayIndex = showAllEtaStops ? index : etaWindowStart + index;
+                        const minutesAway = Math.max(0, Number(stop.minutesAway ?? 0));
+                        const timeLabel = passed
+                          ? "?? ?i qua"
+                          : stop.estimatedArrivalAt
+                            ? new Date(stop.estimatedArrivalAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
+                            : "Đang tính";
+                        const etaLabel = passed ? "?? qua" : `${minutesAway} ph?t`;
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => selectTrackingStop(String(stop.stopId))}
+                            key={`${stop.routeId}-${stop.stopId}-${displayIndex}`}
+                            className={cn("grid w-full grid-cols-[28px_minmax(0,1fr)_72px] gap-3 text-left", passed && "opacity-55")}
+                          >
+                            <div className="flex flex-col items-center">
+                              <span className={cn(
+                                "mt-1 size-3 rounded-full border-2",
+                                current ? "border-[#beff50] bg-[#beff50]" : passed ? "border-[#9CA3AF] bg-[#9CA3AF]" : "border-[#144fcc] bg-white",
+                              )} />
+                              {index < visibleEtaRows.length - 1 ? <span className={cn("mt-1 h-11 w-px", passed ? "bg-[#9CA3AF]/30" : "bg-[#144fcc]/20")} /> : null}
+                            </div>
+                            <div className="pb-4">
+                              <p className={cn("truncate text-sm font-semibold", passed ? "text-[#6B6B6B]" : "text-[#14140f]")}>{stop.stopName}</p>
+                              <p className="mt-0.5 text-xs text-[#6B6B6B]">{stop.routeCode || routeCode} ? {timeLabel}</p>
+                            </div>
+                            <p className={cn("pt-0.5 text-right text-sm font-semibold", current ? "text-[#166534]" : passed ? "text-[#6B6B6B]" : "text-[#144fcc]")}>{etaLabel}</p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="rounded-2xl bg-[#FAF8F2] px-4 py-4 text-sm font-medium text-[#6B6B6B]">
+                    Chưa có thời gian dự kiến cho tuyến này.
+                  </p>
+                )}
+                {realtimeEtaRows.length > visibleEtaRows.length ? (
+                  <button type="button" onClick={() => setShowAllEtaStops((value) => !value)} className="mt-4 w-full rounded-2xl border border-[#E8E2D5] bg-white px-4 py-2 text-sm font-semibold text-[#144fcc] transition hover:bg-[#beff50]/20">
+                    {showAllEtaStops ? "Thu g?n th?i gian d? ki?n" : "Xem t?t c? c?c tr?m"}
+                  </button>
+                ) : null}
               </ExpressiveCard>
             </ScrollReveal>
           </div>
@@ -3757,54 +3778,6 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
               </ExpressiveCard>
             </ScrollReveal>
 
-            <ScrollReveal delay={0.16}>
-              <ExpressiveCard variant="filled" className="rounded-[24px] border border-[#E8E2D5] bg-white p-5 shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
-                <div className="mb-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6B6B6B]">Thời gian dự kiến</p>
-                  <h3 className="mt-1 text-xl font-semibold text-[#14140f]">Các điểm sắp tới</h3>
-                </div>
-                {visibleEtaRows.length ? (
-                  <div className="space-y-0">
-                    {visibleEtaRows.map((stop, index) => {
-                      const passed = Boolean((stop as { passed?: boolean }).passed);
-                      const current = Boolean((stop as { current?: boolean }).current);
-                      const minutesAway = Math.max(0, Number(stop.minutesAway ?? 0));
-                      const timeLabel = passed
-                        ? "Đã đi qua"
-                        : stop.estimatedArrivalAt
-                          ? new Date(stop.estimatedArrivalAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
-                          : "Đang tính";
-                      const etaLabel = passed ? "Đã qua" : `${minutesAway} phút`;
-                      return (
-                        <div key={`${stop.routeId}-${stop.stopId}`} className={cn("grid grid-cols-[28px_minmax(0,1fr)_64px] gap-3", passed && "opacity-55")}>
-                          <div className="flex flex-col items-center">
-                            <span className={cn(
-                              "mt-1 size-3 rounded-full border-2",
-                              current ? "border-[#beff50] bg-[#beff50]" : passed ? "border-[#9CA3AF] bg-[#9CA3AF]" : "border-[#144fcc] bg-white",
-                            )} />
-                            {index < visibleEtaRows.length - 1 ? <span className={cn("mt-1 h-11 w-px", passed ? "bg-[#9CA3AF]/30" : "bg-[#144fcc]/20")} /> : null}
-                          </div>
-                          <div className="pb-4">
-                            <p className={cn("truncate text-sm font-semibold", passed ? "text-[#6B6B6B]" : "text-[#14140f]")}>{stop.stopName}</p>
-                            <p className="mt-0.5 text-xs text-[#6B6B6B]">{stop.routeCode || routeCode} · {timeLabel}</p>
-                          </div>
-                          <p className={cn("pt-0.5 text-right text-sm font-semibold", current ? "text-[#166534]" : passed ? "text-[#6B6B6B]" : "text-[#144fcc]")}>{etaLabel}</p>
-                        </div>
-                      );
-                    })}
-                    {realtimeEtaRows.length > visibleEtaRows.length ? (
-                      <button type="button" onClick={() => setShowAllEtaStops((value) => !value)} className="mt-2 w-full rounded-2xl border border-[#E8E2D5] bg-white px-4 py-2 text-sm font-semibold text-[#144fcc] transition hover:bg-[#beff50]/20">
-                        {showAllEtaStops ? "Thu gọn thời gian dự kiến" : "Xem tất cả các trạm"}
-                      </button>
-                    ) : null}
-                  </div>
-                ) : (
-                  <div className="rounded-2xl bg-[#F8F6EF] px-4 py-4 text-sm font-medium text-[#6B6B6B]">
-                    Chưa có thời gian dự kiến cho trạm này.
-                  </div>
-                )}
-              </ExpressiveCard>
-            </ScrollReveal>
 
           </aside>
         </div>
@@ -3952,6 +3925,7 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false, onTrackRoute }: { ct
   const [registrations, setRegistrations] = useState<RegistrationDTO[]>([]);
   const [targetCancel, setTargetCancel] = useState<RegistrationDTO | null>(null);
   const [expandedRouteId, setExpandedRouteId] = useState<number | null>(null);
+  const [singleTickets, setSingleTickets] = useState<SingleTripTicketView[]>([]);
 
   const reg = ctx.registration;
   const activeRegistrations = registrations.length ? registrations : reg ? [reg] : [];
@@ -3971,7 +3945,8 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false, onTrackRoute }: { ct
     return raw;
   };
   const routeTickets = useMemo(() => {
-    const tickets = Array.isArray(ctx.raw.passes?.data?.tickets) ? ctx.raw.passes.data.tickets : [];
+    const passesPayload = ctx.raw.passes?.raw ?? ctx.raw.passes?.data ?? ctx.raw.passes;
+    const tickets = Array.isArray(passesPayload?.tickets) ? passesPayload.tickets : [];
     const fallback = ctx.activeTicket ? [ctx.activeTicket] : [];
     const byId = new Map<string, any>();
     [...tickets, ...fallback].forEach((ticket: any) => {
@@ -3981,18 +3956,29 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false, onTrackRoute }: { ct
     return Array.from(byId.values());
   }, [ctx.activeTicket, ctx.raw.passes]);
 
-  const activeMonthlyForRoute = (routeId?: number | string | null) => {
+  const activeTicketForRoute = (routeId?: number | string | null) => {
     if (routeId == null) return null;
-    const today = new Date();
+    const now = new Date();
+    const today = new Date(now);
     today.setHours(0, 0, 0, 0);
-    return routeTickets.find((ticket: any) => {
+    const monthly = routeTickets.find((ticket: any) => {
       const active = String(ticket.status || "").toUpperCase() === "ACTIVE";
-      const monthly = String(ticket.ticketType || "MONTHLY").toUpperCase() === "MONTHLY";
+      const ticketType = String(ticket.ticketType || "MONTHLY").toUpperCase();
       const expiryRaw = ticket.expiresOn || ticket.expiresAt;
       const expiry = expiryRaw ? new Date(expiryRaw) : null;
       const stillValid = !expiry || expiry > today;
-      return active && monthly && stillValid && String(ticket.routeId) === String(routeId);
+      return active && ticketType === "MONTHLY" && stillValid && String(ticket.routeId) === String(routeId);
+    });
+    if (monthly) return monthly;
+    return singleTickets.find((ticket) => {
+      const active = ["UNUSED", "ACTIVE", "PAID"].includes(String(ticket.status || "").toUpperCase());
+      const expiry = ticket.expiresAt ? new Date(ticket.expiresAt) : null;
+      return active && (!expiry || expiry > now) && String(ticket.routeId) === String(routeId);
     }) || null;
+  };
+  const activeMonthlyForRoute = (routeId?: number | string | null) => {
+    const ticket = activeTicketForRoute(routeId);
+    return String(ticket?.ticketType || "").toUpperCase() === "MONTHLY" ? ticket : null;
   };
   const targetMonthlyPass = activeMonthlyForRoute(targetCancel?.routeId);
 
@@ -4011,6 +3997,15 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false, onTrackRoute }: { ct
       setShowRegister(true);
     }
   }, [loadRegistrations]);
+
+
+  useEffect(() => {
+    let cancelled = false;
+    studentApi.singleTripTickets()
+      .then((items) => { if (!cancelled) setSingleTickets(items); })
+      .catch(() => { if (!cancelled) setSingleTickets([]); });
+    return () => { cancelled = true; };
+  }, [ctx.raw.passes]);
 
   const doCancel = async () => {
     const selected = targetCancel || reg;
@@ -4063,6 +4058,7 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false, onTrackRoute }: { ct
         <StaggerGroup className="grid min-w-0 items-start gap-4 xl:grid-cols-2">
           {activeRegistrations.map((item: RegistrationDTO) => {
             const regRoute = ctx.routes.find((route: any) => String(route.id ?? route.routeId) === String(item.routeId));
+            const activeRouteTicket = activeTicketForRoute(item.routeId);
             const activeMonthlyPass = activeMonthlyForRoute(item.routeId);
             const monthlyExpiresOn = activeMonthlyPass?.expiresOn || activeMonthlyPass?.expiresAt;
             const expanded = expandedRouteId === item.registrationId;
@@ -4072,9 +4068,9 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false, onTrackRoute }: { ct
               || regRoute?.code
               || routeName.match(/^\s*(?:Tuyến\s*)?([A-Z]?\d{1,3})/i)?.[1]
               || "BUS";
-            const ticketStatus = activeMonthlyPass ? "Đã có vé hợp lệ" : "Cần mua vé";
-            const boardingStopLabel = cleanStopLabel(item.boardingStopName);
-            const alightingStopLabel = cleanStopLabel(item.alightingStopName);
+            const ticketStatus = activeRouteTicket ? "Đã có vé hợp lệ" : "Cần mua vé";
+            const boardingStopLabel = cleanStopLabel(activeRouteTicket?.boardingStopName || item.boardingStopName);
+            const alightingStopLabel = cleanStopLabel(activeRouteTicket?.alightingStopName || item.alightingStopName);
             return (
               <StaggerItem key={item.registrationId} className="self-start">
                 <motion.div
@@ -4097,7 +4093,7 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false, onTrackRoute }: { ct
                             </span>
                             <span className={cn(
                               "rounded-full px-2.5 py-1 text-xs font-medium",
-                              activeMonthlyPass ? "bg-[#111111] text-[#BDFD4F]" : "bg-[#FFF7E5] text-[#7A4B00]"
+                              activeRouteTicket ? "bg-[#111111] text-[#BDFD4F]" : "bg-[#FFF7E5] text-[#7A4B00]"
                             )}>
                               {ticketStatus}
                             </span>
@@ -4115,23 +4111,32 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false, onTrackRoute }: { ct
                       <button
                         type="button"
                         onClick={() => {
-                          if (activeMonthlyPass) {
+                          if (activeRouteTicket) {
                             onNavigate("stu-my-ticket");
                             return;
                           }
                           localStorage.setItem("unibus.paymentRouteId", String(item.routeId));
+                          localStorage.setItem("unibus.pendingPaymentRegistration", JSON.stringify({
+                            ...item,
+                            routeName,
+                            boardingStopName: boardingStopLabel,
+                            alightingStopName: alightingStopLabel,
+                            status: item.status || "APPROVED",
+                          }));
                           onNavigate("stu-invoices");
                         }}
                         className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-[#111111] px-4 text-sm font-semibold text-[#BDFD4F] transition-colors hover:bg-[#24241d]"
                       >
-                        {activeMonthlyPass ? <QrCode className="size-4" /> : <CreditCard className="size-4" />}
-                        {activeMonthlyPass ? "Xem vé / QR" : "Chọn vé / thanh toán"}
+                        {activeRouteTicket ? <QrCode className="size-4" /> : <CreditCard className="size-4" />}
+                        {activeRouteTicket ? "Xem vé / QR" : "Chọn vé / thanh toán"}
                       </button>
                       <button
                         type="button"
                         onClick={() => {
                           saveRouteTrackingContext({
                             ...item,
+                            boardingStopId: activeRouteTicket?.boardingStopId || item.boardingStopId,
+                            alightingStopId: activeRouteTicket?.alightingStopId || item.alightingStopId,
                             routeCode,
                             routeName,
                           });
@@ -4390,7 +4395,7 @@ function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
       .then((items) => { if (!cancelled) setSingleTickets(items); })
       .catch(() => { if (!cancelled) setSingleTickets([]); });
     return () => { cancelled = true; };
-  }, []);
+  }, [ctx.raw.passes]);
 
   const singleTicketSection = singleTickets.length > 0 ? (
     <Section title="Vé lượt" description="Vé ngày / vé lượt đã mua">
@@ -5569,9 +5574,12 @@ function FinanceScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
 function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
   const [purchasing, setPurchasing] = useState(false);
   const [registrations, setRegistrations] = useState<RegistrationDTO[]>([]);
+  const [pendingRegistration, setPendingRegistration] = useState<RegistrationDTO | null>(null);
   const [selectedRouteId, setSelectedRouteId] = useState<string>("");
   const [singleBoardingStopId, setSingleBoardingStopId] = useState<string>("");
   const [singleAlightingStopId, setSingleAlightingStopId] = useState<string>("");
+  const [boardingSelectOpen, setBoardingSelectOpen] = useState(false);
+  const [alightingSelectOpen, setAlightingSelectOpen] = useState(false);
   const [ticketKind, setTicketKind] = useState<"MONTHLY" | "SINGLE">("MONTHLY");
   const [sepayOrder, setSepayOrder] = useState<{
     orderId: number;
@@ -5595,8 +5603,19 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
 
   const passes = ctx.raw.passes?.data;
   const quote = passes?.monthlyPassQuote;
-  const selectedRegistration = registrations.find((item) => String(item.routeId) === selectedRouteId) || ctx.registration;
+  const selectedRegistration = registrations.find((item) => String(item.routeId) === selectedRouteId)
+    || (pendingRegistration && String(pendingRegistration.routeId) === selectedRouteId ? pendingRegistration : null)
+    || (ctx.registration && (!selectedRouteId || String(ctx.registration.routeId) === selectedRouteId) ? ctx.registration : null);
   const selectedRoute = ctx.routes.find((route: any) => String(route.id ?? route.routeId) === selectedRouteId);
+  const compactRouteLabel = (registration?: RegistrationDTO | null) => String(registration?.routeName || "Tuy?n ?? ch?n").split(" ? ")[0].trim();
+  const selectableRegistrations = useMemo(() => {
+    const byRoute = new Map<string, RegistrationDTO>();
+    [...registrations, ...(pendingRegistration ? [pendingRegistration] : [])].forEach((item) => {
+      const key = String(item.routeId);
+      if (!byRoute.has(key)) byRoute.set(key, item);
+    });
+    return Array.from(byRoute.values());
+  }, [pendingRegistration, registrations]);
   const paymentRoute = paymentRouteDetail && String(paymentRouteDetail.routeId) === selectedRouteId ? paymentRouteDetail : selectedRoute;
   const routeQuote = paymentQuote && String(paymentQuote.routeId) === selectedRouteId ? paymentQuote : null;
   const dashboardQuote = quote && String(quote.routeId) === selectedRouteId ? quote : null;
@@ -5618,19 +5637,23 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
         const stop = typeof entry === "object" ? entry : ctx.stops.find((item: any) => String(item.id ?? item.stopId) === stopId);
         if (!stopId || !stop) return null;
         const order = Number(entry?.stopOrder ?? entry?.order ?? index);
-        return { id: `${stopId}-${order}-${index}`, stopId, name: stop.name ?? stop.stopName ?? `Tr?m ${index + 1}`, order };
+        return { id: `${stopId}-${order}-${index}`, stopId, name: stop.name ?? stop.stopName ?? `Trạm ${index + 1}`, order, index };
       })
       .filter(Boolean)
-      .sort((left: any, right: any) => left.order - right.order) as { id: string; stopId: string; name: string; order: number }[];
+      .sort((left: any, right: any) => left.order - right.order || left.index - right.index)
+      .map((stop: any, order: number) => ({ id: stop.id, stopId: stop.stopId, name: stop.name, order })) as { id: string; stopId: string; name: string; order: number }[];
   }, [ctx.stops, paymentRoute]);
-  const boardingStopOrder = paymentRouteStops.find((stop) => stop.id === singleBoardingStopId)?.order;
-  const alightingStopOrder = paymentRouteStops.find((stop) => stop.id === singleAlightingStopId)?.order;
+  const selectedBoardingStop = paymentRouteStops.find((stop) => stop.id === singleBoardingStopId);
+  const selectedAlightingStop = paymentRouteStops.find((stop) => stop.id === singleAlightingStopId);
+  const boardingStopOrder = selectedBoardingStop?.order;
+  const alightingStopOrder = selectedAlightingStop?.order;
   const boardingOptions = paymentRouteStops.filter((stop) => alightingStopOrder == null || stop.order < alightingStopOrder);
   const alightingOptions = paymentRouteStops.filter((stop) => boardingStopOrder == null || stop.order > boardingStopOrder);
-  const selectedBoardingStopName = paymentRouteStops.find((stop) => stop.id === singleBoardingStopId)?.name || selectedRegistration?.boardingStopName;
-  const selectedAlightingStopName = paymentRouteStops.find((stop) => stop.id === singleAlightingStopId)?.name || selectedRegistration?.alightingStopName;
-  const selectedBoardingStopRealId = paymentRouteStops.find((stop) => stop.id === singleBoardingStopId)?.stopId;
-  const selectedAlightingStopRealId = paymentRouteStops.find((stop) => stop.id === singleAlightingStopId)?.stopId;
+  const stopsLoading = Boolean(selectedRouteId && !paymentRouteStops.length);
+  const selectedBoardingStopName = selectedBoardingStop?.name || selectedRegistration?.boardingStopName;
+  const selectedAlightingStopName = selectedAlightingStop?.name || selectedRegistration?.alightingStopName;
+  const selectedBoardingStopRealId = selectedBoardingStop?.stopId;
+  const selectedAlightingStopRealId = selectedAlightingStop?.stopId;
   const hasSingleStops = Boolean(selectedBoardingStopRealId && selectedAlightingStopRealId);
   const singleOriginal = hasSingleStops ? Number(singleQuote?.originalFareAmount ?? singleQuote?.baseAmount ?? singleFare) : 0;
   const singleSubsidy = hasSingleStops ? Number(singleQuote?.subsidyAmount ?? 0) : 0;
@@ -5654,12 +5677,42 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
         if (cancelled) return;
         setRegistrations(list);
         const preferred = localStorage.getItem("unibus.paymentRouteId");
+        const pendingRaw = localStorage.getItem("unibus.pendingPaymentRegistration");
+        let pending: RegistrationDTO | null = null;
+        if (pendingRaw) {
+          try {
+            pending = JSON.parse(pendingRaw) as RegistrationDTO;
+          } catch {
+            pending = null;
+          }
+        }
+        if (pending && preferred && String(pending.routeId) === preferred && !list.some((item) => String(item.routeId) === preferred)) {
+          setPendingRegistration(pending);
+        } else {
+          setPendingRegistration(null);
+          localStorage.removeItem("unibus.pendingPaymentRegistration");
+        }
         const firstRoute = preferred || list[0]?.routeId?.toString() || ctx.registration?.routeId?.toString() || "";
         setSelectedRouteId(firstRoute);
-        localStorage.removeItem("unibus.paymentRouteId");
+        if (!pending || !preferred || String(pending.routeId) !== preferred) {
+          localStorage.removeItem("unibus.paymentRouteId");
+        }
       })
       .catch(() => {
-        if (!cancelled && ctx.registration?.routeId) {
+        if (cancelled) return;
+        const preferred = localStorage.getItem("unibus.paymentRouteId");
+        const pendingRaw = localStorage.getItem("unibus.pendingPaymentRegistration");
+        if (preferred && pendingRaw) {
+          try {
+            const pending = JSON.parse(pendingRaw) as RegistrationDTO;
+            if (String(pending.routeId) === preferred) {
+              setPendingRegistration(pending);
+              setSelectedRouteId(preferred);
+              return;
+            }
+          } catch { /* ignore */ }
+        }
+        if (ctx.registration?.routeId) {
           setSelectedRouteId(String(ctx.registration.routeId));
         }
       });
@@ -5670,9 +5723,9 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
 
   useEffect(() => {
     if (ticketKind !== "SINGLE") return;
-    setSingleBoardingStopId(selectedRegistration?.boardingStopId == null ? "" : String(selectedRegistration.boardingStopId));
-    setSingleAlightingStopId(selectedRegistration?.alightingStopId == null ? "" : String(selectedRegistration.alightingStopId));
-  }, [selectedRegistration?.boardingStopId, selectedRegistration?.alightingStopId, selectedRouteId, ticketKind]);
+    setSingleBoardingStopId("");
+    setSingleAlightingStopId("");
+  }, [selectedRouteId, ticketKind]);
 
   useEffect(() => {
     let cancelled = false;
