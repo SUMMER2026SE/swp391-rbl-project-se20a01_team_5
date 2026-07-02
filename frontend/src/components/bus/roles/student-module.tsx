@@ -3297,7 +3297,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
   const selectedVehicle = displayVehicles.find((vehicle) => vehicle.vehicleId === selectedVehicleId) || displayVehicles[0];
   const collapsedVehicles = displayVehicles.filter((vehicle) => vehicle.vehicleId !== selectedVehicle?.vehicleId);
 
-  const journeyBuses = useMemo(() => (selectedVehicle ? [selectedVehicle] : [])
+  const journeyBuses = useMemo(() => displayVehicles
     .map((vehicle) => ({
       id: vehicle.vehicleId,
       plate: vehicle.plateNumber || "43B-00000",
@@ -3309,7 +3309,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
       capacity: vehicle.capacity,
       etaMinutes: vehicle.etaMinutes,
     }))
-    .filter((vehicle) => vehicle.lat && vehicle.lng), [journeyRouteColor, selectedVehicle]);
+    .filter((vehicle) => vehicle.lat && vehicle.lng), [displayVehicles, journeyRouteColor]);
   const etaStopRows = (journeyTracking?.stopEtas || []).map((stop) => ({
     id: `eta-${stop.routeId}-${stop.stopId}`,
     name: stop.stopName,
@@ -3891,7 +3891,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                 )}
                 {realtimeEtaRows.length > visibleEtaRows.length ? (
                   <button type="button" onClick={() => setShowAllEtaStops((value) => !value)} className="mt-4 w-full rounded-2xl border border-[#E8E2D5] bg-white px-4 py-2 text-sm font-semibold text-[#144fcc] transition hover:bg-[#beff50]/20">
-                    {showAllEtaStops ? "Thu g?n th?i gian d? ki?n" : "Xem t?t c? c?c tr?m"}
+                    {showAllEtaStops ? "Thu gọn thời gian dự kiến" : "Xem tất cả các trạm"}
                   </button>
                 ) : null}
               </ExpressiveCard>
@@ -6893,3 +6893,6 @@ function FallbackScreen({ activeId }: { activeId: string }) {
     />
   );
 }
+
+
+
