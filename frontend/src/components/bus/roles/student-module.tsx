@@ -4456,7 +4456,7 @@ function RegisterRouteDialog({
         <div>
           <Label className="text-xs font-bold">Tuyến xe</Label>
           <Select value={routeId} onValueChange={(v) => { setRouteId(v); setBoardingStopId(""); setAlightingStopId(""); }}>
-            <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn tuyến" /></SelectTrigger>
+            <SelectTrigger className="mt-1.5 min-w-0 overflow-hidden [&>span]:truncate"><SelectValue placeholder="Chọn tuyến" /></SelectTrigger>
             <SelectContent>
               {ctx.routes.map((r: any) => (
                 <SelectItem key={r.id} value={r.id}>{r.code} — {r.name}</SelectItem>
@@ -5727,6 +5727,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
     || (pendingRegistration && String(pendingRegistration.routeId) === selectedRouteId ? pendingRegistration : null)
     || (ctx.registration && (!selectedRouteId || String(ctx.registration.routeId) === selectedRouteId) ? ctx.registration : null);
   const selectedRoute = ctx.routes.find((route: any) => String(route.id ?? route.routeId) === selectedRouteId);
+  const compactRouteLabel = (registration?: RegistrationDTO | null) => String(registration?.routeName || "Tuyến đã chọn").split(" — ")[0].trim();
   const routeScopedDashboardQuote = dashboardQuote && String(dashboardQuote.routeId) === selectedRouteId ? dashboardQuote : null;
   const activeQuote = paymentQuote && String(paymentQuote.routeId) === selectedRouteId ? paymentQuote : routeScopedDashboardQuote;
   const singleFare = Number(paymentRouteDetail?.singleFare ?? selectedRoute?.singleFare ?? selectedRoute?.fare ?? 0);
@@ -5997,7 +5998,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
       <div className={cn("grid grid-cols-1 gap-4 min-w-0", sepayOrder ? "lg:grid-cols-1" : "lg:grid-cols-[1fr_1.2fr]") }>
         {/* Order details */}
         {!sepayOrder && <ScrollReveal>
-          <ExpressiveCard variant="elevated" className="p-6 h-full min-w-0">
+          <ExpressiveCard variant="elevated" className="p-6 h-full min-w-0 overflow-hidden">
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
               <TicketCheck className="size-5 text-[#111111]" />
               Đơn thanh toán
@@ -6008,11 +6009,14 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                   <div>
                     <Label className="text-xs font-bold">Chọn tuyến cần mua vé</Label>
                     <Select value={selectedRouteId} onValueChange={(value) => { setSelectedRouteId(value); setSepayOrder(null); setPaidStatus("idle"); setSecondsLeft(null); }}>
-                      <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn tuyến" /></SelectTrigger>
+                      <SelectTrigger className="mt-1.5 min-w-0 overflow-hidden [&>span]:truncate"><SelectValue placeholder="Chọn tuyến" /></SelectTrigger>
                       <SelectContent>
                         {registrations.map((item) => (
-                          <SelectItem key={item.registrationId} value={String(item.routeId)}>
-                            {item.routeName} — {item.boardingStopName} → {item.alightingStopName}
+                          <SelectItem key={item.registrationId} value={String(item.routeId)} textValue={compactRouteLabel(item)}>
+                            <div className="min-w-0 max-w-[520px]">
+                              <p className="truncate font-medium">{compactRouteLabel(item)}</p>
+                              <p className="truncate text-xs text-[#7A756B]">{item.boardingStopName || "Trạm lên"} → {item.alightingStopName || "Trạm xuống"}</p>
+                            </div>
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -6056,7 +6060,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                   </div>
                 </div>
 
-                <Row label="Tuyến" value={selectedRegistration?.routeName || selectedRoute?.name || selectedRoute?.routeName || "Tuyến đã chọn"} icon={<RouteIcon className="size-4" />} />
+                <Row label="Tuyến" value={compactRouteLabel(selectedRegistration) || selectedRoute?.name || selectedRoute?.routeName || "Tuyến đã chọn"} icon={<RouteIcon className="size-4" />} />
                 {ticketKind === "SINGLE" ? (
                   <div className="space-y-3 rounded-[18px] border border-[#E7E0D2] bg-[#FFFEFA] p-4">
                     <div className="flex items-start justify-between gap-3">
@@ -6262,7 +6266,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
               </ExpressiveCard>
             </motion.div>
           ) : (
-            <ExpressiveCard variant="elevated" className="p-6 h-full min-w-0">
+            <ExpressiveCard variant="elevated" className="p-6 h-full min-w-0 overflow-hidden">
               {/* Header with countdown */}
               <div className="flex items-center justify-between mb-4 min-w-0">
                 <div className="min-w-0">
@@ -6393,12 +6397,12 @@ function Row({
 }) {
   const accentClass = accent === "success" ? "text-success" : accent === "error" ? "text-error" : accent === "primary" ? "text-primary" : "";
   return (
-    <div className="flex items-center justify-between gap-3 min-w-0">
-      <span className={cn("flex items-center gap-2 text-on-surface-variant", muted && "opacity-60")}>
+    <div className="flex items-center justify-between gap-3 min-w-0 overflow-hidden">
+      <span className={cn("flex shrink-0 items-center gap-2 text-on-surface-variant", muted && "opacity-60")}>
         {icon}
         {label}
       </span>
-      <span className={cn("font-bold truncate", accentClass)}>{value}</span>
+      <span className={cn("min-w-0 truncate text-right font-bold", accentClass)}>{value}</span>
     </div>
   );
 }
@@ -6596,7 +6600,7 @@ function FeedbackScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean 
               <div>
                 <Label className="text-xs font-bold">Tuyến (tùy chọn)</Label>
                 <Select value={routeId} onValueChange={setRouteId}>
-                  <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn tuyến" /></SelectTrigger>
+                  <SelectTrigger className="mt-1.5 min-w-0 overflow-hidden [&>span]:truncate"><SelectValue placeholder="Chọn tuyến" /></SelectTrigger>
                   <SelectContent>
                     {ctx.routes.map((r: any) => (
                       <SelectItem key={r.id} value={r.id}>{r.code} — {r.name}</SelectItem>
@@ -6793,3 +6797,4 @@ function FallbackScreen({ activeId }: { activeId: string }) {
     />
   );
 }
+
