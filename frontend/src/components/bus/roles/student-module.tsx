@@ -3646,11 +3646,11 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                         const displayIndex = showAllEtaStops ? index : etaWindowStart + index;
                         const minutesAway = Math.max(0, Number(stop.minutesAway ?? 0));
                         const timeLabel = passed
-                          ? "?? ?i qua"
+                          ? "Đã đi qua"
                           : stop.estimatedArrivalAt
                             ? new Date(stop.estimatedArrivalAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
                             : "Đang tính";
-                        const etaLabel = passed ? "?? qua" : `${minutesAway} ph?t`;
+                        const etaLabel = passed ? "Đã qua" : `${minutesAway} phút`;
                         return (
                           <button
                             type="button"
@@ -3667,7 +3667,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                             </div>
                             <div className="pb-4">
                               <p className={cn("truncate text-sm font-semibold", passed ? "text-[#6B6B6B]" : "text-[#14140f]")}>{stop.stopName}</p>
-                              <p className="mt-0.5 text-xs text-[#6B6B6B]">{stop.routeCode || routeCode} ? {timeLabel}</p>
+                              <p className="mt-0.5 text-xs text-[#6B6B6B]">{stop.routeCode || routeCode} · {timeLabel}</p>
                             </div>
                             <p className={cn("pt-0.5 text-right text-sm font-semibold", current ? "text-[#166534]" : passed ? "text-[#6B6B6B]" : "text-[#144fcc]")}>{etaLabel}</p>
                           </button>
