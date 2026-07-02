@@ -213,10 +213,7 @@ public class TicketingRepository {
                 SELECT stt.single_trip_ticket_id, stt.student_code, stt.route_id, r.route_name,
                        stt.boarding_stop_id, bs.stop_name AS boarding_stop_name,
                        stt.alighting_stop_id, als.stop_name AS alighting_stop_name,
-                       stt.fare_amount,
-                       stt.fare_amount AS original_fare_amount,
-                       0 AS subsidy_amount,
-                       stt.fare_amount AS final_fare_amount,
+                       stt.fare_amount, stt.original_fare_amount, stt.subsidy_amount, stt.final_fare_amount,
                        stt.qr_code, stt.status, stt.purchased_at, stt.expires_at
                 FROM single_trip_tickets stt
                 JOIN routes r ON r.route_id = stt.route_id
