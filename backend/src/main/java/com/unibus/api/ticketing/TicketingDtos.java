@@ -75,6 +75,7 @@ public final class TicketingDtos {
             Integer ticketId,
             String ticketType,
             Integer routeId,
+            String routeCode,
             String routeName,
             String boardingStopName,
             String alightingStopName,

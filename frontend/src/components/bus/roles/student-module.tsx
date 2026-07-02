@@ -306,6 +306,40 @@ interface Ctx {
   reload: () => void;
 }
 
+function normalizeRouteMatchText(value?: string | null) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/^\s*tuyen\s+\w+\s*\((.*)\)\s*$/, "$1")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function collectMonthlyTicketsFrom(passesPayload: any, activeTicket?: any | null) {
+  const candidates = [
+    passesPayload?.tickets,
+    passesPayload?.monthlyPasses,
+    passesPayload?.passes,
+    passesPayload?.activeTickets,
+    Array.isArray(passesPayload) ? passesPayload : null,
+  ];
+  const byId = new Map<string, any>();
+  candidates.flatMap((value) => (Array.isArray(value) ? value : [])).concat(activeTicket ? [activeTicket] : []).forEach((ticket: any) => {
+    const ticketType = String(ticket?.ticketType || ticket?.type || "MONTHLY").toUpperCase();
+    const active = String(ticket?.status || "ACTIVE").toUpperCase() === "ACTIVE";
+    if (!ticket || ticketType !== "MONTHLY" || !active) return;
+    const key = String(ticket.ticketId ?? ticket.monthlyPassId ?? ticket.passId ?? `${ticket.routeId ?? ticket.routeCode ?? ticket.routeName}-${ticket.expiresOn || ticket.expiresAt || ticket.validTo}`);
+    byId.set(key, ticket);
+  });
+  return Array.from(byId.values());
+}
+
+function collectMonthlyTickets(ctx: Ctx) {
+  return collectMonthlyTicketsFrom(ctx.raw.passes?.raw ?? ctx.raw.passes?.data ?? ctx.raw.passes, ctx.activeTicket);
+}
+
 type RouteTrackingContext = {
   type: "route";
   routeId: number | string;
@@ -4085,6 +4119,7 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
   const [registrations, setRegistrations] = useState<RegistrationDTO[]>([]);
   const [targetCancel, setTargetCancel] = useState<RegistrationDTO | null>(null);
   const [expandedRouteId, setExpandedRouteId] = useState<number | null>(null);
+  const [freshPasses, setFreshPasses] = useState<PassesDashboard | null>(null);
 
   const reg = ctx.registration;
   const activeRegistrations = registrations.length ? registrations : reg ? [reg] : [];
@@ -4103,35 +4138,24 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
     if (/^[a-z0-9\s]+$/.test(raw) && raw === normalized && raw.length > 12) return "Chưa xác định";
     return raw;
   };
-  const routeTickets = useMemo(() => {
-    const passesPayload = ctx.raw.passes?.raw ?? ctx.raw.passes?.data ?? ctx.raw.passes;
-    const tickets = Array.isArray(passesPayload?.tickets) ? passesPayload.tickets : [];
-    const fallback = ctx.activeTicket ? [ctx.activeTicket] : [];
-    const byId = new Map<string, any>();
-    [...tickets, ...fallback].forEach((ticket: any) => {
-      const key = String(ticket.ticketId ?? ticket.monthlyPassId ?? `${ticket.routeId}-${ticket.ticketType}-${ticket.expiresOn || ticket.expiresAt}`);
-      byId.set(key, ticket);
-    });
-    return Array.from(byId.values());
-  }, [ctx.activeTicket, ctx.raw.passes]);
+  const routeTickets = useMemo(() => freshPasses ? collectMonthlyTicketsFrom(freshPasses, null) : collectMonthlyTickets(ctx), [ctx, freshPasses]);
 
-  const normalizeRouteLabel = (value?: string | null) => String(value || "").toLowerCase().replace(/^tuyến\s+\d+\s*\((.*)\)$/, "$1").replace(/\s+/g, " ").trim();
-  const activeMonthlyForRoute = (routeId?: number | string | null, routeName?: string | null) => {
+  const activeMonthlyForRoute = (routeId?: number | string | null, routeName?: string | null, routeCode?: string | null) => {
     const routeKey = routeId == null ? "" : String(routeId);
-    const nameKey = normalizeRouteLabel(routeName);
-    if (!routeKey && !nameKey) return null;
+    const codeKey = String(routeCode || "").trim();
+    const nameKey = normalizeRouteMatchText(routeName);
+    if (!routeKey && !codeKey && !nameKey) return null;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     return routeTickets.find((ticket: any) => {
-      const active = String(ticket.status || "").toUpperCase() === "ACTIVE";
-      const monthly = String(ticket.ticketType || "MONTHLY").toUpperCase() === "MONTHLY";
       const expiryRaw = ticket.expiresOn || ticket.expiresAt;
       const expiry = expiryRaw ? new Date(expiryRaw) : null;
       const stillValid = !expiry || expiry > today;
       const sameRoute = routeKey && String(ticket.routeId) === routeKey;
-      const ticketName = normalizeRouteLabel(ticket.routeName);
+      const sameCode = codeKey && String(ticket.routeCode || "").trim() === codeKey;
+      const ticketName = normalizeRouteMatchText(ticket.routeName || ticket.name);
       const sameName = Boolean(nameKey && ticketName && (ticketName === nameKey || ticketName.includes(nameKey) || nameKey.includes(ticketName)));
-      return active && monthly && stillValid && (sameRoute || sameName);
+      return stillValid && (sameRoute || sameCode || sameName);
     }) || null;
   };
   const targetMonthlyPass = activeMonthlyForRoute(targetCancel?.routeId, targetCancel?.routeName);
@@ -4147,6 +4171,7 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
 
   useEffect(() => {
     loadRegistrations();
+    studentApi.tickets().then(setFreshPasses).catch(() => setFreshPasses(null));
     if (localStorage.getItem("unibus.pendingRegistration")) {
       setShowRegister(true);
     }
@@ -4203,15 +4228,15 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
         <StaggerGroup className="grid min-w-0 items-start gap-4 xl:grid-cols-2">
           {activeRegistrations.map((item: RegistrationDTO) => {
             const regRoute = ctx.routes.find((route: any) => String(route.id ?? route.routeId) === String(item.routeId));
-            const activeMonthlyPass = activeMonthlyForRoute(item.routeId, item.routeName);
-            const monthlyExpiresOn = activeMonthlyPass?.expiresOn || activeMonthlyPass?.expiresAt;
-            const expanded = expandedRouteId === item.registrationId;
             const routeName = item.routeName || regRoute?.name || (regRoute as any)?.routeName || "Tuyến đã đăng ký";
             const routeCode = (item as RegistrationDTO & { routeCode?: string }).routeCode
               || (regRoute as any)?.routeCode
               || regRoute?.code
-              || routeName.match(/^\s*(?:Tuyến\s*)?([A-Z]?\d{1,3})/i)?.[1]
+              || routeName.match(/^\s*(?:Tuyến\s*)?([A-Z]?\d{1,3})\b/i)?.[1]
               || "BUS";
+            const activeMonthlyPass = item.hasActiveMonthlyPass ? (activeMonthlyForRoute(item.routeId, routeName, routeCode) || item) : activeMonthlyForRoute(item.routeId, routeName, routeCode);
+            const monthlyExpiresOn = item.monthlyPassExpiresOn || activeMonthlyPass?.expiresOn || activeMonthlyPass?.expiresAt;
+            const expanded = expandedRouteId === item.registrationId;
             const ticketStatus = activeMonthlyPass ? "Đã có vé hợp lệ" : "Cần mua vé";
             const boardingStopLabel = cleanStopLabel(item.boardingStopName);
             const alightingStopLabel = cleanStopLabel(item.alightingStopName);
@@ -4523,24 +4548,17 @@ function RegisterRouteDialog({
 // Screen 7: My Ticket — QR code + ticket details
 // =============================================================================
 function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavigate: (id: string) => void; compact?: boolean }) {
-  const monthlyTickets = useMemo(() => {
-    const passesPayload = ctx.raw.passes?.raw ?? ctx.raw.passes?.data ?? ctx.raw.passes;
-    const tickets = Array.isArray(passesPayload?.tickets) ? passesPayload.tickets : [];
-    const byId = new Map<string, any>();
-    [...tickets, ctx.activeTicket].filter(Boolean).forEach((ticket: any) => {
-      const monthly = String(ticket.ticketType || "MONTHLY").toUpperCase() === "MONTHLY";
-      if (!monthly) return;
-      const key = String(ticket.ticketId ?? ticket.monthlyPassId ?? `${ticket.routeId}-${ticket.expiresOn || ticket.expiresAt}`);
-      byId.set(key, ticket);
-    });
-    return Array.from(byId.values());
-  }, [ctx.activeTicket, ctx.raw.passes]);
+  const [freshPasses, setFreshPasses] = useState<PassesDashboard | null>(null);
+  const monthlyTickets = useMemo(() => freshPasses ? collectMonthlyTicketsFrom(freshPasses, ctx.activeTicket) : collectMonthlyTickets(ctx), [ctx, freshPasses]);
   const t = monthlyTickets[0] || ctx.activeTicket;
   const [expanded, setExpanded] = useState(false);
   const [singleTickets, setSingleTickets] = useState<SingleTripTicketView[]>([]);
 
   useEffect(() => {
     let cancelled = false;
+    studentApi.tickets()
+      .then((passes) => { if (!cancelled) setFreshPasses(passes); })
+      .catch(() => { if (!cancelled) setFreshPasses(null); });
     studentApi.singleTripTickets()
       .then((items) => { if (!cancelled) setSingleTickets(items); })
       .catch(() => { if (!cancelled) setSingleTickets([]); });
@@ -6860,10 +6878,6 @@ function FallbackScreen({ activeId }: { activeId: string }) {
     />
   );
 }
-
-
-
-
 
 
 

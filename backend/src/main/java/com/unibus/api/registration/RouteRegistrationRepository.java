@@ -56,4 +56,18 @@ public interface RouteRegistrationRepository extends JpaRepository<RouteRegistra
     long countActiveMonthlyPassesByRoute(
             @Param("studentCode") String studentCode,
             @Param("routeId") Integer routeId);
+
+    @Query(value = """
+            SELECT MAX(mp.expires_on)
+            FROM monthly_passes mp
+            WHERE mp.student_code = :studentCode
+              AND mp.route_id = :routeId
+              AND mp.status = 'ACTIVE'
+              AND mp.valid_from <= CURRENT_DATE
+              AND mp.expires_on > CURRENT_DATE
+            """, nativeQuery = true)
+    java.time.LocalDate activeMonthlyPassExpiresOnByRoute(
+            @Param("studentCode") String studentCode,
+            @Param("routeId") Integer routeId);
+
 }

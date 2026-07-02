@@ -534,6 +534,7 @@ export interface StudentProfile extends UserProfile {
 export interface RegistrationDTO {
   registrationId: number;
   routeId: number;
+  routeCode?: string;
   routeName: string;
   boardingStopId: number;
   boardingStopName: string;
@@ -542,12 +543,15 @@ export interface RegistrationDTO {
   effectiveDate?: string;
   status: string;
   registeredAt?: string;
+  hasActiveMonthlyPass?: boolean;
+  monthlyPassExpiresOn?: string;
 }
 
 export interface TicketView {
   ticketId: number;
   ticketType: string;
   routeId: number;
+  routeCode?: string;
   routeName: string;
   boardingStopName?: string;
   alightingStopName?: string;
@@ -1769,7 +1773,3 @@ export const api = {
   driverDispatch: driverDispatchApi,
   conductor: conductorApi,
 };
-
-
-
-
