@@ -4115,8 +4115,11 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
     return Array.from(byId.values());
   }, [ctx.activeTicket, ctx.raw.passes]);
 
-  const activeMonthlyForRoute = (routeId?: number | string | null) => {
-    if (routeId == null) return null;
+  const normalizeRouteLabel = (value?: string | null) => String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
+  const activeMonthlyForRoute = (routeId?: number | string | null, routeName?: string | null) => {
+    const routeKey = routeId == null ? "" : String(routeId);
+    const nameKey = normalizeRouteLabel(routeName);
+    if (!routeKey && !nameKey) return null;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     return routeTickets.find((ticket: any) => {
@@ -4125,10 +4128,12 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
       const expiryRaw = ticket.expiresOn || ticket.expiresAt;
       const expiry = expiryRaw ? new Date(expiryRaw) : null;
       const stillValid = !expiry || expiry > today;
-      return active && monthly && stillValid && String(ticket.routeId) === String(routeId);
+      const sameRoute = routeKey && String(ticket.routeId) === routeKey;
+      const sameName = nameKey && normalizeRouteLabel(ticket.routeName) === nameKey;
+      return active && monthly && stillValid && (sameRoute || sameName);
     }) || null;
   };
-  const targetMonthlyPass = activeMonthlyForRoute(targetCancel?.routeId);
+  const targetMonthlyPass = activeMonthlyForRoute(targetCancel?.routeId, targetCancel?.routeName);
 
   const loadRegistrations = useCallback(async () => {
     try {
@@ -4197,7 +4202,7 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
         <StaggerGroup className="grid min-w-0 items-start gap-4 xl:grid-cols-2">
           {activeRegistrations.map((item: RegistrationDTO) => {
             const regRoute = ctx.routes.find((route: any) => String(route.id ?? route.routeId) === String(item.routeId));
-            const activeMonthlyPass = activeMonthlyForRoute(item.routeId);
+            const activeMonthlyPass = activeMonthlyForRoute(item.routeId, item.routeName);
             const monthlyExpiresOn = activeMonthlyPass?.expiresOn || activeMonthlyPass?.expiresAt;
             const expanded = expandedRouteId === item.registrationId;
             const routeName = item.routeName || regRoute?.name || (regRoute as any)?.routeName || "Tuyến đã đăng ký";
@@ -6806,6 +6811,7 @@ function FallbackScreen({ activeId }: { activeId: string }) {
     />
   );
 }
+
 
 
 
