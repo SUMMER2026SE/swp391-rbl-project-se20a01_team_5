@@ -4115,7 +4115,7 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
     return Array.from(byId.values());
   }, [ctx.activeTicket, ctx.raw.passes]);
 
-  const normalizeRouteLabel = (value?: string | null) => String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
+  const normalizeRouteLabel = (value?: string | null) => String(value || "").toLowerCase().replace(/^tuyến\s+\d+\s*\((.*)\)$/, "$1").replace(/\s+/g, " ").trim();
   const activeMonthlyForRoute = (routeId?: number | string | null, routeName?: string | null) => {
     const routeKey = routeId == null ? "" : String(routeId);
     const nameKey = normalizeRouteLabel(routeName);
@@ -4129,7 +4129,8 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
       const expiry = expiryRaw ? new Date(expiryRaw) : null;
       const stillValid = !expiry || expiry > today;
       const sameRoute = routeKey && String(ticket.routeId) === routeKey;
-      const sameName = nameKey && normalizeRouteLabel(ticket.routeName) === nameKey;
+      const ticketName = normalizeRouteLabel(ticket.routeName);
+      const sameName = Boolean(nameKey && ticketName && (ticketName === nameKey || ticketName.includes(nameKey) || nameKey.includes(ticketName)));
       return active && monthly && stillValid && (sameRoute || sameName);
     }) || null;
   };
@@ -4309,17 +4310,23 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
                               <RouteDetailLine label="Trạng thái vé" value={ticketStatus} />
                               {activeMonthlyPass && <RouteDetailLine label="Hiệu lực vé" value={`Đến ${formatDate(monthlyExpiresOn)}`} />}
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setTargetCancel(item);
-                                setCancelling(true);
-                              }}
-                              className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-[#8A1C16] transition-colors hover:text-[#B3261E]"
-                            >
-                              <Trash2 className="size-3.5" />
-                              Hủy đăng ký
-                            </button>
+                            {activeMonthlyPass ? (
+                              <p className="mt-3 rounded-lg bg-[#F7F4EC] px-3 py-2 text-xs font-medium text-[#6B6256]">
+                                Không thể hủy khi vé tháng còn hiệu lực.
+                              </p>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setTargetCancel(item);
+                                  setCancelling(true);
+                                }}
+                                className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-[#8A1C16] transition-colors hover:text-[#B3261E]"
+                              >
+                                <Trash2 className="size-3.5" />
+                                Hủy đăng ký
+                              </button>
+                            )}
                           </div>
                         </motion.div>
                       )}
@@ -4516,7 +4523,19 @@ function RegisterRouteDialog({
 // Screen 7: My Ticket — QR code + ticket details
 // =============================================================================
 function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavigate: (id: string) => void; compact?: boolean }) {
-  const t = ctx.activeTicket;
+  const monthlyTickets = useMemo(() => {
+    const passesPayload = ctx.raw.passes?.raw ?? ctx.raw.passes?.data ?? ctx.raw.passes;
+    const tickets = Array.isArray(passesPayload?.tickets) ? passesPayload.tickets : [];
+    const byId = new Map<string, any>();
+    [...tickets, ctx.activeTicket].filter(Boolean).forEach((ticket: any) => {
+      const monthly = String(ticket.ticketType || "MONTHLY").toUpperCase() === "MONTHLY";
+      if (!monthly) return;
+      const key = String(ticket.ticketId ?? ticket.monthlyPassId ?? `${ticket.routeId}-${ticket.expiresOn || ticket.expiresAt}`);
+      byId.set(key, ticket);
+    });
+    return Array.from(byId.values());
+  }, [ctx.activeTicket, ctx.raw.passes]);
+  const t = monthlyTickets[0] || ctx.activeTicket;
   const [expanded, setExpanded] = useState(false);
   const [singleTickets, setSingleTickets] = useState<SingleTripTicketView[]>([]);
 
@@ -4681,6 +4700,36 @@ function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
           </div>
         </motion.div>
       </ScrollReveal>
+
+      {monthlyTickets.length > 1 && (
+        <Section title="Vé tháng" description={`${monthlyTickets.length} vé tháng đang có hiệu lực`}>
+          <div className="grid gap-3 md:grid-cols-2">
+            {monthlyTickets.slice(1).map((ticket: any) => (
+              <ExpressiveCard key={ticket.ticketId ?? ticket.monthlyPassId ?? ticket.routeId} variant="filled" className="flex h-full flex-col p-5 min-w-0">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-black uppercase text-on-surface-variant">Vé tháng</p>
+                    <h3 className="mt-1 truncate text-base font-black text-on-surface">{ticket.routeName}</h3>
+                    <p className="mt-1 text-xs text-on-surface-variant">Hết hạn: {formatDate(ticket.expiresAt || ticket.expiresOn)}</p>
+                  </div>
+                  <span className="rounded-full bg-[#14140f] px-3 py-1 text-[10px] font-black text-[#beff50]">{ticket.status || "ACTIVE"}</span>
+                </div>
+                <div className="mt-4 flex items-center gap-4">
+                  {ticket.qrCode && (
+                    <div className="rounded-2xl bg-white p-3 shadow-sm">
+                      <QRCodeCanvas value={ticket.qrCode} size={96} level="H" />
+                    </div>
+                  )}
+                  <div className="min-w-0 text-sm">
+                    <p><span className="font-bold">Sinh viên trả:</span> {formatVND(Number(ticket.finalFareAmount ?? ticket.fareAmount ?? 0))}</p>
+                    <p className="text-xs text-on-surface-variant">{ticket.boardingStopName || "—"} → {ticket.alightingStopName || "—"}</p>
+                  </div>
+                </div>
+              </ExpressiveCard>
+            ))}
+          </div>
+        </Section>
+      )}
 
       {singleTicketSection}
 
@@ -6811,6 +6860,9 @@ function FallbackScreen({ activeId }: { activeId: string }) {
     />
   );
 }
+
+
+
 
 
 
