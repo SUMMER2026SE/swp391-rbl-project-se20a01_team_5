@@ -382,18 +382,20 @@ public class SePayService {
 
 
     private void validateStopDirection(Integer routeId, Integer boardingStopId, Integer alightingStopId) {
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-                "SELECT stop_id, stop_order FROM route_stops WHERE route_id = ? AND stop_id IN (?, ?)",
-                routeId, boardingStopId, alightingStopId);
-        Integer boardingOrder = null;
-        Integer alightingOrder = null;
-        for (Map<String, Object> row : rows) {
-            Integer stopId = ((Number) row.get("stop_id")).intValue();
-            Integer stopOrder = ((Number) row.get("stop_order")).intValue();
-            if (stopId.equals(boardingStopId)) boardingOrder = stopOrder;
-            if (stopId.equals(alightingStopId)) alightingOrder = stopOrder;
-        }
-        if (boardingOrder == null || alightingOrder == null || boardingOrder >= alightingOrder) {
+        Boolean valid = jdbcTemplate.queryForObject("""
+                SELECT EXISTS(
+                    SELECT 1
+                    FROM route_stops boarding
+                    JOIN route_stops alighting
+                      ON alighting.route_id = boarding.route_id
+                     AND COALESCE(alighting.station_direction, 0) = COALESCE(boarding.station_direction, 0)
+                    WHERE boarding.route_id = ?
+                      AND boarding.stop_id = ?
+                      AND alighting.stop_id = ?
+                      AND boarding.stop_order < alighting.stop_order
+                )
+                """, Boolean.class, routeId, boardingStopId, alightingStopId);
+        if (!Boolean.TRUE.equals(valid)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid stop order for selected route");
         }
     }

@@ -5770,6 +5770,11 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
   const boardingStopOrder = paymentRouteStops.find((stop) => stop.id === singleBoardingStopId)?.order;
   const alightingStopOrder = paymentRouteStops.find((stop) => stop.id === singleAlightingStopId)?.order;
   const hasSelectableRouteStops = paymentRouteStops.length >= 2;
+  const isValidStopPair = useCallback((boardingId: string, alightingId: string) => {
+    const boardingOrder = paymentRouteStops.find((stop) => stop.id === boardingId)?.order;
+    const alightingOrder = paymentRouteStops.find((stop) => stop.id === alightingId)?.order;
+    return boardingOrder != null && alightingOrder != null && boardingOrder < alightingOrder;
+  }, [paymentRouteStops]);
   const boardingOptions = paymentRouteStops.filter((stop) => alightingStopOrder == null || stop.order < alightingStopOrder);
   const alightingOptions = paymentRouteStops.filter((stop) => boardingStopOrder == null || stop.order > boardingStopOrder);
   const selectedBoardingStopName = paymentRouteStops.find((stop) => stop.id === singleBoardingStopId)?.name || selectedRegistration?.boardingStopName || "—";
@@ -5853,11 +5858,15 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
     const routeStopIds = paymentRouteStops.map((stop) => stop.id);
     const registrationBoarding = selectedRegistration?.boardingStopId == null ? "" : String(selectedRegistration.boardingStopId);
     const registrationAlighting = selectedRegistration?.alightingStopId == null ? "" : String(selectedRegistration.alightingStopId);
-    const nextBoarding = routeStopIds.includes(registrationBoarding) ? registrationBoarding : paymentRouteStops[0]?.id ?? registrationBoarding;
-    const nextAlighting = routeStopIds.includes(registrationAlighting) ? registrationAlighting : paymentRouteStops[paymentRouteStops.length - 1]?.id ?? registrationAlighting;
+    let nextBoarding = routeStopIds.includes(registrationBoarding) ? registrationBoarding : paymentRouteStops[0]?.id ?? registrationBoarding;
+    let nextAlighting = routeStopIds.includes(registrationAlighting) ? registrationAlighting : paymentRouteStops[paymentRouteStops.length - 1]?.id ?? registrationAlighting;
+    if (hasSelectableRouteStops && !isValidStopPair(nextBoarding, nextAlighting)) {
+      nextBoarding = paymentRouteStops[0]?.id ?? "";
+      nextAlighting = paymentRouteStops[paymentRouteStops.length - 1]?.id ?? "";
+    }
     setSingleBoardingStopId(nextBoarding || "");
     setSingleAlightingStopId(nextAlighting || "");
-  }, [paymentRouteStops, selectedRegistration?.boardingStopId, selectedRegistration?.alightingStopId, selectedRouteId, ticketKind]);
+  }, [hasSelectableRouteStops, isValidStopPair, paymentRouteStops, selectedRegistration?.boardingStopId, selectedRegistration?.alightingStopId, selectedRouteId, ticketKind]);
   useEffect(() => {
     let cancelled = false;
     setPaymentRouteDetail(null);
@@ -5908,7 +5917,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
     }
     setPurchasing(true);
     try {
-      const stopMetadata = kind === "SINGLE" && hasSelectableRouteStops && singleBoardingStopId && singleAlightingStopId
+      const stopMetadata = kind === "SINGLE" && hasSelectableRouteStops && isValidStopPair(singleBoardingStopId, singleAlightingStopId)
         ? { boardingStopId: Number(singleBoardingStopId), alightingStopId: Number(singleAlightingStopId) }
         : undefined;
       const order = await studentApi.createSePayOrder(kind, Number(selectedRouteId), stopMetadata);
@@ -5945,7 +5954,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
     } finally {
       setPurchasing(false);
     }
-  }, [canBuySingle, hasSelectableRouteStops, refreshPaymentData, selectedRouteId, singleAlightingStopId, singleBoardingStopId, ticketKind]);
+  }, [canBuySingle, hasSelectableRouteStops, isValidStopPair, refreshPaymentData, selectedRouteId, singleAlightingStopId, singleBoardingStopId, ticketKind]);
 
   const copyAccount = async () => {
     if (!sepayOrder?.accountNo) return;
@@ -6047,7 +6056,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                   </div>
                 </div>
 
-                <Row label="Tuyến" value={selectedRegistration.routeName} icon={<RouteIcon className="size-4" />} />
+                <Row label="Tuyến" value={selectedRegistration?.routeName || selectedRoute?.name || selectedRoute?.routeName || "Tuyến đã chọn"} icon={<RouteIcon className="size-4" />} />
                 {ticketKind === "SINGLE" ? (
                   <div className="space-y-3 rounded-[18px] border border-[#E7E0D2] bg-[#FFFEFA] p-4">
                     <div className="flex items-start justify-between gap-3">
@@ -6176,7 +6185,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                     variant="filled"
                     className="w-full mt-2"
                     onClick={() => buy(ticketKind)}
-                    disabled={purchasing || !selectedRouteId || (ticketKind === "SINGLE" && (!canBuySingle || (hasSelectableRouteStops && (!singleBoardingStopId || !singleAlightingStopId))))}
+                    disabled={purchasing || !selectedRouteId || (ticketKind === "SINGLE" && (!canBuySingle || (hasSelectableRouteStops && !isValidStopPair(singleBoardingStopId, singleAlightingStopId))))}
                   >
                     {purchasing ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
                     Xác nhận
