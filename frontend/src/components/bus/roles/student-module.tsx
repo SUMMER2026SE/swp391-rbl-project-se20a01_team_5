@@ -4104,7 +4104,8 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
     return raw;
   };
   const routeTickets = useMemo(() => {
-    const tickets = Array.isArray(ctx.raw.passes?.data?.tickets) ? ctx.raw.passes.data.tickets : [];
+    const passesPayload = ctx.raw.passes?.raw ?? ctx.raw.passes?.data ?? ctx.raw.passes;
+    const tickets = Array.isArray(passesPayload?.tickets) ? passesPayload.tickets : [];
     const fallback = ctx.activeTicket ? [ctx.activeTicket] : [];
     const byId = new Map<string, any>();
     [...tickets, ...fallback].forEach((ticket: any) => {
@@ -6797,4 +6798,5 @@ function FallbackScreen({ activeId }: { activeId: string }) {
     />
   );
 }
+
 
