@@ -5729,6 +5729,14 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
     || (ctx.registration && (!selectedRouteId || String(ctx.registration.routeId) === selectedRouteId) ? ctx.registration : null);
   const selectedRoute = ctx.routes.find((route: any) => String(route.id ?? route.routeId) === selectedRouteId);
   const compactRouteLabel = (registration?: RegistrationDTO | null) => String(registration?.routeName || "Tuyến đã chọn").split(" — ")[0].trim();
+  const selectableRegistrations = useMemo(() => {
+    const byRoute = new Map<string, RegistrationDTO>();
+    registrations.forEach((item) => {
+      const key = String(item.routeId);
+      if (!byRoute.has(key)) byRoute.set(key, item);
+    });
+    return Array.from(byRoute.values());
+  }, [registrations]);
   const routeScopedDashboardQuote = dashboardQuote && String(dashboardQuote.routeId) === selectedRouteId ? dashboardQuote : null;
   const activeQuote = paymentQuote && String(paymentQuote.routeId) === selectedRouteId ? paymentQuote : routeScopedDashboardQuote;
   const singleFare = Number(paymentRouteDetail?.singleFare ?? selectedRoute?.singleFare ?? selectedRoute?.fare ?? 0);
@@ -6006,13 +6014,13 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
             </h3>
             {selectedRegistration ? (
               <div className="space-y-4 text-sm">
-                {registrations.length > 1 && (
+                {selectableRegistrations.length > 1 && (
                   <div>
                     <Label className="text-xs font-bold">Chọn tuyến cần mua vé</Label>
                     <Select value={selectedRouteId} onValueChange={(value) => { setSelectedRouteId(value); setSepayOrder(null); setPaidStatus("idle"); setSecondsLeft(null); }}>
                       <SelectTrigger className="mt-1.5 min-w-0 overflow-hidden [&>span]:truncate"><SelectValue placeholder="Chọn tuyến" /></SelectTrigger>
                       <SelectContent>
-                        {registrations.map((item) => (
+                        {selectableRegistrations.map((item) => (
                           <SelectItem key={item.registrationId} value={String(item.routeId)} textValue={compactRouteLabel(item)}>
                             <div className="min-w-0 max-w-[520px]">
                               <p className="truncate font-medium">{compactRouteLabel(item)}</p>
@@ -6798,5 +6806,7 @@ function FallbackScreen({ activeId }: { activeId: string }) {
     />
   );
 }
+
+
 
 
