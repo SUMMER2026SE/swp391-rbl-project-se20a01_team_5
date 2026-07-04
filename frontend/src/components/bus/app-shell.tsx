@@ -72,7 +72,10 @@ export function AppShell({
     : role === "admin" ? "adm-profile"
     : "uniadm-profile";
 
+  const previousActiveIdRef = useRef(activeId);
+  const [studentBackTarget, setStudentBackTarget] = useState("stu-dashboard");
   const isFirstNav = nav.length > 0 && activeId === nav[0].id;
+  const showStudentBack = role === "student" && activeId !== "stu-dashboard";
   const verificationStatus = profile?.studentVerificationStatus || "NOT_SUBMITTED";
   const verificationMenu = verificationStatus === "VERIFIED"
     ? { label: "Trường của tôi", icon: School }
@@ -105,6 +108,14 @@ export function AppShell({
       mounted = false;
     };
   }, [activeId]);
+
+  useEffect(() => {
+    const previousActiveId = previousActiveIdRef.current;
+    if (role === "student") {
+      setStudentBackTarget(previousActiveId.startsWith("stu-") && previousActiveId !== activeId ? previousActiveId : "stu-dashboard");
+    }
+    previousActiveIdRef.current = activeId;
+  }, [activeId, role]);
 
   useEffect(() => {
     if (isStudentFindPage) {
@@ -316,6 +327,18 @@ export function AppShell({
             <span className="truncate font-semibold text-on-surface">{currentNav?.label}</span>
           </div>
 
+          {showStudentBack ? (
+            <button
+              type="button"
+              onClick={() => goTo(studentBackTarget)}
+              className="state-layer hidden h-9 shrink-0 items-center gap-1.5 rounded-full border border-outline-variant/50 px-3 text-xs font-semibold text-on-surface-variant transition-colors hover:border-outline hover:text-on-surface sm:inline-flex"
+              aria-label="Quay lại"
+            >
+              <ArrowLeft className="size-3.5" />
+              Quay lại
+            </button>
+          ) : null}
+
           <div className="flex min-w-0 flex-1 sm:hidden">
             <span className="truncate text-base font-semibold text-on-surface">{currentNav?.label}</span>
           </div>
@@ -330,7 +353,12 @@ export function AppShell({
           >
             <Bell className="size-5 stroke-[2.4]" />
             {unread != null && unread > 0 ? (
-              <span className="absolute right-2 top-2 size-2.5 rounded-full bg-[#E21B3C] ring-2 ring-surface" aria-hidden="true" />
+              <motion.span
+                className="absolute right-2 top-2 size-2.5 rounded-full bg-[#E21B3C] ring-2 ring-surface"
+                animate={{ scale: [1, 1.12, 1], opacity: [0.9, 1, 0.9] }}
+                transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+                aria-hidden="true"
+              />
             ) : null}
           </button>
 

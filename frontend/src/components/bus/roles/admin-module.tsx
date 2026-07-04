@@ -1279,7 +1279,6 @@ function VerificationsScreen({ ctx }: { ctx: Ctx }) {
                             Gửi lúc: {formatDateTime(item.submittedAt)}
                           </p>
                         </div>
-                        <M3StatusPill label={`OCR ${formatAdminConfidence(item.ocrConfidenceScore)}`} tone="primary" />
                       </div>
 
                       <div className="grid gap-2 md:grid-cols-3">
@@ -1288,12 +1287,19 @@ function VerificationsScreen({ ctx }: { ctx: Ctx }) {
                         <ReviewField label="Trường" submitted={item.university} ocr={item.ocrUniversity} />
                       </div>
 
-                      {item.ocrRawText && (
+                      {(item.ocrRawText || item.ocrConfidenceScore != null) && (
                         <details className="rounded-2xl border border-outline-variant/50 bg-surface-container-lowest p-3">
-                          <summary className="cursor-pointer text-xs font-bold text-on-surface">Xem raw OCR</summary>
-                          <p className="mt-2 max-h-32 overflow-y-auto whitespace-pre-wrap text-xs text-on-surface-variant scrollbar-soft">
-                            {item.ocrRawText}
-                          </p>
+                          <summary className="cursor-pointer text-xs font-bold text-on-surface">Xem chi tiết OCR</summary>
+                          <div className="mt-2 space-y-2 text-xs text-on-surface-variant">
+                            {item.ocrConfidenceScore != null && (
+                              <p>Độ tin cậy OCR: <span className="font-bold text-on-surface">{formatAdminConfidence(item.ocrConfidenceScore)}</span></p>
+                            )}
+                            {item.ocrRawText && (
+                              <p className="max-h-32 overflow-y-auto whitespace-pre-wrap scrollbar-soft">
+                                {item.ocrRawText}
+                              </p>
+                            )}
+                          </div>
                         </details>
                       )}
 

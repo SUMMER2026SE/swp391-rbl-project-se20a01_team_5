@@ -777,20 +777,43 @@ function RegisterForm({
 
 function ForgotForm({ onBack }: { onBack: () => void }) {
   const [email, setEmail] = useState("");
+  const [otp, setOtp] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const requestReset = async () => {
-    if (!email) {
+    if (!email.trim()) {
       toast.error("Vui lòng nhập email đăng ký");
       return;
     }
     setLoading(true);
     try {
-      await authApi.forgotPasswordOtp(email);
+      await authApi.forgotPasswordOtp(email.trim());
+      setOtpSent(true);
       toast.success("Nếu email tồn tại, mã OTP đặt lại đã được gửi.");
-      onBack();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Không thể gửi OTP đặt lại");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submitReset = async () => {
+    if (!email.trim()) return toast.error("Vui lòng nhập email đăng ký");
+    if (!otp.trim()) return toast.error("Vui lòng nhập mã OTP");
+    if (!newPassword) return toast.error("Vui lòng nhập mật khẩu mới");
+    if (newPassword.length < 8) return toast.error("Mật khẩu mới cần tối thiểu 8 ký tự");
+    if (newPassword !== confirmPassword) return toast.error("Mật khẩu xác nhận không khớp");
+    setLoading(true);
+    try {
+      await authApi.forgotPasswordReset({ email: email.trim(), otp: otp.trim(), newPassword });
+      toast.success("Đặt lại mật khẩu thành công. Vui lòng đăng nhập lại.");
+      onBack();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể đặt lại mật khẩu");
     } finally {
       setLoading(false);
     }
@@ -802,7 +825,7 @@ function ForgotForm({ onBack }: { onBack: () => void }) {
         <ArrowLeft className="size-4" /> Quay lại đăng nhập
       </button>
       <h3 className="text-2xl font-bold tracking-tight">Quên mật khẩu</h3>
-      <p className="text-sm text-on-surface-variant mt-1">Nhập email — hệ thống gửi mã OTP đặt lại mật khẩu.</p>
+      <p className="text-sm text-on-surface-variant mt-1">Nhập email, nhận OTP rồi tạo mật khẩu mới.</p>
       <div className="mt-6 space-y-4">
         <div className="space-y-2">
           <Label htmlFor="femail">Email đăng ký</Label>
@@ -811,15 +834,37 @@ function ForgotForm({ onBack }: { onBack: () => void }) {
             <Input id="femail" type="email" placeholder="ten@duytan.edu.vn" className="pl-11 h-12 rounded-xl bg-surface-container-lowest border-outline-variant" value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
         </div>
+        {otpSent && (
+          <div className="space-y-4 rounded-2xl border border-[#E8E2D5] bg-[#FAF8F2] p-4">
+            <div className="space-y-2">
+              <Label htmlFor="fotp">Mã OTP</Label>
+              <Input id="fotp" inputMode="numeric" placeholder="Nhập mã OTP" className="h-12 rounded-xl bg-white border-outline-variant" value={otp} onChange={(e) => setOtp(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="fnew">Mật khẩu mới</Label>
+              <div className="relative">
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant pointer-events-none" />
+                <Input id="fnew" type={showPwd ? "text" : "password"} placeholder="Tối thiểu 8 ký tự" className="pl-11 pr-11 h-12 rounded-xl bg-white border-outline-variant" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+                <button type="button" onClick={() => setShowPwd((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface">
+                  {showPwd ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                </button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="fconfirm">Xác nhận mật khẩu</Label>
+              <Input id="fconfirm" type={showPwd ? "text" : "password"} placeholder="Nhập lại mật khẩu mới" className="h-12 rounded-xl bg-white border-outline-variant" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+            </div>
+          </div>
+        )}
         <motion.button
           whileHover={{ y: -2 }}
           whileTap={{ scale: 0.98 }}
           transition={{ type: "spring", stiffness: 400, damping: 22 }}
           className="w-full h-12 rounded-full bg-[#beff50] text-[#14140f] text-base font-bold elev-2 flex items-center justify-center gap-2 disabled:opacity-60"
           disabled={loading}
-          onClick={requestReset}
+          onClick={otpSent ? submitReset : requestReset}
         >
-          {loading ? "Đang gửi..." : "Gửi OTP đặt lại"}
+          {loading ? "Đang xử lý..." : otpSent ? "Đặt lại mật khẩu" : "Gửi OTP đặt lại"}
           <ArrowRight className="size-5" />
         </motion.button>
       </div>
