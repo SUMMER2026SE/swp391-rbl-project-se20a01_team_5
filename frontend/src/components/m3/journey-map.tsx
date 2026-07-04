@@ -258,12 +258,18 @@ function vehicleIcon(
   return L.divIcon({
     className: "unibus-map-marker",
     html: `
-      <div style="display:flex;min-width:36px;height:30px;align-items:center;justify-content:center;border-radius:8px;background:#fff;border:2px solid ${color};padding:0 7px;color:${color};font:800 11px/1 system-ui,sans-serif">
-        ${escapeHtml(routeCode)}
+      <div style="position:relative;display:grid;width:42px;height:42px;place-items:center;border-radius:999px;background:#fff;border:3px solid ${color};box-shadow:0 8px 20px rgba(20,20,15,.28)">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="display:block;color:${color}">
+          <path d="M6.5 17.5h11" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          <path d="M7.5 19.5h.01M16.5 19.5h.01" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+          <path d="M6 7.5C6 5.57 7.57 4 9.5 4h5C16.43 4 18 5.57 18 7.5v8.25c0 .69-.56 1.25-1.25 1.25h-9.5C6.56 17 6 16.44 6 15.75V7.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+          <path d="M8 9h8M8 13h2M14 13h2" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+        </svg>
+        <span style="position:absolute;right:-6px;bottom:-4px;min-width:22px;height:18px;border-radius:999px;background:${color};border:2px solid #fff;color:#fff;display:flex;align-items:center;justify-content:center;padding:0 5px;font:800 9px/1 system-ui,sans-serif">${escapeHtml(routeCode)}</span>
       </div>
     `,
-    iconSize: [42, 30],
-    iconAnchor: [21, 15],
+    iconSize: [42, 42],
+    iconAnchor: [21, 21],
   });
 }
 
@@ -331,7 +337,6 @@ export const JourneyMap = React.memo(function JourneyMap({
         crossOrigin: true,
       }).addTo(map);
       L.control.zoom({ position: "topright" }).addTo(map);
-
       routeLayerRef.current = L.layerGroup().addTo(map);
       vehicleLayerRef.current = L.layerGroup().addTo(map);
       mapRef.current = map;
@@ -475,7 +480,11 @@ export const JourneyMap = React.memo(function JourneyMap({
       ...cleanStops.map((stop) => ({ lat: stop.lat, lng: stop.lng })),
       ...extraMarkers.filter(validPoint),
     ];
-    const geometryKey = allPoints
+    const geometryPoints = [
+      ...linesToDraw.flatMap((line) => line.points),
+      ...cleanStops.map((stop) => ({ lat: stop.lat, lng: stop.lng })),
+    ];
+    const geometryKey = geometryPoints
       .map((point) => `${point.lat.toFixed(5)},${point.lng.toFixed(5)}`)
       .join("|");
 
@@ -560,30 +569,6 @@ export const JourneyMap = React.memo(function JourneyMap({
     }
   }, [mapReadyToken, scrollWheelZoom]);
 
-  React.useEffect(() => {
-    const map = mapRef.current;
-    const container = containerRef.current;
-    if (!map || !container || mapReadyToken === 0 || !scrollWheelZoom) return;
-
-    let lastWheelAt = 0;
-    const onWheel = (event: WheelEvent) => {
-      event.preventDefault();
-      event.stopPropagation();
-
-      const now = window.performance.now();
-      if (now - lastWheelAt < 80) return;
-      lastWheelAt = now;
-
-      const currentZoom = map.getZoom();
-      const nextZoom = currentZoom + (event.deltaY < 0 ? 0.5 : -0.5);
-      const boundedZoom = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), nextZoom));
-      if (boundedZoom === currentZoom) return;
-      map.setZoomAround(map.mouseEventToContainerPoint(event), boundedZoom, { animate: false });
-    };
-
-    container.addEventListener("wheel", onWheel, { passive: false });
-    return () => container.removeEventListener("wheel", onWheel);
-  }, [mapReadyToken, scrollWheelZoom]);
   return (
     <div
       ref={containerRef}
