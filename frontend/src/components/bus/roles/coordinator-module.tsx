@@ -113,7 +113,7 @@ import {
   Counter,
   PageTransition,
 } from "@/components/m3/motion";
-import { JourneyMap, type JourneyBus, type JourneyPolyline } from "@/components/m3/journey-map";
+import { JourneyMap, type JourneyBus } from "@/components/m3/journey-map";
 import { PageHeader, StatCard, Section, EmptyState } from "../primitives";
 import { UnavailablePanel } from "../real-data";
 
@@ -150,22 +150,6 @@ import {
   type RouteMapPreviewDTO,
 } from "@/lib/api/client";
 import type { BusStop } from "@/lib/types";
-
-type LiveArrivalDTO = {
-  vehicleId: string;
-  plateNumber?: string;
-  routeId: number;
-  routeCode?: string;
-  speedKmh?: number | string;
-  distanceMeters?: number;
-  etaMinutes?: number;
-  latitude?: number | string;
-  longitude?: number | string;
-  targetStopId?: number;
-  targetStopName?: string;
-  status?: string;
-  updatedAt?: string;
-};
 
 type CoordinatorModuleProps = {
   activeId: string;
@@ -301,14 +285,17 @@ function ErrorScreen({ message, onRetry }: { message: string; onRetry?: () => vo
 // =============================================================================
 function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
   const runningFleet = ctx.fleet.filter((v: any) => v.status === "RUNNING");
-  const statCards = ctx.stats.slice(0, 4);
+  const todayShifts = useMemo(() => ctx.schedule?.shifts || [], [ctx.schedule?.shifts]);
+  const assignedShifts = useMemo(() => todayShifts.filter((shift: any) => shift.busId && shift.driverStaffId && shift.conductorStaffId), [todayShifts]);
   const pendingFeedback = ctx.feedback.filter((f: any) => f.status !== "resolved").length;
 
-  // Trips per route — derive from fleet
+  // Trips per route — derive from today's schedule first, then live fleet.
   const tripsPerRoute = useMemo(() => {
     const counts: Record<string, { name: string; trips: number; color: string }> = {};
-    ctx.fleet.forEach((v: any) => {
-      const id = String(v.routeId);
+    const source = todayShifts.length ? todayShifts : ctx.fleet;
+    source.forEach((v: any) => {
+      const id = String(v.routeId || v.id || "");
+      if (!id) return;
       if (!counts[id]) {
         const route = ctx.routes.find((r) => r.id === id);
         counts[id] = {
@@ -320,7 +307,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
       counts[id].trips += 1;
     });
     return Object.values(counts);
-  }, [ctx.fleet, ctx.routes]);
+  }, [ctx.fleet, ctx.routes, todayShifts]);
 
   const quickActions = [
     { id: "crd-live-map", label: "Bản đồ trực tiếp", icon: Navigation, accent: "primary" as const },
@@ -502,19 +489,19 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
         </StaggerItem>
         <StaggerItem>
           <StatCard
-            label="Tuyến hoạt động"
-            value={<Counter to={ctx.routes.length} />}
+            label="Ca hôm nay"
+            value={<Counter to={todayShifts.length} />}
             icon={<RouteIcon className="size-5" />}
-            hint="Tất cả tuyến ổn định"
+            hint="Theo lịch điều phối"
             accent="tertiary"
           />
         </StaggerItem>
         <StaggerItem>
           <StatCard
-            label="Trạm dừng"
-            value={<Counter to={ctx.stops.length} />}
-            icon={<MapPin className="size-5" />}
-            hint="Trên toàn mạng lưới"
+            label="Đã phân công"
+            value={<Counter to={assignedShifts.length} />}
+            icon={<UserCog className="size-5" />}
+            hint={`${todayShifts.length} ca hôm nay`}
             accent="secondary"
           />
         </StaggerItem>
@@ -581,7 +568,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
                 </div>
                 <div className="min-w-0">
                   <h3 className="text-sm font-semibold text-on-surface truncate">Chuyến theo tuyến</h3>
-                  <p className="text-xs text-on-surface-variant">Đang chạy</p>
+                  <p className="text-xs text-on-surface-variant">Theo lịch hôm nay</p>
                 </div>
               </div>
               <M3StatusPill label={`${tripsPerRoute.length}`} tone="tertiary" />
@@ -619,8 +606,10 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
 // =============================================================================
 function LiveMapScreen({ ctx }: { ctx: Ctx }) {
   const fleet = useApi(() => operationsApi.liveFleet(), undefined, []);
-  const liveVehicles = (fleet.raw || ctx.raw.dashboard.raw?.liveFleet || []) as LiveFleetVehicle[];
-  const vehicles = liveVehicles.length ? liveVehicles : mockLiveFleet(ctx.routes);
+  const [vehicleLocations, setVehicleLocations] = useState<Record<string, string>>({});
+  const liveVehicles = useMemo(() => (fleet.raw || ctx.raw.dashboard.raw?.liveFleet || []) as LiveFleetVehicle[], [ctx.raw.dashboard.raw?.liveFleet, fleet.raw]);
+  const vehicles = useMemo(() => (liveVehicles.length ? liveVehicles : mockLiveFleet(ctx.routes))
+    .filter(isRunningVehicle), [ctx.routes, liveVehicles]);
 
   return (
     <PageTransition className="space-y-6 min-w-0">
@@ -638,7 +627,7 @@ function LiveMapScreen({ ctx }: { ctx: Ctx }) {
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_340px] gap-4 min-w-0">
         <ScrollReveal>
           <ExpressiveCard variant="elevated" className="overflow-hidden h-[620px] xl:h-[680px] min-w-0">
-            <LiveFleetMap vehicles={vehicles} />
+            <LiveFleetMap vehicles={vehicles} onVehicleLocationsChange={setVehicleLocations} />
           </ExpressiveCard>
         </ScrollReveal>
         <ScrollReveal delay={0.1}>
@@ -650,17 +639,18 @@ function LiveMapScreen({ ctx }: { ctx: Ctx }) {
                   Không có xe đang chạy lúc này.
                 </p>
               ) : (
-                vehicles.map((v: any) => (
+                vehicles.map((v: any, index) => (
                   <div key={v.tripId} className="p-3 rounded-xl bg-surface-container-low min-w-0">
                     <div className="flex items-center justify-between gap-2 mb-1 min-w-0">
                       <p className="font-bold text-sm truncate">{v.routeName}</p>
-                      <M3StatusPill label={v.status} tone={v.status === "RUNNING" ? "success" : "neutral"} />
+                      <M3StatusPill label="RUNNING" tone="success" />
                     </div>
                     <p className="text-xs text-on-surface-variant truncate">
                       {v.licensePlate || "—"} • {v.driverName || "—"}
                     </p>
-                    <div className="flex items-center gap-3 mt-1 text-xs">
-                      <span className="flex items-center gap-1"><Gauge className="size-3" /> {v.speedKmh || 28} km/h</span>
+                    <div className="mt-2 space-y-1 text-xs text-on-surface-variant">
+                      <span className="flex items-center gap-1 text-on-surface"><Gauge className="size-3" /> {v.speedKmh || 28} km/h</span>
+                      <span className="flex items-start gap-1"><MapPin className="size-3 mt-0.5 shrink-0" /> <span className="line-clamp-2">{vehicleLocations[String(v.tripId)] || vehicleLocationLabel(v, ctx.routes, ctx.stops, index)}</span></span>
                       {v.occupancy != null && <span className="flex items-center gap-1"><Users className="size-3" /> {v.occupancy}</span>}
                     </div>
                   </div>
@@ -695,9 +685,40 @@ function mockLiveFleet(routes: any[]): LiveFleetVehicle[] {
   })).filter((vehicle) => Number.isFinite(vehicle.routeId) && vehicle.routeId > 0);
 }
 
-function LiveFleetMap({ vehicles }: { vehicles: LiveFleetVehicle[] }) {
+function isRunningVehicle(vehicle: LiveFleetVehicle) {
+  return String(vehicle.status || "").trim().toUpperCase() === "RUNNING";
+}
+
+function vehicleLocationLabel(vehicle: LiveFleetVehicle, routes: any[], stops: BusStop[], index: number) {
+  const route = routes.find((item) => Number(item.routeId || item.id) === Number(vehicle.routeId));
+  const preview = route ? buildLocalRoutePreview(Number(vehicle.routeId), routes, stops) : null;
+  const actualLat = numberValue(vehicle.latitude);
+  const actualLng = numberValue(vehicle.longitude);
+  const point = actualLat && actualLng ? { lat: actualLat, lng: actualLng } : pointOnPreview(preview || undefined, index);
+  const routeStops = (route?.stops || [])
+    .map((stopId: string | number) => stops.find((stop) => String(stop.id) === String(stopId)))
+    .filter(Boolean) as BusStop[];
+  const nearest = point ? nearestStop(point, routeStops.length ? routeStops : stops) : routeStops[0];
+  if (!nearest) return route?.name || vehicle.routeName || "Đang cập nhật vị trí";
+  return `Mô phỏng trên tuyến • gần ${nearest.name}`;
+}
+
+function nearestStop(point: { lat: number; lng: number }, stops: BusStop[]) {
+  return stops
+    .filter((stop) => validCoordinate({ lat: numberValue(stop.lat), lng: numberValue(stop.lng) }))
+    .map((stop) => ({ stop, distance: (numberValue(stop.lat) - point.lat) ** 2 + (numberValue(stop.lng) - point.lng) ** 2 }))
+    .sort((left, right) => left.distance - right.distance)[0]?.stop;
+}
+
+function shallowEqualRecord(left: Record<string, string>, right: Record<string, string>) {
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  return leftKeys.length === rightKeys.length && leftKeys.every((key) => left[key] === right[key]);
+}
+
+function LiveFleetMap({ vehicles, onVehicleLocationsChange }: { vehicles: LiveFleetVehicle[]; onVehicleLocationsChange?: React.Dispatch<React.SetStateAction<Record<string, string>>> }) {
   const [previews, setPreviews] = useState<Record<number, RouteMapPreviewDTO>>({});
-  const [arrivals, setArrivals] = useState<Record<number, LiveArrivalDTO[]>>({});
+  const [roadPreviews, setRoadPreviews] = useState<Record<number, RouteMapPreviewDTO>>({});
   const [fallbackRouteIds, setFallbackRouteIds] = useState<number[]>([]);
   const [tick, setTick] = useState(0);
 
@@ -746,100 +767,30 @@ function LiveFleetMap({ vehicles }: { vehicles: LiveFleetVehicle[] }) {
   }, [fallbackRouteIds, previews, vehicles]);
 
   useEffect(() => {
+    const source = Object.values(previews).filter((preview) => !roadPreviews[preview.routeId]);
+    if (!source.length) return;
     let cancelled = false;
-    const load = async () => {
-      const requests = Object.values(previews)
-        .map((preview) => ({
-          preview,
-          stopId: preview.stops?.find((stop) => stop.stopId && stop.latitude && stop.longitude)?.stopId,
-        }))
-        .filter((request) => request.stopId);
-      if (!requests.length) return;
-
-      const results = await Promise.allSettled(requests.map((request) =>
-        getLiveArrivals(request.preview.routeId, request.stopId!, request.preview.direction)
-      ));
+    Promise.allSettled(source.map(toRoadPreview)).then((results) => {
       if (cancelled) return;
-      setArrivals((current) => {
+      setRoadPreviews((current) => {
         const next = { ...current };
-        results.forEach((result, index) => {
-          if (result.status === "fulfilled") {
-            next[requests[index].preview.routeId] = result.value;
-          }
+        results.forEach((result) => {
+          if (result.status === "fulfilled" && result.value) next[result.value.routeId] = result.value;
         });
         return next;
       });
-    };
-
-    void load();
-    const timer = window.setInterval(() => void load(), 5000);
+    });
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
     };
-  }, [previews]);
+  }, [previews, roadPreviews]);
 
-  const mapStops = useMemo(() => {
-    const byId = new Map<string, BusStop>();
-    Object.values(previews).forEach((preview) => {
-      (preview.stops || []).forEach((stop) => {
-        const lat = numberValue(stop.latitude);
-        const lng = numberValue(stop.longitude);
-        if (!lat || !lng) return;
-        byId.set(String(stop.stopId), {
-          id: String(stop.stopId),
-          name: stop.stopName,
-          code: String(stop.stopId),
-          address: stop.address || "",
-          lat,
-          lng,
-          routes: [String(preview.routeId)],
-          hasShelter: false,
-        });
-      });
-    });
-    return Array.from(byId.values());
-  }, [previews]);
-
-  const polylines = useMemo<JourneyPolyline[]>(() => Object.values(previews).flatMap((preview) =>
-    (preview.polylines || []).map((line, index) => ({
-      id: `${preview.routeId}-${line.legId || index}`,
-      color: line.colorHex || preview.colorHex || "#144fcc",
-      label: preview.routeCode || preview.routeName,
-      points: (line.points || []).map((point) => ({
-        lat: numberValue(point.latitude),
-        lng: numberValue(point.longitude),
-      })).filter(validCoordinate),
-    })).filter((line) => line.points.length > 1)
-  ), [previews]);
+  const displayPreviews = useMemo(() => ({ ...previews, ...roadPreviews }), [previews, roadPreviews]);
 
   const buses = useMemo<JourneyBus[]>(() => {
     const _t = tick;
-    const fromArrivals = Object.values(previews).flatMap((preview) =>
-      (arrivals[preview.routeId] || []).map((arrival, index) => {
-        const lat = numberValue(arrival.latitude);
-        const lng = numberValue(arrival.longitude);
-        if (!lat || !lng) return null;
-        const vehicle = vehicles.find((item) => item.routeId === preview.routeId);
-        return {
-          id: arrival.vehicleId,
-          plate: arrival.plateNumber || vehicle?.licensePlate || `Xe ${index + 1}`,
-          routeCode: arrival.routeCode || preview.routeCode || `R${preview.routeId}`,
-          routeColor: preview.colorHex || "#BDFD4F",
-          lat,
-          lng,
-          occupancy: vehicle?.occupancy,
-          capacity: 45,
-          driverName: vehicle?.driverName,
-          etaMinutes: arrival.etaMinutes,
-        } satisfies JourneyBus;
-      }).filter(Boolean)
-    ) as JourneyBus[];
-
-    if (fromArrivals.length) return fromArrivals;
-
     return vehicles.map((vehicle, index) => {
-      const preview = previews[vehicle.routeId] || Object.values(previews).find((item) =>
+      const preview = displayPreviews[vehicle.routeId] || Object.values(displayPreviews).find((item) =>
         item.stops?.some((stop) => stop.latitude && stop.longitude)
       );
       const actualLat = numberValue(vehicle.latitude);
@@ -858,17 +809,28 @@ function LiveFleetMap({ vehicles }: { vehicles: LiveFleetVehicle[] }) {
         driverName: vehicle.driverName,
       } satisfies JourneyBus;
     }).filter(Boolean) as JourneyBus[];
-  }, [arrivals, previews, vehicles, tick]);
+  }, [displayPreviews, vehicles, tick]);
+
+  useEffect(() => {
+    if (!onVehicleLocationsChange) return;
+    const locations = Object.fromEntries(buses.map((bus) => {
+      const vehicle = vehicles.find((item) => String(item.tripId) === bus.id);
+      const preview = vehicle ? displayPreviews[vehicle.routeId] : undefined;
+      const hasGps = !!(vehicle && numberValue(vehicle.latitude) && numberValue(vehicle.longitude));
+      return [bus.id, busLocationLabel(bus, preview, !hasGps)];
+    }));
+    onVehicleLocationsChange((current) => shallowEqualRecord(current, locations) ? current : locations);
+  }, [buses, onVehicleLocationsChange, displayPreviews, vehicles]);
 
   return (
     <div className="relative h-full w-full">
       <JourneyMap
-        stops={mapStops}
+        stops={[]}
         buses={buses}
-        polylines={polylines}
+        polylines={mapFitPolylines(displayPreviews, buses)}
         height="100%"
         className="h-full"
-        allowFallbackPolyline
+        allowFallbackPolyline={false}
       />
       <div className="absolute bottom-3 left-3 z-[500] rounded-full bg-[#14140f]/90 px-3 py-1.5 text-xs font-bold text-[#BDFD4F]">
         {buses.length || vehicles.length} xe • Dữ liệu mô phỏng khi xe chưa gửi GPS
@@ -882,12 +844,105 @@ function numberValue(value: unknown) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function getLiveArrivals(routeId: number, stopId: number, direction?: number) {
-  return apiFetch.get<LiveArrivalDTO[]>(`/routes/${routeId}/stops/${stopId}/live-arrivals`, { direction });
+async function toRoadPreview(preview: RouteMapPreviewDTO): Promise<RouteMapPreviewDTO | null> {
+  const stops = (preview.stops || [])
+    .map((stop) => ({ lat: numberValue(stop.latitude), lng: numberValue(stop.longitude) }))
+    .filter(validCoordinate);
+  if (stops.length < 2) return null;
+  const coords = stops.slice(0, 24).map((point) => `${point.lng},${point.lat}`).join(";");
+  const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`, { cache: "force-cache" });
+  if (!res.ok) return null;
+  const data = await res.json();
+  const coordinates = data?.routes?.[0]?.geometry?.coordinates;
+  if (!Array.isArray(coordinates) || coordinates.length < 2) return null;
+  return {
+    ...preview,
+    polylines: [{
+      legId: `road-${preview.routeId}`,
+      mode: "BUS",
+      colorHex: preview.colorHex,
+      points: coordinates.map(([lng, lat]: [number, number]) => ({ latitude: lat, longitude: lng })),
+    }],
+  };
 }
 
 function validCoordinate(point: { lat: number; lng: number }) {
   return Math.abs(point.lat) > 0 && Math.abs(point.lng) > 0;
+}
+
+function mapFitPolylines(previews: Record<number, RouteMapPreviewDTO>, buses: JourneyBus[]) {
+  const previewPoints = Object.values(previews)
+    .flatMap((preview) => preview.polylines || [])
+    .flatMap((line) => line.points || [])
+    .map((point) => ({ lat: numberValue(point.latitude), lng: numberValue(point.longitude) }))
+    .filter(validCoordinate);
+  const points = previewPoints.length
+    ? previewPoints
+    : buses.map((bus) => ({ lat: bus.lat, lng: bus.lng })).filter(validCoordinate);
+  if (!points.length) return [];
+  if (points.length === 1) {
+    const point = points[0];
+    return [{
+      id: "fleet-fit",
+      dashed: true,
+      color: "transparent",
+      points: [
+        { lat: point.lat - 0.018, lng: point.lng - 0.018 },
+        { lat: point.lat + 0.018, lng: point.lng + 0.018 },
+      ],
+    }];
+  }
+  return [{ id: "fleet-fit", dashed: true, color: "transparent", points }];
+}
+
+function busLocationLabel(bus: JourneyBus, preview?: RouteMapPreviewDTO, simulated = false) {
+  const stops = (preview?.stops || [])
+    .map((stop) => ({
+      id: String(stop.stopId),
+      name: stop.stopName,
+      code: String(stop.stopId),
+      address: stop.address || "",
+      lat: numberValue(stop.latitude),
+      lng: numberValue(stop.longitude),
+      routes: [String(preview?.routeId || "")],
+      hasShelter: false,
+    }))
+    .filter((stop) => validCoordinate(stop));
+  const nearest = nearestStop({ lat: bus.lat, lng: bus.lng }, stops);
+  if (!nearest) return simulated ? "Mô phỏng trên tuyến" : "Đang cập nhật vị trí";
+  const location = `gần ${nearest.name}${nearest.address ? `, ${nearest.address}` : ""}`;
+  return simulated ? `Mô phỏng trên tuyến • ${location}` : `Gần ${nearest.name}${nearest.address ? `, ${nearest.address}` : ""}`;
+}
+
+function buildLocalRoutePreview(routeId: number, routes: any[], stops: BusStop[]): RouteMapPreviewDTO | null {
+  const route = routes.find((item) => Number(item.routeId || item.id) === Number(routeId));
+  if (!route) return null;
+  const routeStops = (route.stops || [])
+    .map((stopId: string | number) => stops.find((stop) => String(stop.id) === String(stopId)))
+    .filter(Boolean) as BusStop[];
+  const validStops = routeStops.filter((stop) => validCoordinate({ lat: numberValue(stop.lat), lng: numberValue(stop.lng) }));
+  if (validStops.length < 2) return null;
+  return {
+    routeId: Number(routeId),
+    routeCode: route.code || `R${routeId}`,
+    routeName: route.name || `Tuyến ${routeId}`,
+    colorHex: route.color || "#BDFD4F",
+    direction: 0,
+    stops: validStops.map((stop, index) => ({
+      stopId: Number(stop.id),
+      stopName: stop.name,
+      address: stop.address,
+      latitude: stop.lat,
+      longitude: stop.lng,
+      stopOrder: index + 1,
+    })),
+    polylines: [{
+      legId: `local-${routeId}`,
+      mode: "BUS",
+      colorHex: route.color || "#BDFD4F",
+      points: validStops.map((stop) => ({ latitude: stop.lat, longitude: stop.lng })),
+    }],
+  };
 }
 
 function pointOnPreview(preview: RouteMapPreviewDTO | undefined, index: number) {
@@ -905,11 +960,22 @@ function pointOnPreview(preview: RouteMapPreviewDTO | undefined, index: number) 
   const offsetSeconds = (Math.abs(routeId) * 60) + index * Math.max(480, Math.floor(cycleSeconds / 3));
   const progress = ((secondOfDay + offsetSeconds) % cycleSeconds) / cycleSeconds;
 
-  const target = progress * (points.length - 1);
-  const left = Math.min(points.length - 2, Math.floor(target));
-  const ratio = target - left;
-  const a = points[left];
-  const b = points[left + 1] || a;
+  const segments = points.slice(1).map((point, pointIndex) => {
+    const previous = points[pointIndex];
+    const length = Math.hypot(point.lat - previous.lat, point.lng - previous.lng);
+    return { from: previous, to: point, length };
+  });
+  const totalLength = segments.reduce((sum, segment) => sum + segment.length, 0);
+  if (!totalLength) return points[0];
+  let targetLength = progress * totalLength;
+  const segment = segments.find((item) => {
+    if (targetLength <= item.length) return true;
+    targetLength -= item.length;
+    return false;
+  }) || segments[segments.length - 1];
+  const ratio = segment.length ? targetLength / segment.length : 0;
+  const a = segment.from;
+  const b = segment.to;
   return {
     lat: a.lat + (b.lat - a.lat) * ratio,
     lng: a.lng + (b.lng - a.lng) * ratio,
