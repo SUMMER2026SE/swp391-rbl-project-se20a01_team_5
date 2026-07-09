@@ -189,6 +189,28 @@ uniadmin_visibility AS (
     LEFT JOIN monthly_passes mp ON mp.student_code = s.student_code
     LEFT JOIN single_trip_tickets st ON st.student_code = s.student_code
 ),
+domain_status AS (
+    SELECT
+        'university_domain' AS section,
+        'Đà Nẵng email domains' AS subject,
+        CASE WHEN count(*) FILTER (WHERE d.status = 'ACTIVE') >= 12 THEN 'PASS' ELSE 'FAIL' END AS status,
+        concat('active_domains=', count(*) FILTER (WHERE d.status = 'ACTIVE'), '; domains=', COALESCE(string_agg(d.domain, ', ' ORDER BY d.domain), 'none')) AS detail
+    FROM university_domains d
+    WHERE d.domain IN (
+        'demo.unibus.local',
+        'duytan.edu.vn',
+        'dtu.edu.vn',
+        'dut.udn.vn',
+        'ute.udn.vn',
+        'ued.udn.vn',
+        'vku.udn.vn',
+        'due.udn.vn',
+        'ufl.udn.vn',
+        'udn.vn',
+        'donga.edu.vn',
+        'fpt.edu.vn'
+    )
+),
 legacy_warnings AS (
     SELECT
         'legacy_warning' AS section,
@@ -222,5 +244,6 @@ UNION ALL SELECT * FROM today_trips
 UNION ALL SELECT * FROM trip_coverage
 UNION ALL SELECT * FROM ticket_status
 UNION ALL SELECT * FROM uniadmin_visibility
+UNION ALL SELECT * FROM domain_status
 UNION ALL SELECT * FROM legacy_warnings
 ORDER BY section, subject;

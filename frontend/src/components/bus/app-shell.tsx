@@ -72,8 +72,6 @@ export function AppShell({
     : role === "admin" ? "adm-profile"
     : "uniadm-profile";
 
-  const previousActiveIdRef = useRef(activeId);
-  const [studentBackTarget, setStudentBackTarget] = useState("stu-dashboard");
   const isFirstNav = nav.length > 0 && activeId === nav[0].id;
   const showStudentBack = role === "student" && activeId !== "stu-dashboard";
   const verificationStatus = profile?.studentVerificationStatus || "NOT_SUBMITTED";
@@ -109,13 +107,11 @@ export function AppShell({
     };
   }, [activeId]);
 
-  useEffect(() => {
-    const previousActiveId = previousActiveIdRef.current;
-    if (role === "student") {
-      setStudentBackTarget(previousActiveId.startsWith("stu-") && previousActiveId !== activeId ? previousActiveId : "stu-dashboard");
-    }
-    previousActiveIdRef.current = activeId;
-  }, [activeId, role]);
+  const goStudentBack = () => {
+    const event = new Event("unibus:student-back", { cancelable: true });
+    window.dispatchEvent(event);
+    if (!event.defaultPrevented) goTo("stu-dashboard");
+  };
 
   useEffect(() => {
     if (isStudentFindPage) {
@@ -293,7 +289,7 @@ export function AppShell({
           {!isFirstNav ? (
             <button
               className="state-layer flex size-10 shrink-0 items-center justify-center rounded-full text-on-surface lg:hidden"
-              onClick={() => goTo(nav[0].id)}
+              onClick={showStudentBack ? goStudentBack : () => goTo(nav[0].id)}
               aria-label="Quay lại"
             >
               <ArrowLeft className="size-5" />
@@ -330,7 +326,7 @@ export function AppShell({
           {showStudentBack ? (
             <button
               type="button"
-              onClick={() => goTo(studentBackTarget)}
+              onClick={goStudentBack}
               className="state-layer hidden h-9 shrink-0 items-center gap-1.5 rounded-full border border-outline-variant/50 px-3 text-xs font-semibold text-on-surface-variant transition-colors hover:border-outline hover:text-on-surface sm:inline-flex"
               aria-label="Quay lại"
             >
@@ -345,22 +341,23 @@ export function AppShell({
 
           <div className="flex-1" />
 
-          <button
+          <motion.button
             className="relative flex size-10 shrink-0 items-center justify-center rounded-xl text-[#111111] transition-colors hover:text-[#2C2C27] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#beff50] focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+            whileHover={{ scale: 1.04, backgroundColor: "rgba(190,255,80,0.16)" }}
+            whileTap={{ scale: 0.94, backgroundColor: "rgba(190,255,80,0.32)" }}
+            transition={{ type: "spring", stiffness: 520, damping: 28 }}
             onClick={() => goTo(notificationsNavId)}
             aria-label={unread && unread > 0 ? `Thông báo, ${unread} chưa đọc` : "Thông báo"}
             title={unread && unread > 0 ? `${unread} thông báo chưa đọc` : "Thông báo"}
           >
-            <Bell className="size-5 stroke-[2.4]" />
+            <Bell className="size-5 rotate-0 stroke-[2.4]" style={{ transform: "rotate(0deg)" }} />
             {unread != null && unread > 0 ? (
-              <motion.span
+              <span
                 className="absolute right-2 top-2 size-2.5 rounded-full bg-[#E21B3C] ring-2 ring-surface"
-                animate={{ scale: [1, 1.12, 1], opacity: [0.9, 1, 0.9] }}
-                transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
                 aria-hidden="true"
               />
             ) : null}
-          </button>
+          </motion.button>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

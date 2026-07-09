@@ -61,21 +61,38 @@ public class OtpService {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW, noRollbackFor = ApiException.class)
-    public void verify(String rawEmail, VerificationPurpose purpose, String code) {
-        String email = rawEmail.trim().toLowerCase();
-        VerificationCode verificationCode = verificationCodeRepository
-                .findTopByEmailIgnoreCaseAndPurposeAndConsumedAtIsNullOrderByCreatedAtDesc(email, purpose)
-                .orElseThrow(() -> invalidOtp());
+    public void validate(String rawEmail, VerificationPurpose purpose, String code) {
+        VerificationCode verificationCode = latestCode(rawEmail, purpose);
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
-        verificationCode.setAttemptCount(verificationCode.getAttemptCount() + 1);
         if (verificationCode.getExpiresAt().isBefore(now)
-                || verificationCode.getAttemptCount() > MAX_ATTEMPTS
-                || !verificationCode.getCodeHash().equals(hashingService.hash(code))) {
+                || verificationCode.getAttemptCount() >= MAX_ATTEMPTS) {
+            throw invalidOtp();
+        }
+        if (!verificationCode.getCodeHash().equals(hashingService.hash(code))) {
+            verificationCode.setAttemptCount(verificationCode.getAttemptCount() + 1);
             verificationCodeRepository.save(verificationCode);
+            throw invalidOtp();
+        }
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW, noRollbackFor = ApiException.class)
+    public void verify(String rawEmail, VerificationPurpose purpose, String code) {
+        VerificationCode verificationCode = latestCode(rawEmail, purpose);
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        if (verificationCode.getExpiresAt().isBefore(now)
+                || verificationCode.getAttemptCount() >= MAX_ATTEMPTS
+                || !verificationCode.getCodeHash().equals(hashingService.hash(code))) {
             throw invalidOtp();
         }
         verificationCode.setConsumedAt(now);
         verificationCodeRepository.save(verificationCode);
+    }
+
+    private VerificationCode latestCode(String rawEmail, VerificationPurpose purpose) {
+        String email = rawEmail.trim().toLowerCase();
+        return verificationCodeRepository
+                .findTopByEmailIgnoreCaseAndPurposeAndConsumedAtIsNullOrderByCreatedAtDesc(email, purpose)
+                .orElseThrow(() -> invalidOtp());
     }
 
     private ApiException invalidOtp() {

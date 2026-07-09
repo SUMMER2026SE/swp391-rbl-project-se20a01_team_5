@@ -504,6 +504,24 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
 
   useEffect(() => { loadTickets(); }, [loadTickets]);
 
+
+  const ticketKindLabel = (kind?: string) => {
+    const normalized = String(kind || "").toUpperCase();
+    if (normalized === "SINGLE") return "Vé lượt";
+    if (normalized === "MONTHLY" || normalized === "JOURNEY_MONTHLY") return "Vé tháng";
+    return kind || "—";
+  };
+
+  const ticketStatusLabel = (status?: string) => {
+    switch (String(status || "").toUpperCase()) {
+      case "ACTIVE": return "Đang hiệu lực";
+      case "UNUSED": return "Chưa sử dụng";
+      case "USED": return "Đã sử dụng";
+      case "EXPIRED": return "Hết hạn";
+      default: return status || "—";
+    }
+  };
+
   const scan = async (qrCode?: string) => {
     const code = qrCode ?? qrInput.trim();
     if (!code || !tripId) {
@@ -642,7 +660,7 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
                     </div>
                     <div>
                       <p className="text-on-surface-variant">Loại vé</p>
-                      <p className="font-bold truncate">{lastResult.ticket?.ticketKind || "—"}</p>
+                      <p className="font-bold truncate">{ticketKindLabel(lastResult.ticket?.ticketKind)}</p>
                     </div>
                     <div>
                       <p className="text-on-surface-variant">Tuyến hợp lệ</p>
@@ -650,7 +668,7 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
                     </div>
                     <div>
                       <p className="text-on-surface-variant">Trạng thái vé</p>
-                      <p className="font-bold truncate">{lastResult.ticket?.status || "—"}</p>
+                      <p className="font-bold truncate">{ticketStatusLabel(lastResult.ticket?.status)}</p>
                     </div>
                     <div>
                       <p className="text-on-surface-variant">Hiệu lực từ</p>
@@ -660,6 +678,18 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
                       <p className="text-on-surface-variant">Hết hạn</p>
                       <p className="font-bold truncate">{formatDate(lastResult.ticket?.expiresAt)}</p>
                     </div>
+                    {lastResult.ticket?.ticketKind === "SINGLE" && (
+                      <>
+                        <div>
+                          <p className="text-on-surface-variant">Điểm lên dự kiến</p>
+                          <p className="font-bold truncate">{lastResult.ticket?.boardingStopName || "—"}</p>
+                        </div>
+                        <div>
+                          <p className="text-on-surface-variant">Điểm xuống dự kiến</p>
+                          <p className="font-bold truncate">{lastResult.ticket?.alightingStopName || "—"}</p>
+                        </div>
+                      </>
+                    )}
                     <div className="col-span-2">
                       <p className="text-on-surface-variant">Mã lịch sử chuyến</p>
                       <p className="font-bold truncate">{lastResult.travelHistoryId ?? "—"}</p>

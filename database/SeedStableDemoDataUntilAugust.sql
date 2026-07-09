@@ -124,6 +124,44 @@ BEGIN
     INSERT INTO university_domains (university_id, domain, status, verified_at, updated_at)
     SELECT v_supported_university_id, 'demo.unibus.local', 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
     WHERE NOT EXISTS (SELECT 1 FROM university_domains WHERE domain = 'demo.unibus.local');
+    INSERT INTO universities (code, name, short_name, status)
+    VALUES
+        ('DTU', 'Trường Đại học Duy Tân', 'DTU', 'ACTIVE'),
+        ('DUT', 'Trường Đại học Bách khoa - Đại học Đà Nẵng', 'DUT', 'ACTIVE'),
+        ('UTE', 'Trường Đại học Sư phạm Kỹ thuật - Đại học Đà Nẵng', 'UTE', 'ACTIVE'),
+        ('UED', 'Trường Đại học Sư phạm - Đại học Đà Nẵng', 'UED', 'ACTIVE'),
+        ('VKU', 'Trường Đại học Công nghệ Thông tin và Truyền thông Việt - Hàn', 'VKU', 'ACTIVE'),
+        ('DUE', 'Trường Đại học Kinh tế - Đại học Đà Nẵng', 'DUE', 'ACTIVE'),
+        ('UFLS', 'Trường Đại học Ngoại ngữ - Đại học Đà Nẵng', 'UFLS', 'ACTIVE'),
+        ('UDN', 'Đại học Đà Nẵng', 'UDN', 'ACTIVE'),
+        ('UDA', 'Trường Đại học Đông Á', 'UDA', 'ACTIVE'),
+        ('FPTDN', 'Trường Đại học FPT Đà Nẵng', 'FPT', 'ACTIVE')
+    ON CONFLICT (name) DO UPDATE
+    SET short_name = EXCLUDED.short_name,
+        status = 'ACTIVE',
+        updated_at = CURRENT_TIMESTAMP;
+
+    INSERT INTO university_domains (university_id, domain, status, verified_at, updated_at)
+    SELECT u.university_id, payload.domain, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+    FROM (VALUES
+        ('Trường Đại học Duy Tân', 'duytan.edu.vn'),
+        ('Trường Đại học Duy Tân', 'dtu.edu.vn'),
+        ('Trường Đại học Bách khoa - Đại học Đà Nẵng', 'dut.udn.vn'),
+        ('Trường Đại học Sư phạm Kỹ thuật - Đại học Đà Nẵng', 'ute.udn.vn'),
+        ('Trường Đại học Sư phạm - Đại học Đà Nẵng', 'ued.udn.vn'),
+        ('Trường Đại học Công nghệ Thông tin và Truyền thông Việt - Hàn', 'vku.udn.vn'),
+        ('Trường Đại học Kinh tế - Đại học Đà Nẵng', 'due.udn.vn'),
+        ('Trường Đại học Ngoại ngữ - Đại học Đà Nẵng', 'ufl.udn.vn'),
+        ('Đại học Đà Nẵng', 'udn.vn'),
+        ('Trường Đại học Đông Á', 'donga.edu.vn'),
+        ('Trường Đại học FPT Đà Nẵng', 'fpt.edu.vn')
+    ) AS payload(university_name, domain)
+    JOIN universities u ON u.name = payload.university_name
+    ON CONFLICT (domain) DO UPDATE
+    SET university_id = EXCLUDED.university_id,
+        status = 'ACTIVE',
+        verified_at = COALESCE(university_domains.verified_at, CURRENT_TIMESTAMP),
+        updated_at = CURRENT_TIMESTAMP;
 
     INSERT INTO university_admins (user_id, university_id, status, permissions, title, assigned_at, assigned_by_user_id, updated_at)
     SELECT user_id, v_supported_university_id, 'ACTIVE', 'FINANCE,STUDENTS,REPORTS', 'Lê Thu Hà', CURRENT_TIMESTAMP, v_admin_user_id, CURRENT_TIMESTAMP

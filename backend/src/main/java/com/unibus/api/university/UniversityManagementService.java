@@ -8,6 +8,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 import org.apache.poi.ss.usermodel.DataFormatter;
 import org.apache.poi.ss.usermodel.Row;
@@ -53,6 +54,17 @@ import com.unibus.api.user.model.UserRole;
 
 @Service
 public class UniversityManagementService {
+
+    private static final Map<String, KnownUniversityDomain> KNOWN_UNIVERSITY_DOMAINS = Map.ofEntries(
+            Map.entry("duytan.edu.vn", new KnownUniversityDomain("DTU", "Trường Đại học Duy Tân", "DTU")),
+            Map.entry("dtu.edu.vn", new KnownUniversityDomain("DTU", "Trường Đại học Duy Tân", "DTU")),
+            Map.entry("dut.udn.vn", new KnownUniversityDomain("DUT", "Trường Đại học Bách khoa - Đại học Đà Nẵng", "DUT")),
+            Map.entry("ute.udn.vn", new KnownUniversityDomain("UTE", "Trường Đại học Sư phạm Kỹ thuật - Đại học Đà Nẵng", "UTE")),
+            Map.entry("ued.udn.vn", new KnownUniversityDomain("UED", "Trường Đại học Sư phạm - Đại học Đà Nẵng", "UED")),
+            Map.entry("vku.udn.vn", new KnownUniversityDomain("VKU", "Trường Đại học Công nghệ Thông tin và Truyền thông Việt - Hàn", "VKU")),
+            Map.entry("due.udn.vn", new KnownUniversityDomain("DUE", "Trường Đại học Kinh tế - Đại học Đà Nẵng", "DUE")),
+            Map.entry("ufl.udn.vn", new KnownUniversityDomain("UFLS", "Trường Đại học Ngoại ngữ - Đại học Đà Nẵng", "UFLS")),
+            Map.entry("udn.vn", new KnownUniversityDomain("UDN", "Đại học Đà Nẵng", "UDN")));
 
     private final UniversityManagementRepository repository;
     private final PasswordEncoder passwordEncoder;
@@ -324,12 +336,48 @@ public class UniversityManagementService {
             repository.audit(user.getId(), roster.universityId(), "GOOGLE_ROSTER_AUTO_LINK", "students",
                     roster.studentCode(), "SUCCESS", null, email);
         });
+        applyDomainUniversityLink(user);
+    }
+
+    @Transactional
+    public void applyDomainUniversityLink(User user) {
+        if (user.getRole() != UserRole.STUDENT) {
+            return;
+        }
+        String email = normalizeEmail(user.getEmail());
+        String domain = emailDomain(email);
+        int at = email == null ? -1 : email.indexOf('@');
+        if (domain == null || at <= 0) {
+            return;
+        }
+        String studentCode = email.substring(0, at);
+        if (studentCode.length() > 20) {
+            studentCode = studentCode.substring(0, 20);
+        }
+        DomainMatch match = resolveDomainMatch(domain);
+        if (match == null || repository.studentCodeBelongsToOtherUser(studentCode, user.getId())) {
+            return;
+        }
+        repository.upsertStudentFromDomain(user.getId(), email, user.getFullName(), match);
+        repository.audit(user.getId(), match.universityId(), "DOMAIN_AUTO_LINK", "students",
+                studentCode, "SUCCESS", null, email);
     }
 
     @Transactional(readOnly = true)
     public DomainMatch googleDomainHint(String email) {
         String domain = emailDomain(email);
-        return domain == null ? null : repository.findActiveDomainMatch(domain).orElse(null);
+        return domain == null ? null : resolveDomainMatch(domain);
+    }
+
+    private DomainMatch resolveDomainMatch(String domain) {
+        DomainMatch existing = repository.findActiveDomainMatch(domain).orElse(null);
+        if (existing != null) {
+            return existing;
+        }
+        KnownUniversityDomain known = KNOWN_UNIVERSITY_DOMAINS.get(domain);
+        return known == null
+                ? null
+                : repository.ensureActiveDomainMatch(known.code(), known.name(), known.shortName(), domain).orElse(null);
     }
 
     @Transactional(readOnly = true)
@@ -517,6 +565,9 @@ public class UniversityManagementService {
 
     private boolean blank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private record KnownUniversityDomain(String code, String name, String shortName) {
     }
 
     private record RosterRow(int rowNumber, String email, String studentCode, String fullName, String faculty,

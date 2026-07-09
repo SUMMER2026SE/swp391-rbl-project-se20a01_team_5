@@ -116,24 +116,15 @@ public class TicketingRepository {
         jdbcTemplate.update(connection -> {
             PreparedStatement statement = connection.prepareStatement("""
                 INSERT INTO single_trip_tickets(student_code, route_id, boarding_stop_id, alighting_stop_id,
-                                                 fare_amount, original_fare_amount, subsidy_amount, final_fare_amount,
-                                                 subsidy_policy_id, qr_code, status, purchased_at, expires_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'UNUSED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '24 hours')
+                                                 fare_amount, qr_code, status, purchased_at, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?, 'UNUSED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '24 hours')
                 """, new String[] { "single_trip_ticket_id" });
             statement.setString(1, studentCode);
             statement.setInt(2, routeId);
             statement.setObject(3, boardingStopId);
             statement.setObject(4, alightingStopId);
             statement.setBigDecimal(5, finalAmount);
-            statement.setBigDecimal(6, originalAmount);
-            statement.setBigDecimal(7, subsidyAmount);
-            statement.setBigDecimal(8, finalAmount);
-            if (subsidyPolicyId == null) {
-                statement.setNull(9, java.sql.Types.INTEGER);
-            } else {
-                statement.setInt(9, subsidyPolicyId);
-            }
-            statement.setString(10, qrCode);
+            statement.setString(6, qrCode);
             return statement;
         }, keyHolder);
         return generatedId(keyHolder, "single trip ticket");
@@ -158,9 +149,9 @@ public class TicketingRepository {
         jdbcTemplate.update("""
                 INSERT INTO invoices(payment_id, student_code, description, amount, original_amount, subsidy_amount, final_amount)
                 SELECT p.payment_id, p.student_code, 'Single trip ticket payment', p.amount,
-                       COALESCE(stt.original_fare_amount, stt.fare_amount),
-                       COALESCE(stt.subsidy_amount, 0),
-                       COALESCE(stt.final_fare_amount, stt.fare_amount)
+                       stt.fare_amount,
+                       0,
+                       stt.fare_amount
                 FROM payments p
                 JOIN single_trip_tickets stt ON stt.single_trip_ticket_id = p.single_trip_ticket_id
                 WHERE p.payment_id = ?
@@ -213,7 +204,10 @@ public class TicketingRepository {
                 SELECT stt.single_trip_ticket_id, stt.student_code, stt.route_id, r.route_name,
                        stt.boarding_stop_id, bs.stop_name AS boarding_stop_name,
                        stt.alighting_stop_id, als.stop_name AS alighting_stop_name,
-                       stt.fare_amount, stt.original_fare_amount, stt.subsidy_amount, stt.final_fare_amount,
+                       stt.fare_amount,
+                       stt.fare_amount AS original_fare_amount,
+                       0 AS subsidy_amount,
+                       stt.fare_amount AS final_fare_amount,
                        stt.qr_code, stt.status, stt.purchased_at, stt.expires_at
                 FROM single_trip_tickets stt
                 JOIN routes r ON r.route_id = stt.route_id
@@ -451,9 +445,9 @@ public class TicketingRepository {
                            ELSE 'VNPay payment'
                        END,
                        p.amount,
-                       COALESCE(mp.original_fare_amount, stt.original_fare_amount, p.amount),
-                       COALESCE(mp.subsidy_amount, stt.subsidy_amount, 0),
-                       COALESCE(mp.final_fare_amount, stt.final_fare_amount, p.amount)
+                       COALESCE(mp.original_fare_amount, stt.fare_amount, p.amount),
+                       COALESCE(mp.subsidy_amount, 0),
+                       COALESCE(mp.final_fare_amount, stt.fare_amount, p.amount)
                 FROM payments p
                 LEFT JOIN monthly_passes mp ON mp.monthly_pass_id = p.monthly_pass_id
                 LEFT JOIN single_trip_tickets stt ON stt.single_trip_ticket_id = p.single_trip_ticket_id

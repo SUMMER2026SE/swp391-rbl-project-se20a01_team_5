@@ -265,10 +265,28 @@ public class ExperienceRepository {
                 SET status = ?, notes = ?, assisted_by_user_id = COALESCE(assisted_by_user_id, ?)
                 WHERE lost_item_report_id = ?
                 """, request.status(), request.notes(), userId, lostItemId);
+        notifyLostItemReporter(userId, lostItemId, request);
         return lostItemsForAssistant(userId, 50).stream()
                 .filter(item -> item.lostItemReportId().equals(lostItemId))
                 .findFirst()
                 .orElse(null);
+    }
+
+    private void notifyLostItemReporter(Integer senderUserId, Integer lostItemId, UpdateLostItemStatusRequest request) {
+        String title = switch (request.status().toUpperCase()) {
+            case "FOUND", "RESOLVED" -> "Đã tìm thấy đồ thất lạc";
+            case "CLOSED" -> "Cập nhật đồ thất lạc";
+            default -> "Đồ thất lạc đang được xử lý";
+        };
+        String detail = request.notes() == null || request.notes().isBlank()
+                ? "Vui lòng mở mục Đồ thất lạc để xem chi tiết."
+                : request.notes().trim();
+        jdbcTemplate.update("""
+                INSERT INTO notifications(recipient_user_id, sender_user_id, title, content, notification_type)
+                SELECT reported_by_user_id, ?, ?, ?, 'LOST_ITEM'
+                FROM lost_item_reports
+                WHERE lost_item_report_id = ?
+                """, senderUserId, title, detail, lostItemId);
     }
 
     public List<FeedbackCard> driverFeedback(Integer driverId, int limit) {

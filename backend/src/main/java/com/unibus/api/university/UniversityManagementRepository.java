@@ -194,6 +194,49 @@ public class UniversityManagementRepository {
         return rows.stream().findFirst();
     }
 
+    public Optional<DomainMatch> ensureActiveDomainMatch(String code, String universityName, String shortName, String domain) {
+        jdbcTemplate.update("""
+                INSERT INTO universities(code, name, short_name, status)
+                SELECT ?, ?, ?, 'ACTIVE'
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM universities WHERE code = ? OR name = ?
+                )
+                """, code, universityName, shortName, code, universityName);
+        jdbcTemplate.update("""
+                UPDATE universities
+                SET short_name = COALESCE(short_name, ?),
+                    status = 'ACTIVE',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE code = ? OR name = ?
+                """, shortName, code, universityName);
+        jdbcTemplate.update("""
+                UPDATE university_domains
+                SET university_id = (
+                        SELECT university_id
+                        FROM universities
+                        WHERE code = ? OR name = ?
+                        ORDER BY CASE WHEN code = ? THEN 0 ELSE 1 END
+                        LIMIT 1
+                    ),
+                    status = 'ACTIVE',
+                    verified_at = COALESCE(verified_at, CURRENT_TIMESTAMP),
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE LOWER(domain) = LOWER(?)
+                """, code, universityName, code, domain);
+        jdbcTemplate.update("""
+                INSERT INTO university_domains(university_id, domain, status, verified_at, updated_at)
+                SELECT university_id, ?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                FROM universities
+                WHERE code = ? OR name = ?
+                  AND NOT EXISTS (
+                      SELECT 1 FROM university_domains WHERE LOWER(domain) = LOWER(?)
+                  )
+                ORDER BY CASE WHEN code = ? THEN 0 ELSE 1 END
+                LIMIT 1
+                """, domain, code, universityName, domain, code);
+        return findActiveDomainMatch(domain);
+    }
+
     public Optional<RosterMatch> findActiveRosterByEmail(String email) {
         List<RosterMatch> rows = jdbcTemplate.query("""
                 SELECT r.roster_id, r.university_id, u.name AS university_name, r.email, r.student_code,
@@ -268,6 +311,39 @@ public class UniversityManagementRepository {
                     updated_at = CURRENT_TIMESTAMP
                 WHERE user_id = ?
                 """, roster.fullName(), userId);
+    }
+
+    public void upsertStudentFromDomain(Integer userId, String email, String fullName, DomainMatch domain) {
+        String studentCode = email.substring(0, email.indexOf('@')).trim();
+        if (studentCode.length() > 20) {
+            studentCode = studentCode.substring(0, 20);
+        }
+        List<String> existingStudentCodes = jdbcTemplate.queryForList("""
+                SELECT student_code
+                FROM students
+                WHERE user_id = ?
+                """, String.class, userId);
+        if (existingStudentCodes.isEmpty()) {
+            jdbcTemplate.update("""
+                    INSERT INTO students(student_code, user_id, university, university_id)
+                    VALUES (?, ?, ?, ?)
+                    """, studentCode, userId, domain.universityName(), domain.universityId());
+        } else {
+            jdbcTemplate.update("""
+                    UPDATE students
+                    SET student_code = ?,
+                        university = ?,
+                        university_id = ?
+                    WHERE user_id = ?
+                    """, studentCode, domain.universityName(), domain.universityId(), userId);
+        }
+        jdbcTemplate.update("""
+                UPDATE users
+                SET full_name = CASE WHEN full_name IS NULL OR full_name = email THEN ? ELSE full_name END,
+                    student_verification_status = 'VERIFIED',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = ?
+                """, fullName, userId);
     }
 
     public StudentUniversityView studentUniversity(Integer userId) {

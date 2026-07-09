@@ -108,8 +108,8 @@ export function ErrorPanel({
 }
 
 export function UnavailablePanel({
-  title = "Chức năng đang chờ API",
-  description = "Giao diện được giữ lại theo prototype, nhưng backend thật cho phần này chưa có trong MVP hiện tại.",
+  title = "Chức năng chưa sẵn sàng",
+  description = "UniBus sẽ cập nhật phần này sau.",
 }: {
   title?: string;
   description?: string;

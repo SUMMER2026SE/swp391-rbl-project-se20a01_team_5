@@ -30,13 +30,15 @@ public class SePayController {
     @PreAuthorize("hasRole('STUDENT')")
     public ApiResponse<Map<String, Object>> createOrder(
             @AuthenticationPrincipal CurrentUser currentUser,
-            @RequestBody Map<String, String> request) {
-        String ticketType = request.get("ticketType");
+            @RequestBody Map<String, Object> request) {
+        String ticketType = request.get("ticketType") == null ? null : String.valueOf(request.get("ticketType"));
         if (ticketType == null || ticketType.isBlank()) {
             ticketType = "monthly";
         }
-        Integer routeId = parseRouteId(request.get("routeId"));
-        Map<String, Object> orderDetails = sePayService.createOrder(currentUser, ticketType, routeId);
+        Integer routeId = parseInteger(request.get("routeId"), "routeId");
+        Integer boardingStopId = parseInteger(request.get("boardingStopId"), "boardingStopId");
+        Integer alightingStopId = parseInteger(request.get("alightingStopId"), "alightingStopId");
+        Map<String, Object> orderDetails = sePayService.createOrder(currentUser, ticketType, routeId, boardingStopId, alightingStopId);
         return ApiResponse.ok("Payment order created", orderDetails);
     }
 
@@ -65,14 +67,18 @@ public class SePayController {
         }
     }
 
-    private Integer parseRouteId(String raw) {
-        if (raw == null || raw.isBlank()) {
+    private Integer parseInteger(Object rawValue, String fieldName) {
+        if (rawValue == null) {
+            return null;
+        }
+        String raw = String.valueOf(rawValue).trim();
+        if (raw.isBlank()) {
             return null;
         }
         try {
             return Integer.valueOf(raw);
         } catch (NumberFormatException exception) {
-            throw new com.unibus.api.common.ApiException(HttpStatus.BAD_REQUEST, "routeId must be a number");
+            throw new com.unibus.api.common.ApiException(HttpStatus.BAD_REQUEST, fieldName + " must be a number");
         }
     }
 }

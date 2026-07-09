@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -37,6 +38,8 @@ import com.unibus.api.security.CurrentUser;
 
 @Service
 public class OperationsService {
+
+    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
 
     private final OperationsRepository operationsRepository;
     private final RealtimePublisher realtimePublisher;
@@ -231,6 +234,10 @@ public class OperationsService {
         requireOwnedConductorTrip(request.tripId(), conductorStaffId);
         TripRouteInfo trip = operationsRepository.tripRouteInfo(request.tripId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Trip not found"));
+        TicketScanResult windowBlock = scanWindowBlock(trip);
+        if (windowBlock != null) {
+            return windowBlock;
+        }
 
         String qrCode = request.qrCode().trim();
         ConductorTicketView monthlyTicket = operationsRepository.findMonthlyTicketByQr(qrCode).orElse(null);
@@ -400,6 +407,25 @@ public class OperationsService {
         return LocalDateTime.of(date, time);
     }
 
+    private TicketScanResult scanWindowBlock(TripRouteInfo trip) {
+        LocalDateTime start = trip.scheduledStart();
+        if (start == null) {
+            return null;
+        }
+        LocalDateTime now = LocalDateTime.now(BUSINESS_ZONE);
+        LocalDateTime opensAt = start.minusMinutes(30);
+        LocalDateTime closesAt = trip.endedAt() != null
+                ? trip.endedAt().atZoneSameInstant(BUSINESS_ZONE).toLocalDateTime().plusMinutes(60)
+                : start.plusHours(3);
+        if (now.isBefore(opensAt)) {
+            return new TicketScanResult(false, "Chưa đến giờ quét vé cho chuyến này.", null, null);
+        }
+        if (now.isAfter(closesAt)) {
+            return new TicketScanResult(false, "Đã quá giờ quét vé cho chuyến này.", null, null);
+        }
+        return null;
+    }
+
     private TicketScanResult scanMonthlyPass(
             ConductorTicketView ticket,
             TripRouteInfo trip,
@@ -408,7 +434,7 @@ public class OperationsService {
             return new TicketScanResult(false, "Vé tháng không còn hoạt động.", ticket, null);
         }
         if (!ticket.routeId().equals(trip.routeId())) {
-            return new TicketScanResult(false, "Vé không thuộc tuyến của chuyến này.", ticket, null);
+            return new TicketScanResult(false, "Vé không hợp lệ cho chuyến này", ticket, null);
         }
         if (ticket.validFrom() != null && ticket.validFrom().toLocalDate().isAfter(trip.serviceDate())) {
             return new TicketScanResult(false, "Vé chưa tới ngày hiệu lực.", ticket, null);
@@ -432,16 +458,27 @@ public class OperationsService {
             TripRouteInfo trip,
             Integer conductorStaffId) {
         if (!ticket.routeId().equals(trip.routeId())) {
-            return new TicketScanResult(false, "Vé không thuộc tuyến của chuyến này.", ticket, null);
+            return new TicketScanResult(false, "Vé không hợp lệ cho chuyến này", ticket, null);
+        }
+        if ("USED".equals(ticket.status())) {
+            return new TicketScanResult(false, "Vé lượt đã được sử dụng", ticket, null);
+        }
+        if ("EXPIRED".equals(ticket.status())) {
+            return new TicketScanResult(false, "Vé lượt đã hết hạn", ticket, null);
         }
         if (!"UNUSED".equals(ticket.status())) {
-            return new TicketScanResult(false, "Vé lượt đã được sử dụng hoặc không còn hợp lệ.", ticket, null);
+            return new TicketScanResult(false, "Vé lượt không còn hợp lệ", ticket, null);
         }
-        if (ticket.expiresAt() != null && ticket.expiresAt().isBefore(OffsetDateTime.now())) {
+        if (ticket.expiresAt() != null && ticket.expiresAt().atZoneSameInstant(BUSINESS_ZONE).toOffsetDateTime().isBefore(OffsetDateTime.now(BUSINESS_ZONE))) {
             return new TicketScanResult(false, "Vé lượt đã hết hạn.", ticket, null);
         }
 
-        operationsRepository.markSingleTicketUsed(ticket.ticketId(), trip.tripId(), conductorStaffId);
+        int updated = operationsRepository.markSingleTicketUsed(ticket.ticketId(), trip.tripId(), conductorStaffId);
+        if (updated == 0) {
+            ConductorTicketView current = operationsRepository.findSingleTicketByQr(ticket.qrCode()).orElse(ticket);
+            String message = "USED".equals(current.status()) ? "Vé lượt đã được sử dụng" : "Vé lượt không còn hợp lệ";
+            return new TicketScanResult(false, message, current, null);
+        }
         Integer historyId = operationsRepository.ensureTravelHistoryForScan(
                 ticket.studentCode(),
                 trip.tripId(),

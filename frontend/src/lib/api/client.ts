@@ -214,6 +214,8 @@ export const authApi = {
   refresh: (refreshToken: string) => apiFetch.post<TokenPair>("/auth/refresh", { refreshToken }),
   logout: () => apiFetch.post<void>("/auth/logout"),
   forgotPasswordOtp: (email: string) => apiFetch.post<void>("/auth/forgot-password/otp", { email }),
+  forgotPasswordVerify: (data: { email: string; otp: string }) =>
+    apiFetch.post<void>("/auth/forgot-password/verify", data),
   forgotPasswordReset: (data: { email: string; otp: string; newPassword: string }) =>
     apiFetch.post<void>("/auth/forgot-password/reset", data),
 };

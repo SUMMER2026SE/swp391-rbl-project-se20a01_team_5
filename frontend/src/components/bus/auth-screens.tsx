@@ -18,8 +18,6 @@ import {
   Sparkles,
   ChevronDown,
   User as UserIcon,
-  Phone,
-  Check,
   QrCode,
   Route,
   Star,
@@ -36,6 +34,23 @@ import { authApi, setTokens, universityApi } from "@/lib/api/client";
 type AuthScreen = "login" | "register" | "forgot";
 
 const GOOGLE_IDENTITY_SCRIPT_ID = "google-identity-services";
+const OTP_COOLDOWN_SECONDS = 60;
+
+function useOtpCooldown() {
+  const [seconds, setSeconds] = useState(0);
+
+  useEffect(() => {
+    if (seconds <= 0) return;
+    const timer = window.setTimeout(() => setSeconds((value) => Math.max(0, value - 1)), 1000);
+    return () => window.clearTimeout(timer);
+  }, [seconds]);
+
+  return {
+    seconds,
+    active: seconds > 0,
+    start: () => setSeconds(OTP_COOLDOWN_SECONDS),
+  };
+}
 
 function loadGoogleIdentity(): Promise<void> {
   if (typeof window === "undefined") return Promise.reject(new Error("Google Identity chỉ chạy trên trình duyệt."));
@@ -270,7 +285,7 @@ export function AuthScreens({
             <SplitText
               as="h2"
               text={screen === "register" ? "Tạo tài khoản" : screen === "forgot" ? "Quên mật khẩu" : "Đăng nhập"}
-              className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-on-surface"
+              className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight leading-[1.15] text-on-surface"
               stagger={0.04}
             />
             <p className="mt-3 text-base sm:text-lg text-on-surface-variant text-pretty">
@@ -476,7 +491,7 @@ function Hero({ onGetStarted }: { onGetStarted: () => void }) {
             </div>
             <div className="relative mt-3 flex items-center justify-between text-sm gap-2">
               <span className="text-white/70 truncate">Tuyến, ETA, vé QR, phản hồi</span>
-              <span className="font-bold text-[#beff50] whitespace-nowrap">API thật</span>
+              <span className="font-bold text-[#beff50] whitespace-nowrap">UniBus</span>
             </div>
           </div>
         </ClipReveal>
@@ -629,20 +644,30 @@ function RegisterForm({
   const [lastName, setLastName] = useState("");
   const [firstName, setFirstName] = useState("");
   const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [otp, setOtp] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
   const [sendingOtp, setSendingOtp] = useState(false);
   const [registering, setRegistering] = useState(false);
+  const otpCooldown = useOtpCooldown();
+
+  const canRequestOtp = lastName.trim() && firstName.trim() && email.trim() && password.length >= 8;
 
   const requestOtp = async () => {
-    if (!email) {
-      toast.error("Vui lòng nhập email trường trước");
+    if (otpCooldown.active) return;
+    if (!lastName.trim() || !firstName.trim() || !email.trim() || !password) {
+      toast.error("Vui lòng nhập đủ thông tin tài khoản");
+      return;
+    }
+    if (password.length < 8) {
+      toast.error("Mật khẩu cần tối thiểu 8 ký tự");
       return;
     }
     setSendingOtp(true);
     try {
-      await authApi.registerOtp(email);
+      await authApi.registerOtp(email.trim());
+      setOtpSent(true);
+      otpCooldown.start();
       toast.success("Đã gửi mã OTP", { description: "Kiểm tra email trường của bạn." });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Không thể gửi OTP");
@@ -660,9 +685,9 @@ function RegisterForm({
     try {
       await authApi.register({
         name: `${lastName.trim()} ${firstName.trim()}`.trim(),
-        email,
+        email: email.trim(),
         password,
-        otp,
+        otp: otp.trim(),
       });
       toast.success("Đăng ký thành công!", { description: "Bạn có thể đăng nhập bằng tài khoản vừa tạo." });
       onBack();
@@ -705,53 +730,37 @@ function RegisterForm({
             <Label htmlFor="lastname">Họ</Label>
             <div className="relative">
               <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant pointer-events-none" />
-              <Input id="lastname" placeholder="Nguyễn" className="pl-11 h-12 rounded-xl bg-surface-container-lowest border-outline-variant" value={lastName} onChange={(e) => setLastName(e.target.value)} />
+              <Input id="lastname" placeholder="Nguyễn" className="pl-11 h-12 rounded-xl bg-surface-container-lowest border-outline-variant" value={lastName} onChange={(e) => { setLastName(e.target.value); setOtpSent(false); setOtp(""); }} />
             </div>
           </div>
           <div className="space-y-2">
             <Label htmlFor="firstname">Tên</Label>
-            <Input id="firstname" placeholder="Minh Anh" className="h-12 rounded-xl bg-surface-container-lowest border-outline-variant" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+            <Input id="firstname" placeholder="Minh Anh" className="h-12 rounded-xl bg-surface-container-lowest border-outline-variant" value={firstName} onChange={(e) => { setFirstName(e.target.value); setOtpSent(false); setOtp(""); }} />
           </div>
         </div>
         <div className="space-y-2">
           <Label htmlFor="remail">Email trường</Label>
           <div className="relative">
             <Mail className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant pointer-events-none" />
-            <Input id="remail" type="email" placeholder="ten@duytan.edu.vn" className="pl-11 h-12 rounded-xl bg-surface-container-lowest border-outline-variant" value={email} onChange={(e) => setEmail(e.target.value)} />
-          </div>
-          <p className="text-xs text-on-surface-variant">Dùng email trường để tự động nhận diện trường đại học.</p>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="rotp">Mã OTP</Label>
-          <div className="flex gap-2">
-            <Input id="rotp" inputMode="numeric" maxLength={6} placeholder="6 số" className="h-12 rounded-xl bg-surface-container-lowest border-outline-variant" value={otp} onChange={(e) => setOtp(e.target.value)} />
-            <button
-              type="button"
-              onClick={requestOtp}
-              disabled={sendingOtp}
-              className="state-layer h-12 shrink-0 rounded-full border border-[#14140f]/20 bg-white px-4 text-sm font-bold text-[#14140f] disabled:opacity-60"
-            >
-              {sendingOtp ? "Đang gửi..." : "Gửi OTP"}
-            </button>
-          </div>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="rphone">Số điện thoại</Label>
-          <div className="relative">
-            <Phone className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant pointer-events-none" />
-            <Input id="rphone" type="tel" placeholder="09xx xxx xxx" className="pl-11 h-12 rounded-xl bg-surface-container-lowest border-outline-variant" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <Input id="remail" type="email" placeholder="ten@duytan.edu.vn" className="pl-11 h-12 rounded-xl bg-surface-container-lowest border-outline-variant" value={email} onChange={(e) => { setEmail(e.target.value); setOtpSent(false); setOtp(""); }} />
           </div>
         </div>
         <div className="space-y-2">
           <Label htmlFor="rpassword">Mật khẩu</Label>
           <div className="relative">
             <Lock className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant pointer-events-none" />
-            <Input id="rpassword" type={showPwd ? "text" : "password"} placeholder="Ít nhất 8 ký tự" className="pl-11 pr-11 h-12 rounded-xl bg-surface-container-lowest border-outline-variant" value={password} onChange={(e) => setPassword(e.target.value)} />
+            <Input id="rpassword" type={showPwd ? "text" : "password"} placeholder="Ít nhất 8 ký tự" className="pl-11 pr-11 h-12 rounded-xl bg-surface-container-lowest border-outline-variant" value={password} onChange={(e) => { setPassword(e.target.value); setOtpSent(false); setOtp(""); }} />
             <button type="button" tabIndex={-1} onClick={() => setShowPwd((s) => !s)} className="absolute right-4 top-1/2 -translate-y-1/2 size-8 flex items-center justify-center text-on-surface-variant hover:text-on-surface rounded-lg">
               {showPwd ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
             </button>
           </div>
         </div>
+        {otpSent && (
+          <div className="space-y-2 rounded-2xl border border-[#E8E2D5] bg-[#FAF8F2] p-4">
+            <Label htmlFor="rotp">Mã OTP</Label>
+            <Input id="rotp" inputMode="numeric" maxLength={6} placeholder="6 số" className="h-12 rounded-xl bg-white border-outline-variant" value={otp} onChange={(e) => setOtp(e.target.value)} />
+          </div>
+        )}
         <div className="flex items-start gap-2">
           <Checkbox id="terms" className="mt-0.5" defaultChecked />
           <Label htmlFor="terms" className="text-sm text-on-surface-variant font-normal cursor-pointer">
@@ -764,11 +773,10 @@ function RegisterForm({
           whileTap={{ scale: 0.98 }}
           transition={{ type: "spring", stiffness: 400, damping: 22 }}
           className="w-full h-12 rounded-full bg-[#beff50] text-[#14140f] text-base font-bold elev-2 flex items-center justify-center gap-2 disabled:opacity-60"
-          disabled={registering}
-          onClick={submitRegister}
+          disabled={registering || sendingOtp || (!otpSent && (!canRequestOtp || otpCooldown.active))}
+          onClick={otpSent ? submitRegister : requestOtp}
         >
-          {registering ? "Đang tạo..." : "Tạo tài khoản"}
-          <Check className="size-5" />
+          {registering ? "Đang tạo..." : sendingOtp ? "Đang gửi OTP..." : !otpSent && otpCooldown.active ? `Gửi lại sau ${otpCooldown.seconds}s` : otpSent ? "Xác minh & tạo tài khoản" : "Gửi OTP"}
         </motion.button>
       </div>
     </ExpressiveCard>
@@ -781,10 +789,13 @@ function ForgotForm({ onBack }: { onBack: () => void }) {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [otpSent, setOtpSent] = useState(false);
+  const [otpVerified, setOtpVerified] = useState(false);
   const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
+  const otpCooldown = useOtpCooldown();
 
   const requestReset = async () => {
+    if (otpCooldown.active) return;
     if (!email.trim()) {
       toast.error("Vui lòng nhập email đăng ký");
       return;
@@ -793,6 +804,8 @@ function ForgotForm({ onBack }: { onBack: () => void }) {
     try {
       await authApi.forgotPasswordOtp(email.trim());
       setOtpSent(true);
+      setOtpVerified(false);
+      otpCooldown.start();
       toast.success("Nếu email tồn tại, mã OTP đặt lại đã được gửi.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Không thể gửi OTP đặt lại");
@@ -801,9 +814,26 @@ function ForgotForm({ onBack }: { onBack: () => void }) {
     }
   };
 
+  const verifyOtp = async () => {
+    if (!email.trim()) return toast.error("Vui lòng nhập email đăng ký");
+    if (!otp.trim()) return toast.error("Vui lòng nhập mã OTP");
+    setLoading(true);
+    try {
+      await authApi.forgotPasswordVerify({ email: email.trim(), otp: otp.trim() });
+      setOtpVerified(true);
+      toast.success("OTP hợp lệ. Tạo mật khẩu mới.");
+    } catch (error) {
+      setOtpVerified(false);
+      toast.error(error instanceof Error ? error.message : "OTP không hợp lệ");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const submitReset = async () => {
     if (!email.trim()) return toast.error("Vui lòng nhập email đăng ký");
     if (!otp.trim()) return toast.error("Vui lòng nhập mã OTP");
+    if (!otpVerified) return toast.error("Vui lòng xác minh OTP trước");
     if (!newPassword) return toast.error("Vui lòng nhập mật khẩu mới");
     if (newPassword.length < 8) return toast.error("Mật khẩu mới cần tối thiểu 8 ký tự");
     if (newPassword !== confirmPassword) return toast.error("Mật khẩu xác nhận không khớp");
@@ -838,22 +868,29 @@ function ForgotForm({ onBack }: { onBack: () => void }) {
           <div className="space-y-4 rounded-2xl border border-[#E8E2D5] bg-[#FAF8F2] p-4">
             <div className="space-y-2">
               <Label htmlFor="fotp">Mã OTP</Label>
-              <Input id="fotp" inputMode="numeric" placeholder="Nhập mã OTP" className="h-12 rounded-xl bg-white border-outline-variant" value={otp} onChange={(e) => setOtp(e.target.value)} />
+              <Input id="fotp" inputMode="numeric" placeholder="Nhập mã OTP" className="h-12 rounded-xl bg-white border-outline-variant" value={otp} onChange={(e) => { setOtp(e.target.value); setOtpVerified(false); }} />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="fnew">Mật khẩu mới</Label>
-              <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant pointer-events-none" />
-                <Input id="fnew" type={showPwd ? "text" : "password"} placeholder="Tối thiểu 8 ký tự" className="pl-11 pr-11 h-12 rounded-xl bg-white border-outline-variant" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
-                <button type="button" onClick={() => setShowPwd((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface">
-                  {showPwd ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                </button>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="fconfirm">Xác nhận mật khẩu</Label>
-              <Input id="fconfirm" type={showPwd ? "text" : "password"} placeholder="Nhập lại mật khẩu mới" className="h-12 rounded-xl bg-white border-outline-variant" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
-            </div>
+            {otpVerified && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="fnew">Mật khẩu mới</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant pointer-events-none" />
+                    <Input id="fnew" type={showPwd ? "text" : "password"} placeholder="Tối thiểu 8 ký tự" className="pl-11 pr-11 h-12 rounded-xl bg-white border-outline-variant" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+                    <button type="button" onClick={() => setShowPwd((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface">
+                      {showPwd ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="fconfirm">Xác nhận mật khẩu</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant pointer-events-none" />
+                    <Input id="fconfirm" type={showPwd ? "text" : "password"} placeholder="Nhập lại mật khẩu mới" className="pl-11 h-12 rounded-xl bg-white border-outline-variant" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         )}
         <motion.button
@@ -861,10 +898,10 @@ function ForgotForm({ onBack }: { onBack: () => void }) {
           whileTap={{ scale: 0.98 }}
           transition={{ type: "spring", stiffness: 400, damping: 22 }}
           className="w-full h-12 rounded-full bg-[#beff50] text-[#14140f] text-base font-bold elev-2 flex items-center justify-center gap-2 disabled:opacity-60"
-          disabled={loading}
-          onClick={otpSent ? submitReset : requestReset}
+          disabled={loading || (!otpSent && otpCooldown.active)}
+          onClick={!otpSent ? requestReset : otpVerified ? submitReset : verifyOtp}
         >
-          {loading ? "Đang xử lý..." : otpSent ? "Đặt lại mật khẩu" : "Gửi OTP đặt lại"}
+          {loading ? "Đang xử lý..." : !otpSent && otpCooldown.active ? `Gửi lại sau ${otpCooldown.seconds}s` : !otpSent ? "Gửi OTP đặt lại" : otpVerified ? "Đặt lại mật khẩu" : "Xác minh OTP"}
           <ArrowRight className="size-5" />
         </motion.button>
       </div>
@@ -882,4 +919,3 @@ function GoogleIcon() {
     </svg>
   );
 }
-

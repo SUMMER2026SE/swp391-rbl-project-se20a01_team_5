@@ -9,6 +9,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -506,13 +507,17 @@ public class OperationsRepository {
 
     public Optional<TripRouteInfo> tripRouteInfo(Integer tripId) {
         List<TripRouteInfo> rows = jdbcTemplate.query("""
-                SELECT trip_id, route_id, service_date
-                FROM trips
-                WHERE trip_id = ?
+                SELECT t.trip_id, t.route_id, t.service_date, bs.departure_time, t.departed_at, t.ended_at
+                FROM trips t
+                LEFT JOIN bus_schedules bs ON bs.schedule_id = t.schedule_id
+                WHERE t.trip_id = ?
                 """, (rs, rowNum) -> new TripRouteInfo(
                         rs.getInt("trip_id"),
                         rs.getInt("route_id"),
-                        rs.getObject("service_date", LocalDate.class)), tripId);
+                        rs.getObject("service_date", LocalDate.class),
+                        toLocalTime(rs.getTime("departure_time")),
+                        toOffsetDateTime(rs.getTimestamp("departed_at")),
+                        toOffsetDateTime(rs.getTimestamp("ended_at"))), tripId);
         return rows.stream().findFirst();
     }
 
@@ -651,14 +656,15 @@ public class OperationsRepository {
                 """, monthlyPassId);
     }
 
-    public void markSingleTicketUsed(Integer singleTicketId, Integer tripId, Integer conductorId) {
-        jdbcTemplate.update("""
+    public int markSingleTicketUsed(Integer singleTicketId, Integer tripId, Integer conductorId) {
+        return jdbcTemplate.update("""
                 UPDATE single_trip_tickets
                 SET status = 'USED',
                     used_on_trip_id = ?,
                     scanned_by_conductor_id = ?,
                     last_scanned_at = CURRENT_TIMESTAMP
                 WHERE single_trip_ticket_id = ?
+                  AND status = 'UNUSED'
                 """, tripId, conductorId, singleTicketId);
     }
 
@@ -970,7 +976,16 @@ public class OperationsRepository {
         jdbcTemplate.update("DELETE FROM bus_schedules WHERE schedule_id = ?", scheduleId);
     }
 
-    public record TripRouteInfo(Integer tripId, Integer routeId, LocalDate serviceDate) {
+    public record TripRouteInfo(
+            Integer tripId,
+            Integer routeId,
+            LocalDate serviceDate,
+            LocalTime departureTime,
+            OffsetDateTime departedAt,
+            OffsetDateTime endedAt) {
+        public LocalDateTime scheduledStart() {
+            return serviceDate == null || departureTime == null ? null : LocalDateTime.of(serviceDate, departureTime);
+        }
     }
 
     public record DriverScheduleTemplate(
