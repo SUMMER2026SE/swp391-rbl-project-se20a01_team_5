@@ -100,7 +100,18 @@ public class ExperienceService {
     public LostItemCard updateAssistantLostItem(CurrentUser currentUser, Integer lostItemId,
             UpdateLostItemStatusRequest request) {
         requireConductor(currentUser);
-        return repository.updateLostItem(currentUser.userId(), lostItemId, request);
+        return repository.updateLostItem(currentUser.userId(), lostItemId, normalizeLostItemStatus(request));
+    }
+
+    private UpdateLostItemStatusRequest normalizeLostItemStatus(UpdateLostItemStatusRequest request) {
+        String status = switch (request.status().trim().toUpperCase()) {
+            case "FOUND", "SEARCHING" -> "FOUND";
+            case "RETURNED", "CLOSED" -> "FOUND";
+            case "NOT_FOUND" -> "NOT_FOUND";
+            case "REPORTED" -> "REPORTED";
+            default -> throw new ApiException(HttpStatus.BAD_REQUEST, "Trạng thái đồ thất lạc không hợp lệ");
+        };
+        return new UpdateLostItemStatusRequest(status, request.notes());
     }
 
     @Transactional(readOnly = true)

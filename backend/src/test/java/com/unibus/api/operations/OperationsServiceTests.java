@@ -58,7 +58,7 @@ class OperationsServiceTests {
         ConductorTicketView ticket = monthlyTicket(ROUTE_A, "Campus Gate", "Dormitory");
         ConductorTicketView refreshed = monthlyTicket(ROUTE_A, "Updated Stop", "Dormitory");
         when(operationsRepository.tripRouteInfo(TRIP_ID))
-                .thenReturn(Optional.of(new TripRouteInfo(TRIP_ID, ROUTE_A, LocalDate.now(ZoneOffset.UTC), null, null, null)));
+                .thenReturn(Optional.of(openTrip(ROUTE_A)));
         when(operationsRepository.findMonthlyTicketByQr("QR-A"))
                 .thenReturn(Optional.of(ticket), Optional.of(refreshed));
         when(operationsRepository.ensureTravelHistoryForScan("SE001", TRIP_ID, CONDUCTOR_ID, ROUTE_A))
@@ -77,7 +77,7 @@ class OperationsServiceTests {
     void monthlyPassScanRejectsDifferentRoute() {
         ConductorTicketView ticket = monthlyTicket(ROUTE_A, "Campus Gate", "Dormitory");
         when(operationsRepository.tripRouteInfo(TRIP_ID))
-                .thenReturn(Optional.of(new TripRouteInfo(TRIP_ID, ROUTE_B, LocalDate.now(ZoneOffset.UTC), null, null, null)));
+                .thenReturn(Optional.of(openTrip(ROUTE_B)));
         when(operationsRepository.findMonthlyTicketByQr("QR-A")).thenReturn(Optional.of(ticket));
 
         TicketScanResult result = operationsService.scanTicket(conductor, new TicketScanRequest(TRIP_ID, "QR-A"));
@@ -91,7 +91,7 @@ class OperationsServiceTests {
     @Test
     void scanRejectsBeforeTripWindow() {
         when(operationsRepository.tripRouteInfo(TRIP_ID))
-                .thenReturn(Optional.of(new TripRouteInfo(TRIP_ID, ROUTE_A, LocalDate.now().plusDays(1), LocalTime.NOON, null, null)));
+                .thenReturn(Optional.of(new TripRouteInfo(TRIP_ID, ROUTE_A, LocalDate.now().plusDays(1), LocalTime.NOON, null, null, "NOT_STARTED")));
 
         TicketScanResult result = operationsService.scanTicket(conductor, new TicketScanRequest(TRIP_ID, "QR-A"));
 
@@ -106,7 +106,7 @@ class OperationsServiceTests {
         ConductorTicketView ticket = singleTicket("UNUSED");
         ConductorTicketView usedTicket = singleTicket("USED");
         when(operationsRepository.tripRouteInfo(TRIP_ID))
-                .thenReturn(Optional.of(new TripRouteInfo(TRIP_ID, ROUTE_A, LocalDate.now(ZoneOffset.UTC), null, null, null)));
+                .thenReturn(Optional.of(openTrip(ROUTE_A)));
         when(operationsRepository.findMonthlyTicketByQr("QR-S")).thenReturn(Optional.empty());
         when(operationsRepository.findJourneyMonthlyTicketByQr("QR-S", ROUTE_A)).thenReturn(Optional.empty());
         when(operationsRepository.findSingleTicketByQr("QR-S")).thenReturn(Optional.of(ticket), Optional.of(usedTicket));
@@ -135,6 +135,17 @@ class OperationsServiceTests {
                 now.minusDays(1),
                 now.plusDays(15),
                 null);
+    }
+
+    private TripRouteInfo openTrip(Integer routeId) {
+        return new TripRouteInfo(
+                TRIP_ID,
+                routeId,
+                LocalDate.now(ZoneOffset.UTC),
+                null,
+                OffsetDateTime.now(ZoneOffset.UTC).minusMinutes(5),
+                null,
+                "RUNNING");
     }
 
     private ConductorTicketView singleTicket(String status) {

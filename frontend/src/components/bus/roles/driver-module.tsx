@@ -846,9 +846,10 @@ function DriverActiveTrip({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
           {trips.map((trip) => {
             const status = trip.status?.toUpperCase();
             const statusPill = tripStatusPill(trip.status);
-            const canStart = status !== "RUNNING" && status !== "COMPLETED" && status !== "CANCELLED";
+            const tripKey = trip.tripId ?? `${trip.scheduleId ?? "schedule"}-${trip.routeId}-${trip.serviceDate ?? "date"}-${trip.departureTime ?? "time"}`;
+            const canStart = trip.tripId != null && status !== "RUNNING" && status !== "COMPLETED" && status !== "CANCELLED";
             return (
-              <ExpressiveCard key={trip.tripId} variant="elevated" className="p-5 min-w-0">
+              <ExpressiveCard key={tripKey} variant="elevated" className="p-5 min-w-0">
                 <div className="flex items-start justify-between gap-3 mb-3 min-w-0">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="size-12 shrink-0 rounded-2xl bg-surface-container-high flex items-center justify-center">

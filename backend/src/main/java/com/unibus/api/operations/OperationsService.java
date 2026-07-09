@@ -408,9 +408,18 @@ public class OperationsService {
     }
 
     private TicketScanResult scanWindowBlock(TripRouteInfo trip) {
+        String status = trip.status() == null ? "" : trip.status().toUpperCase();
+        if ("COMPLETED".equals(status) || "CANCELLED".equals(status) || "NOT_CREATED".equals(status)) {
+            return new TicketScanResult(false, "Chuyến không còn mở để quét vé.", null, null);
+        }
         LocalDateTime start = trip.scheduledStart();
         if (start == null) {
-            return null;
+            start = trip.departedAt() == null
+                    ? null
+                    : trip.departedAt().atZoneSameInstant(BUSINESS_ZONE).toLocalDateTime();
+        }
+        if (start == null) {
+            return new TicketScanResult(false, "Chuyến chưa có giờ khởi hành, không thể quét vé.", null, null);
         }
         LocalDateTime now = LocalDateTime.now(BUSINESS_ZONE);
         LocalDateTime opensAt = start.minusMinutes(30);

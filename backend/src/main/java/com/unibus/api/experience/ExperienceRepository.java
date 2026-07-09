@@ -253,7 +253,7 @@ public class ExperienceRepository {
                 LEFT JOIN trips t ON t.trip_id = li.trip_id
                 LEFT JOIN routes r ON r.route_id = t.route_id
                 WHERE li.assisted_by_user_id IS NULL OR li.assisted_by_user_id = ?
-                ORDER BY CASE li.status WHEN 'REPORTED' THEN 0 WHEN 'SEARCHING' THEN 1 ELSE 2 END,
+                ORDER BY CASE li.status WHEN 'REPORTED' THEN 0 WHEN 'SEARCHING' THEN 1 WHEN 'FOUND' THEN 2 ELSE 3 END,
                          li.reported_at DESC
                 LIMIT ?
                 """, (rs, rowNum) -> mapLostItem(rs), userId, limit);
@@ -274,8 +274,8 @@ public class ExperienceRepository {
 
     private void notifyLostItemReporter(Integer senderUserId, Integer lostItemId, UpdateLostItemStatusRequest request) {
         String title = switch (request.status().toUpperCase()) {
-            case "FOUND", "RESOLVED" -> "Đã tìm thấy đồ thất lạc";
-            case "CLOSED" -> "Cập nhật đồ thất lạc";
+            case "FOUND", "SEARCHING", "RESOLVED" -> "Đã tìm thấy đồ thất lạc";
+            case "RETURNED", "CLOSED" -> "Đã trả đồ thất lạc";
             default -> "Đồ thất lạc đang được xử lý";
         };
         String detail = request.notes() == null || request.notes().isBlank()
@@ -283,7 +283,7 @@ public class ExperienceRepository {
                 : request.notes().trim();
         jdbcTemplate.update("""
                 INSERT INTO notifications(recipient_user_id, sender_user_id, title, content, notification_type)
-                SELECT reported_by_user_id, ?, ?, ?, 'LOST_ITEM'
+                SELECT reported_by_user_id, ?, ?, ?, 'ALERT'
                 FROM lost_item_reports
                 WHERE lost_item_report_id = ?
                 """, senderUserId, title, detail, lostItemId);

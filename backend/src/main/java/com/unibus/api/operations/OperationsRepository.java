@@ -507,7 +507,7 @@ public class OperationsRepository {
 
     public Optional<TripRouteInfo> tripRouteInfo(Integer tripId) {
         List<TripRouteInfo> rows = jdbcTemplate.query("""
-                SELECT t.trip_id, t.route_id, t.service_date, bs.departure_time, t.departed_at, t.ended_at
+                SELECT t.trip_id, t.route_id, t.service_date, bs.departure_time, t.departed_at, t.ended_at, t.status
                 FROM trips t
                 LEFT JOIN bus_schedules bs ON bs.schedule_id = t.schedule_id
                 WHERE t.trip_id = ?
@@ -517,7 +517,8 @@ public class OperationsRepository {
                         rs.getObject("service_date", LocalDate.class),
                         toLocalTime(rs.getTime("departure_time")),
                         toOffsetDateTime(rs.getTimestamp("departed_at")),
-                        toOffsetDateTime(rs.getTimestamp("ended_at"))), tripId);
+                        toOffsetDateTime(rs.getTimestamp("ended_at")),
+                        rs.getString("status")), tripId);
         return rows.stream().findFirst();
     }
 
@@ -982,7 +983,8 @@ public class OperationsRepository {
             LocalDate serviceDate,
             LocalTime departureTime,
             OffsetDateTime departedAt,
-            OffsetDateTime endedAt) {
+            OffsetDateTime endedAt,
+            String status) {
         public LocalDateTime scheduledStart() {
             return serviceDate == null || departureTime == null ? null : LocalDateTime.of(serviceDate, departureTime);
         }

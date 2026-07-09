@@ -562,8 +562,31 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
 
   const [qrExpanded, setQrExpanded] = useState(false);
   const [registrations, setRegistrations] = useState<RegistrationDTO[]>([]);
+  const [singleTickets, setSingleTickets] = useState<SingleTripTicketView[]>([]);
+  const [selectedQrTicketId, setSelectedQrTicketId] = useState("");
+  const [qrNowMs] = useState(() => Date.now());
 
   const activeTicket = ctx.activeTicket;
+  const monthlyQrTickets = useMemo(() => collectMonthlyTickets(ctx), [ctx]);
+  const qrTicketOptions = useMemo(() => {
+    const byId = new Map<string, any>();
+    const addTicket = (ticket: any, kind: "MONTHLY" | "SINGLE") => {
+      if (!ticket?.qrCode) return;
+      const status = String(ticket.status || (kind === "MONTHLY" ? "ACTIVE" : "UNUSED")).toUpperCase();
+      if (kind === "MONTHLY" && status !== "ACTIVE") return;
+      if (kind === "SINGLE") {
+        if (status !== "UNUSED") return;
+        if (ticket.expiresAt && Date.parse(ticket.expiresAt) < qrNowMs) return;
+      }
+      const id = `${kind}-${ticket.ticketId ?? ticket.singleTripTicketId ?? ticket.qrCode}`;
+      byId.set(id, { ...ticket, __id: id, __kind: kind });
+    };
+    monthlyQrTickets.forEach((ticket) => addTicket(ticket, "MONTHLY"));
+    if (activeTicket) addTicket(activeTicket, "MONTHLY");
+    singleTickets.forEach((ticket) => addTicket(ticket, "SINGLE"));
+    return Array.from(byId.values());
+  }, [activeTicket, monthlyQrTickets, qrNowMs, singleTickets]);
+  const selectedQrTicket = qrTicketOptions.find((ticket) => ticket.__id === selectedQrTicketId) || qrTicketOptions[0] || null;
   const nextTrip = ctx.nextTrip;
   const activeRoute = nextTrip
     ? ctx.routes.find((r) => r.id === String(nextTrip.routeId))
@@ -615,10 +638,22 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
       .catch(() => {
         if (!cancelled) setRegistrations(ctx.registration ? [ctx.registration] : []);
       });
+    studentApi.singleTripTickets()
+      .then((list) => {
+        if (!cancelled) setSingleTickets(Array.isArray(list) ? list : []);
+      })
+      .catch(() => undefined);
     return () => {
       cancelled = true;
     };
   }, [ctx.registration]);
+
+  useEffect(() => {
+    if (!qrExpanded || !qrTicketOptions.length) return;
+    if (!selectedQrTicketId || !qrTicketOptions.some((ticket) => ticket.__id === selectedQrTicketId)) {
+      setSelectedQrTicketId(qrTicketOptions[0].__id);
+    }
+  }, [qrExpanded, qrTicketOptions, selectedQrTicketId]);
 
   const myRoutes = activeRegistrations.slice(0, 3).map((registration: RegistrationDTO) => {
     const route = ctx.routes.find((r: any) => r.id === String(registration.routeId));
@@ -721,10 +756,11 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
               <div className="flex flex-col items-center gap-3 shrink-0">
                 <motion.button
                   onClick={() => {
-                    if (!activeTicket) {
+                    if (!qrTicketOptions.length) {
                       toast.info("Chưa có vé để hiển thị.");
                       return;
                     }
+                    setSelectedQrTicketId(qrTicketOptions[0].__id);
                     setQrExpanded(true);
                   }}
                   whileHover={{ scale: 1.05 }}
@@ -952,7 +988,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
 
       {/* QR expand overlay — framer-motion animation (matches prototype) */}
       <AnimatePresence>
-        {qrExpanded && activeTicket?.qrCode && (
+        {qrExpanded && selectedQrTicket?.qrCode && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -964,10 +1000,10 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
           >
             <motion.div
               initial={{ scale: 0.5, opacity: 0, borderRadius: "50%" }}
-              animate={{ scale: 1, opacity: 1, borderRadius: "24px" }}
+              animate={{ scale: 1, opacity: 1, borderRadius: "32px" }}
               exit={{ scale: 0.5, opacity: 0, borderRadius: "50%" }}
               transition={{ type: "spring", stiffness: 300, damping: 25 }}
-              className="relative bg-[#14140f] text-white rounded-3xl p-5 sm:p-8 max-w-sm w-full min-w-0"
+              className="relative bg-[#14140f] text-white rounded-[32px] p-5 sm:p-8 max-w-sm w-full min-w-0"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between mb-4">
@@ -992,9 +1028,37 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
                   transition={{ delay: 0.15, type: "spring", stiffness: 200, damping: 18 }}
                   className="bg-white rounded-2xl p-4"
                 >
-                  <QRCodeCanvas value={activeTicket.qrCode} size={200} level="H" />
+                  <QRCodeCanvas value={selectedQrTicket.qrCode} size={200} level="H" />
                 </motion.div>
               </div>
+
+              {qrTicketOptions.length > 1 && (
+                <div className="mb-4 rounded-[24px] bg-white/6 p-2">
+                  <p className="mb-2 px-2 text-[11px] font-bold uppercase tracking-wide text-white/45">Đổi vé</p>
+                  <div className="space-y-1.5">
+                    {qrTicketOptions.map((ticket) => {
+                      const selected = ticket.__id === selectedQrTicket.__id;
+                      const routeLabel = ticket.routeCode || ticket.routeName || `#${ticket.ticketId}`;
+                      return (
+                        <button
+                          key={ticket.__id}
+                          type="button"
+                          onClick={() => setSelectedQrTicketId(ticket.__id)}
+                          className={cn(
+                            "flex w-full items-center justify-between gap-3 rounded-[18px] px-3 py-2 text-left text-xs transition-colors",
+                            selected ? "bg-[#beff50] text-[#14140f]" : "text-white/75 hover:bg-white/10"
+                          )}
+                        >
+                          <span className="min-w-0 truncate font-bold">
+                            {ticket.__kind === "SINGLE" ? "Vé lượt" : "Vé tháng"} · {routeLabel}
+                          </span>
+                          <span className="shrink-0 font-mono font-bold">#{ticket.ticketId}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
@@ -1004,16 +1068,16 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
               >
                 <div className="flex justify-between text-sm">
                   <span className="text-white/60">Mã vé</span>
-                  <span className="font-bold tabular-nums">#{activeTicket.ticketId}</span>
+                  <span className="font-bold tabular-nums">#{selectedQrTicket.ticketId}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-white/60">Tuyến</span>
-                  <span className="font-bold truncate ml-2">{activeTicket.routeCode || activeTicket.routeName}</span>
+                  <span className="font-bold truncate ml-2">{selectedQrTicket.routeCode || selectedQrTicket.routeName}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-white/60">Hiệu lực</span>
                   <span className="font-bold text-[#beff50]">
-                    Đến {formatDate(activeTicket.expiresAt || activeTicket.expiresOn)}
+                    Đến {formatDate(selectedQrTicket.expiresAt || selectedQrTicket.expiresOn)}
                   </span>
                 </div>
               </motion.div>
@@ -6452,7 +6516,12 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
         icon={<CreditCard className="size-7" />}
       />
 
-      <div className="grid grid-cols-1 gap-4 min-w-0 lg:grid-cols-[minmax(0,0.92fr)_minmax(320px,0.68fr)]">
+      <div className={cn(
+        "min-w-0 gap-4",
+        sepayOrder
+          ? "grid grid-cols-1 justify-items-center"
+          : "grid grid-cols-1 lg:grid-cols-[minmax(0,0.92fr)_minmax(320px,0.68fr)]"
+      )}>
         {/* Order details */}
         {!sepayOrder && <ScrollReveal>
           <ExpressiveCard variant="elevated" className="p-6 h-full min-w-0 overflow-hidden">
@@ -6738,7 +6807,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
               animate={{ opacity: 1, scale: 1 }}
               transition={{ type: "spring", stiffness: 240, damping: 22 }}
             >
-              <ExpressiveCard variant="elevated" className="p-8 h-full flex flex-col items-center justify-center text-center min-w-0"
+              <ExpressiveCard variant="elevated" className="p-8 h-full w-full max-w-[680px] flex flex-col items-center justify-center text-center min-w-0"
                 style={{ backgroundColor: "#beff50", color: "#14140f" }}
               >
                 <motion.div
@@ -6762,7 +6831,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
               </ExpressiveCard>
             </motion.div>
           ) : (
-            <ExpressiveCard variant="elevated" className="p-6 h-full min-w-0 overflow-hidden">
+            <ExpressiveCard variant="elevated" className="p-6 h-full w-full max-w-[680px] min-w-0 overflow-hidden">
               {/* Header with countdown */}
               <div className="flex items-center justify-between mb-4 min-w-0">
                 <div className="min-w-0">
