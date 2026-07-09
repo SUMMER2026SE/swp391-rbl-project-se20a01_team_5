@@ -50,6 +50,7 @@ import {
   Bell,
   Loader2,
   Search,
+  PackageSearch,
   X
 } from "lucide-react";
 import {
@@ -132,6 +133,7 @@ import {
   experienceApi,
   feedbackApi,
   coordinatorFeedbackApi,
+  coordinatorLostItemApi,
   notificationApi,
   messagingApi,
   type ScheduleDashboard,
@@ -139,6 +141,7 @@ import {
   type RouteStopDto,
   type LiveFleetVehicle,
   type ExperienceFeedbackCard,
+  type ExperienceLostItemCard,
   type ExperienceDashboardStat,
   type CoordinatorUniversityMetric,
   type CoordinatorUniversityRouteMetric,
@@ -222,7 +225,7 @@ export function CoordinatorModule({ activeId, onNavigate }: CoordinatorModulePro
       case "crd-notify":
         return <NotifyScreen ctx={ctx} />;
       case "crd-notifications":
-        return <SosNotificationsScreen ctx={ctx} />;
+        return <FeedbackScreen ctx={ctx} initialTab="sos" />;
       default:
         return <FallbackScreen activeId={activeId} />;
     }
@@ -1913,68 +1916,110 @@ function isPrivateMessageNotification(item: any) {
   return text.includes("tin nhắn") || text.includes("message") || text.includes("chat");
 }
 
+﻿// =============================================================================
+// Screen 9: Hỗ trợ và phản hồi (Feedback / Lost Items / SOS)
 // =============================================================================
-// Screen 9: Feedback queue (resolve)
-// =============================================================================
-function FeedbackScreen({ ctx }: { ctx: Ctx }) {
-  const [filter, setFilter] = useState<"all" | "sos" | "new" | "processing" | "resolved">("all");
+function FeedbackScreen({ ctx, initialTab }: { ctx: Ctx; initialTab?: string }) {
+  const [tab, setTab] = useState<'feedback' | 'lost' | 'sos'>(
+    initialTab === 'sos' ? 'sos' : initialTab === 'lost' ? 'lost' : 'feedback'
+  );
+  const [filter, setFilter] = useState<'all' | 'new' | 'processing' | 'resolved'>('all');
   const [responding, setResponding] = useState<number | null>(null);
   const [selectedFeedback, setSelectedFeedback] = useState<any | null>(null);
   const [responses, setResponses] = useState<Record<string, string>>({});
+  const [selectedLost, setSelectedLost] = useState<any | null>(null);
+  const [lostNotes, setLostNotes] = useState<Record<number, string>>({});
+
   const feedbackResource = useApi(() => coordinatorFeedbackApi.all(), (items) => items.map(mapFeedback), []);
+  const lostItemResource = useApi(() => coordinatorLostItemApi.all(), undefined, []);
   const feedbackItems = feedbackResource.data || ctx.feedback;
+  const lostItems: ExperienceLostItemCard[] = lostItemResource.data || [];
 
-  const filtered = feedbackItems.filter((f: any) => {
-    const isSos = isSosFeedback(f);
-    if (filter === "sos") return isSos;
-    if (filter === "all") return true;
-    return f.status === filter;
-  }).sort((a: any, b: any) => {
-    const aTime = new Date(a.createdAt || 0).getTime() || 0;
-    const bTime = new Date(b.createdAt || 0).getTime() || 0;
-    return bTime - aTime;
-  });
+  const feedbackOnly = feedbackItems.filter((f: any) => !isSosFeedback(f));
+  const sosOnly = feedbackItems.filter(isSosFeedback);
 
-  const resolve = async (item: any) => {
+  const applyStatusFilter = (items: any[]) =>
+    items
+      .filter((f: any) => filter === 'all' || f.status === filter)
+      .sort((a: any, b: any) => {
+        const at = new Date(a.createdAt || a.reportedAt || 0).getTime() || 0;
+        const bt = new Date(b.createdAt || b.reportedAt || 0).getTime() || 0;
+        return bt - at;
+      });
+
+  const filteredFeedback = applyStatusFilter(feedbackOnly);
+  const filteredSos = applyStatusFilter(sosOnly);
+  const filteredLost = lostItems
+    .filter((l) => {
+      if (filter === 'all') return true;
+      const mapped = l.status === 'REPORTED' ? 'new' : l.status === 'SEARCHING' ? 'processing' : 'resolved';
+      return mapped === filter;
+    })
+    .sort((a, b) => {
+      const at = new Date(a.reportedAt || 0).getTime() || 0;
+      const bt = new Date(b.reportedAt || 0).getTime() || 0;
+      return bt - at;
+    });
+
+  const pendingFeedback = feedbackOnly.filter((f: any) => f.status !== 'resolved').length;
+  const pendingLost = lostItems.filter((l) => l.status === 'REPORTED' || l.status === 'SEARCHING').length;
+  const pendingSos = sosOnly.filter((f: any) => f.status !== 'resolved').length;
+
+  const resolveFeedback = async (item: any) => {
     const id = Number(item.id);
     const isSos = isSosFeedback(item);
-    const response = responses[item.id]?.trim() || (isSos ? "Đã tiếp nhận và xử lý thông báo SOS." : "Đã tiếp nhận và xử lý phản hồi.");
+    const response = responses[item.id]?.trim() || (isSos ? 'Đã tiếp nhận và xử lý thông báo SOS.' : 'Đã tiếp nhận và xử lý phản hồi.');
     setResponding(id);
     try {
       await coordinatorFeedbackApi.resolve(id, response);
-      toast.success("Đã xử lý phản hồi");
-      setResponses((prev) => {
-        const next = { ...prev };
-        delete next[item.id];
-        return next;
-      });
+      toast.success(isSos ? 'Đã xử lý SOS' : 'Đã xử lý phản hồi');
+      setResponses((prev) => { const next = { ...prev }; delete next[item.id]; return next; });
       setSelectedFeedback(null);
       ctx.reload();
       feedbackResource.reload();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Không thể xử lý");
+      toast.error(e instanceof Error ? e.message : 'Không thể xử lý');
     } finally {
       setResponding(null);
     }
   };
 
+  const updateLostItem = async (item: ExperienceLostItemCard, status: string) => {
+    const id = item.lostItemReportId;
+    const notes = lostNotes[id]?.trim() || '';
+    setResponding(id);
+    try {
+      await coordinatorLostItemApi.update(id, { status, notes: notes || undefined });
+      toast.success('Đã cập nhật mất đồ');
+      setLostNotes((prev) => { const next = { ...prev }; delete next[id]; return next; });
+      setSelectedLost(null);
+      lostItemResource.reload();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Không thể cập nhật');
+    } finally {
+      setResponding(null);
+    }
+  };
+
+  const reloadAll = () => { feedbackResource.reload(); lostItemResource.reload(); };
+  const loading = (feedbackResource.loading && !feedbackResource.data) || (lostItemResource.loading && !lostItemResource.data);
+
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
-        title="Phản hồi"
-        description="Xử lý phản hồi từ hành khách."
-        icon={<Star className="size-7" />}
+        title="Hỗ trợ và phản hồi"
+        description="Xử lý phản hồi, báo mất đồ và SOS từ hành khách."
+        icon={<MessageSquare className="size-7" />}
         actions={
           <div className="flex gap-2">
-            <ExpressiveButton variant="outlined" size="sm" onClick={feedbackResource.reload}>
-              <RefreshCw className={cn("size-4", feedbackResource.loading && "animate-spin")} />
+            <ExpressiveButton variant="outlined" size="sm" onClick={reloadAll}>
+              <RefreshCw className={cn('size-4', loading && 'animate-spin')} />
               Làm mới
             </ExpressiveButton>
             <Select value={filter} onValueChange={(v: any) => setFilter(v)}>
               <SelectTrigger className="w-full sm:w-44"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tất cả</SelectItem>
-                <SelectItem value="sos">SOS</SelectItem>
                 <SelectItem value="new">Mới</SelectItem>
                 <SelectItem value="processing">Đang xử lý</SelectItem>
                 <SelectItem value="resolved">Đã xử lý</SelectItem>
@@ -1983,96 +2028,216 @@ function FeedbackScreen({ ctx }: { ctx: Ctx }) {
           </div>
         }
       />
-      {feedbackResource.loading && !feedbackResource.data ? (
-        <LoadingScreen label="Đang tải phản hồi..." />
-      ) : feedbackResource.error ? (
-        <ErrorScreen message={feedbackResource.error} onRetry={feedbackResource.reload} />
-      ) : filtered.length === 0 ? (
-        <EmptyState icon={<Star className="size-7" />} title="Không có phản hồi" />
+
+      <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
+        <TabsList className="grid w-full grid-cols-3 rounded-2xl bg-surface-container-low p-1 shadow-none">
+          <TabsTrigger value="feedback" className="rounded-xl gap-1.5">
+            <Star className="size-3.5" />
+            Phản hồi
+            {pendingFeedback > 0 && <Badge variant="secondary" className="ml-1 h-5 min-w-5 px-1 text-[10px]">{pendingFeedback}</Badge>}
+          </TabsTrigger>
+          <TabsTrigger value="lost" className="rounded-xl gap-1.5">
+            <PackageSearch className="size-3.5" />
+            Mất đồ
+            {pendingLost > 0 && <Badge variant="secondary" className="ml-1 h-5 min-w-5 px-1 text-[10px]">{pendingLost}</Badge>}
+          </TabsTrigger>
+          <TabsTrigger value="sos" className="rounded-xl gap-1.5">
+            <AlertTriangle className="size-3.5" />
+            SOS
+            {pendingSos > 0 && <Badge className="ml-1 h-5 min-w-5 px-1 text-[10px] bg-error text-on-error">{pendingSos}</Badge>}
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {loading ? (
+        <LoadingScreen label="Đang tải dữ liệu..." />
       ) : (
-        <StaggerGroup className="space-y-3 min-w-0">
-          {filtered.map((f: any) => {
-            const isSos = isSosFeedback(f);
-            const isResolved = f.status === "resolved";
-            return (
-              <StaggerItem key={f.id}>
-                <ExpressiveCard
-                  variant="elevated"
-                  className={cn("p-5 min-w-0", isSos && "border-error/40 bg-error-container/10")}
-                >
-                  <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-start min-w-0">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2 mb-2 min-w-0">
-                        {isSos && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-error text-on-error px-2.5 py-1 text-xs font-bold">
-                            <AlertTriangle className="size-3.5" />
-                            SOS
-                          </span>
-                        )}
-                        <M3StatusPill
-                          label={isResolved ? "Đã xử lý" : "Chờ xử lý"}
-                          tone={isResolved ? "success" : isSos ? "error" : "warning"}
-                        />
-                        <span className="text-xs text-on-surface-variant">{formatDate(f.createdAt)}</span>
-                      </div>
-                      <p className="font-bold text-on-surface truncate">
-                        {isSos ? "Thông báo SOS" : f.studentName}
-                      </p>
-                      <p className="text-xs text-on-surface-variant mt-0.5">
-                        {f.routeName || f.routeCode || "Chưa rõ tuyến"}{f.tripId ? ` · Chuyến #${f.tripId}` : ""}
-                      </p>
-                      <div className="flex items-center gap-1 mt-2">
-                        {Array.from({ length: 5 }).map((_, i) => (
-                          <Star key={i} className={cn("size-3", i < (f.rating || 0) ? "fill-amber-400 text-amber-400" : "text-outline")} />
-                        ))}
-                        <span className="text-xs text-on-surface-variant ml-2">{isSos ? "Khẩn cấp" : f.category}</span>
-                      </div>
-                      <p className="mt-3 text-sm text-on-surface whitespace-pre-wrap break-words">{f.content}</p>
-                      {f.response && (
-                        <div className="mt-3 p-2 rounded-lg bg-success-container/30 text-xs">
-                          <p className="font-bold text-success">Phản hồi xử lý:</p>
-                          <p>{f.response}</p>
+        <>
+          {/* ===== TAB: PHẢN HỒI ===== */}
+          {tab === "feedback" && (
+            filteredFeedback.length === 0 ? (
+              <EmptyState icon={<Star className="size-7" />} title="Không có phản hồi" />
+            ) : (
+              <StaggerGroup className="space-y-3 min-w-0">
+                {filteredFeedback.map((f: any) => {
+                  const isResolved = f.status === "resolved";
+                  return (
+                    <StaggerItem key={f.id}>
+                      <ExpressiveCard variant="elevated" className="p-5 min-w-0">
+                        <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-start min-w-0">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2 mb-2 min-w-0">
+                              <M3StatusPill label={isResolved ? "Đã xử lý" : "Chờ xử lý"} tone={isResolved ? "success" : "warning"} />
+                              <span className="text-xs text-on-surface-variant">{formatDate(f.createdAt)}</span>
+                            </div>
+                            <p className="font-bold text-on-surface truncate">{f.studentName}</p>
+                            <p className="text-xs text-on-surface-variant mt-0.5">
+                              {f.routeName || f.routeCode || "Chưa rõ tuyến"}{f.tripId ? " · Chuyến #" + f.tripId : ""}
+                            </p>
+                            <div className="flex items-center gap-1 mt-2">
+                              {Array.from({ length: 5 }).map((_, i) => (
+                                <Star key={i} className={cn("size-3", i < (f.rating || 0) ? "fill-amber-400 text-amber-400" : "text-outline")} />
+                              ))}
+                              <span className="text-xs text-on-surface-variant ml-2">{f.category}</span>
+                            </div>
+                            <p className="mt-3 text-sm text-on-surface whitespace-pre-wrap break-words">{f.content}</p>
+                            {f.response && (
+                              <div className="mt-3 p-2 rounded-lg bg-success-container/30 text-xs">
+                                <p className="font-bold text-success">Phản hồi xử lý:</p>
+                                <p>{f.response}</p>
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex md:flex-col gap-2 md:items-end">
+                            {!isResolved ? (
+                              <ExpressiveButton
+                                variant="filled" size="sm"
+                                onClick={() => {
+                                  setSelectedFeedback(f);
+                                  setResponses((prev) => ({ ...prev, [f.id]: prev[f.id] || "Đã tiếp nhận và xử lý phản hồi." }));
+                                }}
+                                disabled={responding === Number(f.id)}
+                              >
+                                {responding === Number(f.id) ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+                                Xử lý
+                              </ExpressiveButton>
+                            ) : (
+                              <ExpressiveButton variant="tonal" size="sm" disabled><CheckCircle2 className="size-4" /> Đã xử lý</ExpressiveButton>
+                            )}
+                          </div>
                         </div>
-                      )}
-                    </div>
-                    <div className="flex md:flex-col gap-2 md:items-end">
-                      {!isResolved ? (
-                        <ExpressiveButton
-                          variant="filled"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedFeedback(f);
-                            setResponses((prev) => ({
-                              ...prev,
-                              [f.id]: prev[f.id] || (isSos ? "Đã tiếp nhận và xử lý thông báo SOS." : "Đã tiếp nhận và xử lý phản hồi."),
-                            }));
-                          }}
-                          disabled={responding === Number(f.id)}
-                        >
-                          {responding === Number(f.id) ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
-                          Xử lý
-                        </ExpressiveButton>
-                      ) : (
-                        <ExpressiveButton variant="tonal" size="sm" disabled>
-                          <CheckCircle2 className="size-4" />
-                          Đã xử lý
-                        </ExpressiveButton>
-                      )}
-                    </div>
-                  </div>
-              </ExpressiveCard>
-            </StaggerItem>
-          );})}
-        </StaggerGroup>
+                      </ExpressiveCard>
+                    </StaggerItem>
+                  );
+                })}
+              </StaggerGroup>
+            )
+          )}
+
+          {/* ===== TAB: MẤT ĐỒ ===== */}
+          {tab === "lost" && (
+            filteredLost.length === 0 ? (
+              <EmptyState icon={<PackageSearch className="size-7" />} title="Không có báo mất đồ" />
+            ) : (
+              <StaggerGroup className="space-y-3 min-w-0">
+                {filteredLost.map((item) => {
+                  const isResolved = item.status === "FOUND" || item.status === "CLOSED";
+                  const statusLabel = item.status === "REPORTED" ? "Mới báo" : item.status === "SEARCHING" ? "Đang tìm" : item.status === "FOUND" ? "Đã tìm thấy" : "Đóng";
+                  const statusTone = item.status === "REPORTED" ? "warning" : item.status === "SEARCHING" ? "info" : "success";
+                  return (
+                    <StaggerItem key={item.lostItemReportId}>
+                      <ExpressiveCard variant="elevated" className="p-5 min-w-0">
+                        <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-start min-w-0">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2 mb-2 min-w-0">
+                              <M3StatusPill label={statusLabel} tone={statusTone as any} />
+                              <span className="text-xs text-on-surface-variant">{formatDate(item.reportedAt)}</span>
+                            </div>
+                            <p className="font-bold text-on-surface truncate">{item.reporterName || "Sinh viên"}</p>
+                            <p className="text-xs text-on-surface-variant mt-0.5">
+                              {item.routeName || item.routeCode || "Chưa rõ tuyến"}{item.tripId ? " · Chuyến #" + item.tripId : ""}
+                            </p>
+                            <p className="mt-3 text-sm text-on-surface whitespace-pre-wrap break-words">{item.itemDescription}</p>
+                            {item.notes && (
+                              <div className="mt-3 p-2 rounded-lg bg-surface-container-low text-xs">
+                                <p className="font-bold">Ghi chú:</p>
+                                <p>{item.notes}</p>
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex md:flex-col gap-2 md:items-end">
+                            {!isResolved ? (
+                              <>
+                                <ExpressiveButton
+                                  variant="filled" size="sm"
+                                  onClick={() => {
+                                    setSelectedLost({ ...item, _nextStatus: item.status });
+                                    setLostNotes((prev) => ({ ...prev, [item.lostItemReportId]: item.notes || "" }));
+                                  }}
+                                  disabled={responding === item.lostItemReportId}
+                                >
+                                  {responding === item.lostItemReportId ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+                                  Xử lý
+                                </ExpressiveButton>
+                              </>
+                            ) : (
+                              <ExpressiveButton variant="tonal" size="sm" disabled><CheckCircle2 className="size-4" /> {statusLabel}</ExpressiveButton>
+                            )}
+                          </div>
+                        </div>
+                      </ExpressiveCard>
+                    </StaggerItem>
+                  );
+                })}
+              </StaggerGroup>
+            )
+          )}
+
+          {/* ===== TAB: SOS ===== */}
+          {tab === "sos" && (
+            filteredSos.length === 0 ? (
+              <EmptyState icon={<AlertTriangle className="size-7" />} title="Không có SOS" description="Tin nhắn riêng sẽ được gom vào biểu tượng chat ở góc màn hình." />
+            ) : (
+              <StaggerGroup className="space-y-3 min-w-0">
+                {filteredSos.map((item: any) => {
+                  const isResolved = item.status === "resolved";
+                  return (
+                    <StaggerItem key={item.id}>
+                      <ExpressiveCard variant="elevated" className="border-error/40 bg-error-container/10 p-5 min-w-0">
+                        <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-start min-w-0">
+                          <div className="min-w-0">
+                            <div className="mb-2 flex flex-wrap items-center gap-2">
+                              <span className="inline-flex items-center gap-1 rounded-full bg-error px-2.5 py-1 text-xs font-bold text-on-error">
+                                <AlertTriangle className="size-3.5" />
+                                SOS
+                              </span>
+                              <M3StatusPill label={isResolved ? "Đã xử lý" : "Khẩn cấp"} tone={isResolved ? "success" : "error"} />
+                              <span className="text-xs text-on-surface-variant">{formatDateTime(item.createdAt)}</span>
+                            </div>
+                            <p className="font-bold text-on-surface truncate">{item.studentName || "Sinh viên báo SOS"}</p>
+                            <p className="text-xs text-on-surface-variant mt-0.5">
+                              {item.routeName || item.routeCode || "Chưa rõ tuyến"}{item.tripId ? " · Chuyến #" + item.tripId : ""}
+                            </p>
+                            <p className="mt-3 whitespace-pre-wrap break-words text-sm text-on-surface">{item.content}</p>
+                            {item.response && (
+                              <div className="mt-3 rounded-lg bg-success-container/30 p-2 text-xs">
+                                <p className="font-bold text-success">Ghi chú xử lý:</p>
+                                <p>{item.response}</p>
+                              </div>
+                            )}
+                          </div>
+                          {!isResolved && (
+                            <ExpressiveButton
+                              variant="filled" size="sm"
+                              onClick={() => {
+                                setSelectedFeedback(item);
+                                setResponses((prev) => ({ ...prev, [item.id]: prev[item.id] || "Đã tiếp nhận và xử lý thông báo SOS." }));
+                              }}
+                              disabled={responding === Number(item.id)}
+                            >
+                              {responding === Number(item.id) ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+                              Xử lý
+                            </ExpressiveButton>
+                          )}
+                        </div>
+                      </ExpressiveCard>
+                    </StaggerItem>
+                  );
+                })}
+              </StaggerGroup>
+            )
+          )}
+        </>
       )}
 
+      {/* Dialog xử lý feedback/SOS */}
       <Dialog open={!!selectedFeedback} onOpenChange={(open) => !open && setSelectedFeedback(null)}>
         {selectedFeedback && (
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>Ghi chú xử lý</DialogTitle>
               <DialogDescription>
-                {selectedFeedback.studentName || "Phản hồi"}{selectedFeedback.tripId ? ` · Chuyến #${selectedFeedback.tripId}` : ""}
+                {selectedFeedback.studentName || "Phản hồi"}{selectedFeedback.tripId ? " · Chuyến #" + selectedFeedback.tripId : ""}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-3 py-2">
@@ -2092,18 +2257,10 @@ function FeedbackScreen({ ctx }: { ctx: Ctx }) {
               </div>
             </div>
             <DialogFooter>
-              <ExpressiveButton
-                variant="text"
-                onClick={() => setSelectedFeedback(null)}
-                disabled={responding === Number(selectedFeedback.id)}
-              >
+              <ExpressiveButton variant="text" onClick={() => setSelectedFeedback(null)} disabled={responding === Number(selectedFeedback.id)}>
                 Hủy
               </ExpressiveButton>
-              <ExpressiveButton
-                variant="filled"
-                onClick={() => resolve(selectedFeedback)}
-                disabled={responding === Number(selectedFeedback.id)}
-              >
+              <ExpressiveButton variant="filled" onClick={() => resolveFeedback(selectedFeedback)} disabled={responding === Number(selectedFeedback.id)}>
                 {responding === Number(selectedFeedback.id) ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
                 Lưu xử lý
               </ExpressiveButton>
@@ -2111,96 +2268,72 @@ function FeedbackScreen({ ctx }: { ctx: Ctx }) {
           </DialogContent>
         )}
       </Dialog>
-    </PageTransition>
-  );
-}
 
-// =============================================================================
-// Screen 10: SOS notifications
-// =============================================================================
-function SosNotificationsScreen({ ctx }: { ctx: Ctx }) {
-  const [resolving, setResolving] = useState<number | null>(null);
-  const feedbackResource = useApi(() => coordinatorFeedbackApi.all(), (items) => items.map(mapFeedback), []);
-  const sosItems = (feedbackResource.data || ctx.feedback)
-    .filter(isSosFeedback)
-    .sort((a: any, b: any) => (new Date(b.createdAt || 0).getTime() || 0) - (new Date(a.createdAt || 0).getTime() || 0));
-
-  const resolve = async (item: any) => {
-    const id = Number(item.id);
-    setResolving(id);
-    try {
-      await coordinatorFeedbackApi.resolve(id, "Đã tiếp nhận và xử lý thông báo SOS.");
-      toast.success("Đã xử lý SOS");
-      feedbackResource.reload();
-      ctx.reload();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Không thể xử lý SOS");
-    } finally {
-      setResolving(null);
-    }
-  };
-
-  return (
-    <PageTransition className="space-y-6 min-w-0">
-      <PageHeader
-        title="Thông báo SOS"
-        description="Chỉ hiển thị cảnh báo SOS cần điều phối xử lý. Tin nhắn riêng nằm ở biểu tượng chat."
-        icon={<AlertTriangle className="size-7" />}
-        actions={
-          <ExpressiveButton variant="outlined" size="sm" onClick={feedbackResource.reload}>
-            <RefreshCw className={cn("size-4", feedbackResource.loading && "animate-spin")} />
-            Làm mới
-          </ExpressiveButton>
-        }
-      />
-      {feedbackResource.loading && !feedbackResource.data ? (
-        <LoadingScreen label="Đang tải SOS..." />
-      ) : feedbackResource.error ? (
-        <ErrorScreen message={feedbackResource.error} onRetry={feedbackResource.reload} />
-      ) : sosItems.length === 0 ? (
-        <EmptyState icon={<AlertTriangle className="size-7" />} title="Không có SOS" description="Tin nhắn riêng sẽ được gom vào biểu tượng chat ở góc màn hình." />
-      ) : (
-        <StaggerGroup className="space-y-3 min-w-0">
-          {sosItems.map((item: any) => {
-            const resolved = item.status === "resolved";
-            return (
-              <StaggerItem key={item.id}>
-                <ExpressiveCard variant="elevated" className="border-error/40 bg-error-container/10 p-5 min-w-0">
-                  <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-start min-w-0">
-                    <div className="min-w-0">
-                      <div className="mb-2 flex flex-wrap items-center gap-2">
-                        <span className="inline-flex items-center gap-1 rounded-full bg-error px-2.5 py-1 text-xs font-bold text-on-error">
-                          <AlertTriangle className="size-3.5" />
-                          SOS
-                        </span>
-                        <M3StatusPill label={resolved ? "Đã xử lý" : "Khẩn cấp"} tone={resolved ? "success" : "error"} />
-                        <span className="text-xs text-on-surface-variant">{formatDateTime(item.createdAt)}</span>
-                      </div>
-                      <p className="font-bold text-on-surface truncate">{item.studentName || "Sinh viên báo SOS"}</p>
-                      <p className="text-xs text-on-surface-variant mt-0.5">
-                        {item.routeName || item.routeCode || "Chưa rõ tuyến"}{item.tripId ? ` · Chuyến #${item.tripId}` : ""}
-                      </p>
-                      <p className="mt-3 whitespace-pre-wrap break-words text-sm text-on-surface">{item.content}</p>
-                      {item.response && (
-                        <div className="mt-3 rounded-lg bg-success-container/30 p-2 text-xs">
-                          <p className="font-bold text-success">Ghi chú xử lý:</p>
-                          <p>{item.response}</p>
-                        </div>
-                      )}
-                    </div>
-                    {!resolved && (
-                      <ExpressiveButton variant="filled" size="sm" onClick={() => resolve(item)} disabled={resolving === Number(item.id)}>
-                        {resolving === Number(item.id) ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
-                        Xử lý
-                      </ExpressiveButton>
-                    )}
-                  </div>
-                </ExpressiveCard>
-              </StaggerItem>
-            );
-          })}
-        </StaggerGroup>
-      )}
+      {/* Dialog xử lý mất đồ */}
+      <Dialog open={!!selectedLost} onOpenChange={(open) => !open && setSelectedLost(null)}>
+        {selectedLost && (
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Xử lý mất đồ</DialogTitle>
+              <DialogDescription>
+                {selectedLost.reporterName || "Sinh viên"}{selectedLost.tripId ? " · Chuyến #" + selectedLost.tripId : ""}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <div className="rounded-xl bg-surface-container-low p-3 text-sm text-on-surface">
+                {selectedLost.itemDescription}
+              </div>
+              <div>
+                <Label className="text-xs font-bold">Trạng thái</Label>
+                <div className="flex gap-2 mt-1.5">
+                  <ExpressiveButton
+                    variant={selectedLost._nextStatus === "SEARCHING" ? "filled" : "outlined"} size="sm"
+                    onClick={() => setSelectedLost({ ...selectedLost, _nextStatus: "SEARCHING" })}
+                  >
+                    Đang tìm
+                  </ExpressiveButton>
+                  <ExpressiveButton
+                    variant={selectedLost._nextStatus === "FOUND" ? "filled" : "outlined"} size="sm"
+                    onClick={() => setSelectedLost({ ...selectedLost, _nextStatus: "FOUND" })}
+                  >
+                    Đã tìm thấy
+                  </ExpressiveButton>
+                  <ExpressiveButton
+                    variant={selectedLost._nextStatus === "CLOSED" ? "filled" : "outlined"} size="sm"
+                    onClick={() => setSelectedLost({ ...selectedLost, _nextStatus: "CLOSED" })}
+                  >
+                    Đóng
+                  </ExpressiveButton>
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs font-bold">Ghi chú</Label>
+                <Textarea
+                  className="mt-1.5"
+                  placeholder="Nhập ghi chú..."
+                  value={lostNotes[selectedLost.lostItemReportId] || ""}
+                  onChange={(e) => setLostNotes((prev) => ({ ...prev, [selectedLost.lostItemReportId]: e.target.value }))}
+                  rows={3}
+                  autoFocus
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <ExpressiveButton variant="text" onClick={() => setSelectedLost(null)} disabled={responding === selectedLost.lostItemReportId}>
+                Hủy
+              </ExpressiveButton>
+              <ExpressiveButton
+                variant="filled"
+                onClick={() => updateLostItem(selectedLost, selectedLost._nextStatus || "SEARCHING")}
+                disabled={responding === selectedLost.lostItemReportId}
+              >
+                {responding === selectedLost.lostItemReportId ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+                Lưu xử lý
+              </ExpressiveButton>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
     </PageTransition>
   );
 }
