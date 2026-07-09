@@ -699,6 +699,12 @@ function LiveFleetMap({ vehicles }: { vehicles: LiveFleetVehicle[] }) {
   const [previews, setPreviews] = useState<Record<number, RouteMapPreviewDTO>>({});
   const [arrivals, setArrivals] = useState<Record<number, LiveArrivalDTO[]>>({});
   const [fallbackRouteIds, setFallbackRouteIds] = useState<number[]>([]);
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => setTick((t) => t + 1), 2000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -808,6 +814,7 @@ function LiveFleetMap({ vehicles }: { vehicles: LiveFleetVehicle[] }) {
   ), [previews]);
 
   const buses = useMemo<JourneyBus[]>(() => {
+    const _t = tick;
     const fromArrivals = Object.values(previews).flatMap((preview) =>
       (arrivals[preview.routeId] || []).map((arrival, index) => {
         const lat = numberValue(arrival.latitude);
@@ -851,7 +858,7 @@ function LiveFleetMap({ vehicles }: { vehicles: LiveFleetVehicle[] }) {
         driverName: vehicle.driverName,
       } satisfies JourneyBus;
     }).filter(Boolean) as JourneyBus[];
-  }, [arrivals, previews, vehicles]);
+  }, [arrivals, previews, vehicles, tick]);
 
   return (
     <div className="relative h-full w-full">
@@ -889,7 +896,24 @@ function pointOnPreview(preview: RouteMapPreviewDTO | undefined, index: number) 
     .map((point) => ({ lat: numberValue(point.latitude), lng: numberValue(point.longitude) }))
     .filter(validCoordinate);
   if (!points.length) return null;
-  return points[Math.min(points.length - 1, Math.floor(points.length * (0.25 + (index % 3) * 0.2)))];
+
+  const routeId = preview?.routeId || 0;
+  const now = new Date();
+  const cycleMinutes = 55 + Math.abs(routeId % 25);
+  const cycleSeconds = cycleMinutes * 60;
+  const secondOfDay = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+  const offsetSeconds = (Math.abs(routeId) * 60) + index * Math.max(480, Math.floor(cycleSeconds / 3));
+  const progress = ((secondOfDay + offsetSeconds) % cycleSeconds) / cycleSeconds;
+
+  const target = progress * (points.length - 1);
+  const left = Math.min(points.length - 2, Math.floor(target));
+  const ratio = target - left;
+  const a = points[left];
+  const b = points[left + 1] || a;
+  return {
+    lat: a.lat + (b.lat - a.lat) * ratio,
+    lng: a.lng + (b.lng - a.lng) * ratio,
+  };
 }
 
 // =============================================================================
