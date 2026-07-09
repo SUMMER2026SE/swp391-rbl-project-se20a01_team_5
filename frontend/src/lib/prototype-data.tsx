@@ -513,6 +513,7 @@ export function useDriverPrototypeData() {
       trips: (trips.raw || []).map((t: DriverTripView) => ({
         id: String(t.tripId),
         routeId: String(t.routeId),
+        routeName: t.routeName,
         busId: String(t.busId ?? 0),
         driverId: "",
         assistantId: "",

@@ -18,6 +18,8 @@ import com.unibus.api.operations.OperationsDtos.DriverTripOverview;
 import com.unibus.api.operations.OperationsDtos.DriverTripView;
 import com.unibus.api.operations.OperationsDtos.VehicleLocationRequest;
 import com.unibus.api.security.CurrentUser;
+import com.unibus.api.transport.JourneyTrackingService;
+import com.unibus.api.transport.dto.TransportDtos.JourneyTrackingSnapshot;
 
 import jakarta.validation.Valid;
 
@@ -27,9 +29,11 @@ import jakarta.validation.Valid;
 public class DriverTripController {
 
     private final OperationsService operationsService;
+    private final JourneyTrackingService journeyTrackingService;
 
-    public DriverTripController(OperationsService operationsService) {
+    public DriverTripController(OperationsService operationsService, JourneyTrackingService journeyTrackingService) {
         this.operationsService = operationsService;
+        this.journeyTrackingService = journeyTrackingService;
     }
 
     @GetMapping
@@ -56,6 +60,11 @@ public class DriverTripController {
             @AuthenticationPrincipal CurrentUser currentUser,
             @PathVariable Integer tripId) {
         return ApiResponse.ok("Trip ended", operationsService.endTrip(currentUser, tripId));
+    }
+
+    @GetMapping("/routes/{routeId}/tracking")
+    ApiResponse<JourneyTrackingSnapshot> trackRoute(@PathVariable Integer routeId) {
+        return ApiResponse.ok("Driver route tracking retrieved", journeyTrackingService.routeSnapshot(routeId, null, null));
     }
 
     @PostMapping("/{tripId}/location")

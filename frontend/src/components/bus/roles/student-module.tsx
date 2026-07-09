@@ -3741,11 +3741,13 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                         <p className="truncate text-base font-semibold text-[#14140f]">{selectedVehicle.plateNumber || "Xe theo lịch tuyến"}</p>
                         <p className="mt-1 text-xs text-[#6B6B6B]">Xe sắp tới · Trạm kế: {selectedVehicle.nextStopName || "đang xác định"}</p>
                       </div>
+                        {selectedVehicle.driverName && <p className="mt-1 text-xs font-semibold text-[#3f5f0b]">TÃ i xáº¿: {selectedVehicle.driverName}</p>}
                       <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
                         <InfoCell label="Tốc độ" value={`${Math.round(numberValue(selectedVehicle.speedKmh))} km/h`} />
                         <InfoCell label="Tải" value={selectedVehicle.occupancy != null && selectedVehicle.capacity ? `${selectedVehicle.occupancy}/${selectedVehicle.capacity}` : "--"} />
                         <InfoCell label="Biển số" value={selectedVehicle.plateNumber || selectedVehicle.vehicleId || "--"} />
                         <InfoCell label="Tuyến" value={selectedVehicle.routeCode || routeCode} />
+                        <InfoCell label="TÃ i xáº¿" value={selectedVehicle.driverName || "--"} />
                       </div>
                     </motion.div>
                   ) : (

@@ -304,6 +304,7 @@ export const JourneyMap = React.memo(function JourneyMap({
   const routeLayerRef = React.useRef<any>(null);
   const vehicleLayerRef = React.useRef<any>(null);
   const lastGeometryKeyRef = React.useRef("");
+  const fitFrameRef = React.useRef(0);
   const [mapReadyToken, setMapReadyToken] = React.useState(0);
 
   const effectivePolylines = polylines.length ? polylines : walkPolylines;
@@ -366,6 +367,7 @@ export const JourneyMap = React.memo(function JourneyMap({
     return () => {
       disposed = true;
       if (resizeFrame) window.cancelAnimationFrame(resizeFrame);
+      if (fitFrameRef.current) window.cancelAnimationFrame(fitFrameRef.current);
       resizeObserver?.disconnect();
       if (mapRef.current) {
         mapRef.current.remove();
@@ -490,7 +492,9 @@ export const JourneyMap = React.memo(function JourneyMap({
 
     if (fitOnStopsChange && !allPoints.length && lastGeometryKeyRef.current) {
       lastGeometryKeyRef.current = "";
-      window.requestAnimationFrame(() => {
+      if (fitFrameRef.current) window.cancelAnimationFrame(fitFrameRef.current);
+      fitFrameRef.current = window.requestAnimationFrame(() => {
+        if (mapRef.current !== map) return;
         map.stop();
         map.invalidateSize({ pan: false });
         map.setView([16.0544, 108.2022], 12, {
@@ -504,7 +508,9 @@ export const JourneyMap = React.memo(function JourneyMap({
     if (fitOnStopsChange && allPoints.length && geometryKey !== lastGeometryKeyRef.current) {
       lastGeometryKeyRef.current = geometryKey;
       const bounds = L.latLngBounds(allPoints.map((point) => [point.lat, point.lng]));
-      window.requestAnimationFrame(() => {
+      if (fitFrameRef.current) window.cancelAnimationFrame(fitFrameRef.current);
+      fitFrameRef.current = window.requestAnimationFrame(() => {
+        if (mapRef.current !== map) return;
         map.stop();
         map.invalidateSize({ pan: false });
         if (bounds.isValid()) {

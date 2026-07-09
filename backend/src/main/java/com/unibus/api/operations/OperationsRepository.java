@@ -734,7 +734,9 @@ public class OperationsRepository {
             return List.of();
         }
         return jdbcTemplate.query("""
-                SELECT rs.route_stop_id, s.stop_id, s.stop_name, rs.stop_order, rs.minutes_from_previous_stop
+                SELECT rs.route_stop_id, s.stop_id, s.stop_name, rs.stop_order, rs.minutes_from_previous_stop,
+                       COALESCE(rs.station_direction, 0) AS station_direction, rs.path_points,
+                       s.latitude, s.longitude
                 FROM bus_schedules bs
                 JOIN route_stops rs ON rs.route_id = bs.route_id
                 JOIN stops s ON s.stop_id = rs.stop_id
@@ -745,7 +747,11 @@ public class OperationsRepository {
                         rs.getInt("stop_id"),
                         rs.getString("stop_name"),
                         rs.getInt("stop_order"),
-                        (Integer) rs.getObject("minutes_from_previous_stop")), scheduleId);
+                        (Integer) rs.getObject("minutes_from_previous_stop"),
+                        rs.getInt("station_direction"),
+                        rs.getString("path_points"),
+                        toDouble(rs.getObject("latitude")),
+                        toDouble(rs.getObject("longitude"))), scheduleId);
     }
 
     public void updateTripLocation(Integer tripId, double longitude, double latitude, Double speedKmh,

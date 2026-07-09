@@ -455,6 +455,9 @@ export interface JourneyTrackingSnapshotDTO {
     nextStopName?: string;
     etaMinutes?: number;
     distanceMeters?: number;
+    tripId?: number;
+    driverName?: string;
+    simulated?: boolean;
   }[];
   stopEtas?: {
     stopId: number;
@@ -1256,6 +1259,10 @@ export interface TripStopView {
   stopName: string;
   stopOrder: number;
   minutesFromPreviousStop?: number;
+  stationDirection?: number;
+  pathPoints?: string;
+  latitude?: number | string;
+  longitude?: number | string;
 }
 
 export interface DriverTripView {
@@ -1357,6 +1364,7 @@ export interface DriverContactView {
 
 export const operationsApi = {
   driverTrips: (date?: string) => apiFetch.get<DriverTripView[]>("/driver/trips", { date }),
+  driverRouteTracking: (routeId: number | string) => apiFetch.get<JourneyTrackingSnapshotDTO>(`/driver/trips/routes/${encodeURIComponent(String(routeId))}/tracking`),
   driverContacts: () => apiFetch.get<DriverContactView[]>("/driver/contacts"),
   startTrip: (tripId: number) => apiFetch.post<DriverTripView>(`/driver/trips/${tripId}/start`),
   endTrip: (tripId: number) => apiFetch.post<DriverTripView>(`/driver/trips/${tripId}/end`),
