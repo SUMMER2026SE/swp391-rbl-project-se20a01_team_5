@@ -179,7 +179,7 @@ public class OperationsRepository {
                     LEFT JOIN conductors c ON c.conductor_id = COALESCE(t.conductor_id, bs.conductor_id)
                     LEFT JOIN users cu ON cu.user_id = c.user_id
                     WHERE t.driver_id = ?
-                      AND t.service_date = ?
+                      AND (t.service_date = ? OR t.status = 'RUNNING')
 
                     UNION ALL
 
@@ -237,7 +237,7 @@ public class OperationsRepository {
                 LEFT JOIN conductors c ON c.conductor_id = COALESCE(t.conductor_id, bs.conductor_id)
                 LEFT JOIN users cu ON cu.user_id = c.user_id
                 WHERE t.driver_id = ?
-                  AND t.service_date BETWEEN ? AND ?
+                  AND (t.service_date BETWEEN ? AND ? OR t.status = 'RUNNING')
                   AND t.status NOT IN ('COMPLETED', 'CANCELLED')
                 ORDER BY t.service_date, bs.departure_time NULLS LAST, t.trip_id
                 """, (rs, rowNum) -> mapDriverTrip(rs),

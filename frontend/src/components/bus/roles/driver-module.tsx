@@ -1922,6 +1922,29 @@ function DriverRoute() {
 // =============================================================================
 function DriverHistory({ ctx }: { ctx: Ctx }) {
   const [tab, setTab] = useState("trips");
+  const initialHistoryTrips = useMemo(() => ctx.trips.filter(
+    (trip: any) => ["COMPLETED", "CANCELLED"].includes(String(trip.status || "").toUpperCase()),
+  ) as DriverTripView[], [ctx.trips]);
+  const [historyTrips, setHistoryTrips] = useState<DriverTripView[]>(initialHistoryTrips);
+  const [historyLoading, setHistoryLoading] = useState(!initialHistoryTrips.length);
+
+  const loadHistory = useCallback(async () => {
+    if (!historyTrips.length) setHistoryLoading(true);
+    try {
+      const overview = await operationsApi.driverTripOverview();
+      setHistoryTrips(overview.historyTrips || []);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không tải được lịch sử chuyến");
+      setHistoryTrips(initialHistoryTrips);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [historyTrips.length, initialHistoryTrips]);
+
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
+
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
@@ -1935,45 +1958,70 @@ function DriverHistory({ ctx }: { ctx: Ctx }) {
           <TabsTrigger value="feedback">Phản hồi</TabsTrigger>
         </TabsList>
         <TabsContent value="trips">
-          {ctx.trips.filter(
-            (t: any) => String(t.status || "").toUpperCase() === "COMPLETED",
-          ).length === 0 ? (
+          {historyLoading ? (
+            <LoadingScreen label="Đang tải lịch sử chuyến..." />
+          ) : historyTrips.length === 0 ? (
             <EmptyState
               icon={<History className="size-7" />}
               title="Chưa có chuyến hoàn thành"
               description="Lịch sử các chuyến đã chạy sẽ hiển thị tại đây."
             />
           ) : (
-            <div className="space-y-3">
-              {ctx.trips
-                .filter(
-                  (t: any) =>
-                    String(t.status || "").toUpperCase() === "COMPLETED",
-                )
-                .map((t: any) => (
+            <div className="space-y-4">
+              {historyTrips.map((trip, index) => {
+                const status = trip.status?.toUpperCase();
+                const statusPill = tripStatusPill(trip.status);
+                const isCancelled = status === "CANCELLED";
+                return (
                   <ExpressiveCard
-                    key={t.id}
+                    key={driverTripKey(trip) || `${trip.routeId}-${trip.serviceDate}-${index}`}
                     variant="elevated"
-                    className="p-4 min-w-0"
+                    className={cn(
+                      "overflow-hidden rounded-[28px] border bg-white p-0 shadow-[0_10px_30px_rgba(20,20,15,0.04)]",
+                      isCancelled ? "border-[#FFD6D6]" : "border-[#B8F5CC]",
+                    )}
                   >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="size-10 shrink-0 rounded-xl bg-success-container text-success flex items-center justify-center">
-                        <CheckCircle2 className="size-5" />
+                    <div className={cn("h-1.5", isCancelled ? "bg-error" : "bg-[#22c55e]")} />
+                    <div className="space-y-4 p-5">
+                      <div className="flex min-w-0 items-start gap-4">
+                        <div className={cn(
+                          "flex size-12 shrink-0 items-center justify-center rounded-2xl",
+                          isCancelled ? "bg-error-container text-error" : "bg-[#B8F5CC] text-[#14532d]",
+                        )}>
+                          {isCancelled ? <XCircle className="size-5" /> : <CheckCircle2 className="size-5" />}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="mb-2 flex flex-wrap items-center gap-2">
+                            <p className="text-base font-black text-[#14140f]">{trip.routeName}</p>
+                            <M3StatusPill label={statusPill.label} tone={statusPill.tone} />
+                          </div>
+                          <p className="text-sm font-semibold text-[#6B6B6B]">
+                            {formatDate(trip.serviceDate)} · Giờ lịch: {trip.departureTime || "Chưa có giờ"}
+                          </p>
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-bold truncate">
-                          {t.routeCode
-                            ? `Tuyến ${t.routeCode} — ${t.routeName}`
-                            : t.routeName}
-                        </p>
-                        <p className="text-xs text-on-surface-variant">
-                          {formatDate(t.serviceDate || t.date)} •{" "}
-                          {t.departureTime || t.departTime || "Chưa có giờ"}
-                        </p>
+                      <div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
+                        <div className="rounded-2xl bg-[#FAF8F2] px-4 py-3">
+                          <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Biển số</p>
+                          <p className="mt-1 break-words font-black text-[#14140f]">{trip.licensePlate || "--"}</p>
+                        </div>
+                        <div className="rounded-2xl bg-[#FAF8F2] px-4 py-3">
+                          <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Phụ xe</p>
+                          <p className="mt-1 break-words font-black text-[#14140f]">{trip.conductorName || "--"}</p>
+                        </div>
+                        <div className="rounded-2xl bg-[#FAF8F2] px-4 py-3">
+                          <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Bắt đầu thực tế</p>
+                          <p className="mt-1 font-black text-[#14140f]">{trip.departedAt ? formatDateTime(trip.departedAt) : "--"}</p>
+                        </div>
+                        <div className="rounded-2xl bg-[#FAF8F2] px-4 py-3">
+                          <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Kết thúc thực tế</p>
+                          <p className="mt-1 font-black text-[#14140f]">{trip.endedAt ? formatDateTime(trip.endedAt) : "--"}</p>
+                        </div>
                       </div>
                     </div>
                   </ExpressiveCard>
-                ))}
+                );
+              })}
             </div>
           )}
         </TabsContent>
@@ -2015,7 +2063,9 @@ function DriverHistory({ ctx }: { ctx: Ctx }) {
                       ))}
                     </div>
                   </div>
-                  <p className="text-sm line-clamp-3">{f.content}</p>
+                  <p className="text-sm text-on-surface-variant">
+                    {f.content || f.comment}
+                  </p>
                 </ExpressiveCard>
               ))}
             </div>
@@ -2026,9 +2076,6 @@ function DriverHistory({ ctx }: { ctx: Ctx }) {
   );
 }
 
-// =============================================================================
-// Screen 6: Driver Contact — coordinator + dispatcher
-// =============================================================================
 function DriverContact() {
   const [contact, setContact] = useState<DispatcherContact | null>(null);
   const [loading, setLoading] = useState(true);
@@ -2363,6 +2410,7 @@ function DriverContact() {
     </PageTransition>
   );
 }
+
 // =============================================================================
 function FallbackScreen({ activeId }: { activeId: string }) {
   return (

@@ -1284,6 +1284,12 @@ export interface DriverTripView {
   stops?: TripStopView[];
 }
 
+export interface DriverTripOverviewDTO {
+  nearestTrip?: DriverTripView | null;
+  upcomingTrips?: DriverTripView[];
+  historyTrips?: DriverTripView[];
+}
+
 export interface ConductorTicketView {
   ticketKind: string;
   ticketId: number;
@@ -1364,6 +1370,7 @@ export interface DriverContactView {
 
 export const operationsApi = {
   driverTrips: (date?: string) => apiFetch.get<DriverTripView[]>("/driver/trips", { date }),
+  driverTripOverview: () => apiFetch.get<DriverTripOverviewDTO>("/driver/trips/overview"),
   driverRouteTracking: (routeId: number | string) => apiFetch.get<JourneyTrackingSnapshotDTO>(`/driver/trips/routes/${encodeURIComponent(String(routeId))}/tracking`),
   driverContacts: () => apiFetch.get<DriverContactView[]>("/driver/contacts"),
   startTrip: (tripId: number) => apiFetch.post<DriverTripView>(`/driver/trips/${tripId}/start`),
