@@ -39,3 +39,6 @@ backend/*.log
 .vs/
 ~$*.xlsx
 ~$*.docx
+
+# Local Postman exports
+docs/postman/
