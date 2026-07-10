@@ -113,7 +113,7 @@ import {
   Counter,
   PageTransition,
 } from "@/components/m3/motion";
-import { JourneyMap, type JourneyBus } from "@/components/m3/journey-map";
+import { JourneyMap, type JourneyBus, type JourneyPolyline } from "@/components/m3/journey-map";
 import { PageHeader, StatCard, Section, EmptyState } from "../primitives";
 import { UnavailablePanel } from "../real-data";
 
@@ -158,8 +158,6 @@ type CoordinatorModuleProps = {
 
 export function CoordinatorModule({ activeId, onNavigate }: CoordinatorModuleProps) {
   const proto = useCoordinatorPrototypeData();
-  const [chatOpen, setChatOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
 
   if (proto.error) return <ErrorScreen message={proto.error} onRetry={proto.reload} />;
   if (proto.loading || !proto.data) return <LoadingScreen label="Đang tải dữ liệu điều phối..." />;
@@ -217,20 +215,87 @@ export function CoordinatorModule({ activeId, onNavigate }: CoordinatorModulePro
 
   return (
     <div className="relative min-h-[calc(100vh-140px)]">
-      <div className={cn("min-w-0 transition-[padding] duration-200", chatOpen && "xl:pr-[420px]")}>
+      <div className="min-w-0">
         {renderScreen()}
       </div>
-
-      {/* Floating Chat Button */}
-      <FloatingChatButton onClick={() => setChatOpen(!chatOpen)} open={chatOpen} unreadCount={unreadCount} />
-
-      {/* Slide-out Chat Panel Drawer */}
-      <InternalChatPanel 
-        open={chatOpen} 
-        onOpenChange={setChatOpen} 
-        onUnreadCountChange={setUnreadCount} 
-      />
+      <CoordinatorChatOverlay />
     </div>
+  );
+}
+
+export function CoordinatorChatOverlay() {
+  const [chatOpen, setChatOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  return (
+    <>
+      <FloatingChatButton onClick={() => setChatOpen((open) => !open)} open={chatOpen} unreadCount={unreadCount} />
+      <InternalChatPanel
+        open={chatOpen}
+        onOpenChange={setChatOpen}
+        onUnreadCountChange={setUnreadCount}
+      />
+    </>
+  );
+}
+
+export function CoordinatorAlertsScreen() {
+  const feedback = useApi(() => coordinatorFeedbackApi.all(), undefined, []);
+  const lostItems = useApi(() => coordinatorLostItemApi.all(), undefined, []);
+  const feedbackItems = ((feedback.raw || []) as any[]);
+  const sosItems = feedbackItems.filter(isSosFeedback);
+  const feedbackOnly = feedbackItems.filter((item) => !isSosFeedback(item));
+  const alertItems = [
+    ...sosItems.map((item) => ({ ...item, _type: "sos" as const })),
+    ...feedbackOnly.map((item) => ({ ...item, _type: "feedback" as const })),
+    ...((lostItems.raw || []) as any[]).map((item) => ({ ...item, _type: "lost" as const })),
+  ].sort((left, right) => Date.parse(right.createdAt || right.reportedAt || "") - Date.parse(left.createdAt || left.reportedAt || ""));
+
+  return (
+    <PageTransition className="space-y-6 min-w-0">
+      <PageHeader
+        title="Thông báo điều phối"
+        description="Hiển thị SOS, phản hồi và mất đồ. Tin nhắn riêng nằm trong pop up chat."
+        icon={<AlertTriangle className="size-7" />}
+        actions={
+          <ExpressiveButton variant="outlined" size="sm" onClick={() => { feedback.reload(); lostItems.reload(); }}>
+            <RefreshCw className={cn("size-4", (feedback.loading || lostItems.loading) && "animate-spin")} />
+            Làm mới
+          </ExpressiveButton>
+        }
+      />
+      {feedback.loading || lostItems.loading ? (
+        <LoadingScreen label="Đang tải thông báo..." />
+      ) : feedback.error || lostItems.error ? (
+        <ErrorScreen message={feedback.error || lostItems.error || "Không tải được thông báo"} onRetry={() => { feedback.reload(); lostItems.reload(); }} />
+      ) : alertItems.length === 0 ? (
+        <EmptyState icon={<Bell className="size-7" />} title="Không có thông báo" description="Tin nhắn riêng được gom vào biểu tượng chat ở góc màn hình." />
+      ) : (
+        <StaggerGroup className="space-y-3 min-w-0">
+          {alertItems.map((item: any, index) => {
+            const isSos = item._type === "sos";
+            const isLost = item._type === "lost";
+            const title = isSos ? "SOS" : isLost ? "Mất đồ" : "Phản hồi";
+            const icon = isSos ? <AlertTriangle className="size-3.5" /> : isLost ? <PackageSearch className="size-3.5" /> : <MessageSquare className="size-3.5" />;
+            const isResolved = ["RESOLVED", "FOUND", "CLOSED", "resolved"].includes(String(item.status || ""));
+            return (
+            <StaggerItem key={`${item._type}-${item.feedbackId || item.lostItemReportId || item.lostItemId || item.supportTicketId || item.id || index}`}>
+              <ExpressiveCard variant="elevated" className={cn("p-5 min-w-0", isSos ? "border-error/40 bg-error-container/10" : "") }>
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <span className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold", isSos ? "bg-error text-on-error" : isLost ? "bg-tertiary-container text-on-tertiary-container" : "bg-primary-container text-on-primary-container")}>
+                    {icon} {title}
+                  </span>
+                  <M3StatusPill label={isResolved ? "Đã xử lý" : isSos ? "Khẩn cấp" : "Cần xử lý"} tone={isResolved ? "success" : isSos ? "error" : "warning"} />
+                  <span className="text-xs text-on-surface-variant">{formatDateTime(item.createdAt || item.reportedAt)}</span>
+                </div>
+                <p className="font-bold text-on-surface truncate">{item.studentName || item.reporterName || item.itemName || (isLost ? "Báo mất đồ" : "Sinh viên gửi phản hồi")}</p>
+                <p className="mt-2 whitespace-pre-wrap break-words text-sm text-on-surface">{item.content || item.description || item.notes || "Không có nội dung"}</p>
+              </ExpressiveCard>
+            </StaggerItem>
+          );})}
+        </StaggerGroup>
+      )}
+    </PageTransition>
   );
 }
 
@@ -607,9 +672,19 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
 function LiveMapScreen({ ctx }: { ctx: Ctx }) {
   const fleet = useApi(() => operationsApi.liveFleet(), undefined, []);
   const [vehicleLocations, setVehicleLocations] = useState<Record<string, string>>({});
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const liveVehicles = useMemo(() => (fleet.raw || ctx.raw.dashboard.raw?.liveFleet || []) as LiveFleetVehicle[], [ctx.raw.dashboard.raw?.liveFleet, fleet.raw]);
   const vehicles = useMemo(() => (liveVehicles.length ? liveVehicles : mockLiveFleet(ctx.routes))
     .filter(isRunningVehicle), [ctx.routes, liveVehicles]);
+  const toggleSelectedVehicle = useCallback((vehicleId: string) => {
+    setSelectedVehicleId((current) => current === vehicleId ? null : vehicleId);
+  }, []);
+
+  useEffect(() => {
+    if (selectedVehicleId && !vehicles.some((vehicle) => String(vehicle.tripId) === selectedVehicleId)) {
+      setSelectedVehicleId(null);
+    }
+  }, [selectedVehicleId, vehicles]);
 
   return (
     <PageTransition className="space-y-6 min-w-0">
@@ -627,7 +702,12 @@ function LiveMapScreen({ ctx }: { ctx: Ctx }) {
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_340px] gap-4 min-w-0">
         <ScrollReveal>
           <ExpressiveCard variant="elevated" className="overflow-hidden h-[620px] xl:h-[680px] min-w-0">
-            <LiveFleetMap vehicles={vehicles} onVehicleLocationsChange={setVehicleLocations} />
+            <LiveFleetMap
+              vehicles={vehicles}
+              selectedVehicleId={selectedVehicleId}
+              onSelectVehicle={toggleSelectedVehicle}
+              onVehicleLocationsChange={setVehicleLocations}
+            />
           </ExpressiveCard>
         </ScrollReveal>
         <ScrollReveal delay={0.1}>
@@ -640,7 +720,15 @@ function LiveMapScreen({ ctx }: { ctx: Ctx }) {
                 </p>
               ) : (
                 vehicles.map((v: any, index) => (
-                  <div key={v.tripId} className="p-3 rounded-xl bg-surface-container-low min-w-0">
+                  <button
+                    key={v.tripId}
+                    type="button"
+                    onClick={() => toggleSelectedVehicle(String(v.tripId))}
+                    className={cn(
+                      "w-full p-3 rounded-xl border border-transparent bg-surface-container-low text-left min-w-0 transition",
+                      selectedVehicleId === String(v.tripId) && "border-primary bg-primary/5",
+                    )}
+                  >
                     <div className="flex items-center justify-between gap-2 mb-1 min-w-0">
                       <p className="font-bold text-sm truncate">{v.routeName}</p>
                       <M3StatusPill label="RUNNING" tone="success" />
@@ -653,7 +741,7 @@ function LiveMapScreen({ ctx }: { ctx: Ctx }) {
                       <span className="flex items-start gap-1"><MapPin className="size-3 mt-0.5 shrink-0" /> <span className="line-clamp-2">{vehicleLocations[String(v.tripId)] || vehicleLocationLabel(v, ctx.routes, ctx.stops, index)}</span></span>
                       {v.occupancy != null && <span className="flex items-center gap-1"><Users className="size-3" /> {v.occupancy}</span>}
                     </div>
-                  </div>
+                  </button>
                 ))
               )}
             </div>
@@ -716,7 +804,17 @@ function shallowEqualRecord(left: Record<string, string>, right: Record<string, 
   return leftKeys.length === rightKeys.length && leftKeys.every((key) => left[key] === right[key]);
 }
 
-function LiveFleetMap({ vehicles, onVehicleLocationsChange }: { vehicles: LiveFleetVehicle[]; onVehicleLocationsChange?: React.Dispatch<React.SetStateAction<Record<string, string>>> }) {
+function LiveFleetMap({
+  vehicles,
+  selectedVehicleId,
+  onSelectVehicle,
+  onVehicleLocationsChange,
+}: {
+  vehicles: LiveFleetVehicle[];
+  selectedVehicleId: string | null;
+  onSelectVehicle: (vehicleId: string) => void;
+  onVehicleLocationsChange?: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+}) {
   const [previews, setPreviews] = useState<Record<number, RouteMapPreviewDTO>>({});
   const [roadPreviews, setRoadPreviews] = useState<Record<number, RouteMapPreviewDTO>>({});
   const [fallbackRouteIds, setFallbackRouteIds] = useState<number[]>([]);
@@ -811,6 +909,16 @@ function LiveFleetMap({ vehicles, onVehicleLocationsChange }: { vehicles: LiveFl
     }).filter(Boolean) as JourneyBus[];
   }, [displayPreviews, vehicles, tick]);
 
+  const selectedRouteLines = useMemo(
+    () => selectedVehicleRoutePolylines(selectedVehicleId, vehicles, displayPreviews, buses),
+    [buses, displayPreviews, selectedVehicleId, vehicles],
+  );
+  const selectedRouteStops = useMemo(
+    () => selectedVehicleRouteStops(selectedVehicleId, vehicles, displayPreviews),
+    [displayPreviews, selectedVehicleId, vehicles],
+  );
+  const selectedRouteColor = selectedRouteLines[0]?.color || buses.find((bus) => bus.id === selectedVehicleId)?.routeColor || "#144fcc";
+
   useEffect(() => {
     if (!onVehicleLocationsChange) return;
     const locations = Object.fromEntries(buses.map((bus) => {
@@ -825,9 +933,14 @@ function LiveFleetMap({ vehicles, onVehicleLocationsChange }: { vehicles: LiveFl
   return (
     <div className="relative h-full w-full">
       <JourneyMap
-        stops={[]}
+        stops={selectedRouteStops}
         buses={buses}
-        polylines={mapFitPolylines(displayPreviews, buses)}
+        polylines={[...selectedRouteLines, ...mapFitPolylines(displayPreviews, buses)]}
+        onSelectBus={onSelectVehicle}
+        routeColor={selectedRouteColor}
+        originLabel="Điểm khởi hành"
+        destinationLabel="Điểm kết thúc"
+        fitOnStopsChange={!selectedVehicleId}
         height="100%"
         className="h-full"
         allowFallbackPolyline={false}
@@ -868,6 +981,87 @@ async function toRoadPreview(preview: RouteMapPreviewDTO): Promise<RouteMapPrevi
 
 function validCoordinate(point: { lat: number; lng: number }) {
   return Math.abs(point.lat) > 0 && Math.abs(point.lng) > 0;
+}
+
+function selectedVehicleRoutePolylines(
+  selectedVehicleId: string | null,
+  vehicles: LiveFleetVehicle[],
+  previews: Record<number, RouteMapPreviewDTO>,
+  buses: JourneyBus[],
+): JourneyPolyline[] {
+  if (!selectedVehicleId) return [];
+  const vehicle = vehicles.find((item) => String(item.tripId) === selectedVehicleId);
+  const selectedBus = buses.find((bus) => bus.id === selectedVehicleId);
+  const preview = vehicle ? previews[vehicle.routeId] : undefined;
+  if (!preview) return [];
+  return (preview.polylines || [])
+    .map((line, index) => ({
+      id: `selected-${selectedVehicleId}-${line.legId || index}`,
+      color: selectedBus?.routeColor || line.colorHex || preview.colorHex || "#144fcc",
+      label: preview.routeName || preview.routeCode || `Tuyến ${preview.routeId}`,
+      points: (line.points || [])
+        .map((point) => ({ lat: numberValue(point.latitude), lng: numberValue(point.longitude) }))
+        .filter(validCoordinate),
+    }))
+    .filter((line) => line.points.length > 1);
+}
+
+function selectedVehicleRouteStops(
+  selectedVehicleId: string | null,
+  vehicles: LiveFleetVehicle[],
+  previews: Record<number, RouteMapPreviewDTO>,
+): BusStop[] {
+  if (!selectedVehicleId) return [];
+  const vehicle = vehicles.find((item) => String(item.tripId) === selectedVehicleId);
+  const preview = vehicle ? previews[vehicle.routeId] : undefined;
+  if (!preview?.stops?.length) return [];
+  const routePoints = (preview.polylines || [])
+    .flatMap((line) => line.points || [])
+    .map((point) => ({ lat: numberValue(point.latitude), lng: numberValue(point.longitude) }))
+    .filter(validCoordinate);
+  return preview.stops
+    .map((stop) => {
+      const point = snapPointToRoute({ lat: numberValue(stop.latitude), lng: numberValue(stop.longitude) }, routePoints);
+      return {
+        id: String(stop.stopId),
+        name: stop.stopName,
+        code: String(stop.stopId),
+        address: stop.address || "",
+        lat: point.lat,
+        lng: point.lng,
+        routes: [String(preview.routeId)],
+        hasShelter: false,
+      };
+    })
+    .filter((stop) => validCoordinate(stop));
+}
+
+function snapPointToRoute(point: { lat: number; lng: number }, routePoints: { lat: number; lng: number }[]) {
+  if (routePoints.length < 2) return point;
+  let best = point;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  const scale = Math.cos(point.lat * Math.PI / 180);
+  for (let index = 0; index < routePoints.length - 1; index += 1) {
+    const a = routePoints[index];
+    const b = routePoints[index + 1];
+    const ax = a.lng * scale;
+    const ay = a.lat;
+    const bx = b.lng * scale;
+    const by = b.lat;
+    const px = point.lng * scale;
+    const py = point.lat;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const lengthSquared = dx * dx + dy * dy;
+    const ratio = lengthSquared ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSquared)) : 0;
+    const projected = { lat: ay + dy * ratio, lng: (ax + dx * ratio) / scale };
+    const distance = (projected.lat - point.lat) ** 2 + ((projected.lng - point.lng) * scale) ** 2;
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = projected;
+    }
+  }
+  return best;
 }
 
 function mapFitPolylines(previews: Record<number, RouteMapPreviewDTO>, buses: JourneyBus[]) {
@@ -2569,7 +2763,7 @@ function FloatingChatButton({ onClick, open, unreadCount }: { onClick: () => voi
   return (
     <button
       onClick={onClick}
-      className="fixed bottom-20 right-4 z-40 flex size-14 items-center justify-center rounded-full bg-[#14140f] text-[#beff50] shadow-xl transition-all duration-200 hover:scale-105 active:scale-95 sm:bottom-6 sm:right-6"
+      className="fixed bottom-20 right-4 z-[2600] flex size-14 items-center justify-center rounded-full bg-[#14140f] text-[#beff50] shadow-xl transition-all duration-200 hover:scale-105 active:scale-95 sm:bottom-6 sm:right-6"
       aria-label={open ? "Đóng chat nội bộ" : "Mở chat nội bộ"}
     >
       {open ? <X className="size-6" /> : <MessageSquare className="size-6" />}
@@ -2771,7 +2965,7 @@ function InternalChatPanel({ open, onOpenChange, onUnreadCountChange }: Internal
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 15 }}
           transition={{ duration: 0.2, ease: "easeOut" }}
-          className="fixed inset-x-3 bottom-20 top-20 z-30 flex flex-col overflow-hidden rounded-3xl border border-outline-variant/40 bg-surface-container-lowest p-0 shadow-2xl focus:outline-none sm:inset-auto sm:bottom-6 sm:right-[92px] sm:h-[580px] sm:w-[380px]"
+          className="fixed inset-x-3 bottom-20 top-20 z-[2500] flex flex-col overflow-hidden rounded-3xl border border-outline-variant/40 bg-surface-container-lowest p-0 shadow-2xl focus:outline-none sm:inset-auto sm:bottom-6 sm:right-[92px] sm:h-[580px] sm:w-[380px]"
         >
           {/* Header section */}
           <div className="border-b border-outline-variant/30 p-4 bg-surface-container-low flex items-center justify-between">
