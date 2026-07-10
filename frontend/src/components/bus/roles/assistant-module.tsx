@@ -529,7 +529,6 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
   const [loadingTickets, setLoadingTickets] = useState(false);
   const [scanAudit, setScanAudit] = useState<{ code: string; result: TicketScanResult; scannedAt: string }[]>([]);
   const [ticketFilter, setTicketFilter] = useState<"ALL" | "SINGLE" | "MONTHLY" | "SCANNED" | "UNSCANNED">("ALL");
-  const [scanClock, setScanClock] = useState(() => Date.now());
   const lastScanRef = useRef<{ code: string; at: number } | null>(null);
   const validConductorTrips = useMemo(() => ctx.conductorTrips.filter((trip) => isTripInScanWindow(trip)), [ctx.conductorTrips]);
   const hasConductorTrips = ctx.conductorTrips.length > 0;
@@ -565,12 +564,6 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
 
   useEffect(() => { loadTickets(); }, [loadTickets]);
 
-  useEffect(() => {
-    const timer = window.setInterval(() => setScanClock(Date.now()), 30_000);
-    return () => window.clearInterval(timer);
-  }, []);
-
-
   const ticketKindLabel = (kind?: string) => {
     const normalized = String(kind || "").toUpperCase();
     if (normalized === "SINGLE") return "Vé lượt";
@@ -588,20 +581,6 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
     }
   };
 
-
-  const scanWindowInfo = useMemo(() => {
-    if (!selectedTrip) return null;
-    const rawStart = `${selectedTrip.serviceDate || selectedTrip.date || ""}T${selectedTrip.departureTime || selectedTrip.departTime || ""}`;
-    const start = new Date(rawStart);
-    const startLabel = Number.isNaN(start.getTime())
-      ? "chưa có giờ chạy"
-      : start.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
-    return {
-      isOpen: true,
-      label: "Đang trong phiên quét",
-      detail: `Theo lịch chuyến; giờ chạy: ${startLabel}`,
-    };
-  }, [scanClock, selectedTrip]);
 
   const filteredTickets = useMemo(() => {
     const rows = tickets || [];
@@ -671,19 +650,6 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
           ) : null
         }
       />
-
-      {scanWindowInfo && (
-        <ExpressiveCard variant="filled" className="p-4 min-w-0 border border-outline-variant">
-          <div className="flex items-center justify-between gap-3 min-w-0">
-            <div className="min-w-0">
-              <p className="text-xs font-bold uppercase tracking-[0.08em] text-on-surface-variant">Cửa sổ quét</p>
-              <p className="mt-1 text-base font-black text-on-surface">{scanWindowInfo.label}</p>
-              <p className="text-xs text-on-surface-variant">Khung giờ: {scanWindowInfo.detail}</p>
-            </div>
-            <M3StatusPill label={scanWindowInfo.isOpen ? "Đang mở" : "Chưa mở"} tone={scanWindowInfo.isOpen ? "success" : "warning"} />
-          </div>
-        </ExpressiveCard>
-      )}
 
       {validConductorTrips.length === 0 ? (
         <ExpressiveCard variant="elevated" className="p-6 text-center min-w-0 border border-outline-variant">
@@ -1201,6 +1167,7 @@ function AssistantContact({ ctx }: { ctx: Ctx }) {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
 
   const loadContact = useCallback(async () => {
     try {
@@ -1239,10 +1206,21 @@ function AssistantContact({ ctx }: { ctx: Ctx }) {
     }
   };
 
-  const messages = contact?.messages ?? [];
+  const messages = useMemo(() => {
+    return [...(contact?.messages ?? [])].sort((left, right) => {
+      const leftTime = left.sentAt ? new Date(left.sentAt).getTime() : 0;
+      const rightTime = right.sentAt ? new Date(right.sentAt).getTime() : 0;
+      if (leftTime !== rightTime) return leftTime - rightTime;
+      return left.messageId - right.messageId;
+    });
+  }, [contact?.messages]);
   const contacts = contact?.contacts?.length ? contact.contacts : [];
   const dispatcher = contacts.find((c) => c.role === "DISPATCHER");
   const driver = contacts.find((c) => c.role === "DRIVER");
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ block: "end" });
+  }, [messages.length]);
 
   return (
     <PageTransition className="space-y-6 min-w-0">
@@ -1298,50 +1276,92 @@ function AssistantContact({ ctx }: { ctx: Ctx }) {
         </ScrollReveal>
 
         <ScrollReveal delay={0.1}>
-          <ExpressiveCard variant="elevated" className="flex flex-col h-[460px] min-w-0">
-            <div className="p-4 border-b-2 border-outline-variant">
-              <h3 className="font-bold flex items-center gap-2">
-                <MessageSquare className="size-4" />
-                Chat nội bộ
-              </h3>
+          <ExpressiveCard
+            variant="elevated"
+            className="flex h-[560px] flex-col overflow-hidden rounded-[32px] border border-[#E8E2D5] bg-white p-0 shadow-[0_16px_45px_rgba(20,20,15,0.06)] min-w-0"
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-[#E8E2D5] bg-gradient-to-r from-[#FAF8F2] to-white p-4 sm:p-5 shrink-0">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="relative flex size-12 shrink-0 items-center justify-center rounded-2xl bg-[#144fcc] text-white shadow-[0_10px_24px_rgba(20,79,204,0.18)]">
+                  <MessageSquare className="size-5" />
+                  <span className="absolute -right-0.5 -bottom-0.5 size-3.5 rounded-full border-2 border-white bg-[#22c55e]" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="truncate text-base font-black text-[#14140f]">{dispatcher?.name || "Điều phối viên"}</h3>
+                  <p className="truncate text-xs font-semibold text-[#6B6B6B]">Chat nội bộ · Đang trực</p>
+                </div>
+              </div>
+              {dispatcher?.phoneNumber && (
+                <a
+                  href={`tel:${dispatcher.phoneNumber}`}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-[#beff50] px-3.5 py-2 text-xs font-black text-[#14140f] shadow-sm transition hover:brightness-95"
+                >
+                  <Phone className="size-3.5" /> {dispatcher.phoneNumber}
+                </a>
+              )}
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-2 min-w-0">
-              {loading && <p className="text-sm text-on-surface-variant text-center mt-8">Đang tải tin nhắn...</p>}
+            <div className="flex-1 overflow-y-auto bg-[#FAF8F2] p-4 sm:p-5 space-y-4 scrollbar-soft min-w-0">
+              {loading && <p className="text-sm text-[#6B6B6B] text-center mt-8">Đang tải tin nhắn...</p>}
               {!loading && messages.length === 0 && (
-                <p className="text-sm text-on-surface-variant text-center mt-8">Gửi tin nhắn khi cần hỗ trợ.</p>
+                <div className="mt-12 flex flex-col items-center justify-center text-center text-[#6B6B6B]">
+                  <div className="mb-3 flex size-14 items-center justify-center rounded-2xl bg-white shadow-sm">
+                    <MessageSquare className="size-6 text-[#144fcc]" />
+                  </div>
+                  <p className="text-sm font-black text-[#14140f]">Chưa có tin nhắn</p>
+                  <p className="mt-1 max-w-xs text-xs font-medium">Gửi tin nhắn cho điều phối viên khi cần hỗ trợ.</p>
+                </div>
               )}
               {messages.map((m) => {
                 const isMe = m.senderName !== dispatcher?.name && m.senderName !== driver?.name;
+                const sentTime = m.sentAt
+                  ? new Date(m.sentAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
+                  : "";
                 return (
                   <motion.div
                     key={m.messageId}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className={cn("flex max-w-[85%]", isMe && "ml-auto justify-end")}
+                    className={cn("flex w-full", isMe ? "justify-end" : "justify-start")}
                   >
-                    <div className={cn("px-3 py-2 rounded-2xl text-sm min-w-0", isMe ? "bg-primary text-on-primary" : "bg-surface-container-high")}>
-                      <p className="text-[10px] opacity-70 mb-1 truncate">{m.senderName}</p>
-                      <p className="break-words">{m.content}</p>
+                    <div className={cn("max-w-[82%] space-y-1", isMe && "text-right")}>
+                      <div
+                        className={cn(
+                          "rounded-[22px] px-4 py-3 text-sm shadow-sm",
+                          isMe
+                            ? "rounded-tr-md bg-[#beff50] text-[#14140f] font-semibold"
+                            : "rounded-tl-md bg-white text-[#14140f] border border-[#E8E2D5]",
+                        )}
+                      >
+                        <p className="break-words leading-relaxed">{m.content}</p>
+                      </div>
+                      <p className="px-1 text-[11px] font-semibold text-[#6B6B6B]">
+                        {isMe ? "Bạn" : m.senderName || dispatcher?.name || "Điều phối viên"}
+                        {sentTime ? ` · ${sentTime}` : ""}
+                      </p>
                     </div>
                   </motion.div>
                 );
               })}
+              <div ref={chatEndRef} />
             </div>
-            <div className="p-3 border-t-2 border-outline-variant flex gap-2 min-w-0">
-              <Input
-                placeholder="Nhập tin nhắn..."
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && send()}
-                disabled={sending}
-                className="flex-1 min-w-0"
-              />
-              <ExpressiveButton variant="filled" size="icon" onClick={send} disabled={sending || !message.trim()}>
-                {sending ? <RefreshCw className="size-4 animate-spin" /> : <Send className="size-4" />}
-              </ExpressiveButton>
+            <div className="border-t border-[#E8E2D5] bg-white p-3 sm:p-4 shrink-0">
+              <div className="flex items-center gap-2 rounded-full border border-[#E8E2D5] bg-[#FAF8F2] p-1.5 shadow-inner">
+                <Input
+                  placeholder="Nhập tin nhắn..."
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && send()}
+                  disabled={sending}
+                  className="h-11 flex-1 rounded-full border-0 bg-transparent px-4 text-sm shadow-none focus-visible:ring-0 min-w-0"
+                />
+                <ExpressiveButton variant="filled" size="icon" onClick={send} disabled={sending || !message.trim()} className="shrink-0 rounded-full bg-[#144fcc] text-white hover:bg-[#0f3ea3]">
+                  {sending ? <RefreshCw className="size-4 animate-spin" /> : <Send className="size-4" />}
+                </ExpressiveButton>
+              </div>
             </div>
           </ExpressiveCard>
         </ScrollReveal>
+
       </div>
     </PageTransition>
   );
