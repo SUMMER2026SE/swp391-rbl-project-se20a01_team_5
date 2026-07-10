@@ -966,7 +966,7 @@ function DriverSchedule({ ctx }: { ctx: Ctx }) {
       const r = await operationsApi.driverTrips(filterDate);
       setTrips(r);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Kh?ng t?i ???c l?ch tr?nh");
+      setError(e instanceof Error ? e.message : "Không tải được lịch trình");
     } finally {
       setLoading(false);
     }
@@ -979,8 +979,8 @@ function DriverSchedule({ ctx }: { ctx: Ctx }) {
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
-        title="L?ch tr?nh"
-        description="L?ch ch?y c?a b?n theo ng?y."
+        title="Lịch trình"
+        description="Lịch chạy của bạn theo ngày."
         icon={<Calendar className="size-7" />}
         actions={
           <Input
@@ -992,14 +992,14 @@ function DriverSchedule({ ctx }: { ctx: Ctx }) {
         }
       />
       {loading ? (
-        <LoadingScreen label="?ang t?i l?ch tr?nh..." />
+        <LoadingScreen label="Đang tải lịch trình..." />
       ) : error ? (
         <ErrorScreen message={error} onRetry={load} />
       ) : !trips || trips.length === 0 ? (
         <EmptyState
           icon={<Calendar className="size-7" />}
-          title="Kh?ng c? chuy?n"
-          description={`Kh?ng c? chuy?n n?o v?o ${formatDate(filterDate)}.`}
+          title="Không có chuyến"
+          description={`Không có chuyến nào vào ${formatDate(filterDate)}.`}
         />
       ) : (
         <StaggerGroup className="space-y-3 min-w-0">
@@ -1012,83 +1012,93 @@ function DriverSchedule({ ctx }: { ctx: Ctx }) {
             const isExpanded = expandedTripKey === tripKey;
             return (
               <StaggerItem key={tripKey}>
-                <ExpressiveCard
-                  variant="elevated"
-                  className={cn(
-                    "group overflow-hidden rounded-[26px] border bg-white p-0 shadow-[0_8px_28px_rgba(20,20,15,0.045)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(20,20,15,0.08)]",
-                    isRunning ? "border-[#B8F5CC]" : isDone ? "border-[#E6E2D8]" : "border-[#F1DFC0]",
-                  )}
-                >
-                  <div className={cn("h-1", isRunning ? "bg-[#22c55e]" : isDone ? "bg-[#9CA3AF]" : "bg-[#F8C26A]")} />
-                  <button
-                    type="button"
-                    onClick={() => setExpandedTripKey(isExpanded ? null : tripKey)}
-                    className="flex w-full items-center gap-4 p-4 text-left sm:p-5"
-                    aria-expanded={isExpanded}
-                  >
+                <div className="relative flex gap-4">
+                  <div className="relative z-10 hidden w-16 shrink-0 pt-4 text-center sm:block">
                     <div className={cn(
-                      "flex size-12 shrink-0 items-center justify-center rounded-2xl shadow-sm",
+                      "mx-auto mb-2 flex size-12 items-center justify-center rounded-2xl border-4 border-white shadow-sm",
                       isRunning ? "bg-[#B8F5CC] text-[#14532d]" : isDone ? "bg-[#ECECEC] text-[#4B5563]" : "bg-[#FFF0CF] text-[#92400e]",
                     )}>
                       <Bus className="size-5" />
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2">
-                        <h3 className="min-w-0 truncate text-base font-black text-[#14140f] sm:text-lg">{trip.routeName}</h3>
-                        <M3StatusPill label={statusPill.label} tone={statusPill.tone} />
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#6B6B6B]">
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FAF8F2] px-3 py-1">
-                          <Clock className="size-3.5" /> {trip.departureTime || formatDate(trip.serviceDate)}
-                        </span>
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FAF8F2] px-3 py-1">
-                          <MapPin className="size-3.5" /> {trip.stops?.length || 0} tr?m
-                        </span>
-                        {trip.licensePlate && (
-                          <span className="hidden items-center gap-1.5 rounded-full bg-[#FAF8F2] px-3 py-1 sm:inline-flex">
-                            <Bus className="size-3.5" /> {trip.licensePlate}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className={cn(
-                      "flex size-10 shrink-0 items-center justify-center rounded-full border border-[#E8E2D5] bg-[#FAF8F2] text-[#14140f] transition",
-                      isExpanded && "bg-[#14140f] text-[#BDFD4F]",
-                    )}>
-                      <ChevronRight className={cn("size-5 transition-transform", isExpanded && "rotate-90")} />
-                    </div>
-                  </button>
-                  <AnimatePresence initial={false}>
-                    {isExpanded && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.18, ease: "easeOut" }}
-                        className="overflow-hidden"
-                      >
-                        <div className="grid gap-3 border-t border-[#EEE8DA] bg-[#FFFCF6] px-4 pb-4 pt-3 text-xs sm:grid-cols-2 sm:px-5 lg:grid-cols-4">
-                          <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">
-                            <p className="font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Bi?n s?</p>
-                            <p className="mt-1 truncate font-black text-[#14140f]">{trip.licensePlate || "--"}</p>
-                          </div>
-                          <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">
-                            <p className="font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Ph? xe</p>
-                            <p className="mt-1 truncate font-black text-[#14140f]">{trip.conductorName || "--"}</p>
-                          </div>
-                          <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">
-                            <p className="font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">?i?n tho?i</p>
-                            <p className="mt-1 truncate font-black text-[#14140f]">{trip.conductorPhone || "--"}</p>
-                          </div>
-                          <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">
-                            <p className="font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">S? tr?m</p>
-                            <p className="mt-1 font-black text-[#14140f]">{trip.stops?.length || 0}</p>
-                          </div>
-                        </div>
-                      </motion.div>
+                    <p className="text-xs font-black text-[#14140f]">{trip.departureTime || "--:--"}</p>
+                  </div>
+                  <ExpressiveCard
+                    variant="elevated"
+                    className={cn(
+                      "flex-1 overflow-hidden rounded-[28px] border bg-white p-0 shadow-[0_8px_26px_rgba(20,20,15,0.045)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(20,20,15,0.08)]",
+                      isRunning ? "border-[#B8F5CC]" : isDone ? "border-[#E6E2D8]" : "border-[#F1DFC0]",
                     )}
-                  </AnimatePresence>
-                </ExpressiveCard>
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setExpandedTripKey(isExpanded ? null : tripKey)}
+                      className="flex w-full items-center gap-4 p-4 text-left sm:p-5"
+                      aria-expanded={isExpanded}
+                    >
+                      <div className={cn(
+                        "flex size-11 shrink-0 items-center justify-center rounded-2xl sm:hidden",
+                        isRunning ? "bg-[#B8F5CC] text-[#14532d]" : isDone ? "bg-[#ECECEC] text-[#4B5563]" : "bg-[#FFF0CF] text-[#92400e]",
+                      )}>
+                        <Bus className="size-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2">
+                          <h3 className="min-w-0 truncate text-base font-black text-[#14140f] sm:text-lg">{trip.routeName}</h3>
+                          <M3StatusPill label={statusPill.label} tone={statusPill.tone} />
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#6B6B6B]">
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FAF8F2] px-3 py-1 sm:hidden">
+                            <Clock className="size-3.5" /> {trip.departureTime || formatDate(trip.serviceDate)}
+                          </span>
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FAF8F2] px-3 py-1">
+                            <MapPin className="size-3.5" /> {trip.stops?.length || 0} trạm
+                          </span>
+                          {trip.licensePlate && (
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FAF8F2] px-3 py-1">
+                              <Bus className="size-3.5" /> {trip.licensePlate}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className={cn(
+                        "flex size-10 shrink-0 items-center justify-center rounded-full border border-[#E8E2D5] bg-[#FAF8F2] text-[#14140f] transition",
+                        isExpanded && "bg-[#14140f] text-[#BDFD4F]",
+                      )}>
+                        <ChevronRight className={cn("size-5 transition-transform", isExpanded && "rotate-90")} />
+                      </div>
+                    </button>
+                    <AnimatePresence initial={false}>
+                      {isExpanded && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.18, ease: "easeOut" }}
+                          className="overflow-hidden"
+                        >
+                          <div className="grid gap-3 border-t border-[#EEE8DA] bg-[#FFFCF6] px-4 pb-4 pt-3 text-xs sm:grid-cols-2 sm:px-5 lg:grid-cols-4">
+                            <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">
+                              <p className="font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Biển số</p>
+                              <p className="mt-1 truncate font-black text-[#14140f]">{trip.licensePlate || "--"}</p>
+                            </div>
+                            <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">
+                              <p className="font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Phụ xe</p>
+                              <p className="mt-1 truncate font-black text-[#14140f]">{trip.conductorName || "--"}</p>
+                            </div>
+                            <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">
+                              <p className="font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Điện thoại</p>
+                              <p className="mt-1 truncate font-black text-[#14140f]">{trip.conductorPhone || "--"}</p>
+                            </div>
+                            <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">
+                              <p className="font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Số trạm</p>
+                              <p className="mt-1 font-black text-[#14140f]">{trip.stops?.length || 0}</p>
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </ExpressiveCard>
+                </div>
               </StaggerItem>
             );
           })}
