@@ -1503,10 +1503,15 @@ function DriverRoute() {
     try {
       const data = await operationsApi.driverTrips();
       setTrips(data);
+      const runningTrips = data.filter(
+        (item) => item.status?.toUpperCase() === "RUNNING",
+      );
+      const storedRunningTrip = runningTrips.find(
+        (item) => driverTripKey(item) === selectedTripKey,
+      );
       const nextKey =
-        selectedTripKey ||
-        data.find((item) => item.status?.toUpperCase() === "RUNNING") ||
-        data[0] ||
+        storedRunningTrip ||
+        runningTrips[0] ||
         null;
       const resolvedKey =
         typeof nextKey === "string"
@@ -1514,10 +1519,10 @@ function DriverRoute() {
           : nextKey
             ? driverTripKey(nextKey)
             : "";
-      if (resolvedKey && resolvedKey !== selectedTripKey)
+      if (resolvedKey !== selectedTripKey)
         setSelectedTripKey(resolvedKey);
       const selectedTrip =
-        data.find((item) => driverTripKey(item) === resolvedKey) || null;
+        runningTrips.find((item) => driverTripKey(item) === resolvedKey) || null;
       setTrip(selectedTrip);
       if (!selectedTrip?.routeId) {
         setRoutePreview(null);
@@ -1550,6 +1555,11 @@ function DriverRoute() {
       setLoading(false);
     }
   }, [selectedTripKey]);
+
+  const runningTrips = useMemo(
+    () => trips.filter((item) => item.status?.toUpperCase() === "RUNNING"),
+    [trips],
+  );
 
   useEffect(() => {
     load();
@@ -1659,7 +1669,7 @@ function DriverRoute() {
               <SelectValue placeholder="Chọn chuyến" />
             </SelectTrigger>
             <SelectContent>
-              {trips.map((item) => (
+              {runningTrips.map((item) => (
                 <SelectItem
                   key={driverTripKey(item)}
                   value={driverTripKey(item)}

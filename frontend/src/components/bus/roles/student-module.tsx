@@ -3084,7 +3084,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
   const nextEta = journeyTracking?.stopEtas?.[0];
   const routeTitle = journeyTracking?.routeName || trackingContext?.routeName || selectedRoute?.name || "Tuyến đang theo dõi";
   const routeCode = journeyTracking?.routeCode || trackingContext?.routeCode || journeyTracking?.stopEtas?.[0]?.routeCode || selectedRoute?.code || "BUS";
-  const displayVehicles = journeyTracking?.vehicles || [];
+  const displayVehicles = (journeyTracking?.vehicles || []).filter((vehicle) => vehicle.tripId != null);
   const selectedVehicle = displayVehicles.find((vehicle) => vehicle.vehicleId === selectedVehicleId) || displayVehicles[0];
   const collapsedVehicles = displayVehicles.filter((vehicle) => vehicle.vehicleId !== selectedVehicle?.vehicleId);
 
@@ -3741,13 +3741,13 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                         <p className="truncate text-base font-semibold text-[#14140f]">{selectedVehicle.plateNumber || "Xe theo lịch tuyến"}</p>
                         <p className="mt-1 text-xs text-[#6B6B6B]">Xe sắp tới · Trạm kế: {selectedVehicle.nextStopName || "đang xác định"}</p>
                       </div>
-                        {selectedVehicle.driverName && <p className="mt-1 text-xs font-semibold text-[#3f5f0b]">TÃ i xáº¿: {selectedVehicle.driverName}</p>}
+                        {selectedVehicle.driverName && <p className="mt-1 text-xs font-semibold text-[#3f5f0b]">Tài xế: {selectedVehicle.driverName}</p>}
                       <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
                         <InfoCell label="Tốc độ" value={`${Math.round(numberValue(selectedVehicle.speedKmh))} km/h`} />
                         <InfoCell label="Tải" value={selectedVehicle.occupancy != null && selectedVehicle.capacity ? `${selectedVehicle.occupancy}/${selectedVehicle.capacity}` : "--"} />
                         <InfoCell label="Biển số" value={selectedVehicle.plateNumber || selectedVehicle.vehicleId || "--"} />
                         <InfoCell label="Tuyến" value={selectedVehicle.routeCode || routeCode} />
-                        <InfoCell label="TÃ i xáº¿" value={selectedVehicle.driverName || "--"} />
+                        <InfoCell label="Tài xế" value={selectedVehicle.driverName || "--"} />
                       </div>
                     </motion.div>
                   ) : (
