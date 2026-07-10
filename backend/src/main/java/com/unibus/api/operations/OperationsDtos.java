@@ -148,6 +148,7 @@ public final class OperationsDtos {
     }
 
     public record DriverContactView(
+            Integer userId,
             String type,
             String name,
             String role,

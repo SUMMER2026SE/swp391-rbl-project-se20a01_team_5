@@ -11,7 +11,6 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -271,6 +270,32 @@ public class ExperienceRepository {
                 .orElse(null);
     }
 
+    public List<LostItemCard> coordinatorLostItems(int limit) {
+        return jdbcTemplate.query("""
+                SELECT li.lost_item_report_id, reporter.full_name AS reporter_name, li.trip_id,
+                       r.route_code, r.route_name, li.item_description, li.status, li.notes, li.reported_at
+                FROM lost_item_reports li
+                JOIN users reporter ON reporter.user_id = li.reported_by_user_id
+                LEFT JOIN trips t ON t.trip_id = li.trip_id
+                LEFT JOIN routes r ON r.route_id = t.route_id
+                ORDER BY CASE li.status WHEN 'REPORTED' THEN 0 WHEN 'SEARCHING' THEN 1 ELSE 2 END,
+                         li.reported_at DESC
+                LIMIT ?
+                """, (rs, rowNum) -> mapLostItem(rs), limit);
+    }
+
+    public LostItemCard coordinatorUpdateLostItem(Integer userId, Integer lostItemId, UpdateLostItemStatusRequest request) {
+        jdbcTemplate.update("""
+                UPDATE lost_item_reports
+                SET status = ?, notes = ?, assisted_by_user_id = COALESCE(assisted_by_user_id, ?)
+                WHERE lost_item_report_id = ?
+                """, request.status(), request.notes(), userId, lostItemId);
+        return coordinatorLostItems(100).stream()
+                .filter(item -> item.lostItemReportId().equals(lostItemId))
+                .findFirst()
+                .orElse(null);
+    }
+
     public List<FeedbackCard> driverFeedback(Integer driverId, int limit) {
         return jdbcTemplate.query("""
                 SELECT f.feedback_id, submitter.full_name AS student_name, r.route_code, r.route_name,
@@ -503,8 +528,6 @@ public class ExperienceRepository {
         List<RouteCore> routeRows = jdbcTemplate.query("""
                 SELECT r.route_id, r.route_code, r.route_name, r.distance_km, r.estimated_minutes,
                        r.frequency_min, r.color_hex,
-                       first_stop.stop_name AS from_stop_name,
-                       last_stop.stop_name AS to_stop_name,
                        (SELECT amount FROM fares f WHERE f.route_id = r.route_id AND f.fare_type = 'SINGLE'
                         ORDER BY f.effective_from DESC, f.fare_id DESC LIMIT 1) AS single_fare,
                        (SELECT amount FROM fares f WHERE f.route_id = r.route_id AND f.fare_type = 'MONTHLY'
@@ -518,22 +541,6 @@ public class ExperienceRepository {
                              AND (?::integer IS NULL OR ru.university_id = ?)
                        ) AS university_linked
                 FROM routes r
-                LEFT JOIN LATERAL (
-                    SELECT s.stop_name
-                    FROM route_stops rs
-                    JOIN stops s ON s.stop_id = rs.stop_id
-                    WHERE rs.route_id = r.route_id
-                    ORDER BY rs.stop_order
-                    LIMIT 1
-                ) first_stop ON TRUE
-                LEFT JOIN LATERAL (
-                    SELECT s.stop_name
-                    FROM route_stops rs
-                    JOIN stops s ON s.stop_id = rs.stop_id
-                    WHERE rs.route_id = r.route_id
-                    ORDER BY rs.stop_order DESC
-                    LIMIT 1
-                ) last_stop ON TRUE
                 WHERE r.status = 'ACTIVE'
                 ORDER BY COALESCE(r.route_code, r.route_name)
                 """, (rs, rowNum) -> new RouteCore(
@@ -787,30 +794,14 @@ public class ExperienceRepository {
 
     private List<RouteMetric> routeMetrics() {
         return jdbcTemplate.query("""
-                SELECT r.route_code, r.route_name, r.color_hex,
-                       COALESCE(t.trip_count, 0) AS trips,
-                       COALESCE(m.monthly_revenue, 0) + COALESCE(s.single_revenue, 0) AS revenue
+                SELECT r.route_code, r.route_name, r.color_hex, COUNT(t.trip_id) AS trips,
+                       COALESCE(SUM(p.amount), 0) AS revenue
                 FROM routes r
-                LEFT JOIN (
-                    SELECT route_id, COUNT(trip_id) AS trip_count
-                    FROM trips
-                    GROUP BY route_id
-                ) t ON t.route_id = r.route_id
-                LEFT JOIN (
-                    SELECT mp.route_id, COALESCE(SUM(p.amount), 0) AS monthly_revenue
-                    FROM monthly_passes mp
-                    JOIN payments p ON p.monthly_pass_id = mp.monthly_pass_id
-                    WHERE p.status = 'PAID'
-                    GROUP BY mp.route_id
-                ) m ON m.route_id = r.route_id
-                LEFT JOIN (
-                    SELECT st.route_id, COALESCE(SUM(p.amount), 0) AS single_revenue
-                    FROM single_trip_tickets st
-                    JOIN payments p ON p.single_trip_ticket_id = st.single_trip_ticket_id
-                    WHERE p.status = 'PAID'
-                    GROUP BY st.route_id
-                ) s ON s.route_id = r.route_id
+                LEFT JOIN trips t ON t.route_id = r.route_id
+                LEFT JOIN monthly_passes mp ON mp.route_id = r.route_id
+                LEFT JOIN payments p ON p.monthly_pass_id = mp.monthly_pass_id AND p.status = 'PAID'
                 WHERE r.status = 'ACTIVE'
+                GROUP BY r.route_id, r.route_code, r.route_name, r.color_hex
                 ORDER BY COALESCE(r.route_code, r.route_name)
                 """, (rs, rowNum) -> new RouteMetric(
                         rs.getString("route_code"),
@@ -1108,21 +1099,6 @@ public class ExperienceRepository {
         return timestamp == null ? null : timestamp.toInstant().atOffset(ZoneOffset.UTC);
     }
 
-    private record RouteCore(
-            Integer routeId,
-            String routeCode,
-            String routeName,
-            BigDecimal distanceKm,
-            Integer estimatedMinutes,
-            Integer frequencyMin,
-            BigDecimal singleFare,
-            BigDecimal monthlyFare,
-            String colorHex,
-            String firstTrip,
-            String lastTrip,
-            boolean universityLinked) {
-    }
-
     // =========================================================================
     // Internal messages (REQ-DRV-006, REQ-AST-007)
     // =========================================================================
@@ -1198,6 +1174,21 @@ public class ExperienceRepository {
                         toOffset(rs.getTimestamp("last_sent_at")),
                         rs.getInt("unread_count")),
                 userId, userId, userId, userId, userId);
+    }
+
+    private record RouteCore(
+            Integer routeId,
+            String routeCode,
+            String routeName,
+            BigDecimal distanceKm,
+            Integer estimatedMinutes,
+            Integer frequencyMin,
+            BigDecimal singleFare,
+            BigDecimal monthlyFare,
+            String colorHex,
+            String firstTrip,
+            String lastTrip,
+            boolean universityLinked) {
     }
 
     private record ProfileRow(String fullName, String verificationStatus, String studentCode, Integer universityId,

@@ -4782,7 +4782,7 @@ function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
 // Screen 8: History — travel history list with stat cards
 // =============================================================================
 function HistoryScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
-  const [view, setView] = useState<"trips" | "feedback" | "lost">("trips");
+  const [supportAction, setSupportAction] = useState<null | { type: "feedback" | "lost"; tripId: string; routeId?: string }>(null);
   const totalTrips = ctx.tripsHistory.length;
   // Estimate monthly spend from active ticket fare
   const monthlyFare = ctx.activeTicket?.finalFareAmount ?? ctx.activeTicket?.originalFareAmount ?? 0;
@@ -4800,18 +4800,6 @@ function HistoryScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
         icon={<History className="size-7" />}
       />
 
-      <Tabs value={view} onValueChange={(value) => setView(value as "trips" | "feedback" | "lost")}>
-        <TabsList className="grid w-full grid-cols-3 rounded-2xl bg-surface-container-low p-1 shadow-none">
-          <TabsTrigger value="trips" className="rounded-xl">Chuyến đã đi</TabsTrigger>
-          <TabsTrigger value="feedback" className="rounded-xl">Phản hồi</TabsTrigger>
-          <TabsTrigger value="lost" className="rounded-xl">Mất đồ</TabsTrigger>
-        </TabsList>
-      </Tabs>
-
-      {view === "feedback" && <FeedbackScreen ctx={ctx} compact />}
-      {view === "lost" && <LostItemsScreen ctx={ctx} compact />}
-      {view !== "trips" ? null : (
-        <>
       {/* Stat cards — 3 mini cards giống prototype */}
       {totalTrips > 0 && (
         <StaggerGroup className="grid grid-cols-3 gap-2 sm:gap-3 min-w-0">
@@ -4844,26 +4832,37 @@ function HistoryScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
         />
       ) : (
         <StaggerGroup className="space-y-3 min-w-0">
-          {ctx.tripsHistory.map((h: any) => (
+          {ctx.tripsHistory.map((h: any) => {
+            const tripId = String(h.tripId || h.id);
+            const routeId = h.routeId ? String(h.routeId) : undefined;
+            const isActive = supportAction?.tripId === tripId;
+
+            return (
             <StaggerItem key={h.id}>
               <HistoryRow
                 history={h}
                 routes={ctx.routes}
                 onFeedback={() => {
-                  localStorage.setItem("unibus.supportTripId", String(h.tripId || h.id));
-                  if (h.routeId) localStorage.setItem("unibus.supportRouteId", String(h.routeId));
-                  setView("feedback");
+                  setSupportAction({ type: "feedback", tripId, routeId });
                 }}
                 onLostItem={() => {
-                  localStorage.setItem("unibus.lostTripId", String(h.tripId || h.id));
-                  setView("lost");
+                  setSupportAction({ type: "lost", tripId, routeId });
                 }}
               />
+              {isActive && supportAction.type === "feedback" && (
+                <div className="mt-3">
+                  <FeedbackScreen ctx={ctx} compact initialTripId={tripId} initialRouteId={routeId} onDone={() => setSupportAction(null)} />
+                </div>
+              )}
+              {isActive && supportAction.type === "lost" && (
+                <div className="mt-3">
+                  <LostItemsScreen ctx={ctx} compact initialTripId={tripId} onDone={() => setSupportAction(null)} />
+                </div>
+              )}
             </StaggerItem>
-          ))}
+          );
+          })}
         </StaggerGroup>
-      )}
-        </>
       )}
     </PageTransition>
   );
@@ -6590,15 +6589,29 @@ function InvoicesScreen({ ctx }: { ctx: Ctx }) {
 // =============================================================================
 // Screen 13: Feedback — submit + list
 // =============================================================================
-function FeedbackScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean }) {
+function FeedbackScreen({
+  ctx,
+  compact = false,
+  initialTripId,
+  initialRouteId,
+  onDone,
+}: {
+  ctx: Ctx;
+  compact?: boolean;
+  initialTripId?: string;
+  initialRouteId?: string;
+  onDone?: () => void;
+}) {
   const [rating, setRating] = useState(5);
   const [category, setCategory] = useState("service");
   const [content, setContent] = useState("");
-  const [tripId, setTripId] = useState<string>("");
-  const [routeId, setRouteId] = useState<string>("");
+  const [tripId, setTripId] = useState<string>(initialTripId || "");
+  const [routeId, setRouteId] = useState<string>(initialRouteId || "");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
+    if (initialTripId) setTripId(initialTripId);
+    if (initialRouteId) setRouteId(initialRouteId);
     const pendingTripId = localStorage.getItem("unibus.supportTripId");
     const pendingRouteId = localStorage.getItem("unibus.supportRouteId");
     if (pendingTripId) {
@@ -6609,7 +6622,7 @@ function FeedbackScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean 
       setRouteId(pendingRouteId);
       localStorage.removeItem("unibus.supportRouteId");
     }
-  }, []);
+  }, [initialRouteId, initialTripId]);
 
   const submit = async () => {
     if (!content.trim()) {
@@ -6635,6 +6648,7 @@ function FeedbackScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean 
       setTripId("");
       setRouteId("");
       ctx.reload();
+      onDone?.();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Không thể gửi phản hồi");
     } finally {
@@ -6652,7 +6666,7 @@ function FeedbackScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean 
         />
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
+      <div className={cn("grid grid-cols-1 gap-4 min-w-0", !compact && "lg:grid-cols-2")}>
         <ScrollReveal>
           <ExpressiveCard variant="elevated" className="p-5 min-w-0">
             <h3 className="text-base font-bold mb-4">Gửi phản hồi mới</h3>
@@ -6676,34 +6690,38 @@ function FeedbackScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean 
                   </SelectContent>
                 </Select>
               </div>
-              <div>
-                <Label className="text-xs font-bold">Chuyến đi cần hỗ trợ</Label>
-                <Select value={tripId} onValueChange={(value) => {
-                  setTripId(value);
-                  const selected = ctx.tripsHistory.find((h: any) => String(h.tripId || h.id) === value);
-                  if (selected?.routeId) setRouteId(String(selected.routeId));
-                }}>
-                  <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn chuyến từ lịch sử" /></SelectTrigger>
-                  <SelectContent>
-                    {ctx.tripsHistory.map((h: any) => (
-                      <SelectItem key={h.tripId || h.id} value={String(h.tripId || h.id)}>
-                        {(h.routeName || "Tuyến xe")} · {formatDate(h.boardedAt || h.serviceDate)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs font-bold">Tuyến (tùy chọn)</Label>
-                <Select value={routeId} onValueChange={setRouteId}>
-                  <SelectTrigger className="mt-1.5 min-w-0 overflow-hidden [&>span]:truncate"><SelectValue placeholder="Chọn tuyến" /></SelectTrigger>
-                  <SelectContent>
-                    {ctx.routes.map((r: any) => (
-                      <SelectItem key={r.id} value={r.id}>{r.code} — {r.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {!compact && (
+                <>
+                  <div>
+                    <Label className="text-xs font-bold">Chuyến đi cần hỗ trợ</Label>
+                    <Select value={tripId} onValueChange={(value) => {
+                      setTripId(value);
+                      const selected = ctx.tripsHistory.find((h: any) => String(h.tripId || h.id) === value);
+                      if (selected?.routeId) setRouteId(String(selected.routeId));
+                    }}>
+                      <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn chuyến từ lịch sử" /></SelectTrigger>
+                      <SelectContent>
+                        {ctx.tripsHistory.map((h: any) => (
+                          <SelectItem key={h.tripId || h.id} value={String(h.tripId || h.id)}>
+                            {(h.routeName || "Tuyến xe")} · {formatDate(h.boardedAt || h.serviceDate)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs font-bold">Tuyến (tùy chọn)</Label>
+                    <Select value={routeId} onValueChange={setRouteId}>
+                      <SelectTrigger className="mt-1.5 min-w-0 overflow-hidden [&>span]:truncate"><SelectValue placeholder="Chọn tuyến" /></SelectTrigger>
+                      <SelectContent>
+                        {ctx.routes.map((r: any) => (
+                          <SelectItem key={r.id} value={r.id}>{r.code} — {r.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
+              )}
               <div>
                 <Label className="text-xs font-bold">Nội dung</Label>
                 <Textarea
@@ -6722,7 +6740,7 @@ function FeedbackScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean 
           </ExpressiveCard>
         </ScrollReveal>
 
-        <ScrollReveal delay={0.1}>
+        {!compact && <ScrollReveal delay={0.1}>
           <Section title={`Phản hồi đã gửi (${ctx.feedback.length})`}>
             {ctx.feedback.length === 0 ? (
               <EmptyState
@@ -6753,7 +6771,7 @@ function FeedbackScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean 
               </div>
             )}
           </Section>
-        </ScrollReveal>
+        </ScrollReveal>}
       </div>
     </PageTransition>
   );
@@ -6762,9 +6780,19 @@ function FeedbackScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean 
 // =============================================================================
 // Screen 14: Lost Items — report + list
 // =============================================================================
-function LostItemsScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean }) {
+function LostItemsScreen({
+  ctx,
+  compact = false,
+  initialTripId,
+  onDone,
+}: {
+  ctx: Ctx;
+  compact?: boolean;
+  initialTripId?: string;
+  onDone?: () => void;
+}) {
   const [description, setDescription] = useState("");
-  const [tripId, setTripId] = useState<string>("");
+  const [tripId, setTripId] = useState<string>(initialTripId || "");
   const [submitting, setSubmitting] = useState(false);
 
   const submit = async () => {
@@ -6782,6 +6810,7 @@ function LostItemsScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean
       setDescription("");
       setTripId("");
       ctx.reload();
+      onDone?.();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Không thể báo mất");
     } finally {
@@ -6790,12 +6819,13 @@ function LostItemsScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean
   };
 
   useEffect(() => {
+    if (initialTripId) setTripId(initialTripId);
     const pendingTripId = localStorage.getItem("unibus.lostTripId");
     if (pendingTripId) {
       setTripId(pendingTripId);
       localStorage.removeItem("unibus.lostTripId");
     }
-  }, []);
+  }, [initialTripId]);
 
   return (
     <PageTransition className="space-y-6 min-w-0">
@@ -6807,24 +6837,26 @@ function LostItemsScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean
         />
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
+      <div className={cn("grid grid-cols-1 gap-4 min-w-0", !compact && "lg:grid-cols-2")}>
         <ScrollReveal>
           <ExpressiveCard variant="elevated" className="p-5 min-w-0">
             <h3 className="text-base font-bold mb-4">Báo mất vật dụng</h3>
             <div className="space-y-4">
-              <div>
-                <Label className="text-xs font-bold">Chuyến đi (tùy chọn)</Label>
-                <Select value={tripId} onValueChange={setTripId}>
-                  <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn chuyến" /></SelectTrigger>
-                  <SelectContent>
-                    {ctx.tripsHistory.map((h: any) => (
-                      <SelectItem key={h.tripId || h.id} value={String(h.tripId || h.id)}>
-                        {(h.routeName || "Tuyến xe")} — {formatDate(h.boardedAt || h.serviceDate)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {!compact && (
+                <div>
+                  <Label className="text-xs font-bold">Chuyến đi (tùy chọn)</Label>
+                  <Select value={tripId} onValueChange={setTripId}>
+                    <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn chuyến" /></SelectTrigger>
+                    <SelectContent>
+                      {ctx.tripsHistory.map((h: any) => (
+                        <SelectItem key={h.tripId || h.id} value={String(h.tripId || h.id)}>
+                          {(h.routeName || "Tuyến xe")} — {formatDate(h.boardedAt || h.serviceDate)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div>
                 <Label className="text-xs font-bold">Mô tả vật dụng</Label>
                 <Textarea
@@ -6843,7 +6875,7 @@ function LostItemsScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean
           </ExpressiveCard>
         </ScrollReveal>
 
-        <ScrollReveal delay={0.1}>
+        {!compact && <ScrollReveal delay={0.1}>
           <Section title={`Đã báo (${ctx.lostItems.length})`}>
             {ctx.lostItems.length === 0 ? (
               <EmptyState
@@ -6875,7 +6907,7 @@ function LostItemsScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean
               </div>
             )}
           </Section>
-        </ScrollReveal>
+        </ScrollReveal>}
       </div>
     </PageTransition>
   );

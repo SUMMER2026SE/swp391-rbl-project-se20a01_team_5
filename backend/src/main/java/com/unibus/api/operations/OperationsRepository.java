@@ -441,12 +441,13 @@ public class OperationsRepository {
 
     public List<DriverContactView> findDriverDispatcherContacts() {
         return jdbcTemplate.query("""
-                SELECT full_name, phone_number, email
+                SELECT user_id, full_name, phone_number, email
                 FROM users
                 WHERE role = 'DISPATCHER'
                   AND status = 'ACTIVE'
                 ORDER BY full_name
                 """, (rs, rowNum) -> new DriverContactView(
+                        rs.getInt("user_id"),
                         "COORDINATOR",
                         rs.getString("full_name"),
                         "Điều phối viên",

@@ -777,6 +777,12 @@ export const feedbackApi = {
     apiFetch.patch<FeedbackView>(`/feedback/${feedbackId}/resolve`, { response }),
 };
 
+export const coordinatorLostItemApi = {
+  all: () => apiFetch.get<ExperienceLostItemCard[]>("/coordinator/lost-items"),
+  update: (lostItemId: number, data: { status: string; notes?: string }) =>
+    apiFetch.put<ExperienceLostItemCard>('/coordinator/lost-items/' + lostItemId, data),
+};
+
 export const coordinatorFeedbackApi = {
   all: (status?: string) => apiFetch.get<FeedbackView[]>("/coordinator/feedback", { status }),
   resolve: (feedbackId: number, response?: string) =>
@@ -1349,6 +1355,7 @@ export interface LiveFleetVehicle {
 }
 
 export interface DriverContactView {
+  userId?: number | null;
   type: "COORDINATOR" | "EMERGENCY";
   name: string;
   role: string;

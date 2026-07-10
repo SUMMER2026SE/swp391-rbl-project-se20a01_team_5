@@ -608,10 +608,21 @@ export function useAssistantPrototypeData() {
 /** Coordinator module: dashboard + fleet + feedback + schedule */
 export function useCoordinatorPrototypeData() {
   const dashboard = useApi(() => experienceApi.coordinatorDashboard(), undefined, []);
+  const schedule = useApi(() => operationsApi.scheduleDashboard(), undefined, []);
+  const fleet = useApi(() => operationsApi.liveFleet(), undefined, []);
 
   const mapped = (() => {
     if (!dashboard.raw) return null;
     const d = dashboard.raw;
+    const liveFleet = fleet.raw || d.liveFleet || [];
+    const scheduleData = schedule.raw;
+    const assignedShifts = scheduleData?.shifts?.filter((shift) => shift.busId && shift.driverStaffId && shift.conductorStaffId) || [];
+    const stats = scheduleData ? [
+      { label: "Xe live", value: liveFleet.filter((trip) => trip.status === "RUNNING").length, unit: "xe", tone: "success" },
+      { label: "Ca hôm nay", value: scheduleData.shifts.length, unit: "ca", tone: "primary" },
+      { label: "Đã phân công", value: assignedShifts.length, unit: "ca", tone: "secondary" },
+      { label: "Feedback mở", value: (d.feedback || []).filter((item) => item.status !== "RESOLVED").length, unit: "mục", tone: "warning" },
+    ] : d.stats;
     return {
       user: {
         id: "0",
@@ -626,20 +637,25 @@ export function useCoordinatorPrototypeData() {
       } as User,
       routes: (d.routes || []).map(mapRoute),
       stops: (d.stops || []).map(mapStop),
-      fleet: (d.liveFleet || []).map((v) => ({
+      fleet: liveFleet.map((v) => ({
         ...mapBus(v as any),
         tripId: String(v.tripId),
+        routeId: String(v.routeId),
+        routeName: v.routeName,
         routeCode: "",
+        licensePlate: v.licensePlate,
         driverName: v.driverName,
         conductorName: v.conductorName,
+        status: v.status,
+        speedKmh: v.speedKmh,
       })),
       feedback: (d.feedback || []).map(mapFeedback),
-      stats: d.stats,
-      schedule: null,
+      stats,
+      schedule: scheduleData || null,
       notifications: [],
       dashboard,
-      fleetRaw: { raw: d.liveFleet || [], loading: false, error: null, reload: dashboard.reload },
-      scheduleRaw: { raw: null, loading: false, error: null, reload: dashboard.reload },
+      fleetRaw: { raw: liveFleet, loading: fleet.loading, error: fleet.error, reload: fleet.reload },
+      scheduleRaw: { raw: scheduleData || null, loading: schedule.loading, error: schedule.error, reload: schedule.reload },
       feedbackRaw: { raw: d.feedback || [], loading: false, error: null, reload: dashboard.reload },
       notificationsRaw: { raw: [], loading: false, error: null, reload: dashboard.reload },
       profileRaw: { raw: null, loading: false, error: null, reload: dashboard.reload },
@@ -648,9 +664,9 @@ export function useCoordinatorPrototypeData() {
 
   return {
     data: mapped,
-    loading: dashboard.loading,
-    error: dashboard.error,
-    reload: dashboard.reload,
+    loading: dashboard.loading || schedule.loading || fleet.loading,
+    error: dashboard.error || schedule.error || fleet.error,
+    reload: () => { dashboard.reload(); schedule.reload(); fleet.reload(); },
   };
 }
 

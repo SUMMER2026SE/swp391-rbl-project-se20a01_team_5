@@ -104,6 +104,15 @@ public class ExperienceService {
     }
 
     @Transactional(readOnly = true)
+    public List<LostItemCard> coordinatorLostItems() {
+        return repository.coordinatorLostItems(100);
+    }
+
+    @Transactional
+    public LostItemCard coordinatorUpdateLostItem(CurrentUser currentUser, Integer lostItemId, UpdateLostItemStatusRequest request) {
+        return repository.coordinatorUpdateLostItem(currentUser.userId(), lostItemId, request);
+    }
+
     public CoordinatorDashboardView coordinatorDashboard() {
         return repository.coordinatorDashboard();
     }

@@ -71,6 +71,8 @@ export interface JourneyMapProps {
   compact?: boolean;
   allowFallbackPolyline?: boolean;
   scrollWheelZoom?: boolean;
+  originLabel?: string;
+  destinationLabel?: string;
 }
 
 const STYLE_ID = "unibus-journey-map-styles-v2";
@@ -298,6 +300,8 @@ export const JourneyMap = React.memo(function JourneyMap({
   arrivalOverlay,
   allowFallbackPolyline = true,
   scrollWheelZoom = true,
+  originLabel = "Điểm lên xe",
+  destinationLabel = "Điểm xuống xe",
 }: JourneyMapProps) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const mapRef = React.useRef<any>(null);
@@ -454,7 +458,7 @@ export const JourneyMap = React.memo(function JourneyMap({
       }).addTo(routeLayer);
       marker.bindPopup(`
         <div class="unibus-map-popup">
-          <div class="unibus-map-popup__eyebrow">${isOrigin ? "Điểm lên xe" : isDestination ? "Điểm xuống xe" : "Trạm dừng"}</div>
+          <div class="unibus-map-popup__eyebrow">${isOrigin ? escapeHtml(originLabel) : isDestination ? escapeHtml(destinationLabel) : "Trạm dừng"}</div>
           <div class="unibus-map-popup__title">${escapeHtml(stop.name)}</div>
           <div class="unibus-map-popup__meta">${escapeHtml(stop.address || stop.code || "Đà Nẵng")}</div>
         </div>
@@ -521,11 +525,13 @@ export const JourneyMap = React.memo(function JourneyMap({
   }, [
     animateCamera,
     allowFallbackPolyline,
+    destinationLabel,
     effectivePolylines,
     extraMarkers,
     fitOnStopsChange,
     mapReadyToken,
     nextStopIndex,
+    originLabel,
     onSelectStop,
     routeColor,
     stops,
