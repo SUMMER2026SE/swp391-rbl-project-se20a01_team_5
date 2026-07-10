@@ -28,7 +28,7 @@ import com.unibus.api.transport.dto.TransportDtos.StopSummary;
 
 @RestController
 @RequestMapping("/api/v1")
-@PreAuthorize("hasRole('STUDENT')")
+@PreAuthorize("hasAnyRole('STUDENT', 'DRIVER', 'CONDUCTOR', 'DISPATCHER', 'ADMIN')")
 public class TransportController {
 
     private final TransportService transportService;

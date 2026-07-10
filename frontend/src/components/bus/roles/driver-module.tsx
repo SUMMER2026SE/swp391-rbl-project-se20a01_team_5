@@ -966,7 +966,7 @@ function DriverSchedule({ ctx }: { ctx: Ctx }) {
       const r = await operationsApi.driverTrips(filterDate);
       setTrips(r);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Không tải được lịch trình");
+      setError(e instanceof Error ? e.message : "Kh?ng t?i ???c l?ch tr?nh");
     } finally {
       setLoading(false);
     }
@@ -979,79 +979,85 @@ function DriverSchedule({ ctx }: { ctx: Ctx }) {
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
-        title="Lịch trình"
-        description="Lịch chạy của bạn theo ngày."
+        title="L?ch tr?nh"
+        description="L?ch ch?y c?a b?n theo ng?y."
         icon={<Calendar className="size-7" />}
         actions={
           <Input
             type="date"
             value={filterDate}
             onChange={(e) => setFilterDate(e.target.value)}
-            className="h-10 w-full rounded-full border-[#D8D2C4] bg-white px-4 text-sm font-semibold shadow-sm sm:w-44"
+            className="h-9 w-[140px] rounded-full border-[#D8D2C4] bg-white px-3 text-sm font-semibold shadow-sm"
           />
         }
       />
       {loading ? (
-        <LoadingScreen label="Đang tải lịch trình..." />
+        <LoadingScreen label="?ang t?i l?ch tr?nh..." />
       ) : error ? (
         <ErrorScreen message={error} onRetry={load} />
       ) : !trips || trips.length === 0 ? (
         <EmptyState
           icon={<Calendar className="size-7" />}
-          title="Không có chuyến"
-          description={`Không có chuyến nào vào ${formatDate(filterDate)}.`}
+          title="Kh?ng c? chuy?n"
+          description={`Kh?ng c? chuy?n n?o v?o ${formatDate(filterDate)}.`}
         />
       ) : (
-        <StaggerGroup className="space-y-4 min-w-0">
-          {sortDriverTrips(trips).map((t) => {
-            const sp = tripStatusPill(t.status);
-            const status = String(t.status || "").toUpperCase();
+        <StaggerGroup className="space-y-3 min-w-0">
+          {sortDriverTrips(trips).map((trip) => {
+            const statusPill = tripStatusPill(trip.status);
+            const status = String(trip.status || "").toUpperCase();
             const isRunning = status === "RUNNING";
             const isDone = status === "COMPLETED";
-            const tripKey = driverTripKey(t);
+            const tripKey = driverTripKey(trip);
             const isExpanded = expandedTripKey === tripKey;
             return (
               <StaggerItem key={tripKey}>
                 <ExpressiveCard
                   variant="elevated"
                   className={cn(
-                    "group overflow-hidden rounded-[28px] border bg-white p-0 shadow-[0_10px_30px_rgba(20,20,15,0.04)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_40px_rgba(20,20,15,0.08)]",
-                    isRunning ? "border-[#B8F5CC]" : "border-[#E8E2D5]",
+                    "group overflow-hidden rounded-[26px] border bg-white p-0 shadow-[0_8px_28px_rgba(20,20,15,0.045)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(20,20,15,0.08)]",
+                    isRunning ? "border-[#B8F5CC]" : isDone ? "border-[#E6E2D8]" : "border-[#F1DFC0]",
                   )}
                 >
-                  <div className={cn("h-1.5", isRunning ? "bg-[#22c55e]" : isDone ? "bg-[#9CA3AF]" : "bg-[#F8C26A]")} />
-                  <div className="flex items-center gap-4 p-5">
-                    <div className="flex min-w-0 flex-1 items-start gap-4">
-                      <div className={cn(
-                        "flex size-14 shrink-0 items-center justify-center rounded-2xl shadow-sm",
-                        isRunning ? "bg-[#B8F5CC] text-[#14532d]" : isDone ? "bg-[#ECECEC] text-[#4B5563]" : "bg-[#FFF0CF] text-[#92400e]",
-                      )}>
-                        <Bus className="size-6" />
+                  <div className={cn("h-1", isRunning ? "bg-[#22c55e]" : isDone ? "bg-[#9CA3AF]" : "bg-[#F8C26A]")} />
+                  <button
+                    type="button"
+                    onClick={() => setExpandedTripKey(isExpanded ? null : tripKey)}
+                    className="flex w-full items-center gap-4 p-4 text-left sm:p-5"
+                    aria-expanded={isExpanded}
+                  >
+                    <div className={cn(
+                      "flex size-12 shrink-0 items-center justify-center rounded-2xl shadow-sm",
+                      isRunning ? "bg-[#B8F5CC] text-[#14532d]" : isDone ? "bg-[#ECECEC] text-[#4B5563]" : "bg-[#FFF0CF] text-[#92400e]",
+                    )}>
+                      <Bus className="size-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2">
+                        <h3 className="min-w-0 truncate text-base font-black text-[#14140f] sm:text-lg">{trip.routeName}</h3>
+                        <M3StatusPill label={statusPill.label} tone={statusPill.tone} />
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="mb-2 flex flex-wrap items-center gap-2">
-                          <h3 className="min-w-0 truncate text-lg font-black text-[#14140f]">{t.routeName}</h3>
-                          <M3StatusPill label={sp.label} tone={sp.tone} />
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#6B6B6B]">
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FAF8F2] px-3 py-1">
-                            <Clock className="size-3.5" /> {t.departureTime || formatDate(t.serviceDate)}
+                      <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#6B6B6B]">
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FAF8F2] px-3 py-1">
+                          <Clock className="size-3.5" /> {trip.departureTime || formatDate(trip.serviceDate)}
+                        </span>
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FAF8F2] px-3 py-1">
+                          <MapPin className="size-3.5" /> {trip.stops?.length || 0} tr?m
+                        </span>
+                        {trip.licensePlate && (
+                          <span className="hidden items-center gap-1.5 rounded-full bg-[#FAF8F2] px-3 py-1 sm:inline-flex">
+                            <Bus className="size-3.5" /> {trip.licensePlate}
                           </span>
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FAF8F2] px-3 py-1">
-                            <MapPin className="size-3.5" /> {t.stops?.length || 0} trạm
-                          </span>
-                        </div>
+                        )}
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setExpandedTripKey(isExpanded ? null : tripKey)}
-                      className="flex size-12 shrink-0 items-center justify-center rounded-full border border-[#E8E2D5] bg-[#FAF8F2] text-[#14140f] transition hover:bg-[#EFE9DC]"
-                      aria-label={isExpanded ? "Thu gọn thông tin chuyến" : "Xem thông tin chuyến"}
-                    >
+                    <div className={cn(
+                      "flex size-10 shrink-0 items-center justify-center rounded-full border border-[#E8E2D5] bg-[#FAF8F2] text-[#14140f] transition",
+                      isExpanded && "bg-[#14140f] text-[#BDFD4F]",
+                    )}>
                       <ChevronRight className={cn("size-5 transition-transform", isExpanded && "rotate-90")} />
-                    </button>
-                  </div>
+                    </div>
+                  </button>
                   <AnimatePresence initial={false}>
                     {isExpanded && (
                       <motion.div
@@ -1061,22 +1067,22 @@ function DriverSchedule({ ctx }: { ctx: Ctx }) {
                         transition={{ duration: 0.18, ease: "easeOut" }}
                         className="overflow-hidden"
                       >
-                        <div className="grid gap-3 border-t border-[#EEE8DA] px-5 pb-5 pt-4 text-xs sm:grid-cols-2 lg:grid-cols-4">
-                          <div className="rounded-2xl bg-[#FAF8F2] px-4 py-3">
-                            <p className="font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Biển số</p>
-                            <p className="mt-1 truncate font-black text-[#14140f]">{t.licensePlate || "--"}</p>
+                        <div className="grid gap-3 border-t border-[#EEE8DA] bg-[#FFFCF6] px-4 pb-4 pt-3 text-xs sm:grid-cols-2 sm:px-5 lg:grid-cols-4">
+                          <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">
+                            <p className="font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Bi?n s?</p>
+                            <p className="mt-1 truncate font-black text-[#14140f]">{trip.licensePlate || "--"}</p>
                           </div>
-                          <div className="rounded-2xl bg-[#FAF8F2] px-4 py-3">
-                            <p className="font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Phụ xe</p>
-                            <p className="mt-1 truncate font-black text-[#14140f]">{t.conductorName || "--"}</p>
+                          <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">
+                            <p className="font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Ph? xe</p>
+                            <p className="mt-1 truncate font-black text-[#14140f]">{trip.conductorName || "--"}</p>
                           </div>
-                          <div className="rounded-2xl bg-[#FAF8F2] px-4 py-3">
-                            <p className="font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Điện thoại</p>
-                            <p className="mt-1 truncate font-black text-[#14140f]">{t.conductorPhone || "--"}</p>
+                          <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">
+                            <p className="font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">?i?n tho?i</p>
+                            <p className="mt-1 truncate font-black text-[#14140f]">{trip.conductorPhone || "--"}</p>
                           </div>
-                          <div className="rounded-2xl bg-[#FAF8F2] px-4 py-3">
-                            <p className="font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Số trạm</p>
-                            <p className="mt-1 font-black text-[#14140f]">{t.stops?.length || 0}</p>
+                          <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">
+                            <p className="font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">S? tr?m</p>
+                            <p className="mt-1 font-black text-[#14140f]">{trip.stops?.length || 0}</p>
                           </div>
                         </div>
                       </motion.div>
@@ -1383,11 +1389,7 @@ function DriverActiveTrip({
                     onClick={() => startTrip(nextTrip.tripId)}
                     disabled={starting === nextTrip.tripId}
                   >
-                    {starting === nextTrip.tripId ? (
-                      <RefreshCw className="size-4 animate-spin" />
-                    ) : (
-                      <PlayCircle className="size-4" />
-                    )}
+                    <PlayCircle className="size-4" />
                     Bắt đầu chuyến
                   </ExpressiveButton>
                 )}
@@ -1492,7 +1494,7 @@ function DriverActiveTrip({
                         onClick={() => startTrip(trip.tripId)}
                         disabled={starting === trip.tripId || !!runningTrip}
                       >
-                        {starting === trip.tripId ? <RefreshCw className="size-4 animate-spin" /> : <PlayCircle className="size-4" />}
+                        <PlayCircle className="size-4" />
                         Bắt đầu
                       </ExpressiveButton>
                     )}

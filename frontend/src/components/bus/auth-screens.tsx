@@ -837,4 +837,3 @@ function GoogleIcon() {
     </svg>
   );
 }
-

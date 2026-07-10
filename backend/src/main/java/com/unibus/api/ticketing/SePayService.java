@@ -66,6 +66,7 @@ public class SePayService {
         return createOrder(currentUser, ticketType, null, null, null);
     }
 
+    @Transactional
     public Map<String, Object> createOrder(CurrentUser currentUser, String ticketType, Integer requestedRouteId) {
         return createOrder(currentUser, ticketType, requestedRouteId, null, null);
     }
@@ -242,46 +243,8 @@ public class SePayService {
     }
 
 
-
-    private void validateStopDirection(Integer routeId, Integer boardingStopId, Integer alightingStopId) {
-        Boolean valid = jdbcTemplate.queryForObject("""
-                SELECT EXISTS(
-                    SELECT 1
-                    FROM route_stops boarding
-                    JOIN route_stops alighting
-                      ON alighting.route_id = boarding.route_id
-                     AND COALESCE(alighting.station_direction, 0) = COALESCE(boarding.station_direction, 0)
-                    WHERE boarding.route_id = ?
-                      AND boarding.stop_id = ?
-                      AND alighting.stop_id = ?
-                      AND boarding.stop_order < alighting.stop_order
-                )
-                """, Boolean.class, routeId, boardingStopId, alightingStopId);
-        if (!Boolean.TRUE.equals(valid)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid stop order for selected route");
-        }
-    }
-
-    private String stopName(Integer stopId) {
-        List<String> names = jdbcTemplate.queryForList("SELECT stop_name FROM stops WHERE stop_id = ? LIMIT 1", String.class, stopId);
-        return names.isEmpty() ? null : names.get(0);
-    }
-
-    private Integer intFromJson(Object raw, String key) {
-        if (raw == null) return null;
-        String text = raw.toString();
-        String marker = "\"" + key + "\":";
-        int start = text.indexOf(marker);
-        if (start < 0) return null;
-        start += marker.length();
-        while (start < text.length() && Character.isWhitespace(text.charAt(start))) start++;
-        int end = start;
-        while (end < text.length() && Character.isDigit(text.charAt(end))) end++;
-        if (end == start) return null;
-        return Integer.valueOf(text.substring(start, end));
-    }
-
-    private String orderName(String ticketType) {        if ("monthly".equalsIgnoreCase(ticketType)) return "Vé tháng UniBus";
+    private String orderName(String ticketType) {
+        if ("monthly".equalsIgnoreCase(ticketType)) return "Vé tháng UniBus";
         if ("single".equalsIgnoreCase(ticketType)) return "Vé thường UniBus";
         if ("test".equalsIgnoreCase(ticketType)) return "Test thanh toán UniBus";
         return "Thanh toán UniBus";
@@ -417,6 +380,37 @@ public class SePayService {
         return Map.of("processed", true, "reason", "ORDER_PAID", "orderId", orderId);
     }
 
+
+    private void validateStopDirection(Integer routeId, Integer boardingStopId, Integer alightingStopId) {
+        Boolean valid = jdbcTemplate.queryForObject("""
+                SELECT EXISTS(
+                    SELECT 1
+                    FROM route_stops boarding
+                    JOIN route_stops alighting
+                      ON alighting.route_id = boarding.route_id
+                     AND COALESCE(alighting.station_direction, 0) = COALESCE(boarding.station_direction, 0)
+                    WHERE boarding.route_id = ?
+                      AND boarding.stop_id = ?
+                      AND alighting.stop_id = ?
+                      AND boarding.stop_order < alighting.stop_order
+                )
+                """, Boolean.class, routeId, boardingStopId, alightingStopId);
+        if (!Boolean.TRUE.equals(valid)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid stop order for selected route");
+        }
+    }
+
+    private String stopName(Integer stopId) {
+        List<String> names = jdbcTemplate.queryForList("SELECT stop_name FROM stops WHERE stop_id = ?", String.class, stopId);
+        return names.isEmpty() ? null : names.get(0);
+    }
+
+    private Integer intFromJson(Object raw, String key) {
+        if (raw == null) return null;
+        Matcher matcher = Pattern.compile("\\\"" + key + "\\\"\\s*:\\s*(\\d+)").matcher(raw.toString());
+        return matcher.find() ? Integer.valueOf(matcher.group(1)) : null;
+    }
+
     private String firstText(Map<String, Object> payload, String... keys) {
         for (String key : keys) {
             Object value = payload.get(key);
@@ -463,7 +457,8 @@ public class SePayService {
     }
 
     private void provisionTickets(String studentCode, String ticketType, Integer routeId, BigDecimal finalAmount,
-            BigDecimal orderOriginalAmount, BigDecimal orderSubsidyAmount, String transactionCode, Integer requestedBoardingStopId, Integer requestedAlightingStopId) {
+            BigDecimal orderOriginalAmount, BigDecimal orderSubsidyAmount, String transactionCode,
+            Integer requestedBoardingStopId, Integer requestedAlightingStopId) {
         if ("test".equalsIgnoreCase(ticketType)) {
             return;
         }

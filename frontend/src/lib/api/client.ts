@@ -538,6 +538,7 @@ export interface StudentProfile extends UserProfile {
 export interface RegistrationDTO {
   registrationId: number;
   routeId: number;
+  routeCode?: string;
   routeName: string;
   boardingStopId: number;
   boardingStopName: string;
@@ -546,12 +547,15 @@ export interface RegistrationDTO {
   effectiveDate?: string;
   status: string;
   registeredAt?: string;
+  hasActiveMonthlyPass?: boolean;
+  monthlyPassExpiresOn?: string;
 }
 
 export interface TicketView {
   ticketId: number;
   ticketType: string;
   routeId: number;
+  routeCode?: string;
   routeName: string;
   boardingStopName?: string;
   alightingStopName?: string;
@@ -595,8 +599,6 @@ export interface PaymentView {
   method?: string;
   status?: string;
   transactionCode?: string;
-  ticketType?: string;
-  routeName?: string;
   invoiceNumber?: string;
   invoiceIssuedAt?: string;
   createdAt?: string;
@@ -777,6 +779,12 @@ export const feedbackApi = {
   all: (status?: string) => apiFetch.get<FeedbackView[]>("/feedback", { status }),
   resolve: (feedbackId: number, response?: string) =>
     apiFetch.patch<FeedbackView>(`/feedback/${feedbackId}/resolve`, { response }),
+};
+
+export const coordinatorLostItemApi = {
+  all: () => apiFetch.get<ExperienceLostItemCard[]>("/coordinator/lost-items"),
+  update: (lostItemId: number, data: { status: string; notes?: string }) =>
+    apiFetch.put<ExperienceLostItemCard>('/coordinator/lost-items/' + lostItemId, data),
 };
 
 export const coordinatorFeedbackApi = {
@@ -1361,6 +1369,7 @@ export interface LiveFleetVehicle {
 }
 
 export interface DriverContactView {
+  userId?: number | null;
   type: "COORDINATOR" | "EMERGENCY";
   name: string;
   role: string;
@@ -1370,9 +1379,9 @@ export interface DriverContactView {
 
 export const operationsApi = {
   driverTrips: (date?: string) => apiFetch.get<DriverTripView[]>("/driver/trips", { date }),
+  driverContacts: () => apiFetch.get<DriverContactView[]>("/driver/contacts"),
   driverTripOverview: () => apiFetch.get<DriverTripOverviewDTO>("/driver/trips/overview"),
   driverRouteTracking: (routeId: number | string) => apiFetch.get<JourneyTrackingSnapshotDTO>(`/driver/trips/routes/${encodeURIComponent(String(routeId))}/tracking`),
-  driverContacts: () => apiFetch.get<DriverContactView[]>("/driver/contacts"),
   startTrip: (tripId: number) => apiFetch.post<DriverTripView>(`/driver/trips/${tripId}/start`),
   endTrip: (tripId: number) => apiFetch.post<DriverTripView>(`/driver/trips/${tripId}/end`),
   updateLocation: (tripId: number, data: { longitude: number; latitude: number; speedKmh?: number; occupancy?: number }) =>
@@ -1787,4 +1796,3 @@ export const api = {
   driverDispatch: driverDispatchApi,
   conductor: conductorApi,
 };
-

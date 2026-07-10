@@ -12,7 +12,6 @@
 // =============================================================================
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { QRCodeCanvas } from "qrcode.react";
 import {
@@ -55,7 +54,6 @@ import {
   Gauge,
   Users,
   Gift,
-  GraduationCap,
   School,
   BadgeCheck,
   Trash2,
@@ -75,6 +73,7 @@ import {
   ImageUp,
   Upload,
   Crosshair,
+  GraduationCap,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -155,6 +154,7 @@ import {
   formatVND,
   formatDateTime,
   formatDate,
+  mapInvoice,
 } from "@/lib/prototype-data";
 import {
   studentApi,
@@ -185,11 +185,11 @@ import {
   type EtaDTO,
   type CoordinateDTO,
   type JourneyStopDTO,
+  type RouteSuggestionDTO,
+  type PassesDashboard,
   type PlaceSuggestionDTO,
   type JourneyOptionDTO,
   type JourneyTrackingSnapshotDTO,
-  type RouteSuggestionDTO,
-  type PassesDashboard,
   type AiSource,
   type AiTraceEvent,
   type AiProviderStatus,
@@ -262,6 +262,8 @@ export function StudentModule({ activeId, onNavigate, onProfileRefresh }: Studen
       return <MyTicketScreen ctx={ctx} onNavigate={onNavigate} />;
     case "stu-history":
       return <HistoryScreen ctx={ctx} onNavigate={onNavigate} />;
+    case "stu-notifications":
+      return <NotificationsScreen ctx={ctx} onNavigate={onNavigate} />;
     case "stu-ai":
       return <AIScreen ctx={ctx} onNavigate={onNavigate} />;
     case "stu-chatbot":
@@ -302,6 +304,40 @@ interface Ctx {
   university: any;
   raw: any;
   reload: () => void;
+}
+
+function normalizeRouteMatchText(value?: string | null) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/^\s*tuyen\s+\w+\s*\((.*)\)\s*$/, "$1")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function collectMonthlyTicketsFrom(passesPayload: any, activeTicket?: any | null) {
+  const candidates = [
+    passesPayload?.tickets,
+    passesPayload?.monthlyPasses,
+    passesPayload?.passes,
+    passesPayload?.activeTickets,
+    Array.isArray(passesPayload) ? passesPayload : null,
+  ];
+  const byId = new Map<string, any>();
+  candidates.flatMap((value) => (Array.isArray(value) ? value : [])).concat(activeTicket ? [activeTicket] : []).forEach((ticket: any) => {
+    const ticketType = String(ticket?.ticketType || ticket?.type || "MONTHLY").toUpperCase();
+    const active = String(ticket?.status || "ACTIVE").toUpperCase() === "ACTIVE";
+    if (!ticket || ticketType !== "MONTHLY" || !active) return;
+    const key = String(ticket.ticketId ?? ticket.monthlyPassId ?? ticket.passId ?? `${ticket.routeId ?? ticket.routeCode ?? ticket.routeName}-${ticket.expiresOn || ticket.expiresAt || ticket.validTo}`);
+    byId.set(key, ticket);
+  });
+  return Array.from(byId.values());
+}
+
+function collectMonthlyTickets(ctx: Ctx) {
+  return collectMonthlyTicketsFrom(ctx.raw.passes?.raw ?? ctx.raw.passes?.data ?? ctx.raw.passes, ctx.activeTicket);
 }
 
 type RouteTrackingContext = {
@@ -511,8 +547,24 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
   const activeRoute = nextTrip
     ? ctx.routes.find((r) => r.id === String(nextTrip.routeId))
     : ctx.routes[0];
-  const tripFrom = ctx.registration?.boardingStopName || activeTicket?.boardingStopName || activeRoute?.from || "Điểm lên";
-  const tripTo = ctx.registration?.alightingStopName || activeTicket?.alightingStopName || activeRoute?.to || "Điểm xuống";
+  const normalizeTripText = (value?: string | null) => {
+    const text = String(value || "").trim();
+    if (!text) return "";
+    if (/^đại học việt$/i.test(text)) return "Chưa xác định";
+    const letters = text.replace(/[^A-Za-zÀ-ỹĐđ]/g, "");
+    const isAllCaps = letters.length > 3 && letters === letters.toLocaleUpperCase("vi-VN");
+    if (!isAllCaps) return text;
+    return text
+      .toLocaleLowerCase("vi-VN")
+      .replace(/(^|[\s\-/])([a-zà-ỹđ])/g, (match, prefix: string, char: string) => `${prefix}${char.toLocaleUpperCase("vi-VN")}`)
+      .replace(/Bx/g, "BX")
+      .replace(/Đh/g, "ĐH")
+      .replace(/VkU/gi, "VKU");
+  };
+  const tripFrom = normalizeTripText(ctx.registration?.boardingStopName || activeTicket?.boardingStopName || activeRoute?.from);
+  const tripTo = normalizeTripText(ctx.registration?.alightingStopName || activeTicket?.alightingStopName || activeRoute?.to);
+  const tripRouteName = normalizeTripText(ctx.registration?.routeName || activeTicket?.routeName || activeRoute?.name || activeRoute?.routeName || "Tuyến UniBus");
+  const tripRouteCode = activeRoute?.code || activeTicket?.routeCode || (ctx.registration as RegistrationDTO & { routeCode?: string } | undefined)?.routeCode || "UNIBUS";
   const unread = ctx.notifications.filter((n: any) => !n.read).length;
   const tripsThisMonth = ctx.tripsHistory.length;
 
@@ -610,7 +662,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
               <div className="flex-1 min-w-0 space-y-3">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="inline-flex items-center h-6 px-2.5 rounded-full bg-[#14140f] text-white text-[11px] font-bold">
-                    {activeRoute?.code || "UNIBUS"}
+                    {tripRouteCode}
                   </span>
                   <span className="inline-flex items-center gap-1 h-6 px-2.5 rounded-full bg-[#14140f]/10 text-[11px] font-bold">
                     <motion.span
@@ -624,9 +676,14 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
                 <h3 className="text-2xl sm:text-3xl font-bold text-balance leading-tight">
                   Chuyến sắp tới
                 </h3>
-                <p className="text-sm sm:text-base font-medium opacity-80 truncate">
-                  {tripFrom} → {tripTo}
+                <p className="text-sm sm:text-base font-medium opacity-80 line-clamp-2">
+                  {tripRouteName}
                 </p>
+                {(tripFrom || tripTo) && (
+                  <p className="text-xs sm:text-sm font-medium opacity-70 line-clamp-1">
+                    {tripFrom || "Trạm lên"} → {tripTo || "Trạm xuống"}
+                  </p>
+                )}
                 <div className="flex items-center gap-3 sm:gap-4 pt-1 flex-wrap">
                   <HeroMetric label="Khởi hành" value={nextTrip?.departTime || activeRoute?.firstTrip || "Hôm nay"} />
                   <div className="w-px h-8 bg-[#14140f]/20 shrink-0" />
@@ -838,7 +895,22 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
                   n.type === "warning" ? "#f59e0b" :
                   n.type === "danger" ? "#dc2626" : "#144fcc";
                 return (
-                  <div key={n.id} className="state-layer flex items-start gap-3 p-3 rounded-xl min-w-0">
+                  <button
+                    key={n.id}
+                    type="button"
+                    onClick={async () => {
+                      if (!n.read && n.id) {
+                        try {
+                          await notificationApi.markRead(Number(n.id));
+                          ctx.reload();
+                        } catch {
+                          toast.error("Không thể cập nhật thông báo");
+                        }
+                      }
+                      onNavigate("stu-notifications");
+                    }}
+                    className="state-layer flex w-full items-start gap-3 rounded-xl p-3 text-left min-w-0"
+                  >
                     <div
                       className="flex size-9 shrink-0 items-center justify-center rounded-full mt-0.5"
                       style={{ backgroundColor: iconColor + "20", color: iconColor }}
@@ -853,7 +925,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
                       <p className="text-xs text-on-surface-variant line-clamp-2 mt-0.5">{n.body}</p>
                       <p className="text-[10px] text-on-surface-variant/70 mt-1">{n.createdAt ? formatDateTime(n.createdAt) : ""}</p>
                     </div>
-                  </div>
+                  </button>
                 );
               })
             )}
@@ -953,6 +1025,114 @@ function HeroMetric({ label, value }: { label: string; value: string }) {
       <p className="text-[10px] font-bold opacity-70 uppercase tracking-wide truncate">{label}</p>
       <p className="text-sm sm:text-base font-bold truncate">{value}</p>
     </div>
+  );
+}
+
+
+function NotificationsScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
+  const [items, setItems] = useState<any[]>(ctx.notifications);
+  const [updatingId, setUpdatingId] = useState<string | number | null>(null);
+
+  useEffect(() => {
+    setItems(ctx.notifications);
+  }, [ctx.notifications]);
+
+  const unreadCount = items.filter((item) => !item.read).length;
+
+  const markOneRead = async (notification: any) => {
+    if (notification.read || !notification.id) return;
+    setUpdatingId(notification.id);
+    const previous = items;
+    setItems((current) => current.map((item) => String(item.id) === String(notification.id) ? { ...item, read: true } : item));
+    try {
+      await notificationApi.markRead(Number(notification.id));
+      ctx.reload();
+    } catch {
+      setItems(previous);
+      toast.error("Không thể đánh dấu đã đọc");
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const markAllRead = async () => {
+    const unreadItems = items.filter((item) => !item.read && item.id);
+    if (!unreadItems.length) return;
+    const previous = items;
+    setItems((current) => current.map((item) => ({ ...item, read: true })));
+    try {
+      await Promise.all(unreadItems.map((item) => notificationApi.markRead(Number(item.id))));
+      ctx.reload();
+      toast.success("Đã đánh dấu tất cả thông báo là đã đọc");
+    } catch {
+      setItems(previous);
+      toast.error("Không thể cập nhật tất cả thông báo");
+    }
+  };
+
+  return (
+    <PageTransition className="space-y-6 min-w-0">
+      <PageHeader
+        title="Thông báo"
+        description={unreadCount > 0 ? `${unreadCount} thông báo chưa đọc` : "Bạn đã đọc hết thông báo mới."}
+        icon={<Bell className="size-7" />}
+        actions={(
+          <div className="flex flex-wrap items-center gap-2">
+            <ExpressiveButton variant="tonal" onClick={() => onNavigate("stu-dashboard")}>
+              <ChevronLeft className="size-4" />
+              Trang chủ
+            </ExpressiveButton>
+            <ExpressiveButton variant="filled" onClick={markAllRead} disabled={unreadCount === 0}>
+              <CheckCircle2 className="size-4" />
+              Đánh dấu đã đọc
+            </ExpressiveButton>
+          </div>
+        )}
+      />
+
+      <ExpressiveCard variant="elevated" className="p-3 min-w-0">
+        {items.length === 0 ? (
+          <EmptyState
+            icon={<Bell className="size-7" />}
+            title="Chưa có thông báo"
+            description="Các cập nhật từ UniBus sẽ xuất hiện tại đây."
+          />
+        ) : (
+          <div className="space-y-2">
+            {items.map((notification) => {
+              const Icon = notification.type === "success" ? CheckCircle2 : notification.type === "warning" ? AlertTriangle : notification.type === "danger" ? XCircle : Info;
+              const iconColor = notification.type === "success" ? "#16a34a" : notification.type === "warning" ? "#f59e0b" : notification.type === "danger" ? "#dc2626" : "#7C4DFF";
+              return (
+                <motion.button
+                  key={notification.id}
+                  type="button"
+                  whileHover={{ y: -1 }}
+                  whileTap={{ scale: 0.99 }}
+                  onClick={() => markOneRead(notification)}
+                  className={cn(
+                    "flex w-full items-start gap-3 rounded-2xl border p-4 text-left transition-colors min-w-0",
+                    notification.read ? "border-[#E7E0D2] bg-[#FFFEFA]" : "border-[#D9C8FF] bg-[#F6F0FF]",
+                  )}
+                >
+                  <div className="flex size-10 shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: `${iconColor}20`, color: iconColor }}>
+                    <Icon className="size-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-sm font-semibold text-[#1F211B]">{notification.title}</p>
+                      {!notification.read && <span className="size-2 shrink-0 rounded-full bg-[#7C4DFF]" />}
+                    </div>
+                    <p className="mt-1 text-sm leading-6 text-[#6B665C]">{notification.body}</p>
+                    <p className="mt-2 text-xs text-[#8A857A]">{notification.createdAt ? formatDateTime(notification.createdAt) : ""}</p>
+                  </div>
+                  {updatingId === notification.id ? <RefreshCw className="size-4 shrink-0 animate-spin text-[#7C4DFF]" /> : null}
+                </motion.button>
+              );
+            })}
+          </div>
+        )}
+      </ExpressiveCard>
+    </PageTransition>
   );
 }
 
@@ -1821,6 +2001,13 @@ function JourneyPlannerDesktopScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate
   const primaryColor = selectedJourney?.routeBadges?.[0]?.colorHex || "#144fcc";
   const selectedEta = tracking?.stopEtas?.[0];
 
+  const stopNameForAction = (stopId?: number) => {
+    if (!stopId) return "Chưa xác định";
+    return selectedJourney?.stops?.find((stop) => stop.stopId === stopId)?.stopName
+      || tracking?.stops?.find((stop) => stop.stopId === stopId)?.stopName
+      || "Chưa xác định";
+  };
+
   const registerSelected = async () => {
     const action = selectedJourney?.primaryAction;
     if (!action?.enabled || !action.routeId || !action.boardingStopId || !action.alightingStopId) {
@@ -1834,12 +2021,34 @@ function JourneyPlannerDesktopScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate
         alightingStopId: action.alightingStopId,
       });
       localStorage.setItem("unibus.paymentRouteId", String(action.routeId));
+      localStorage.setItem("unibus.pendingPaymentRegistration", JSON.stringify({
+        registrationId: action.routeId,
+        routeId: action.routeId,
+        routeName: selectedJourney?.summary || selectedJourney?.primaryAction?.label || "Tuyến đã đăng ký",
+        boardingStopId: action.boardingStopId,
+        boardingStopName: stopNameForAction(action.boardingStopId),
+        alightingStopId: action.alightingStopId,
+        alightingStopName: stopNameForAction(action.alightingStopId),
+        status: "APPROVED",
+        registeredAt: new Date().toISOString(),
+      }));
       ctx.reload();
       toast.success("Đã đăng ký tuyến. Chuyển sang mua vé tháng.");
       onNavigate("stu-invoices");
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
         localStorage.setItem("unibus.paymentRouteId", String(action.routeId));
+        localStorage.setItem("unibus.pendingPaymentRegistration", JSON.stringify({
+          registrationId: action.routeId,
+          routeId: action.routeId,
+          routeName: selectedJourney?.summary || selectedJourney?.primaryAction?.label || "Tuyến đã đăng ký",
+          boardingStopId: action.boardingStopId,
+          boardingStopName: stopNameForAction(action.boardingStopId),
+          alightingStopId: action.alightingStopId,
+          alightingStopName: stopNameForAction(action.alightingStopId),
+          status: "APPROVED",
+          registeredAt: new Date().toISOString(),
+        }));
         toast.info("Tuyến này đã được đăng ký. Chuyển sang mua vé.");
         onNavigate("stu-invoices");
         return;
@@ -3084,11 +3293,11 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
   const nextEta = journeyTracking?.stopEtas?.[0];
   const routeTitle = journeyTracking?.routeName || trackingContext?.routeName || selectedRoute?.name || "Tuyến đang theo dõi";
   const routeCode = journeyTracking?.routeCode || trackingContext?.routeCode || journeyTracking?.stopEtas?.[0]?.routeCode || selectedRoute?.code || "BUS";
-  const displayVehicles = (journeyTracking?.vehicles || []).filter((vehicle) => vehicle.tripId != null);
+  const displayVehicles = journeyTracking?.vehicles || [];
   const selectedVehicle = displayVehicles.find((vehicle) => vehicle.vehicleId === selectedVehicleId) || displayVehicles[0];
   const collapsedVehicles = displayVehicles.filter((vehicle) => vehicle.vehicleId !== selectedVehicle?.vehicleId);
 
-  const journeyBuses = useMemo(() => (selectedVehicle ? [selectedVehicle] : [])
+  const journeyBuses = useMemo(() => displayVehicles
     .map((vehicle) => ({
       id: vehicle.vehicleId,
       plate: vehicle.plateNumber || "43B-00000",
@@ -3100,7 +3309,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
       capacity: vehicle.capacity,
       etaMinutes: vehicle.etaMinutes,
     }))
-    .filter((vehicle) => vehicle.lat && vehicle.lng), [journeyRouteColor, selectedVehicle]);
+    .filter((vehicle) => vehicle.lat && vehicle.lng), [displayVehicles, journeyRouteColor]);
   const etaStopRows = (journeyTracking?.stopEtas || []).map((stop) => ({
     id: `eta-${stop.routeId}-${stop.stopId}`,
     name: stop.stopName,
@@ -3682,7 +3891,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                 )}
                 {realtimeEtaRows.length > visibleEtaRows.length ? (
                   <button type="button" onClick={() => setShowAllEtaStops((value) => !value)} className="mt-4 w-full rounded-2xl border border-[#E8E2D5] bg-white px-4 py-2 text-sm font-semibold text-[#144fcc] transition hover:bg-[#beff50]/20">
-                    {showAllEtaStops ? "Thu g?n th?i gian d? ki?n" : "Xem t?t c? c?c tr?m"}
+                    {showAllEtaStops ? "Thu gọn thời gian dự kiến" : "Xem tất cả các trạm"}
                   </button>
                 ) : null}
               </ExpressiveCard>
@@ -3741,13 +3950,11 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                         <p className="truncate text-base font-semibold text-[#14140f]">{selectedVehicle.plateNumber || "Xe theo lịch tuyến"}</p>
                         <p className="mt-1 text-xs text-[#6B6B6B]">Xe sắp tới · Trạm kế: {selectedVehicle.nextStopName || "đang xác định"}</p>
                       </div>
-                        {selectedVehicle.driverName && <p className="mt-1 text-xs font-semibold text-[#3f5f0b]">Tài xế: {selectedVehicle.driverName}</p>}
                       <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
                         <InfoCell label="Tốc độ" value={`${Math.round(numberValue(selectedVehicle.speedKmh))} km/h`} />
                         <InfoCell label="Tải" value={selectedVehicle.occupancy != null && selectedVehicle.capacity ? `${selectedVehicle.occupancy}/${selectedVehicle.capacity}` : "--"} />
                         <InfoCell label="Biển số" value={selectedVehicle.plateNumber || selectedVehicle.vehicleId || "--"} />
                         <InfoCell label="Tuyến" value={selectedVehicle.routeCode || routeCode} />
-                        <InfoCell label="Tài xế" value={selectedVehicle.driverName || "--"} />
                       </div>
                     </motion.div>
                   ) : (
@@ -3927,7 +4134,7 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false, onTrackRoute }: { ct
   const [registrations, setRegistrations] = useState<RegistrationDTO[]>([]);
   const [targetCancel, setTargetCancel] = useState<RegistrationDTO | null>(null);
   const [expandedRouteId, setExpandedRouteId] = useState<number | null>(null);
-  const [singleTickets, setSingleTickets] = useState<SingleTripTicketView[]>([]);
+  const [freshPasses, setFreshPasses] = useState<PassesDashboard | null>(null);
 
   const reg = ctx.registration;
   const activeRegistrations = registrations.length ? registrations : reg ? [reg] : [];
@@ -3946,43 +4153,27 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false, onTrackRoute }: { ct
     if (/^[a-z0-9\s]+$/.test(raw) && raw === normalized && raw.length > 12) return "Chưa xác định";
     return raw;
   };
-  const routeTickets = useMemo(() => {
-    const passesPayload = ctx.raw.passes?.raw ?? ctx.raw.passes?.data ?? ctx.raw.passes;
-    const tickets = Array.isArray(passesPayload?.tickets) ? passesPayload.tickets : [];
-    const fallback = ctx.activeTicket ? [ctx.activeTicket] : [];
-    const byId = new Map<string, any>();
-    [...tickets, ...fallback].forEach((ticket: any) => {
-      const key = String(ticket.ticketId ?? ticket.monthlyPassId ?? `${ticket.routeId}-${ticket.ticketType}-${ticket.expiresOn || ticket.expiresAt}`);
-      byId.set(key, ticket);
-    });
-    return Array.from(byId.values());
-  }, [ctx.activeTicket, ctx.raw.passes]);
+  const routeTickets = useMemo(() => freshPasses ? collectMonthlyTicketsFrom(freshPasses, null) : collectMonthlyTickets(ctx), [ctx, freshPasses]);
 
-  const activeTicketForRoute = (routeId?: number | string | null) => {
-    if (routeId == null) return null;
-    const now = new Date();
-    const today = new Date(now);
+  const activeMonthlyForRoute = (routeId?: number | string | null, routeName?: string | null, routeCode?: string | null) => {
+    const routeKey = routeId == null ? "" : String(routeId);
+    const codeKey = String(routeCode || "").trim();
+    const nameKey = normalizeRouteMatchText(routeName);
+    if (!routeKey && !codeKey && !nameKey) return null;
+    const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const monthly = routeTickets.find((ticket: any) => {
-      const active = String(ticket.status || "").toUpperCase() === "ACTIVE";
-      const ticketType = String(ticket.ticketType || "MONTHLY").toUpperCase();
+    return routeTickets.find((ticket: any) => {
       const expiryRaw = ticket.expiresOn || ticket.expiresAt;
       const expiry = expiryRaw ? new Date(expiryRaw) : null;
       const stillValid = !expiry || expiry > today;
-      return active && ticketType === "MONTHLY" && stillValid && String(ticket.routeId) === String(routeId);
-    });
-    if (monthly) return monthly;
-    return singleTickets.find((ticket) => {
-      const active = ["UNUSED", "ACTIVE", "PAID"].includes(String(ticket.status || "").toUpperCase());
-      const expiry = ticket.expiresAt ? new Date(ticket.expiresAt) : null;
-      return active && (!expiry || expiry > now) && String(ticket.routeId) === String(routeId);
+      const sameRoute = routeKey && String(ticket.routeId) === routeKey;
+      const sameCode = codeKey && String(ticket.routeCode || "").trim() === codeKey;
+      const ticketName = normalizeRouteMatchText(ticket.routeName || ticket.name);
+      const sameName = Boolean(nameKey && ticketName && (ticketName === nameKey || ticketName.includes(nameKey) || nameKey.includes(ticketName)));
+      return stillValid && (sameRoute || sameCode || sameName);
     }) || null;
   };
-  const activeMonthlyForRoute = (routeId?: number | string | null) => {
-    const ticket = activeTicketForRoute(routeId);
-    return String(ticket?.ticketType || "").toUpperCase() === "MONTHLY" ? ticket : null;
-  };
-  const targetMonthlyPass = activeMonthlyForRoute(targetCancel?.routeId);
+  const targetMonthlyPass = activeMonthlyForRoute(targetCancel?.routeId, targetCancel?.routeName);
 
   const loadRegistrations = useCallback(async () => {
     try {
@@ -3995,19 +4186,11 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false, onTrackRoute }: { ct
 
   useEffect(() => {
     loadRegistrations();
+    studentApi.tickets().then(setFreshPasses).catch(() => setFreshPasses(null));
     if (localStorage.getItem("unibus.pendingRegistration")) {
       setShowRegister(true);
     }
   }, [loadRegistrations]);
-
-
-  useEffect(() => {
-    let cancelled = false;
-    studentApi.singleTripTickets()
-      .then((items) => { if (!cancelled) setSingleTickets(items); })
-      .catch(() => { if (!cancelled) setSingleTickets([]); });
-    return () => { cancelled = true; };
-  }, [ctx.raw.passes]);
 
   const doCancel = async () => {
     const selected = targetCancel || reg;
@@ -4060,28 +4243,27 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false, onTrackRoute }: { ct
         <StaggerGroup className="grid min-w-0 items-start gap-4 xl:grid-cols-2">
           {activeRegistrations.map((item: RegistrationDTO) => {
             const regRoute = ctx.routes.find((route: any) => String(route.id ?? route.routeId) === String(item.routeId));
-            const activeRouteTicket = activeTicketForRoute(item.routeId);
-            const activeMonthlyPass = activeMonthlyForRoute(item.routeId);
-            const monthlyExpiresOn = activeMonthlyPass?.expiresOn || activeMonthlyPass?.expiresAt;
-            const expanded = expandedRouteId === item.registrationId;
             const routeName = item.routeName || regRoute?.name || (regRoute as any)?.routeName || "Tuyến đã đăng ký";
             const routeCode = (item as RegistrationDTO & { routeCode?: string }).routeCode
               || (regRoute as any)?.routeCode
               || regRoute?.code
-              || routeName.match(/^\s*(?:Tuyến\s*)?([A-Z]?\d{1,3})/i)?.[1]
+              || routeName.match(/^\s*(?:Tuyến\s*)?([A-Z]?\d{1,3})\b/i)?.[1]
               || "BUS";
-            const ticketStatus = activeRouteTicket ? "Đã có vé hợp lệ" : "Cần mua vé";
-            const boardingStopLabel = cleanStopLabel(activeRouteTicket?.boardingStopName || item.boardingStopName);
-            const alightingStopLabel = cleanStopLabel(activeRouteTicket?.alightingStopName || item.alightingStopName);
+            const activeMonthlyPass = item.hasActiveMonthlyPass ? (activeMonthlyForRoute(item.routeId, routeName, routeCode) || item) : activeMonthlyForRoute(item.routeId, routeName, routeCode);
+            const monthlyExpiresOn = item.monthlyPassExpiresOn || activeMonthlyPass?.expiresOn || activeMonthlyPass?.expiresAt;
+            const expanded = expandedRouteId === item.registrationId;
+            const ticketStatus = activeMonthlyPass ? "Đã có vé hợp lệ" : "Cần mua vé";
+            const boardingStopLabel = cleanStopLabel(item.boardingStopName);
+            const alightingStopLabel = cleanStopLabel(item.alightingStopName);
             return (
               <StaggerItem key={item.registrationId} className="self-start">
                 <motion.div
                   whileHover={{ y: -4, scale: 1.006 }}
                   whileTap={{ scale: 0.998 }}
                   transition={{ type: "spring", stiffness: 180, damping: 22, mass: 0.7 }}
-                  className="flex min-h-[270px] min-w-0 flex-col overflow-hidden rounded-[24px] border border-[#E8E2D5] bg-white shadow-[0_8px_30px_rgba(0,0,0,0.05)] transition-shadow duration-300 ease-out hover:shadow-[0_16px_42px_rgba(20,20,15,0.09)]"
+                  className="flex min-h-[330px] min-w-0 flex-col overflow-hidden rounded-[24px] border border-[#E8E2D5] bg-white shadow-[0_8px_30px_rgba(0,0,0,0.05)] transition-shadow duration-300 ease-out hover:shadow-[0_16px_42px_rgba(20,20,15,0.09)]"
                 >
-                  <div className="flex min-h-[270px] flex-col space-y-4 p-4 sm:p-5">
+                  <div className="flex min-h-[330px] flex-col space-y-4 p-4 sm:p-5">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex min-w-0 items-start gap-3">
                         <span className="flex h-10 min-w-10 shrink-0 items-center justify-center rounded-xl bg-[#111111] px-3 text-sm font-semibold text-[#BDFD4F]">
@@ -4095,7 +4277,7 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false, onTrackRoute }: { ct
                             </span>
                             <span className={cn(
                               "rounded-full px-2.5 py-1 text-xs font-medium",
-                              activeRouteTicket ? "bg-[#111111] text-[#BDFD4F]" : "bg-[#FFF7E5] text-[#7A4B00]"
+                              activeMonthlyPass ? "bg-[#111111] text-[#BDFD4F]" : "bg-[#FFF7E5] text-[#7A4B00]"
                             )}>
                               {ticketStatus}
                             </span>
@@ -4113,39 +4295,26 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false, onTrackRoute }: { ct
                       <button
                         type="button"
                         onClick={() => {
-                          if (activeRouteTicket) {
+                          if (activeMonthlyPass) {
                             onNavigate("stu-my-ticket");
                             return;
                           }
                           localStorage.setItem("unibus.paymentRouteId", String(item.routeId));
-                          localStorage.setItem("unibus.pendingPaymentRegistration", JSON.stringify({
-                            ...item,
-                            routeName,
-                            boardingStopName: boardingStopLabel,
-                            alightingStopName: alightingStopLabel,
-                            status: item.status || "APPROVED",
-                          }));
                           onNavigate("stu-invoices");
                         }}
                         className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-[#111111] px-4 text-sm font-semibold text-[#BDFD4F] transition-colors hover:bg-[#24241d]"
                       >
-                        {activeRouteTicket ? <QrCode className="size-4" /> : <CreditCard className="size-4" />}
-                        {activeRouteTicket ? "Xem vé / QR" : "Chọn vé / thanh toán"}
+                        {activeMonthlyPass ? <QrCode className="size-4" /> : <CreditCard className="size-4" />}
+                        {activeMonthlyPass ? "Xem vé / QR" : "Chọn vé / thanh toán"}
                       </button>
                       <button
                         type="button"
                         onClick={() => {
                           saveRouteTrackingContext({
                             ...item,
-                            boardingStopId: activeRouteTicket?.boardingStopId || item.boardingStopId,
-                            alightingStopId: activeRouteTicket?.alightingStopId || item.alightingStopId,
                             routeCode,
                             routeName,
                           });
-                          if (onTrackRoute) {
-                            onTrackRoute();
-                            return;
-                          }
                           onNavigate("stu-tracking");
                         }}
                         className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-[#E8E2D5] bg-white px-4 text-sm font-medium text-[#111111] transition-colors hover:bg-[#FAF8F2]"
@@ -4181,17 +4350,23 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false, onTrackRoute }: { ct
                               <RouteDetailLine label="Trạng thái vé" value={ticketStatus} />
                               {activeMonthlyPass && <RouteDetailLine label="Hiệu lực vé" value={`Đến ${formatDate(monthlyExpiresOn)}`} />}
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setTargetCancel(item);
-                                setCancelling(true);
-                              }}
-                              className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-[#8A1C16] transition-colors hover:text-[#B3261E]"
-                            >
-                              <Trash2 className="size-3.5" />
-                              Hủy đăng ký
-                            </button>
+                            {activeMonthlyPass ? (
+                              <p className="mt-3 rounded-lg bg-[#F7F4EC] px-3 py-2 text-xs font-medium text-[#6B6256]">
+                                Không thể hủy khi vé tháng còn hiệu lực.
+                              </p>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setTargetCancel(item);
+                                  setCancelling(true);
+                                }}
+                                className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-[#8A1C16] transition-colors hover:text-[#B3261E]"
+                              >
+                                <Trash2 className="size-3.5" />
+                                Hủy đăng ký
+                              </button>
+                            )}
                           </div>
                         </motion.div>
                       )}
@@ -4334,7 +4509,7 @@ function RegisterRouteDialog({
         <div>
           <Label className="text-xs font-bold">Tuyến xe</Label>
           <Select value={routeId} onValueChange={(v) => { setRouteId(v); setBoardingStopId(""); setAlightingStopId(""); }}>
-            <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn tuyến" /></SelectTrigger>
+            <SelectTrigger className="mt-1.5 min-w-0 overflow-hidden [&>span]:truncate"><SelectValue placeholder="Chọn tuyến" /></SelectTrigger>
             <SelectContent>
               {ctx.routes.map((r: any) => (
                 <SelectItem key={r.id} value={r.id}>{r.code} — {r.name}</SelectItem>
@@ -4383,21 +4558,27 @@ function RegisterRouteDialog({
   );
 }
 
+
 // =============================================================================
 // Screen 7: My Ticket — QR code + ticket details
 // =============================================================================
 function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavigate: (id: string) => void; compact?: boolean }) {
-  const t = ctx.activeTicket;
+  const [freshPasses, setFreshPasses] = useState<PassesDashboard | null>(null);
+  const monthlyTickets = useMemo(() => freshPasses ? collectMonthlyTicketsFrom(freshPasses, ctx.activeTicket) : collectMonthlyTickets(ctx), [ctx, freshPasses]);
+  const t = monthlyTickets[0] || ctx.activeTicket;
   const [expanded, setExpanded] = useState(false);
   const [singleTickets, setSingleTickets] = useState<SingleTripTicketView[]>([]);
 
   useEffect(() => {
     let cancelled = false;
+    studentApi.tickets()
+      .then((passes) => { if (!cancelled) setFreshPasses(passes); })
+      .catch(() => { if (!cancelled) setFreshPasses(null); });
     studentApi.singleTripTickets()
       .then((items) => { if (!cancelled) setSingleTickets(items); })
       .catch(() => { if (!cancelled) setSingleTickets([]); });
     return () => { cancelled = true; };
-  }, [ctx.raw.passes]);
+  }, []);
 
   const singleTicketSection = singleTickets.length > 0 ? (
     <Section title="Vé lượt" description="Vé ngày / vé lượt đã mua">
@@ -4459,27 +4640,23 @@ function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
           initial={{ opacity: 0, y: 16, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ type: "spring", stiffness: 260, damping: 24 }}
-          className="relative overflow-hidden rounded-3xl border border-[#14140f]/10 bg-[#FAF8F2] text-[#14140f] shadow-[0_18px_50px_rgba(20,20,15,0.08)] min-w-0"
+          className="relative overflow-hidden rounded-[24px] border border-[#E8E2D5] bg-white text-[#111111] shadow-[0_8px_30px_rgba(0,0,0,0.05)] min-w-0"
         >
-          {/* decorative dark blobs */}
-          <div className="absolute -top-12 -right-12 size-48 rounded-full bg-[#14140f]/8 blur-3xl pointer-events-none" />
-          <div className="absolute -bottom-16 -left-8 size-40 rounded-full bg-[#beff50]/35 blur-3xl pointer-events-none" />
-
           <div className="relative p-6 sm:p-8 min-w-0">
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6 min-w-0">
               <div className="min-w-0 flex-1">
-                <p className="text-[10px] font-bold opacity-70 uppercase tracking-wider">Vé tháng đang sử dụng</p>
-                <h2 className="text-2xl sm:text-3xl font-black mt-1 truncate">{t.routeName}</h2>
+                <p className="text-xs font-medium uppercase tracking-[0.18em] text-[#7A756B]">Vé tháng đang sử dụng</p>
+                <h2 className="mt-1 truncate text-2xl font-semibold text-[#111111] sm:text-3xl">{t.routeName}</h2>
                 <div className="flex flex-wrap items-center gap-2 mt-3">
                   <span className="inline-flex h-7 px-3 rounded-full bg-[#14140f] text-white text-xs font-bold items-center">
                     {t.routeCode || route?.code || "UNIBUS"}
                   </span>
                   <span className={cn(
-                    "inline-flex items-center gap-1 h-7 px-3 rounded-full text-xs font-bold",
-                    hasActiveMonthlyPass ? "bg-[#14140f] text-[#beff50]" : "bg-[#f59e0b] text-[#14140f]"
+                    "inline-flex items-center gap-1 h-7 px-3 rounded-full text-xs font-medium",
+                    hasActiveMonthlyPass ? "bg-[#111111] text-[#BDFD4F]" : "bg-[#FFF7E5] text-[#7A4B00]"
                   )}>
                     <span className={cn("size-1.5 rounded-full", hasActiveMonthlyPass && "animate-pulse")} style={{ backgroundColor: hasActiveMonthlyPass ? "#beff50" : "#14140f" }} />
-                    {hasActiveMonthlyPass ? "Vé tháng còn hiệu lực" : t.status}
+                    {hasActiveMonthlyPass ? "Đã có vé hợp lệ" : "Chưa có vé hợp lệ"}
                   </span>
                   <span className="inline-flex items-center gap-1 h-7 px-3 rounded-full bg-white text-xs font-bold border border-[#14140f]/10">
                     <Calendar className="size-3.5" />
@@ -4505,22 +4682,22 @@ function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
 
             {/* Info chips — rounded boxes với icon */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5 min-w-0">
-              <div className="bg-[#14140f]/10 rounded-xl p-3 min-w-0">
+              <div className="rounded-2xl border border-[#EEE7DA] bg-[#FAF8F2] p-3 min-w-0">
                 <MapPin className="size-4 mb-1 opacity-70" />
                 <p className="text-[10px] font-bold opacity-70 uppercase">Trạm lên</p>
                 <p className="font-bold text-sm truncate">{t.boardingStopName || "—"}</p>
               </div>
-              <div className="bg-[#14140f]/10 rounded-xl p-3 min-w-0">
+              <div className="rounded-2xl border border-[#EEE7DA] bg-[#FAF8F2] p-3 min-w-0">
                 <MapPin className="size-4 mb-1 opacity-70" />
                 <p className="text-[10px] font-bold opacity-70 uppercase">Trạm xuống</p>
                 <p className="font-bold text-sm truncate">{t.alightingStopName || "—"}</p>
               </div>
-              <div className="bg-[#14140f]/10 rounded-xl p-3 min-w-0">
+              <div className="rounded-2xl border border-[#EEE7DA] bg-[#FAF8F2] p-3 min-w-0">
                 <Calendar className="size-4 mb-1 opacity-70" />
                 <p className="text-[10px] font-bold opacity-70 uppercase">Hiệu lực</p>
                 <p className="font-bold text-sm truncate">{formatDate(t.validFrom)}</p>
               </div>
-              <div className="bg-[#14140f]/10 rounded-xl p-3 min-w-0">
+              <div className="rounded-2xl border border-[#EEE7DA] bg-[#FAF8F2] p-3 min-w-0">
                 <Clock className="size-4 mb-1 opacity-70" />
                 <p className="text-[10px] font-bold opacity-70 uppercase">Hết hạn</p>
                 <p className="font-bold text-sm truncate">{formatDate(t.expiresAt || t.expiresOn)}</p>
@@ -4530,7 +4707,7 @@ function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
             {t.finalFareAmount != null && (
               <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-[#14140f]/15 min-w-0">
                 <div className="flex flex-wrap items-center gap-3 min-w-0">
-                  <div className="bg-[#14140f] text-[#beff50] px-4 py-2 rounded-full text-sm font-black">
+                  <div className="bg-[#111111] text-[#BDFD4F] px-4 py-2 rounded-full text-sm font-semibold">
                     {formatVND(t.finalFareAmount)}
                   </div>
                   {t.subsidyAmount != null && t.subsidyAmount > 0 && (
@@ -4557,6 +4734,36 @@ function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
         </motion.div>
       </ScrollReveal>
 
+      {monthlyTickets.length > 1 && (
+        <Section title="Vé tháng" description={`${monthlyTickets.length} vé tháng đang có hiệu lực`}>
+          <div className="grid gap-3 md:grid-cols-2">
+            {monthlyTickets.slice(1).map((ticket: any) => (
+              <ExpressiveCard key={ticket.ticketId ?? ticket.monthlyPassId ?? ticket.routeId} variant="filled" className="flex h-full flex-col p-5 min-w-0">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-black uppercase text-on-surface-variant">Vé tháng</p>
+                    <h3 className="mt-1 truncate text-base font-black text-on-surface">{ticket.routeName}</h3>
+                    <p className="mt-1 text-xs text-on-surface-variant">Hết hạn: {formatDate(ticket.expiresAt || ticket.expiresOn)}</p>
+                  </div>
+                  <span className="rounded-full bg-[#14140f] px-3 py-1 text-[10px] font-black text-[#beff50]">{ticket.status || "ACTIVE"}</span>
+                </div>
+                <div className="mt-4 flex items-center gap-4">
+                  {ticket.qrCode && (
+                    <div className="rounded-2xl bg-white p-3 shadow-sm">
+                      <QRCodeCanvas value={ticket.qrCode} size={96} level="H" />
+                    </div>
+                  )}
+                  <div className="min-w-0 text-sm">
+                    <p><span className="font-bold">Sinh viên trả:</span> {formatVND(Number(ticket.finalFareAmount ?? ticket.fareAmount ?? 0))}</p>
+                    <p className="text-xs text-on-surface-variant">{ticket.boardingStopName || "—"} → {ticket.alightingStopName || "—"}</p>
+                  </div>
+                </div>
+              </ExpressiveCard>
+            ))}
+          </div>
+        </Section>
+      )}
+
       {singleTicketSection}
 
       <Section title="Hướng dẫn sử dụng">
@@ -4575,7 +4782,7 @@ function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
 // Screen 8: History — travel history list with stat cards
 // =============================================================================
 function HistoryScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
-  const [view, setView] = useState<"trips" | "feedback" | "lost">("trips");
+  const [supportAction, setSupportAction] = useState<null | { type: "feedback" | "lost"; tripId: string; routeId?: string }>(null);
   const totalTrips = ctx.tripsHistory.length;
   // Estimate monthly spend from active ticket fare
   const monthlyFare = ctx.activeTicket?.finalFareAmount ?? ctx.activeTicket?.originalFareAmount ?? 0;
@@ -4593,18 +4800,6 @@ function HistoryScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
         icon={<History className="size-7" />}
       />
 
-      <Tabs value={view} onValueChange={(value) => setView(value as "trips" | "feedback" | "lost")}>
-        <TabsList className="grid w-full grid-cols-3 rounded-2xl bg-surface-container-low p-1 shadow-none">
-          <TabsTrigger value="trips" className="rounded-xl">Chuyến đã đi</TabsTrigger>
-          <TabsTrigger value="feedback" className="rounded-xl">Phản hồi</TabsTrigger>
-          <TabsTrigger value="lost" className="rounded-xl">Mất đồ</TabsTrigger>
-        </TabsList>
-      </Tabs>
-
-      {view === "feedback" && <FeedbackScreen ctx={ctx} compact />}
-      {view === "lost" && <LostItemsScreen ctx={ctx} compact />}
-      {view !== "trips" ? null : (
-        <>
       {/* Stat cards — 3 mini cards giống prototype */}
       {totalTrips > 0 && (
         <StaggerGroup className="grid grid-cols-3 gap-2 sm:gap-3 min-w-0">
@@ -4637,26 +4832,37 @@ function HistoryScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
         />
       ) : (
         <StaggerGroup className="space-y-3 min-w-0">
-          {ctx.tripsHistory.map((h: any) => (
+          {ctx.tripsHistory.map((h: any) => {
+            const tripId = String(h.tripId || h.id);
+            const routeId = h.routeId ? String(h.routeId) : undefined;
+            const isActive = supportAction?.tripId === tripId;
+
+            return (
             <StaggerItem key={h.id}>
               <HistoryRow
                 history={h}
                 routes={ctx.routes}
                 onFeedback={() => {
-                  localStorage.setItem("unibus.supportTripId", String(h.tripId || h.id));
-                  if (h.routeId) localStorage.setItem("unibus.supportRouteId", String(h.routeId));
-                  setView("feedback");
+                  setSupportAction({ type: "feedback", tripId, routeId });
                 }}
                 onLostItem={() => {
-                  localStorage.setItem("unibus.lostTripId", String(h.tripId || h.id));
-                  setView("lost");
+                  setSupportAction({ type: "lost", tripId, routeId });
                 }}
               />
+              {isActive && supportAction.type === "feedback" && (
+                <div className="mt-3">
+                  <FeedbackScreen ctx={ctx} compact initialTripId={tripId} initialRouteId={routeId} onDone={() => setSupportAction(null)} />
+                </div>
+              )}
+              {isActive && supportAction.type === "lost" && (
+                <div className="mt-3">
+                  <LostItemsScreen ctx={ctx} compact initialTripId={tripId} onDone={() => setSupportAction(null)} />
+                </div>
+              )}
             </StaggerItem>
-          ))}
+          );
+          })}
         </StaggerGroup>
-      )}
-        </>
       )}
     </PageTransition>
   );
@@ -5580,8 +5786,6 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
   const [selectedRouteId, setSelectedRouteId] = useState<string>("");
   const [singleBoardingStopId, setSingleBoardingStopId] = useState<string>("");
   const [singleAlightingStopId, setSingleAlightingStopId] = useState<string>("");
-  const [boardingSelectOpen, setBoardingSelectOpen] = useState(false);
-  const [alightingSelectOpen, setAlightingSelectOpen] = useState(false);
   const [ticketKind, setTicketKind] = useState<"MONTHLY" | "SINGLE">("MONTHLY");
   const [sepayOrder, setSepayOrder] = useState<{
     orderId: number;
@@ -5598,77 +5802,83 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
   const [paidStatus, setPaidStatus] = useState<"idle" | "checking" | "paid" | "expired">("idle");
   const [copying, setCopying] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
-  const [paymentQuote, setPaymentQuote] = useState<PassesDashboard["monthlyPassQuote"] | null>(null);
-  const [paymentRouteDetail, setPaymentRouteDetail] = useState<RouteSuggestionDTO | null>(null);
+  const [successDialogOpen, setSuccessDialogOpen] = useState(false);
   const paymentPollTokenRef = useRef(0);
   const paymentSettledRef = useRef(false);
+  const [paymentRouteDetail, setPaymentRouteDetail] = useState<RouteSuggestionDTO | null>(null);
+  const [paymentQuote, setPaymentQuote] = useState<PassesDashboard["monthlyPassQuote"] | null>(null);
 
   const passes = ctx.raw.passes?.data;
-  const quote = passes?.monthlyPassQuote;
+  const dashboardQuote = passes?.monthlyPassQuote;
   const selectedRegistration = registrations.find((item) => String(item.routeId) === selectedRouteId)
     || (pendingRegistration && String(pendingRegistration.routeId) === selectedRouteId ? pendingRegistration : null)
     || (ctx.registration && (!selectedRouteId || String(ctx.registration.routeId) === selectedRouteId) ? ctx.registration : null);
   const selectedRoute = ctx.routes.find((route: any) => String(route.id ?? route.routeId) === selectedRouteId);
-  const compactRouteLabel = (registration?: RegistrationDTO | null) => String(registration?.routeName || "Tuy?n ?? ch?n").split(" ? ")[0].trim();
+  const compactRouteLabel = (registration?: RegistrationDTO | null) => String(registration?.routeName || "Tuyến đã chọn").split(" — ")[0].trim();
   const selectableRegistrations = useMemo(() => {
     const byRoute = new Map<string, RegistrationDTO>();
-    [...registrations, ...(pendingRegistration ? [pendingRegistration] : [])].forEach((item) => {
+    registrations.forEach((item) => {
       const key = String(item.routeId);
       if (!byRoute.has(key)) byRoute.set(key, item);
     });
     return Array.from(byRoute.values());
-  }, [pendingRegistration, registrations]);
-  const paymentRoute = paymentRouteDetail && String(paymentRouteDetail.routeId) === selectedRouteId ? paymentRouteDetail : selectedRoute;
-  const routeQuote = paymentQuote && String(paymentQuote.routeId) === selectedRouteId ? paymentQuote : null;
-  const dashboardQuote = quote && String(quote.routeId) === selectedRouteId ? quote : null;
-  const monthlyQuote = ticketKind === "MONTHLY" && routeQuote ? routeQuote : dashboardQuote;
-  const singleQuote = ticketKind === "SINGLE" ? routeQuote : null;
-  const singleFare = Number(selectedRoute?.singleFare ?? selectedRoute?.fare ?? 0);
-  const routeMonthlyFare = Number(selectedRoute?.monthlyFare ?? selectedRoute?.monthlyPass ?? 0);
-  const monthlyOriginal = Number(monthlyQuote?.originalFareAmount ?? monthlyQuote?.baseAmount ?? routeMonthlyFare);
-  const monthlySubsidy = Number(monthlyQuote?.subsidyAmount ?? 0);
+  }, [registrations]);
+  const routeScopedDashboardQuote = dashboardQuote && String(dashboardQuote.routeId) === selectedRouteId ? dashboardQuote : null;
+  const activeQuote = paymentQuote && String(paymentQuote.routeId) === selectedRouteId ? paymentQuote : routeScopedDashboardQuote;
+  const singleFare = Number(paymentRouteDetail?.singleFare ?? selectedRoute?.singleFare ?? selectedRoute?.fare ?? 0);
+  const routeMonthlyFare = Number(paymentRouteDetail?.monthlyFare ?? selectedRoute?.monthlyFare ?? selectedRoute?.monthlyPass ?? 0);
+  const monthlyOriginal = Number(activeQuote?.originalFareAmount ?? activeQuote?.baseAmount ?? routeMonthlyFare);
+  const monthlySubsidy = Number(activeQuote?.subsidyAmount ?? 0);
   const monthlyCalculatedFinal = Math.max(monthlyOriginal - monthlySubsidy, 0);
-  const monthlyFinal = Number(monthlyQuote?.payableAmount ?? monthlyQuote?.finalFareAmount ?? (monthlyCalculatedFinal > 0 ? monthlyCalculatedFinal : routeMonthlyFare));
-  const ticketLabel = ticketKind === "SINGLE" ? "Vé lượt" : "Vé tháng";
-  const routeDisplayName = (name?: string | null) => String(name || "Tuyến đã đăng ký").split(/\s+[\u2014\u2013]\s+/)[0]?.trim() || "Tuyến đã đăng ký";
-  const paymentRouteStops = useMemo(() => {
-    const rawStops = Array.isArray((paymentRoute as any)?.stops) ? (paymentRoute as any).stops : [];
-    return rawStops
-      .map((entry: any, index: number) => {
-        const stopId = String(entry?.id ?? entry?.stopId ?? entry);
-        const stop = typeof entry === "object" ? entry : ctx.stops.find((item: any) => String(item.id ?? item.stopId) === stopId);
-        if (!stopId || !stop) return null;
-        const order = Number(entry?.stopOrder ?? entry?.order ?? index);
-        return { id: `${stopId}-${order}-${index}`, stopId, name: stop.name ?? stop.stopName ?? `Trạm ${index + 1}`, order, index };
-      })
-      .filter(Boolean)
-      .sort((left: any, right: any) => left.order - right.order || left.index - right.index)
-      .map((stop: any, order: number) => ({ id: stop.id, stopId: stop.stopId, name: stop.name, order })) as { id: string; stopId: string; name: string; order: number }[];
-  }, [ctx.stops, paymentRoute]);
-  const selectedBoardingStop = paymentRouteStops.find((stop) => stop.id === singleBoardingStopId);
-  const selectedAlightingStop = paymentRouteStops.find((stop) => stop.id === singleAlightingStopId);
-  const boardingStopOrder = selectedBoardingStop?.order;
-  const alightingStopOrder = selectedAlightingStop?.order;
-  const boardingOptions = paymentRouteStops.filter((stop) => alightingStopOrder == null || stop.order < alightingStopOrder);
-  const alightingOptions = paymentRouteStops.filter((stop) => boardingStopOrder == null || stop.order > boardingStopOrder);
-  const stopsLoading = Boolean(selectedRouteId && !paymentRouteStops.length);
-  const selectedBoardingStopName = selectedBoardingStop?.name || selectedRegistration?.boardingStopName;
-  const selectedAlightingStopName = selectedAlightingStop?.name || selectedRegistration?.alightingStopName;
-  const selectedBoardingStopRealId = selectedBoardingStop?.stopId;
-  const selectedAlightingStopRealId = selectedAlightingStop?.stopId;
-  const hasSingleStops = Boolean(selectedBoardingStopRealId && selectedAlightingStopRealId);
-  const singleOriginal = hasSingleStops ? Number(singleQuote?.originalFareAmount ?? singleQuote?.baseAmount ?? singleFare) : 0;
-  const singleSubsidy = hasSingleStops ? Number(singleQuote?.subsidyAmount ?? 0) : 0;
+  const monthlyFinal = Number(activeQuote?.payableAmount ?? activeQuote?.finalFareAmount ?? (monthlyCalculatedFinal > 0 ? monthlyCalculatedFinal : routeMonthlyFare));
+  const singleOriginal = Number(ticketKind === "SINGLE" ? activeQuote?.originalFareAmount ?? activeQuote?.baseAmount ?? singleFare : singleFare);
+  const singleSubsidy = Number(ticketKind === "SINGLE" ? activeQuote?.subsidyAmount ?? 0 : 0);
   const singleCalculatedFinal = Math.max(singleOriginal - singleSubsidy, 0);
-  const singleFinal = hasSingleStops ? Number(singleQuote?.payableAmount ?? singleQuote?.finalFareAmount ?? (singleCalculatedFinal > 0 ? singleCalculatedFinal : singleFare)) : 0;
-  const canBuySingle = Boolean(hasSingleStops && singleFinal > 0);
+  const singleFinal = Number(ticketKind === "SINGLE" ? activeQuote?.payableAmount ?? activeQuote?.finalFareAmount ?? (singleCalculatedFinal > 0 ? singleCalculatedFinal : singleFare) : singleFare);
+  const ticketLabel = ticketKind === "SINGLE" ? "Vé lượt" : "Vé tháng";
+  const canBuySingle = Boolean(selectedRouteId && (selectedRegistration || pendingRegistration));
   const currentOriginal = ticketKind === "SINGLE" ? singleOriginal : monthlyOriginal;
   const currentSubsidy = ticketKind === "SINGLE" ? singleSubsidy : monthlySubsidy;
   const currentFinal = ticketKind === "SINGLE" ? singleFinal : monthlyFinal;
   const currentPriceLabel = currentFinal > 0 ? formatVND(currentFinal) : "Theo giá hệ thống";
   const hasSchoolSubsidy = currentSubsidy > 0;
   const subsidyPercent = currentOriginal > 0 && hasSchoolSubsidy ? Math.round((currentSubsidy / currentOriginal) * 100) : 0;
+  const monthlyBasePrice = monthlyOriginal > 0 ? monthlyOriginal : routeMonthlyFare;
+  const singleBasePrice = singleOriginal > 0 ? singleOriginal : singleFare;
+  const paymentRouteStops = useMemo(() => {
+    const rawStops = Array.isArray((paymentRouteDetail as any)?.stops)
+      ? (paymentRouteDetail as any).stops
+      : Array.isArray((selectedRoute as any)?.stops)
+        ? (selectedRoute as any).stops
+        : [];
+    return rawStops
+      .map((entry: any, index: number) => {
+        const stopId = Number(entry?.stopId ?? entry?.id ?? entry);
+        if (!Number.isFinite(stopId)) return null;
+        const fallbackStop = ctx.stops.find((stop: any) => Number(stop.id ?? stop.stopId) === stopId);
+        const name = entry?.stopName ?? entry?.name ?? fallbackStop?.name ?? fallbackStop?.stopName ?? `Trạm ${index + 1}`;
+        const order = Number(entry?.stopOrder ?? entry?.order ?? index);
+        return { id: String(stopId), stopId, name, order };
+      })
+      .filter(Boolean)
+      .sort((left: any, right: any) => left.order - right.order) as { id: string; stopId: number; name: string; order: number }[];
+  }, [ctx.stops, paymentRouteDetail, selectedRoute]);
+  const boardingStopOrder = paymentRouteStops.find((stop) => stop.id === singleBoardingStopId)?.order;
+  const alightingStopOrder = paymentRouteStops.find((stop) => stop.id === singleAlightingStopId)?.order;
+  const hasSelectableRouteStops = paymentRouteStops.length >= 2;
+  const isValidStopPair = useCallback((boardingId: string, alightingId: string) => {
+    const boardingOrder = paymentRouteStops.find((stop) => stop.id === boardingId)?.order;
+    const alightingOrder = paymentRouteStops.find((stop) => stop.id === alightingId)?.order;
+    return boardingOrder != null && alightingOrder != null && boardingOrder < alightingOrder;
+  }, [paymentRouteStops]);
+  const boardingOptions = paymentRouteStops.filter((stop) => alightingStopOrder == null || stop.order < alightingStopOrder);
+  const alightingOptions = paymentRouteStops.filter((stop) => boardingStopOrder == null || stop.order > boardingStopOrder);
+  const selectedBoardingStopName = paymentRouteStops.find((stop) => stop.id === singleBoardingStopId)?.name || selectedRegistration?.boardingStopName || "—";
+  const selectedAlightingStopName = paymentRouteStops.find((stop) => stop.id === singleAlightingStopId)?.name || selectedRegistration?.alightingStopName || "—";
+
   const refreshPaymentData = useCallback(async () => {
+    await ctx.reload();
+    await new Promise((resolve) => setTimeout(resolve, 1200));
     await ctx.reload();
   }, [ctx]);
 
@@ -5724,11 +5934,35 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
   }, [ctx.registration?.routeId]);
 
   useEffect(() => {
-    if (ticketKind !== "SINGLE") return;
-    setSingleBoardingStopId("");
-    setSingleAlightingStopId("");
-  }, [selectedRouteId, ticketKind]);
+    let cancelled = false;
+    setPaymentQuote(null);
+    if (!selectedRouteId || !selectedRegistration) return;
+    studentApi.ticketQuote(selectedRouteId, ticketKind)
+      .then((quote) => {
+        if (!cancelled) setPaymentQuote(quote ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setPaymentQuote(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedRouteId, selectedRegistration, ticketKind]);
 
+  useEffect(() => {
+    if (ticketKind !== "SINGLE") return;
+    const routeStopIds = paymentRouteStops.map((stop) => stop.id);
+    const registrationBoarding = selectedRegistration?.boardingStopId == null ? "" : String(selectedRegistration.boardingStopId);
+    const registrationAlighting = selectedRegistration?.alightingStopId == null ? "" : String(selectedRegistration.alightingStopId);
+    let nextBoarding = routeStopIds.includes(registrationBoarding) ? registrationBoarding : paymentRouteStops[0]?.id ?? registrationBoarding;
+    let nextAlighting = routeStopIds.includes(registrationAlighting) ? registrationAlighting : paymentRouteStops[paymentRouteStops.length - 1]?.id ?? registrationAlighting;
+    if (hasSelectableRouteStops && !isValidStopPair(nextBoarding, nextAlighting)) {
+      nextBoarding = paymentRouteStops[0]?.id ?? "";
+      nextAlighting = paymentRouteStops[paymentRouteStops.length - 1]?.id ?? "";
+    }
+    setSingleBoardingStopId(nextBoarding || "");
+    setSingleAlightingStopId(nextAlighting || "");
+  }, [hasSelectableRouteStops, isValidStopPair, paymentRouteStops, selectedRegistration?.boardingStopId, selectedRegistration?.alightingStopId, selectedRouteId, ticketKind]);
   useEffect(() => {
     let cancelled = false;
     setPaymentRouteDetail(null);
@@ -5744,22 +5978,6 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
       cancelled = true;
     };
   }, [selectedRouteId]);
-
-  useEffect(() => {
-    let cancelled = false;
-    setPaymentQuote(null);
-    if (!selectedRouteId || !selectedRegistration) return;
-    studentApi.ticketQuote(selectedRouteId, ticketKind)
-      .then((nextQuote) => {
-        if (!cancelled) setPaymentQuote(nextQuote ?? null);
-      })
-      .catch(() => {
-        if (!cancelled) setPaymentQuote(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedRouteId, selectedRegistration, ticketKind]);
 
   // Step state: 1 = review, 2 = pay, 3 = done
   const step = !sepayOrder ? 1 : paidStatus === "paid" ? 3 : 2;
@@ -5789,13 +6007,16 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
       toast.error("Hãy chọn tuyến cần mua vé.");
       return;
     }
-    if (kind === "SINGLE" && (!canBuySingle || !selectedBoardingStopRealId || !selectedAlightingStopRealId)) {
-      toast.error("Cần chọn trạm lên/xuống trước khi mua vé lượt.");
+    if (kind === "SINGLE" && !canBuySingle) {
+      toast.error("Hãy chọn tuyến đã đăng ký trước khi mua vé lượt.");
       return;
     }
     setPurchasing(true);
     try {
-      const order = await studentApi.createSePayOrder(kind, Number(selectedRouteId), kind === "SINGLE" ? { boardingStopId: Number(selectedBoardingStopRealId), alightingStopId: Number(selectedAlightingStopRealId) } : undefined);
+      const stopMetadata = kind === "SINGLE" && hasSelectableRouteStops && isValidStopPair(singleBoardingStopId, singleAlightingStopId)
+        ? { boardingStopId: Number(singleBoardingStopId), alightingStopId: Number(singleAlightingStopId) }
+        : undefined;
+      const order = await studentApi.createSePayOrder(kind, Number(selectedRouteId), stopMetadata);
       const pollToken = paymentPollTokenRef.current + 1;
       paymentPollTokenRef.current = pollToken;
       paymentSettledRef.current = false;
@@ -5813,6 +6034,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
               setPaidStatus("paid");
               toast.success(`Thanh toán thành công! ${kind === "SINGLE" ? "Vé lượt" : "Vé tháng"} đã được kích hoạt.`);
               await refreshPaymentData();
+              setSuccessDialogOpen(true);
               return;
             }
           } catch { /* ignore */ }
@@ -5828,7 +6050,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
     } finally {
       setPurchasing(false);
     }
-  }, [canBuySingle, refreshPaymentData, selectedRouteId, ticketKind]);
+  }, [canBuySingle, hasSelectableRouteStops, isValidStopPair, refreshPaymentData, selectedRouteId, singleAlightingStopId, singleBoardingStopId, ticketKind]);
 
   const copyAccount = async () => {
     if (!sepayOrder?.accountNo) return;
@@ -5864,56 +6086,32 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Mua vé UniBus"
-        description="Thanh toán qua SePay bằng mã QR VietQR — nhanh, an toàn."
+        description="Thanh toán qua SePay bằng mã QR VietQR."
         icon={<CreditCard className="size-7" />}
       />
 
-      {/* Step indicator */}
-      <ScrollReveal>
-        <div className="mx-auto flex max-w-xl items-center justify-center gap-2 sm:gap-4">
-          {[
-            { n: 1, label: "Xem đơn", icon: Info },
-            { n: 2, label: "Thanh toán", icon: CreditCard },
-            { n: 3, label: "Hoàn tất", icon: CheckCircle2 },
-          ].map((s, i) => (
-            <React.Fragment key={s.n}>
-              <div className={cn(
-                "flex items-center gap-2 px-3 py-2 rounded-full transition-colors shrink-0",
-                step >= s.n ? "bg-[#beff50] text-[#14140f]" : "bg-surface-container-high text-on-surface-variant"
-              )}>
-                <div className={cn(
-                  "size-6 rounded-full flex items-center justify-center text-xs font-black",
-                  step >= s.n ? "bg-[#14140f] text-[#beff50]" : "bg-surface-container-lowest"
-                )}>
-                  {step > s.n ? <CheckCircle2 className="size-4" /> : s.n}
-                </div>
-                <span className="text-xs font-bold hidden sm:inline">{s.label}</span>
-              </div>
-              {i < 2 && <div className={cn("h-0.5 w-4 sm:w-8", step > s.n ? "bg-[#beff50]" : "bg-outline-variant")} />}
-            </React.Fragment>
-          ))}
-        </div>
-      </ScrollReveal>
-
-      <div className="mx-auto grid w-full max-w-2xl grid-cols-1 gap-4 min-w-0">
+      <div className={cn("grid grid-cols-1 gap-4 min-w-0", sepayOrder ? "lg:grid-cols-1" : "lg:grid-cols-[1fr_1.2fr]") }>
         {/* Order details */}
-        <ScrollReveal>
-          <ExpressiveCard variant="elevated" className="p-6 h-full min-w-0">
+        {!sepayOrder && <ScrollReveal>
+          <ExpressiveCard variant="elevated" className="p-6 h-full min-w-0 overflow-hidden">
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
               <TicketCheck className="size-5 text-[#111111]" />
               Đơn thanh toán
             </h3>
             {selectedRegistration ? (
               <div className="space-y-4 text-sm">
-                {registrations.length > 1 && (
+                {selectableRegistrations.length > 1 && (
                   <div>
                     <Label className="text-xs font-bold">Chọn tuyến cần mua vé</Label>
                     <Select value={selectedRouteId} onValueChange={(value) => { setSelectedRouteId(value); setSepayOrder(null); setPaidStatus("idle"); setSecondsLeft(null); }}>
-                      <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn tuyến" /></SelectTrigger>
+                      <SelectTrigger className="mt-1.5 min-w-0 overflow-hidden [&>span]:truncate"><SelectValue placeholder="Chọn tuyến" /></SelectTrigger>
                       <SelectContent>
-                        {registrations.map((item) => (
-                          <SelectItem key={item.registrationId} value={String(item.routeId)}>
-                            {routeDisplayName(item.routeName)}
+                        {selectableRegistrations.map((item) => (
+                          <SelectItem key={item.registrationId} value={String(item.routeId)} textValue={compactRouteLabel(item)}>
+                            <div className="min-w-0 max-w-[520px]">
+                              <p className="truncate font-medium">{compactRouteLabel(item)}</p>
+                              <p className="truncate text-xs text-[#7A756B]">{item.boardingStopName || "Trạm lên"} → {item.alightingStopName || "Trạm xuống"}</p>
+                            </div>
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -5921,67 +6119,91 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                   </div>
                 )}
 
-                <div>
-                  <p className="mb-2 text-xs font-bold uppercase text-on-surface-variant">Chọn loại vé</p>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm font-semibold text-[#24251F]">Chọn loại vé</p>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {([
-                      { id: "SINGLE" as const, title: "Vé lượt / vé ngày", desc: "Đi một lượt theo tuyến đã đăng ký", amount: singleFinal },
-                      { id: "MONTHLY" as const, title: "Vé tháng", desc: "Dùng trong 30 ngày cho tuyến này", amount: monthlyFinal },
-                    ]).map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => { setTicketKind(item.id); setSepayOrder(null); setPaidStatus("idle"); setSecondsLeft(null); }}
-                        className={cn(
-                          "relative rounded-[22px] border p-4 text-left transition-all hover:-translate-y-0.5",
-                          ticketKind === item.id
-                            ? "border-[#14140f] bg-white shadow-[0_8px_24px_rgba(20,20,15,0.08)] ring-2 ring-[#beff50]/45"
-                            : "border-[#E8E2D5] bg-[#FAF8F2] hover:bg-white hover:shadow-[0_8px_24px_rgba(20,20,15,0.05)]",
-                        )}
-                      >
-                        {ticketKind === item.id ? (
-                          <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-[#14140f] px-2 py-1 text-[10px] font-black uppercase tracking-wide text-[#beff50]">
-                            <CheckCircle2 className="size-3.5" /> Đang chọn
-                          </span>
-                        ) : null}
-                        <p className="pr-24 text-sm font-black text-on-surface">{item.title}</p>
-                        <p className="mt-1 text-xs text-on-surface-variant">{item.desc}</p>
-                        <p className={cn("mt-3 text-lg font-black", ticketKind === item.id ? "text-[#14140f]" : "text-[#2f332a]")}>{item.amount ? formatVND(item.amount) : "Chưa có giá"}</p>
-                      </button>
-                    ))}
+                      { id: "SINGLE" as const, title: "Vé lượt / vé ngày", desc: "Đi một lượt theo tuyến đã đăng ký", amount: singleBasePrice },
+                      { id: "MONTHLY" as const, title: "Vé tháng", desc: "Hiệu lực theo kỳ vé cho tuyến này", amount: monthlyBasePrice },
+                    ]).map((item) => {
+                      const selected = ticketKind === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => { setTicketKind(item.id); setSepayOrder(null); setPaidStatus("idle"); setSecondsLeft(null); }}
+                          className={cn(
+                            "relative rounded-[18px] border p-4 text-left transition-colors duration-200",
+                            selected
+                              ? "border-[#1F211B] bg-white shadow-[0_14px_34px_rgba(20,20,15,0.10)] ring-2 ring-[#beff50]/30"
+                              : "border-[#E4DFD2] bg-[#FFFEFA] hover:border-[#D3CBB8] hover:bg-white",
+                          )}
+                        >
+                          {selected ? (
+                            <span className="absolute right-3 top-3 grid size-6 place-items-center rounded-full bg-[#1F211B] text-[#beff50]">
+                              <CheckCircle2 className="size-3.5" />
+                            </span>
+                          ) : null}
+                          <p className="pr-8 text-sm font-semibold text-[#1F211B]">{item.title}</p>
+                          <p className="mt-1 text-xs leading-5 text-[#7A756B]">{item.desc}</p>
+                          <p className={cn("mt-3 text-xl font-semibold tabular-nums", selected ? "text-[#111111]" : "text-[#34362F]")}>{item.amount ? formatVND(item.amount) : "Chưa có giá"}</p>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
-                <Row label="Tuyến" value={routeDisplayName(selectedRegistration.routeName)} icon={<RouteIcon className="size-4" />} />
+                <Row label="Tuyến" value={compactRouteLabel(selectedRegistration) || selectedRoute?.name || selectedRoute?.routeName || "Tuyến đã chọn"} icon={<RouteIcon className="size-4" />} />
                 {ticketKind === "SINGLE" ? (
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div>
-                      <Label className="text-xs font-bold">Trạm lên</Label>
-                      <Select value={singleBoardingStopId} onValueChange={(value) => { const nextOrder = paymentRouteStops.find((stop) => stop.id === value)?.order; setSingleBoardingStopId(value); if (nextOrder != null && alightingStopOrder != null && nextOrder >= alightingStopOrder) setSingleAlightingStopId(""); }}>
-                        <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn trạm lên" /></SelectTrigger>
-                        <SelectContent>
-                          {boardingOptions.map((stop) => <SelectItem key={stop.id} value={stop.id}>{stop.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                  <div className="space-y-3 rounded-[18px] border border-[#E7E0D2] bg-[#FFFEFA] p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-[#24251F]">Chọn trạm cho vé lượt</p>
+                        <p className="mt-0.5 text-xs text-[#7A756B]">Áp dụng cho tuyến đã chọn. Giá vé không đổi theo trạm.</p>
+                      </div>
                     </div>
-                    <div>
-                      <Label className="text-xs font-bold">Trạm xuống</Label>
-                      <Select value={singleAlightingStopId} onValueChange={(value) => { const nextOrder = paymentRouteStops.find((stop) => stop.id === value)?.order; setSingleAlightingStopId(value); if (nextOrder != null && boardingStopOrder != null && nextOrder <= boardingStopOrder) setSingleBoardingStopId(""); }}>
-                        <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn trạm xuống" /></SelectTrigger>
-                        <SelectContent>
-                          {alightingOptions.map((stop) => <SelectItem key={stop.id} value={stop.id}>{stop.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    {hasSelectableRouteStops ? (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <Label className="text-xs font-bold">Trạm lên</Label>
+                          <Select
+                            value={singleBoardingStopId}
+                            onValueChange={(value) => {
+                              const nextOrder = paymentRouteStops.find((stop) => stop.id === value)?.order;
+                              setSingleBoardingStopId(value);
+                              if (nextOrder != null && alightingStopOrder != null && nextOrder >= alightingStopOrder) {
+                                setSingleAlightingStopId("");
+                              }
+                            }}
+                          >
+                            <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn trạm lên" /></SelectTrigger>
+                            <SelectContent>
+                              {boardingOptions.map((stop) => <SelectItem key={stop.id} value={stop.id}>{stop.name}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label className="text-xs font-bold">Trạm xuống</Label>
+                          <Select value={singleAlightingStopId} onValueChange={setSingleAlightingStopId}>
+                            <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn trạm xuống" /></SelectTrigger>
+                            <SelectContent>
+                              {alightingOptions.map((stop) => <SelectItem key={stop.id} value={stop.id}>{stop.name}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <Row label="Trạm lên" value={selectedBoardingStopName} icon={<MapPin className="size-4" />} />
+                        <Row label="Trạm xuống" value={selectedAlightingStopName} icon={<MapPin className="size-4" />} />
+                      </div>
+                    )}
                   </div>
                 ) : null}
-                {ticketKind === "SINGLE" && singleBoardingStopId && singleAlightingStopId ? (
-                  <>
-                    <Row label="Trạm lên" value={selectedBoardingStopName} icon={<MapPin className="size-4" />} />
-                    <Row label="Trạm xuống" value={selectedAlightingStopName} icon={<MapPin className="size-4" />} />
-                  </>
-                ) : null}
                 <Row label="Hiệu lực" value={ticketKind === "SINGLE" ? "Vé lượt trong ngày" : "Theo kỳ vé"} icon={<Calendar className="size-4" />} />
+
                 <div className="h-px bg-[#E7E0D2] my-2" />
                 <div className="space-y-2 rounded-[18px] border border-[#E7E0D2] bg-[#FFFEFA] p-4">
                   <Row label={ticketKind === "SINGLE" ? "Giá vé lượt" : "Giá niêm yết"} value={currentOriginal ? formatVND(currentOriginal) : "Chưa có giá"} muted />
@@ -6030,29 +6252,39 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                   <Row label="Sinh viên trả" value={currentFinal ? formatVND(currentFinal) : "Chưa có giá"} icon={<Wallet className="size-4" />} />
                   {ticketKind === "SINGLE" && !canBuySingle && (
                     <p className="rounded-[14px] bg-warning-container/50 px-3 py-2 text-xs font-medium text-on-surface">
-                      Cần chọn trạm lên/xuống trước khi mua vé lượt.
+                      Cần có tuyến đã đăng ký trước khi mua vé lượt.
                     </p>
                   )}
                 </div>
 
                 <motion.div
+                  key={`${ticketKind}-${currentFinal}-${currentSubsidy}`}
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="relative overflow-hidden rounded-2xl p-4 mt-2"
-                  style={{ backgroundColor: "#14140f", color: "#beff50" }}
+                  transition={{ duration: 0.24, ease: "easeOut" }}
+                  className="relative mt-2 overflow-hidden rounded-[16px] bg-[#14140f] p-4 text-[#beff50] shadow-[0_16px_36px_rgba(20,20,15,0.16)]"
                 >
-                  <p className="text-[10px] font-bold opacity-70 uppercase tracking-wide">Tổng thanh toán</p>
-                  <p className="text-3xl font-black mt-1 tabular-nums">
-                    {sepayOrder ? formatVND(sepayOrder.amount) : currentPriceLabel}
+                  <motion.div
+                    aria-hidden
+                    className="absolute inset-y-0 left-0 w-20 bg-[#beff50]/10 blur-2xl"
+                    animate={{ x: [0, 18, 0] }}
+                    transition={{ duration: 3.4, repeat: Infinity, ease: "easeInOut" }}
+                  />
+                  <p className="relative text-xs font-medium text-[#E5FF9A]">Tổng thanh toán</p>
+                  <p className="relative mt-1 text-3xl font-semibold tabular-nums">
+                    {currentPriceLabel}
                   </p>
+                  {hasSchoolSubsidy && !sepayOrder ? (
+                    <p className="relative mt-1 text-xs text-[#D8F58A]">Đã trừ {formatVND(currentSubsidy)} hỗ trợ từ nhà trường.</p>
+                  ) : null}
                 </motion.div>
 
                 {step === 1 && (
                   <ExpressiveButton
                     variant="filled"
-                    className="mt-2 w-full shadow-[0_10px_24px_rgba(190,255,80,0.22)] transition active:scale-[0.99]"
+                    className="w-full mt-2"
                     onClick={() => buy(ticketKind)}
-                    disabled={purchasing || (ticketKind === "SINGLE" && !canBuySingle)}
+                    disabled={purchasing || !selectedRouteId || (ticketKind === "SINGLE" && (!canBuySingle || (hasSelectableRouteStops && !isValidStopPair(singleBoardingStopId, singleAlightingStopId))))}
                   >
                     {purchasing ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
                     Xác nhận
@@ -6084,47 +6316,163 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
               />
             )}
           </ExpressiveCard>
-        </ScrollReveal>
+        </ScrollReveal>}
 
+        {/* QR / status panel */}
+        <ScrollReveal delay={0.1}>
+          {!sepayOrder ? (
+            <ExpressiveCard variant="filled" className="p-6 h-full flex flex-col items-center justify-center text-center min-w-0">
+              <div className="size-16 rounded-3xl bg-primary-container flex items-center justify-center mb-4">
+                <QrCode className="size-8 text-on-primary-container" />
+              </div>
+              <p className="text-base font-bold">Sẵn sàng thanh toán</p>
+              <p className="text-sm text-on-surface-variant mt-1 max-w-xs">
+                Chọn loại vé bên trái rồi bấm Xác nhận để tạo mã thanh toán VietQR qua SePay.
+                Hỗ trợ mọi app ngân hàng: MBBank, Vietcombank, BIDV, TC Bank, v.v.
+              </p>
+            </ExpressiveCard>
+          ) : step === 3 ? (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ type: "spring", stiffness: 240, damping: 22 }}
+            >
+              <ExpressiveCard variant="elevated" className="p-8 h-full flex flex-col items-center justify-center text-center min-w-0"
+                style={{ backgroundColor: "#beff50", color: "#14140f" }}
+              >
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: "spring", stiffness: 260, damping: 18, delay: 0.1 }}
+                  className="size-24 rounded-full bg-[#14140f] flex items-center justify-center mb-4"
+                >
+                  <CheckCircle2 className="size-12 text-[#beff50]" />
+                </motion.div>
+                <h2 className="text-2xl font-black">Thanh toán thành công!</h2>
+                <p className="text-sm font-semibold opacity-80 mt-2">
+                  {ticketLabel} đã được kích hoạt. Bạn có thể xem vé trong mục “Vé của tôi”.
+                </p>
+                <div className="bg-[#14140f]/10 rounded-2xl p-4 mt-4 w-full max-w-xs">
+                  <p className="text-xs font-bold opacity-70 uppercase">Mã giao dịch</p>
+                  <p className="font-mono font-black text-lg">#{sepayOrder.orderId}</p>
+                  <p className="text-xs font-bold opacity-70 uppercase mt-2">Số tiền</p>
+                  <p className="font-black text-lg">{formatVND(sepayOrder.amount)}</p>
+                </div>
+              </ExpressiveCard>
+            </motion.div>
+          ) : (
+            <ExpressiveCard variant="elevated" className="p-6 h-full min-w-0 overflow-hidden">
+              {/* Header with countdown */}
+              <div className="flex items-center justify-between mb-4 min-w-0">
+                <div className="min-w-0">
+                  <h3 className="text-lg font-bold flex items-center gap-2">
+                    <QrCode className="size-5 text-primary" />
+                    Quét QR thanh toán {sepayOrder.ticketType === "SINGLE" ? "vé lượt" : "vé tháng"}
+                  </h3>
+                  <p className="text-xs text-on-surface-variant mt-0.5">Mở app ngân hàng bất kỳ → quét QR</p>
+                </div>
+                <div className={cn(
+                  "shrink-0 px-3 py-1.5 rounded-full text-xs font-black tabular-nums",
+                  secondsLeft != null && secondsLeft < 60
+                    ? "bg-error text-white animate-pulse"
+                    : "bg-warning-container text-on-surface"
+                )}>
+                  {fmtCountdown(secondsLeft)}
+                </div>
+              </div>
+
+              {/* QR */}
+              <div className="flex flex-col items-center gap-3">
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="bg-white p-4 rounded-2xl shadow-lg ring-2 ring-[#beff50]/40"
+                >
+                  <img src={sepayOrder.qrUrl} alt="SePay QR" className="h-[240px] w-[240px] rounded-xl object-contain" />
+                </motion.div>
+                <div className="flex items-center gap-2 text-2xl font-black text-[#111111]">
+                  {formatVND(sepayOrder.amount)}
+                </div>
+                <p className="text-xs text-on-surface-variant text-center break-all max-w-xs font-mono">
+                  {sepayOrder.description}
+                </p>
+              </div>
+
+              {/* Bank info */}
+              {sepayOrder.bankCode && sepayOrder.accountNo && (
+                <div className="mt-5 p-4 rounded-2xl bg-surface-container-low space-y-2 min-w-0">
+                  <div className="flex items-center justify-between gap-2 min-w-0">
+                    <span className="text-xs text-on-surface-variant">Ngân hàng</span>
+                    <span className="font-bold text-sm">{sepayOrder.bankCode}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 min-w-0">
+                    <span className="text-xs text-on-surface-variant">Số tài khoản</span>
+                    <button
+                      onClick={copyAccount}
+                      className={cn(
+                        "font-mono font-bold text-sm flex items-center gap-1.5 transition-colors",
+                        copying ? "text-[#4D7C0F]" : "text-[#111111] hover:underline"
+                      )}
+                    >
+                      {sepayOrder.accountNo}
+                      {copying ? <CheckCircle2 className="size-3.5 text-[#4D7C0F]" /> : <Banknote className="size-3.5 text-[#6B6B6B]" />}
+                    </button>
+                  </div>
+                  {sepayOrder.accountName && (
+                    <div className="flex items-center justify-between gap-2 min-w-0">
+                      <span className="text-xs text-on-surface-variant">Chủ TK</span>
+                      <span className="font-bold text-sm truncate">{sepayOrder.accountName}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Status */}
+              <div className="mt-4 flex min-w-0 items-center gap-2 rounded-xl border border-[#2A2A24] bg-[#111111] p-3 text-sm text-[#BDFD4F] shadow-[0_8px_22px_rgba(17,17,17,0.12)]">
+                <RefreshCw className="size-4 shrink-0 animate-spin" />
+                <span className="truncate font-semibold">Đang chờ xác nhận thanh toán từ SePay...</span>
+              </div>
+
+              {paidStatus === "expired" && (
+                <div className="mt-3 p-3 rounded-xl bg-error-container/40 text-error text-sm flex items-center gap-2 min-w-0">
+                  <AlertTriangle className="size-4 shrink-0" />
+                  <span className="font-medium">Đơn hàng hết hạn. Vui lòng tạo lại.</span>
+                  <ExpressiveButton variant="text" size="sm" className="ml-auto" onClick={reset}>Tạo lại</ExpressiveButton>
+                </div>
+              )}
+            </ExpressiveCard>
+          )}
+        </ScrollReveal>
       </div>
 
-      {typeof document !== "undefined" && sepayOrder && createPortal((
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-lg font-bold text-gray-900">Thanh toán SePay</h3>
-              <button onClick={reset} className="rounded-full px-3 py-1 text-sm font-semibold text-gray-500 hover:bg-gray-100">Đóng</button>
-            </div>
-            {step === 3 ? (
-              <div className="rounded-xl border border-green-200 bg-green-50 p-5 text-center text-green-700">
-                <CheckCircle2 className="mx-auto mb-2 size-10" />
-                <p className="font-bold">Thanh toán thành công!</p>
-                <p className="text-sm">{ticketLabel} đã được kích hoạt.</p>
-              </div>
-            ) : (
-              <div className="space-y-4 text-center">
-                {sepayOrder.qrUrl && (
-                  <div className="flex justify-center">
-                    <img src={sepayOrder.qrUrl} alt="SePay QR" className="max-w-[240px] rounded-lg" />
-                  </div>
-                )}
-                <div className="rounded-xl bg-gray-50 p-4 text-left text-sm text-gray-700">
-                  <p className="flex justify-between gap-3"><span>Số tiền</span><span className="font-bold text-blue-600">{formatVND(sepayOrder.amount)}</span></p>
-                  <p className="mt-2 flex justify-between gap-3"><span>Nội dung CK</span><span className="font-bold text-red-600 select-all">{sepayOrder.description}</span></p>
-                  {sepayOrder.bankCode && <p className="mt-2 flex justify-between gap-3"><span>Ngân hàng</span><span className="font-semibold">{sepayOrder.bankCode}</span></p>}
-                  {sepayOrder.accountNo && <p className="mt-2 flex justify-between gap-3"><span>Số TK</span><span className="font-semibold select-all">{sepayOrder.accountNo}</span></p>}
-                  {sepayOrder.accountName && <p className="mt-2 flex justify-between gap-3"><span>Chủ TK</span><span className="font-semibold text-right">{sepayOrder.accountName}</span></p>}
-                </div>
-                <p className="text-xs text-gray-500">Đang chờ xác nhận thanh toán từ SePay...</p>
-                {paidStatus === "expired" && (
-                  <div className="rounded-xl bg-red-50 p-3 text-sm font-medium text-red-600">Đơn hàng hết hạn. Vui lòng đóng popup và tạo lại.</div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      ), document.body)}
-
+      <Dialog open={successDialogOpen} onOpenChange={setSuccessDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="size-5 text-[#4D7C0F]" />
+              Thanh toán thành công
+            </DialogTitle>
+            <DialogDescription>
+              {ticketLabel} đã được kích hoạt. Hóa đơn và vé của bạn đã được cập nhật trong hệ thống.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <ExpressiveButton variant="text" onClick={() => setSuccessDialogOpen(false)}>
+              Ở lại
+            </ExpressiveButton>
+            <ExpressiveButton
+              variant="filled"
+              onClick={() => {
+                setSuccessDialogOpen(false);
+                localStorage.setItem("unibus.myJourneysTab", "ticket");
+                onNavigate("stu-my-journeys");
+              }}
+            >
+              Xem vé của tôi
+            </ExpressiveButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageTransition>
   );
 }
@@ -6144,12 +6492,12 @@ function Row({
 }) {
   const accentClass = accent === "success" ? "text-success" : accent === "error" ? "text-error" : accent === "primary" ? "text-primary" : "";
   return (
-    <div className="flex items-center justify-between gap-3 min-w-0">
-      <span className={cn("flex items-center gap-2 text-on-surface-variant", muted && "opacity-60")}>
+    <div className="flex items-center justify-between gap-3 min-w-0 overflow-hidden">
+      <span className={cn("flex shrink-0 items-center gap-2 text-on-surface-variant", muted && "opacity-60")}>
         {icon}
         {label}
       </span>
-      <span className={cn("font-bold truncate", accentClass)}>{value}</span>
+      <span className={cn("min-w-0 truncate text-right font-bold", accentClass)}>{value}</span>
     </div>
   );
 }
@@ -6158,93 +6506,112 @@ function Row({
 // Screen 12: Invoices — list of past payments
 // =============================================================================
 function InvoicesScreen({ ctx }: { ctx: Ctx }) {
-  const invoices = ctx.invoices;
-  const refreshedOnOpenRef = useRef(false);
+  const [invoices, setInvoices] = useState(ctx.invoices);
+  const [loadingInvoices, setLoadingInvoices] = useState(false);
   useEffect(() => {
-    if (refreshedOnOpenRef.current) return;
-    refreshedOnOpenRef.current = true;
-    ctx.reload();
-  });
+    let cancelled = false;
+    setInvoices(ctx.invoices);
+    setLoadingInvoices(true);
+    studentApi.payments()
+      .then((items) => {
+        if (!cancelled) setInvoices(items.map(mapInvoice));
+      })
+      .catch(() => {
+        if (!cancelled) setInvoices(ctx.invoices);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingInvoices(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ctx.invoices]);
+
+  const visibleInvoices = invoices
+    .filter((inv: any) => !(isUnpaidStatus(inv.status) || inv.status === "pending"))
+    .slice()
+    .sort((a: any, b: any) => {
+      const left = Date.parse(a.date || "") || 0;
+      const right = Date.parse(b.date || "") || 0;
+      return right - left;
+    });
+
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Hóa đơn"
-        description={`${invoices.length} giao dịch`}
+        description={loadingInvoices ? "Đang cập nhật giao dịch" : `${visibleInvoices.length} giao dịch`}
         icon={<Receipt className="size-7" />}
       />
-      {invoices.length === 0 ? (
+      {visibleInvoices.length === 0 ? (
         <EmptyState
           icon={<Receipt className="size-7" />}
           title="Chưa có hóa đơn"
           description="Các giao dịch mua vé sẽ hiển thị tại đây."
         />
       ) : (
-        <StaggerGroup className="grid gap-3 min-w-0">
-          {invoices.map((inv: any) => {
-            const paid = isPaidStatus(inv.status);
-            const pending = isUnpaidStatus(inv.status) || inv.status === "pending";
-            const statusLabel = paid ? "Đã thanh toán" : pending ? "Chờ thanh toán" : inv.status;
+        <div className="space-y-3 min-w-0">
+          {visibleInvoices.map((inv: any) => {
+            const paid = isPaidStatus(inv.status) || inv.status === "paid";
             return (
-              <StaggerItem key={inv.id}>
-                <ExpressiveCard variant="elevated" className="overflow-hidden rounded-[28px] border border-[#14140f]/10 bg-white p-0 min-w-0 shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
-                  <div className="flex min-w-0 flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-                    <div className="flex min-w-0 items-start gap-4">
-                      <div className={cn(
-                        "grid size-12 shrink-0 place-items-center rounded-[18px] text-[#14140f] shadow-sm",
-                        paid ? "bg-[#beff50]" : pending ? "bg-[#fff1c2]" : "bg-surface-container-high",
-                      )}>
-                        {paid ? <CheckCircle2 className="size-6" /> : <Receipt className="size-6" />}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex min-w-0 flex-wrap items-center gap-2">
-                          <h3 className="truncate text-base font-black tracking-[-0.01em] text-[#14140f]">{inv.description}</h3>
-                          <span className="rounded-full bg-[#14140f]/5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-[#6B6B6B]">
-                            {inv.method || "BANK_TRANSFER"}
-                          </span>
-                        </div>
-                        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-medium text-[#6B6B6B]">
-                          <span className="inline-flex items-center gap-1.5">
-                            <Banknote className="size-3.5" />
-                            {inv.code}
-                          </span>
-                          <span className="inline-flex items-center gap-1.5">
-                            <Calendar className="size-3.5" />
-                            {formatDate(inv.date)}
-                          </span>
-                        </div>
-                      </div>
+              <ExpressiveCard key={inv.id} variant="elevated" className="p-4 min-w-0">
+                <div className="flex items-start justify-between gap-3 min-w-0">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#F3F0E8] text-[#111111]">
+                      <Receipt className="size-5" />
                     </div>
-                    <div className="flex shrink-0 items-center justify-between gap-3 sm:flex-col sm:items-end">
-                      <p className="text-xl font-black tabular-nums text-[#14140f] sm:text-2xl">{formatVND(inv.amount)}</p>
-                      <M3StatusPill
-                        label={statusLabel}
-                        tone={paid ? "success" : pending ? "warning" : "error"}
-                      />
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-[#111111]">{inv.description}</p>
+                      <p className="mt-0.5 text-xs text-[#6B665C]">
+                        {inv.code} • {formatDate(inv.date)}
+                      </p>
                     </div>
                   </div>
-                </ExpressiveCard>
-              </StaggerItem>
+                  <div className="shrink-0 text-right">
+                    <p className="font-semibold text-[#111111]">{formatVND(inv.amount)}</p>
+                    <span className={cn(
+                      "mt-1 inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium",
+                      paid ? "bg-[#ECFDF3] text-[#166534]" : "bg-[#FEE2E2] text-[#991B1B]"
+                    )}>
+                      {paid ? "Đã thanh toán" : "Có lỗi"}
+                    </span>
+                  </div>
+                </div>
+              </ExpressiveCard>
             );
           })}
-        </StaggerGroup>
+        </div>
       )}
     </PageTransition>
   );
 }
 
-
 // =============================================================================
 // Screen 13: Feedback — submit + list
 // =============================================================================
-function FeedbackScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean }) {
+function FeedbackScreen({
+  ctx,
+  compact = false,
+  initialTripId,
+  initialRouteId,
+  onDone,
+}: {
+  ctx: Ctx;
+  compact?: boolean;
+  initialTripId?: string;
+  initialRouteId?: string;
+  onDone?: () => void;
+}) {
   const [rating, setRating] = useState(5);
   const [category, setCategory] = useState("service");
   const [content, setContent] = useState("");
-  const [tripId, setTripId] = useState<string>("");
-  const [routeId, setRouteId] = useState<string>("");
+  const [tripId, setTripId] = useState<string>(initialTripId || "");
+  const [routeId, setRouteId] = useState<string>(initialRouteId || "");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
+    if (initialTripId) setTripId(initialTripId);
+    if (initialRouteId) setRouteId(initialRouteId);
     const pendingTripId = localStorage.getItem("unibus.supportTripId");
     const pendingRouteId = localStorage.getItem("unibus.supportRouteId");
     if (pendingTripId) {
@@ -6255,7 +6622,7 @@ function FeedbackScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean 
       setRouteId(pendingRouteId);
       localStorage.removeItem("unibus.supportRouteId");
     }
-  }, []);
+  }, [initialRouteId, initialTripId]);
 
   const submit = async () => {
     if (!content.trim()) {
@@ -6281,6 +6648,7 @@ function FeedbackScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean 
       setTripId("");
       setRouteId("");
       ctx.reload();
+      onDone?.();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Không thể gửi phản hồi");
     } finally {
@@ -6298,7 +6666,7 @@ function FeedbackScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean 
         />
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
+      <div className={cn("grid grid-cols-1 gap-4 min-w-0", !compact && "lg:grid-cols-2")}>
         <ScrollReveal>
           <ExpressiveCard variant="elevated" className="p-5 min-w-0">
             <h3 className="text-base font-bold mb-4">Gửi phản hồi mới</h3>
@@ -6322,34 +6690,38 @@ function FeedbackScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean 
                   </SelectContent>
                 </Select>
               </div>
-              <div>
-                <Label className="text-xs font-bold">Chuyến đi cần hỗ trợ</Label>
-                <Select value={tripId} onValueChange={(value) => {
-                  setTripId(value);
-                  const selected = ctx.tripsHistory.find((h: any) => String(h.tripId || h.id) === value);
-                  if (selected?.routeId) setRouteId(String(selected.routeId));
-                }}>
-                  <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn chuyến từ lịch sử" /></SelectTrigger>
-                  <SelectContent>
-                    {ctx.tripsHistory.map((h: any) => (
-                      <SelectItem key={h.tripId || h.id} value={String(h.tripId || h.id)}>
-                        {(h.routeName || "Tuyến xe")} · {formatDate(h.boardedAt || h.serviceDate)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs font-bold">Tuyến (tùy chọn)</Label>
-                <Select value={routeId} onValueChange={setRouteId}>
-                  <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn tuyến" /></SelectTrigger>
-                  <SelectContent>
-                    {ctx.routes.map((r: any) => (
-                      <SelectItem key={r.id} value={r.id}>{r.code} — {r.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {!compact && (
+                <>
+                  <div>
+                    <Label className="text-xs font-bold">Chuyến đi cần hỗ trợ</Label>
+                    <Select value={tripId} onValueChange={(value) => {
+                      setTripId(value);
+                      const selected = ctx.tripsHistory.find((h: any) => String(h.tripId || h.id) === value);
+                      if (selected?.routeId) setRouteId(String(selected.routeId));
+                    }}>
+                      <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn chuyến từ lịch sử" /></SelectTrigger>
+                      <SelectContent>
+                        {ctx.tripsHistory.map((h: any) => (
+                          <SelectItem key={h.tripId || h.id} value={String(h.tripId || h.id)}>
+                            {(h.routeName || "Tuyến xe")} · {formatDate(h.boardedAt || h.serviceDate)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs font-bold">Tuyến (tùy chọn)</Label>
+                    <Select value={routeId} onValueChange={setRouteId}>
+                      <SelectTrigger className="mt-1.5 min-w-0 overflow-hidden [&>span]:truncate"><SelectValue placeholder="Chọn tuyến" /></SelectTrigger>
+                      <SelectContent>
+                        {ctx.routes.map((r: any) => (
+                          <SelectItem key={r.id} value={r.id}>{r.code} — {r.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
+              )}
               <div>
                 <Label className="text-xs font-bold">Nội dung</Label>
                 <Textarea
@@ -6368,7 +6740,7 @@ function FeedbackScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean 
           </ExpressiveCard>
         </ScrollReveal>
 
-        <ScrollReveal delay={0.1}>
+        {!compact && <ScrollReveal delay={0.1}>
           <Section title={`Phản hồi đã gửi (${ctx.feedback.length})`}>
             {ctx.feedback.length === 0 ? (
               <EmptyState
@@ -6399,7 +6771,7 @@ function FeedbackScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean 
               </div>
             )}
           </Section>
-        </ScrollReveal>
+        </ScrollReveal>}
       </div>
     </PageTransition>
   );
@@ -6408,9 +6780,19 @@ function FeedbackScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean 
 // =============================================================================
 // Screen 14: Lost Items — report + list
 // =============================================================================
-function LostItemsScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean }) {
+function LostItemsScreen({
+  ctx,
+  compact = false,
+  initialTripId,
+  onDone,
+}: {
+  ctx: Ctx;
+  compact?: boolean;
+  initialTripId?: string;
+  onDone?: () => void;
+}) {
   const [description, setDescription] = useState("");
-  const [tripId, setTripId] = useState<string>("");
+  const [tripId, setTripId] = useState<string>(initialTripId || "");
   const [submitting, setSubmitting] = useState(false);
 
   const submit = async () => {
@@ -6428,6 +6810,7 @@ function LostItemsScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean
       setDescription("");
       setTripId("");
       ctx.reload();
+      onDone?.();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Không thể báo mất");
     } finally {
@@ -6436,12 +6819,13 @@ function LostItemsScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean
   };
 
   useEffect(() => {
+    if (initialTripId) setTripId(initialTripId);
     const pendingTripId = localStorage.getItem("unibus.lostTripId");
     if (pendingTripId) {
       setTripId(pendingTripId);
       localStorage.removeItem("unibus.lostTripId");
     }
-  }, []);
+  }, [initialTripId]);
 
   return (
     <PageTransition className="space-y-6 min-w-0">
@@ -6453,24 +6837,26 @@ function LostItemsScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean
         />
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
+      <div className={cn("grid grid-cols-1 gap-4 min-w-0", !compact && "lg:grid-cols-2")}>
         <ScrollReveal>
           <ExpressiveCard variant="elevated" className="p-5 min-w-0">
             <h3 className="text-base font-bold mb-4">Báo mất vật dụng</h3>
             <div className="space-y-4">
-              <div>
-                <Label className="text-xs font-bold">Chuyến đi (tùy chọn)</Label>
-                <Select value={tripId} onValueChange={setTripId}>
-                  <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn chuyến" /></SelectTrigger>
-                  <SelectContent>
-                    {ctx.tripsHistory.map((h: any) => (
-                      <SelectItem key={h.tripId || h.id} value={String(h.tripId || h.id)}>
-                        {(h.routeName || "Tuyến xe")} — {formatDate(h.boardedAt || h.serviceDate)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {!compact && (
+                <div>
+                  <Label className="text-xs font-bold">Chuyến đi (tùy chọn)</Label>
+                  <Select value={tripId} onValueChange={setTripId}>
+                    <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn chuyến" /></SelectTrigger>
+                    <SelectContent>
+                      {ctx.tripsHistory.map((h: any) => (
+                        <SelectItem key={h.tripId || h.id} value={String(h.tripId || h.id)}>
+                          {(h.routeName || "Tuyến xe")} — {formatDate(h.boardedAt || h.serviceDate)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div>
                 <Label className="text-xs font-bold">Mô tả vật dụng</Label>
                 <Textarea
@@ -6489,7 +6875,7 @@ function LostItemsScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean
           </ExpressiveCard>
         </ScrollReveal>
 
-        <ScrollReveal delay={0.1}>
+        {!compact && <ScrollReveal delay={0.1}>
           <Section title={`Đã báo (${ctx.lostItems.length})`}>
             {ctx.lostItems.length === 0 ? (
               <EmptyState
@@ -6521,7 +6907,7 @@ function LostItemsScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean
               </div>
             )}
           </Section>
-        </ScrollReveal>
+        </ScrollReveal>}
       </div>
     </PageTransition>
   );

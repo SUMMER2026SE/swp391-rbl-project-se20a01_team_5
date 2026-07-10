@@ -50,6 +50,7 @@ import {
   Bell,
   Loader2,
   Search,
+  PackageSearch,
   X
 } from "lucide-react";
 import {
@@ -112,6 +113,7 @@ import {
   Counter,
   PageTransition,
 } from "@/components/m3/motion";
+import { JourneyMap, type JourneyBus, type JourneyPolyline } from "@/components/m3/journey-map";
 import { PageHeader, StatCard, Section, EmptyState } from "../primitives";
 import { UnavailablePanel } from "../real-data";
 
@@ -124,11 +126,14 @@ import {
   formatDate,
 } from "@/lib/prototype-data";
 import {
+  apiFetch,
   operationsApi,
+  transportApi,
   coordinatorRoutesApi,
   experienceApi,
   feedbackApi,
   coordinatorFeedbackApi,
+  coordinatorLostItemApi,
   notificationApi,
   messagingApi,
   type ScheduleDashboard,
@@ -136,12 +141,15 @@ import {
   type RouteStopDto,
   type LiveFleetVehicle,
   type ExperienceFeedbackCard,
+  type ExperienceLostItemCard,
   type ExperienceDashboardStat,
   type CoordinatorUniversityMetric,
   type CoordinatorUniversityRouteMetric,
   type ContactThreadCard,
   type InternalMessageCard,
+  type RouteMapPreviewDTO,
 } from "@/lib/api/client";
+import type { BusStop } from "@/lib/types";
 
 type CoordinatorModuleProps = {
   activeId: string;
@@ -150,11 +158,9 @@ type CoordinatorModuleProps = {
 
 export function CoordinatorModule({ activeId, onNavigate }: CoordinatorModuleProps) {
   const proto = useCoordinatorPrototypeData();
-  const [chatOpen, setChatOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
 
-  if (proto.loading) return <LoadingScreen label="Đang tải dữ liệu điều phối..." />;
   if (proto.error) return <ErrorScreen message={proto.error} onRetry={proto.reload} />;
+  if (proto.loading || !proto.data) return <LoadingScreen label="Đang tải dữ liệu điều phối..." />;
 
   const d = proto.data!;
   const ctx = {
@@ -200,6 +206,8 @@ export function CoordinatorModule({ activeId, onNavigate }: CoordinatorModulePro
         return <FeedbackScreen ctx={ctx} />;
       case "crd-notify":
         return <NotifyScreen ctx={ctx} />;
+      case "crd-notifications":
+        return <FeedbackScreen ctx={ctx} initialTab="sos" />;
       default:
         return <FallbackScreen activeId={activeId} />;
     }
@@ -207,56 +215,92 @@ export function CoordinatorModule({ activeId, onNavigate }: CoordinatorModulePro
 
   return (
     <div className="relative min-h-[calc(100vh-140px)]">
-      {renderScreen()}
-
-      {/* Floating Chat Button */}
-      <FloatingChatButton onClick={() => setChatOpen(!chatOpen)} open={chatOpen} unreadCount={unreadCount} />
-
-      {/* Slide-out Chat Panel Drawer */}
-      <InternalChatPanel 
-        open={chatOpen} 
-        onOpenChange={setChatOpen} 
-        onUnreadCountChange={setUnreadCount} 
-      />
+      <div className="min-w-0">
+        {renderScreen()}
+      </div>
+      <CoordinatorChatOverlay />
     </div>
   );
 }
 
-function AssignmentScreen({ ctx }: { ctx: Ctx }) {
-  const [activeTab, setActiveTab] = useState<"staff" | "bus">("staff");
+export function CoordinatorChatOverlay() {
+  const [chatOpen, setChatOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
   return (
-    <div className="space-y-6 min-w-0">
-      <div className="flex border-b border-outline-variant/30 min-w-0">
-        <button
-          onClick={() => setActiveTab("staff")}
-          className={cn(
-            "px-4 py-2.5 text-sm font-bold border-b-2 transition-colors",
-            activeTab === "staff"
-              ? "border-primary text-primary"
-              : "border-transparent text-on-surface-variant hover:text-on-surface"
-          )}
-        >
-          Phân công nhân sự
-        </button>
-        <button
-          onClick={() => setActiveTab("bus")}
-          className={cn(
-            "px-4 py-2.5 text-sm font-bold border-b-2 transition-colors",
-            activeTab === "bus"
-              ? "border-primary text-primary"
-              : "border-transparent text-on-surface-variant hover:text-on-surface"
-          )}
-        >
-          Phân công xe bus
-        </button>
-      </div>
-      {activeTab === "staff" ? (
-        <AssignStaffScreen ctx={ctx} />
-      ) : (
-        <AssignBusScreen ctx={ctx} />
-      )}
-    </div>
+    <>
+      <FloatingChatButton onClick={() => setChatOpen((open) => !open)} open={chatOpen} unreadCount={unreadCount} />
+      <InternalChatPanel
+        open={chatOpen}
+        onOpenChange={setChatOpen}
+        onUnreadCountChange={setUnreadCount}
+      />
+    </>
   );
+}
+
+export function CoordinatorAlertsScreen() {
+  const feedback = useApi(() => coordinatorFeedbackApi.all(), undefined, []);
+  const lostItems = useApi(() => coordinatorLostItemApi.all(), undefined, []);
+  const feedbackItems = ((feedback.raw || []) as any[]);
+  const sosItems = feedbackItems.filter(isSosFeedback);
+  const feedbackOnly = feedbackItems.filter((item) => !isSosFeedback(item));
+  const alertItems = [
+    ...sosItems.map((item) => ({ ...item, _type: "sos" as const })),
+    ...feedbackOnly.map((item) => ({ ...item, _type: "feedback" as const })),
+    ...((lostItems.raw || []) as any[]).map((item) => ({ ...item, _type: "lost" as const })),
+  ].sort((left, right) => Date.parse(right.createdAt || right.reportedAt || "") - Date.parse(left.createdAt || left.reportedAt || ""));
+
+  return (
+    <PageTransition className="space-y-6 min-w-0">
+      <PageHeader
+        title="Thông báo điều phối"
+        description="Hiển thị SOS, phản hồi và mất đồ. Tin nhắn riêng nằm trong pop up chat."
+        icon={<AlertTriangle className="size-7" />}
+        actions={
+          <ExpressiveButton variant="outlined" size="sm" onClick={() => { feedback.reload(); lostItems.reload(); }}>
+            <RefreshCw className={cn("size-4", (feedback.loading || lostItems.loading) && "animate-spin")} />
+            Làm mới
+          </ExpressiveButton>
+        }
+      />
+      {feedback.loading || lostItems.loading ? (
+        <LoadingScreen label="Đang tải thông báo..." />
+      ) : feedback.error || lostItems.error ? (
+        <ErrorScreen message={feedback.error || lostItems.error || "Không tải được thông báo"} onRetry={() => { feedback.reload(); lostItems.reload(); }} />
+      ) : alertItems.length === 0 ? (
+        <EmptyState icon={<Bell className="size-7" />} title="Không có thông báo" description="Tin nhắn riêng được gom vào biểu tượng chat ở góc màn hình." />
+      ) : (
+        <StaggerGroup className="space-y-3 min-w-0">
+          {alertItems.map((item: any, index) => {
+            const isSos = item._type === "sos";
+            const isLost = item._type === "lost";
+            const title = isSos ? "SOS" : isLost ? "Mất đồ" : "Phản hồi";
+            const icon = isSos ? <AlertTriangle className="size-3.5" /> : isLost ? <PackageSearch className="size-3.5" /> : <MessageSquare className="size-3.5" />;
+            const isResolved = ["RESOLVED", "FOUND", "CLOSED", "resolved"].includes(String(item.status || ""));
+            return (
+            <StaggerItem key={`${item._type}-${item.feedbackId || item.lostItemReportId || item.lostItemId || item.supportTicketId || item.id || index}`}>
+              <ExpressiveCard variant="elevated" className={cn("p-5 min-w-0", isSos ? "border-error/40 bg-error-container/10" : "") }>
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <span className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold", isSos ? "bg-error text-on-error" : isLost ? "bg-tertiary-container text-on-tertiary-container" : "bg-primary-container text-on-primary-container")}>
+                    {icon} {title}
+                  </span>
+                  <M3StatusPill label={isResolved ? "Đã xử lý" : isSos ? "Khẩn cấp" : "Cần xử lý"} tone={isResolved ? "success" : isSos ? "error" : "warning"} />
+                  <span className="text-xs text-on-surface-variant">{formatDateTime(item.createdAt || item.reportedAt)}</span>
+                </div>
+                <p className="font-bold text-on-surface truncate">{item.studentName || item.reporterName || item.itemName || (isLost ? "Báo mất đồ" : "Sinh viên gửi phản hồi")}</p>
+                <p className="mt-2 whitespace-pre-wrap break-words text-sm text-on-surface">{item.content || item.description || item.notes || "Không có nội dung"}</p>
+              </ExpressiveCard>
+            </StaggerItem>
+          );})}
+        </StaggerGroup>
+      )}
+    </PageTransition>
+  );
+}
+
+function AssignmentScreen({ ctx }: { ctx: Ctx }) {
+  return <AssignStaffScreen ctx={ctx} />;
 }
 
 export default CoordinatorModule;
@@ -306,14 +350,17 @@ function ErrorScreen({ message, onRetry }: { message: string; onRetry?: () => vo
 // =============================================================================
 function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
   const runningFleet = ctx.fleet.filter((v: any) => v.status === "RUNNING");
-  const statCards = ctx.stats.slice(0, 4);
+  const todayShifts = useMemo(() => ctx.schedule?.shifts || [], [ctx.schedule?.shifts]);
+  const assignedShifts = useMemo(() => todayShifts.filter((shift: any) => shift.busId && shift.driverStaffId && shift.conductorStaffId), [todayShifts]);
   const pendingFeedback = ctx.feedback.filter((f: any) => f.status !== "resolved").length;
 
-  // Trips per route — derive from fleet
+  // Trips per route — derive from today's schedule first, then live fleet.
   const tripsPerRoute = useMemo(() => {
     const counts: Record<string, { name: string; trips: number; color: string }> = {};
-    ctx.fleet.forEach((v: any) => {
-      const id = String(v.routeId);
+    const source = todayShifts.length ? todayShifts : ctx.fleet;
+    source.forEach((v: any) => {
+      const id = String(v.routeId || v.id || "");
+      if (!id) return;
       if (!counts[id]) {
         const route = ctx.routes.find((r) => r.id === id);
         counts[id] = {
@@ -325,12 +372,12 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
       counts[id].trips += 1;
     });
     return Object.values(counts);
-  }, [ctx.fleet, ctx.routes]);
+  }, [ctx.fleet, ctx.routes, todayShifts]);
 
   const quickActions = [
     { id: "crd-live-map", label: "Bản đồ trực tiếp", icon: Navigation, accent: "primary" as const },
     { id: "crd-schedule", label: "Lịch trình", icon: Calendar, accent: "tertiary" as const },
-    { id: "crd-assign-driver", label: "Phân công tài xế", icon: UserCog, accent: "secondary" as const },
+    { id: "crd-assign-driver", label: "Phân công chuyến", icon: UserCog, accent: "secondary" as const },
     { id: "crd-feedback", label: "Phản hồi", icon: Star, accent: "primary" as const },
   ];
 
@@ -507,19 +554,19 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
         </StaggerItem>
         <StaggerItem>
           <StatCard
-            label="Tuyến hoạt động"
-            value={<Counter to={ctx.routes.length} />}
+            label="Ca hôm nay"
+            value={<Counter to={todayShifts.length} />}
             icon={<RouteIcon className="size-5" />}
-            hint="Tất cả tuyến ổn định"
+            hint="Theo lịch điều phối"
             accent="tertiary"
           />
         </StaggerItem>
         <StaggerItem>
           <StatCard
-            label="Trạm dừng"
-            value={<Counter to={ctx.stops.length} />}
-            icon={<MapPin className="size-5" />}
-            hint="Trên toàn mạng lưới"
+            label="Đã phân công"
+            value={<Counter to={assignedShifts.length} />}
+            icon={<UserCog className="size-5" />}
+            hint={`${todayShifts.length} ca hôm nay`}
             accent="secondary"
           />
         </StaggerItem>
@@ -586,7 +633,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
                 </div>
                 <div className="min-w-0">
                   <h3 className="text-sm font-semibold text-on-surface truncate">Chuyến theo tuyến</h3>
-                  <p className="text-xs text-on-surface-variant">Đang chạy</p>
+                  <p className="text-xs text-on-surface-variant">Theo lịch hôm nay</p>
                 </div>
               </div>
               <M3StatusPill label={`${tripsPerRoute.length}`} tone="tertiary" />
@@ -624,7 +671,20 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
 // =============================================================================
 function LiveMapScreen({ ctx }: { ctx: Ctx }) {
   const fleet = useApi(() => operationsApi.liveFleet(), undefined, []);
-  const vehicles = (fleet.raw || ctx.raw.dashboard.raw?.liveFleet || []) as LiveFleetVehicle[];
+  const [vehicleLocations, setVehicleLocations] = useState<Record<string, string>>({});
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+  const liveVehicles = useMemo(() => (fleet.raw || ctx.raw.dashboard.raw?.liveFleet || []) as LiveFleetVehicle[], [ctx.raw.dashboard.raw?.liveFleet, fleet.raw]);
+  const vehicles = useMemo(() => (liveVehicles.length ? liveVehicles : mockLiveFleet(ctx.routes))
+    .filter(isRunningVehicle), [ctx.routes, liveVehicles]);
+  const toggleSelectedVehicle = useCallback((vehicleId: string) => {
+    setSelectedVehicleId((current) => current === vehicleId ? null : vehicleId);
+  }, []);
+
+  useEffect(() => {
+    if (selectedVehicleId && !vehicles.some((vehicle) => String(vehicle.tripId) === selectedVehicleId)) {
+      setSelectedVehicleId(null);
+    }
+  }, [selectedVehicleId, vehicles]);
 
   return (
     <PageTransition className="space-y-6 min-w-0">
@@ -639,35 +699,49 @@ function LiveMapScreen({ ctx }: { ctx: Ctx }) {
           </ExpressiveButton>
         }
       />
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4 min-w-0">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_340px] gap-4 min-w-0">
         <ScrollReveal>
-          <ExpressiveCard variant="elevated" className="overflow-hidden h-[500px] min-w-0">
-            <LiveFleetMap vehicles={vehicles} />
+          <ExpressiveCard variant="elevated" className="overflow-hidden h-[620px] xl:h-[680px] min-w-0">
+            <LiveFleetMap
+              vehicles={vehicles}
+              selectedVehicleId={selectedVehicleId}
+              onSelectVehicle={toggleSelectedVehicle}
+              onVehicleLocationsChange={setVehicleLocations}
+            />
           </ExpressiveCard>
         </ScrollReveal>
         <ScrollReveal delay={0.1}>
           <ExpressiveCard variant="filled" className="p-5 h-full min-w-0">
             <h3 className="text-base font-bold mb-3">{vehicles.length} xe đang chạy</h3>
-            <div className="space-y-2 overflow-y-auto max-h-[440px]">
+            <div className="space-y-2 overflow-y-auto max-h-[560px] xl:max-h-[620px]">
               {vehicles.length === 0 ? (
                 <p className="text-sm text-on-surface-variant text-center mt-8">
                   Không có xe đang chạy lúc này.
                 </p>
               ) : (
-                vehicles.map((v: any) => (
-                  <div key={v.tripId} className="p-3 rounded-xl bg-surface-container-low min-w-0">
+                vehicles.map((v: any, index) => (
+                  <button
+                    key={v.tripId}
+                    type="button"
+                    onClick={() => toggleSelectedVehicle(String(v.tripId))}
+                    className={cn(
+                      "w-full p-3 rounded-xl border border-transparent bg-surface-container-low text-left min-w-0 transition",
+                      selectedVehicleId === String(v.tripId) && "border-primary bg-primary/5",
+                    )}
+                  >
                     <div className="flex items-center justify-between gap-2 mb-1 min-w-0">
                       <p className="font-bold text-sm truncate">{v.routeName}</p>
-                      <M3StatusPill label={v.status} tone={v.status === "RUNNING" ? "success" : "neutral"} />
+                      <M3StatusPill label="RUNNING" tone="success" />
                     </div>
                     <p className="text-xs text-on-surface-variant truncate">
                       {v.licensePlate || "—"} • {v.driverName || "—"}
                     </p>
-                    <div className="flex items-center gap-3 mt-1 text-xs">
-                      <span className="flex items-center gap-1"><Gauge className="size-3" /> {v.speedKmh || 0} km/h</span>
+                    <div className="mt-2 space-y-1 text-xs text-on-surface-variant">
+                      <span className="flex items-center gap-1 text-on-surface"><Gauge className="size-3" /> {v.speedKmh || 28} km/h</span>
+                      <span className="flex items-start gap-1"><MapPin className="size-3 mt-0.5 shrink-0" /> <span className="line-clamp-2">{vehicleLocations[String(v.tripId)] || vehicleLocationLabel(v, ctx.routes, ctx.stops, index)}</span></span>
                       {v.occupancy != null && <span className="flex items-center gap-1"><Users className="size-3" /> {v.occupancy}</span>}
                     </div>
-                  </div>
+                  </button>
                 ))
               )}
             </div>
@@ -678,51 +752,428 @@ function LiveMapScreen({ ctx }: { ctx: Ctx }) {
   );
 }
 
-function LiveFleetMap({ vehicles }: { vehicles: LiveFleetVehicle[] }) {
-  // Use Leaflet via dynamic import — for simplicity use a stylized SVG map
-  // (real-map.tsx is for routes; here we want vehicle positions)
+function mockLiveFleet(routes: any[]): LiveFleetVehicle[] {
+  const sourceRoutes = routes.length
+    ? routes.slice(0, 5)
+    : [
+        { routeId: 1, routeName: "UniBus 01: Bách khoa - Trung tâm" },
+        { routeId: 2, routeName: "UniBus 02: Sư phạm - Hòa Khánh" },
+        { routeId: 3, routeName: "UniBus 03: Kinh tế - Sơn Trà" },
+      ];
+  return sourceRoutes.map((route, index) => ({
+    tripId: 9000 + index,
+    routeId: Number(route.routeId || route.id),
+    routeName: route.routeName || route.name || route.code || `Tuyến ${index + 1}`,
+    licensePlate: `MOCK-${String(index + 1).padStart(2, "0")}`,
+    driverName: ["Nguyễn Minh Tài", "Trần Quốc Bảo", "Lê Hoàng Nam", "Phạm Anh Khoa", "Đỗ Gia Huy"][index],
+    departureTime: `${String(6 + index).padStart(2, "0")}:00`,
+    status: "RUNNING",
+    speedKmh: 24 + index * 3,
+    occupancy: 12 + index * 4,
+  })).filter((vehicle) => Number.isFinite(vehicle.routeId) && vehicle.routeId > 0);
+}
+
+function isRunningVehicle(vehicle: LiveFleetVehicle) {
+  return String(vehicle.status || "").trim().toUpperCase() === "RUNNING";
+}
+
+function vehicleLocationLabel(vehicle: LiveFleetVehicle, routes: any[], stops: BusStop[], index: number) {
+  const route = routes.find((item) => Number(item.routeId || item.id) === Number(vehicle.routeId));
+  const preview = route ? buildLocalRoutePreview(Number(vehicle.routeId), routes, stops) : null;
+  const actualLat = numberValue(vehicle.latitude);
+  const actualLng = numberValue(vehicle.longitude);
+  const point = actualLat && actualLng ? { lat: actualLat, lng: actualLng } : pointOnPreview(preview || undefined, index);
+  const routeStops = (route?.stops || [])
+    .map((stopId: string | number) => stops.find((stop) => String(stop.id) === String(stopId)))
+    .filter(Boolean) as BusStop[];
+  const nearest = point ? nearestStop(point, routeStops.length ? routeStops : stops) : routeStops[0];
+  if (!nearest) return route?.name || vehicle.routeName || "Đang cập nhật vị trí";
+  return `Mô phỏng trên tuyến • gần ${nearest.name}`;
+}
+
+function nearestStop(point: { lat: number; lng: number }, stops: BusStop[]) {
+  return stops
+    .filter((stop) => validCoordinate({ lat: numberValue(stop.lat), lng: numberValue(stop.lng) }))
+    .map((stop) => ({ stop, distance: (numberValue(stop.lat) - point.lat) ** 2 + (numberValue(stop.lng) - point.lng) ** 2 }))
+    .sort((left, right) => left.distance - right.distance)[0]?.stop;
+}
+
+function shallowEqualRecord(left: Record<string, string>, right: Record<string, string>) {
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  return leftKeys.length === rightKeys.length && leftKeys.every((key) => left[key] === right[key]);
+}
+
+function LiveFleetMap({
+  vehicles,
+  selectedVehicleId,
+  onSelectVehicle,
+  onVehicleLocationsChange,
+}: {
+  vehicles: LiveFleetVehicle[];
+  selectedVehicleId: string | null;
+  onSelectVehicle: (vehicleId: string) => void;
+  onVehicleLocationsChange?: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+}) {
+  const [previews, setPreviews] = useState<Record<number, RouteMapPreviewDTO>>({});
+  const [roadPreviews, setRoadPreviews] = useState<Record<number, RouteMapPreviewDTO>>({});
+  const [fallbackRouteIds, setFallbackRouteIds] = useState<number[]>([]);
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => setTick((t) => t + 1), 2000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    transportApi.routes()
+      .then((routes) => {
+        if (cancelled) return;
+        setFallbackRouteIds(routes.filter((route) => (route.stopCount || 0) >= 2).map((route) => route.routeId).slice(0, 6));
+      })
+      .catch(() => {
+        if (!cancelled) setFallbackRouteIds([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const routeIds = Array.from(new Set([
+      ...vehicles.map((v) => v.routeId).filter(Boolean),
+      ...fallbackRouteIds,
+    ]));
+    const missing = routeIds.filter((routeId) => !previews[routeId]);
+    if (!missing.length) return;
+    let cancelled = false;
+    Promise.allSettled(missing.map((routeId) => transportApi.routePreview(routeId)))
+      .then((results) => {
+        if (cancelled) return;
+        setPreviews((current) => {
+          const next = { ...current };
+          results.forEach((result) => {
+            if (result.status === "fulfilled") next[result.value.routeId] = result.value;
+          });
+          return next;
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fallbackRouteIds, previews, vehicles]);
+
+  useEffect(() => {
+    const source = Object.values(previews).filter((preview) => !roadPreviews[preview.routeId]);
+    if (!source.length) return;
+    let cancelled = false;
+    Promise.allSettled(source.map(toRoadPreview)).then((results) => {
+      if (cancelled) return;
+      setRoadPreviews((current) => {
+        const next = { ...current };
+        results.forEach((result) => {
+          if (result.status === "fulfilled" && result.value) next[result.value.routeId] = result.value;
+        });
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [previews, roadPreviews]);
+
+  const displayPreviews = useMemo(() => ({ ...previews, ...roadPreviews }), [previews, roadPreviews]);
+
+  const buses = useMemo<JourneyBus[]>(() => {
+    const _t = tick;
+    return vehicles.map((vehicle, index) => {
+      const preview = displayPreviews[vehicle.routeId] || Object.values(displayPreviews).find((item) =>
+        item.stops?.some((stop) => stop.latitude && stop.longitude)
+      );
+      const actualLat = numberValue(vehicle.latitude);
+      const actualLng = numberValue(vehicle.longitude);
+      const point = actualLat && actualLng ? { lat: actualLat, lng: actualLng } : pointOnPreview(preview, index);
+      if (!point) return null;
+      return {
+        id: String(vehicle.tripId),
+        plate: vehicle.licensePlate || `Xe ${index + 1}`,
+        routeCode: preview?.routeCode || `R${preview?.routeId || vehicle.routeId}`,
+        routeColor: preview?.colorHex || "#BDFD4F",
+        lat: point.lat,
+        lng: point.lng,
+        occupancy: vehicle.occupancy,
+        capacity: 45,
+        driverName: vehicle.driverName,
+      } satisfies JourneyBus;
+    }).filter(Boolean) as JourneyBus[];
+  }, [displayPreviews, vehicles, tick]);
+
+  const selectedRouteLines = useMemo(
+    () => selectedVehicleRoutePolylines(selectedVehicleId, vehicles, displayPreviews, buses),
+    [buses, displayPreviews, selectedVehicleId, vehicles],
+  );
+  const selectedRouteStops = useMemo(
+    () => selectedVehicleRouteStops(selectedVehicleId, vehicles, displayPreviews),
+    [displayPreviews, selectedVehicleId, vehicles],
+  );
+  const selectedRouteColor = selectedRouteLines[0]?.color || buses.find((bus) => bus.id === selectedVehicleId)?.routeColor || "#144fcc";
+
+  useEffect(() => {
+    if (!onVehicleLocationsChange) return;
+    const locations = Object.fromEntries(buses.map((bus) => {
+      const vehicle = vehicles.find((item) => String(item.tripId) === bus.id);
+      const preview = vehicle ? displayPreviews[vehicle.routeId] : undefined;
+      const hasGps = !!(vehicle && numberValue(vehicle.latitude) && numberValue(vehicle.longitude));
+      return [bus.id, busLocationLabel(bus, preview, !hasGps)];
+    }));
+    onVehicleLocationsChange((current) => shallowEqualRecord(current, locations) ? current : locations);
+  }, [buses, onVehicleLocationsChange, displayPreviews, vehicles]);
+
   return (
-    <div className="relative w-full h-full bg-[#0f172a] overflow-hidden">
-      {/* Stylized Đà Nẵng river + districts */}
-      <svg viewBox="0 0 800 500" className="w-full h-full">
-        <defs>
-          <radialGradient id="bg-glow" cx="50%" cy="50%" r="60%">
-            <stop offset="0%" stopColor="#1e293b" />
-            <stop offset="100%" stopColor="#0f172a" />
-          </radialGradient>
-        </defs>
-        <rect width="800" height="500" fill="url(#bg-glow)" />
-        {/* River */}
-        <path d="M0,300 Q200,260 400,290 T800,270" stroke="#1e3a8a" strokeWidth="20" fill="none" opacity="0.5" />
-        {/* District circles */}
-        {[200, 400, 600].map((x, i) => (
-          <circle key={i} cx={x} cy={250} r="60" fill="#1e293b" opacity="0.5" />
-        ))}
-        {/* Vehicles */}
-        {vehicles.map((v, i) => {
-          const lat = Number(v.latitude) || 16.07;
-          const lng = Number(v.longitude) || 108.15;
-          const x = ((lng - 108.0) / 0.3) * 800;
-          const y = ((16.15 - lat) / 0.15) * 500;
-          return (
-            <g key={v.tripId} transform={`translate(${Math.max(20, Math.min(780, x))},${Math.max(20, Math.min(480, y))})`}>
-              <circle r="20" fill="#beff50" opacity="0.2">
-                <animate attributeName="r" from="12" to="24" dur="2s" repeatCount="indefinite" />
-                <animate attributeName="opacity" from="0.4" to="0" dur="2s" repeatCount="indefinite" />
-              </circle>
-              <circle r="10" fill="#beff50" stroke="#14140f" strokeWidth="2" />
-              <text y="-15" textAnchor="middle" fill="#beff50" fontSize="10" fontWeight="bold">
-                {v.licensePlate || `Xe ${i + 1}`}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
-      <div className="absolute bottom-3 left-3 bg-white/10 backdrop-blur-sm text-white text-xs px-3 py-1.5 rounded-full">
-        {vehicles.length} xe • Cập nhật {formatDateTime(new Date().toISOString())}
+    <div className="relative h-full w-full">
+      <JourneyMap
+        stops={selectedRouteStops}
+        buses={buses}
+        polylines={[...selectedRouteLines, ...mapFitPolylines(displayPreviews, buses)]}
+        onSelectBus={onSelectVehicle}
+        routeColor={selectedRouteColor}
+        originLabel="Điểm khởi hành"
+        destinationLabel="Điểm kết thúc"
+        fitOnStopsChange={!selectedVehicleId}
+        height="100%"
+        className="h-full"
+        allowFallbackPolyline={false}
+      />
+      <div className="absolute bottom-3 left-3 z-[500] rounded-full bg-[#14140f]/90 px-3 py-1.5 text-xs font-bold text-[#BDFD4F]">
+        {buses.length || vehicles.length} xe • Dữ liệu mô phỏng khi xe chưa gửi GPS
       </div>
     </div>
   );
+}
+
+function numberValue(value: unknown) {
+  const n = typeof value === "string" ? Number(value) : Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+async function toRoadPreview(preview: RouteMapPreviewDTO): Promise<RouteMapPreviewDTO | null> {
+  const stops = (preview.stops || [])
+    .map((stop) => ({ lat: numberValue(stop.latitude), lng: numberValue(stop.longitude) }))
+    .filter(validCoordinate);
+  if (stops.length < 2) return null;
+  const coords = stops.slice(0, 24).map((point) => `${point.lng},${point.lat}`).join(";");
+  const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`, { cache: "force-cache" });
+  if (!res.ok) return null;
+  const data = await res.json();
+  const coordinates = data?.routes?.[0]?.geometry?.coordinates;
+  if (!Array.isArray(coordinates) || coordinates.length < 2) return null;
+  return {
+    ...preview,
+    polylines: [{
+      legId: `road-${preview.routeId}`,
+      mode: "BUS",
+      colorHex: preview.colorHex,
+      points: coordinates.map(([lng, lat]: [number, number]) => ({ latitude: lat, longitude: lng })),
+    }],
+  };
+}
+
+function validCoordinate(point: { lat: number; lng: number }) {
+  return Math.abs(point.lat) > 0 && Math.abs(point.lng) > 0;
+}
+
+function selectedVehicleRoutePolylines(
+  selectedVehicleId: string | null,
+  vehicles: LiveFleetVehicle[],
+  previews: Record<number, RouteMapPreviewDTO>,
+  buses: JourneyBus[],
+): JourneyPolyline[] {
+  if (!selectedVehicleId) return [];
+  const vehicle = vehicles.find((item) => String(item.tripId) === selectedVehicleId);
+  const selectedBus = buses.find((bus) => bus.id === selectedVehicleId);
+  const preview = vehicle ? previews[vehicle.routeId] : undefined;
+  if (!preview) return [];
+  return (preview.polylines || [])
+    .map((line, index) => ({
+      id: `selected-${selectedVehicleId}-${line.legId || index}`,
+      color: selectedBus?.routeColor || line.colorHex || preview.colorHex || "#144fcc",
+      label: preview.routeName || preview.routeCode || `Tuyến ${preview.routeId}`,
+      points: (line.points || [])
+        .map((point) => ({ lat: numberValue(point.latitude), lng: numberValue(point.longitude) }))
+        .filter(validCoordinate),
+    }))
+    .filter((line) => line.points.length > 1);
+}
+
+function selectedVehicleRouteStops(
+  selectedVehicleId: string | null,
+  vehicles: LiveFleetVehicle[],
+  previews: Record<number, RouteMapPreviewDTO>,
+): BusStop[] {
+  if (!selectedVehicleId) return [];
+  const vehicle = vehicles.find((item) => String(item.tripId) === selectedVehicleId);
+  const preview = vehicle ? previews[vehicle.routeId] : undefined;
+  if (!preview?.stops?.length) return [];
+  const routePoints = (preview.polylines || [])
+    .flatMap((line) => line.points || [])
+    .map((point) => ({ lat: numberValue(point.latitude), lng: numberValue(point.longitude) }))
+    .filter(validCoordinate);
+  return preview.stops
+    .map((stop) => {
+      const point = snapPointToRoute({ lat: numberValue(stop.latitude), lng: numberValue(stop.longitude) }, routePoints);
+      return {
+        id: String(stop.stopId),
+        name: stop.stopName,
+        code: String(stop.stopId),
+        address: stop.address || "",
+        lat: point.lat,
+        lng: point.lng,
+        routes: [String(preview.routeId)],
+        hasShelter: false,
+      };
+    })
+    .filter((stop) => validCoordinate(stop));
+}
+
+function snapPointToRoute(point: { lat: number; lng: number }, routePoints: { lat: number; lng: number }[]) {
+  if (routePoints.length < 2) return point;
+  let best = point;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  const scale = Math.cos(point.lat * Math.PI / 180);
+  for (let index = 0; index < routePoints.length - 1; index += 1) {
+    const a = routePoints[index];
+    const b = routePoints[index + 1];
+    const ax = a.lng * scale;
+    const ay = a.lat;
+    const bx = b.lng * scale;
+    const by = b.lat;
+    const px = point.lng * scale;
+    const py = point.lat;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const lengthSquared = dx * dx + dy * dy;
+    const ratio = lengthSquared ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSquared)) : 0;
+    const projected = { lat: ay + dy * ratio, lng: (ax + dx * ratio) / scale };
+    const distance = (projected.lat - point.lat) ** 2 + ((projected.lng - point.lng) * scale) ** 2;
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = projected;
+    }
+  }
+  return best;
+}
+
+function mapFitPolylines(previews: Record<number, RouteMapPreviewDTO>, buses: JourneyBus[]) {
+  const previewPoints = Object.values(previews)
+    .flatMap((preview) => preview.polylines || [])
+    .flatMap((line) => line.points || [])
+    .map((point) => ({ lat: numberValue(point.latitude), lng: numberValue(point.longitude) }))
+    .filter(validCoordinate);
+  const points = previewPoints.length
+    ? previewPoints
+    : buses.map((bus) => ({ lat: bus.lat, lng: bus.lng })).filter(validCoordinate);
+  if (!points.length) return [];
+  if (points.length === 1) {
+    const point = points[0];
+    return [{
+      id: "fleet-fit",
+      dashed: true,
+      color: "transparent",
+      points: [
+        { lat: point.lat - 0.018, lng: point.lng - 0.018 },
+        { lat: point.lat + 0.018, lng: point.lng + 0.018 },
+      ],
+    }];
+  }
+  return [{ id: "fleet-fit", dashed: true, color: "transparent", points }];
+}
+
+function busLocationLabel(bus: JourneyBus, preview?: RouteMapPreviewDTO, simulated = false) {
+  const stops = (preview?.stops || [])
+    .map((stop) => ({
+      id: String(stop.stopId),
+      name: stop.stopName,
+      code: String(stop.stopId),
+      address: stop.address || "",
+      lat: numberValue(stop.latitude),
+      lng: numberValue(stop.longitude),
+      routes: [String(preview?.routeId || "")],
+      hasShelter: false,
+    }))
+    .filter((stop) => validCoordinate(stop));
+  const nearest = nearestStop({ lat: bus.lat, lng: bus.lng }, stops);
+  if (!nearest) return simulated ? "Mô phỏng trên tuyến" : "Đang cập nhật vị trí";
+  const location = `gần ${nearest.name}${nearest.address ? `, ${nearest.address}` : ""}`;
+  return simulated ? `Mô phỏng trên tuyến • ${location}` : `Gần ${nearest.name}${nearest.address ? `, ${nearest.address}` : ""}`;
+}
+
+function buildLocalRoutePreview(routeId: number, routes: any[], stops: BusStop[]): RouteMapPreviewDTO | null {
+  const route = routes.find((item) => Number(item.routeId || item.id) === Number(routeId));
+  if (!route) return null;
+  const routeStops = (route.stops || [])
+    .map((stopId: string | number) => stops.find((stop) => String(stop.id) === String(stopId)))
+    .filter(Boolean) as BusStop[];
+  const validStops = routeStops.filter((stop) => validCoordinate({ lat: numberValue(stop.lat), lng: numberValue(stop.lng) }));
+  if (validStops.length < 2) return null;
+  return {
+    routeId: Number(routeId),
+    routeCode: route.code || `R${routeId}`,
+    routeName: route.name || `Tuyến ${routeId}`,
+    colorHex: route.color || "#BDFD4F",
+    direction: 0,
+    stops: validStops.map((stop, index) => ({
+      stopId: Number(stop.id),
+      stopName: stop.name,
+      address: stop.address,
+      latitude: stop.lat,
+      longitude: stop.lng,
+      stopOrder: index + 1,
+    })),
+    polylines: [{
+      legId: `local-${routeId}`,
+      mode: "BUS",
+      colorHex: route.color || "#BDFD4F",
+      points: validStops.map((stop) => ({ latitude: stop.lat, longitude: stop.lng })),
+    }],
+  };
+}
+
+function pointOnPreview(preview: RouteMapPreviewDTO | undefined, index: number) {
+  const points = (preview?.polylines || [])
+    .flatMap((line) => line.points || [])
+    .map((point) => ({ lat: numberValue(point.latitude), lng: numberValue(point.longitude) }))
+    .filter(validCoordinate);
+  if (!points.length) return null;
+
+  const routeId = preview?.routeId || 0;
+  const now = new Date();
+  const cycleMinutes = 55 + Math.abs(routeId % 25);
+  const cycleSeconds = cycleMinutes * 60;
+  const secondOfDay = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+  const offsetSeconds = (Math.abs(routeId) * 60) + index * Math.max(480, Math.floor(cycleSeconds / 3));
+  const progress = ((secondOfDay + offsetSeconds) % cycleSeconds) / cycleSeconds;
+
+  const segments = points.slice(1).map((point, pointIndex) => {
+    const previous = points[pointIndex];
+    const length = Math.hypot(point.lat - previous.lat, point.lng - previous.lng);
+    return { from: previous, to: point, length };
+  });
+  const totalLength = segments.reduce((sum, segment) => sum + segment.length, 0);
+  if (!totalLength) return points[0];
+  let targetLength = progress * totalLength;
+  const segment = segments.find((item) => {
+    if (targetLength <= item.length) return true;
+    targetLength -= item.length;
+    return false;
+  }) || segments[segments.length - 1];
+  const ratio = segment.length ? targetLength / segment.length : 0;
+  const a = segment.from;
+  const b = segment.to;
+  return {
+    lat: a.lat + (b.lat - a.lat) * ratio,
+    lng: a.lng + (b.lng - a.lng) * ratio,
+  };
 }
 
 // =============================================================================
@@ -806,7 +1257,7 @@ function ScheduleScreen({ ctx }: { ctx: Ctx }) {
 }
 
 // =============================================================================
-// Screen 4: Assign staff
+// Screen 4: Assign trips
 // =============================================================================
 function AssignStaffScreen({ ctx }: { ctx: Ctx }) {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
@@ -815,6 +1266,7 @@ function AssignStaffScreen({ ctx }: { ctx: Ctx }) {
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [drivers, setDrivers] = useState<Record<string, number | undefined>>({});
   const [conductors, setConductors] = useState<Record<string, number | undefined>>({});
+  const [buses, setBuses] = useState<Record<string, number | undefined>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -823,14 +1275,17 @@ function AssignStaffScreen({ ctx }: { ctx: Ctx }) {
       setDashboard(d);
       const initDrivers: Record<string, number | undefined> = {};
       const initConductors: Record<string, number | undefined> = {};
+      const initBuses: Record<string, number | undefined> = {};
       d.shifts.forEach((s) => {
         if (s.scheduleId) {
           initDrivers[s.scheduleId] = s.driverStaffId;
           initConductors[s.scheduleId] = s.conductorStaffId;
+          initBuses[s.scheduleId] = s.busId;
         }
       });
       setDrivers(initDrivers);
       setConductors(initConductors);
+      setBuses(initBuses);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Không tải được lịch");
     } finally {
@@ -843,12 +1298,17 @@ function AssignStaffScreen({ ctx }: { ctx: Ctx }) {
   const save = async (scheduleId: number) => {
     const driverId = drivers[scheduleId];
     const conductorId = conductors[scheduleId];
+    const busId = buses[scheduleId];
     if (!driverId) {
       toast.error("Vui lòng chọn tài xế");
       return;
     }
     if (!conductorId) {
       toast.error("Vui lòng chọn phụ xe");
+      return;
+    }
+    if (!busId) {
+      toast.error("Vui lòng chọn xe");
       return;
     }
     setSaving((s) => ({ ...s, [scheduleId]: true }));
@@ -861,11 +1321,11 @@ function AssignStaffScreen({ ctx }: { ctx: Ctx }) {
           routeId: shift?.routeId,
           driverStaffId: driverId,
           conductorStaffId: conductorId,
-          busId: shift?.busId,
+          busId,
           departureTime: shift?.departureTime || shift?.time,
         }],
       });
-      toast.success("Đã phân công nhân sự");
+      toast.success("Đã lưu phân công chuyến");
       load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Không thể phân công");
@@ -877,20 +1337,28 @@ function AssignStaffScreen({ ctx }: { ctx: Ctx }) {
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
-        title="Phân công nhân sự"
-        description="Gán tài xế và phụ xe cho từng chuyến."
-        icon={<UserCog className="size-7" />}
+        title="Phân công chuyến xe"
+        description="Gán xe, tài xế và phụ xe cho từng chuyến."
+        icon={<BusIcon className="size-7" />}
         actions={<DateField value={date} onChange={setDate} />}
       />
       {loading ? (
         <LoadingScreen />
-      ) : !dashboard || dashboard.shifts.length === 0 ? (
-        <EmptyState icon={<UserCog className="size-7" />} title="Không có chuyến" description="Không có chuyến cần phân công." />
+      ) : !dashboard ? (
+        <EmptyState icon={<BusIcon className="size-7" />} title="Không tải được dữ liệu phân công" />
+      ) : dashboard.shifts.length === 0 ? (
+        <NewShiftCard dashboard={dashboard} date={date} onCreated={load} />
       ) : (
         <StaggerGroup className="space-y-3 min-w-0">
+          <StaggerItem>
+            <NewShiftCard dashboard={dashboard} date={date} onCreated={load} compact />
+          </StaggerItem>
           {dashboard.shifts.map((s, i) => {
             const sid = s.scheduleId;
             const locked = ["RUNNING", "COMPLETED"].includes(String(s.status || "").toUpperCase());
+            const hasDriver = sid ? Boolean(drivers[sid]) : Boolean(s.driverStaffId || s.driverName);
+            const hasConductor = sid ? Boolean(conductors[sid]) : Boolean(s.conductorStaffId || s.conductorName);
+            const hasBus = sid ? Boolean(buses[sid]) : Boolean(s.busId || s.licensePlate);
             return (
               <StaggerItem key={i}>
                 <ExpressiveCard variant="elevated" className="p-5 min-w-0">
@@ -901,13 +1369,15 @@ function AssignStaffScreen({ ctx }: { ctx: Ctx }) {
                     </div>
                     {locked ? (
                       <M3StatusPill label="Đang chạy/đã xong" tone="neutral" />
-                    ) : s.driverName && s.conductorName ? (
-                      <M3StatusPill label="Đã gán" tone="success" />
+                    ) : hasDriver && hasConductor && hasBus ? (
+                      <M3StatusPill label="Đủ phân công" tone="success" />
+                    ) : !hasBus ? (
+                      <M3StatusPill label="Thiếu xe" tone="warning" />
                     ) : (
                       <M3StatusPill label="Thiếu nhân sự" tone="warning" />
                     )}
                   </div>
-                  <div className="grid gap-3 md:grid-cols-2">
+                  <div className="grid gap-3 md:grid-cols-3">
                     <div className="min-w-0">
                       <Label className="text-xs font-bold">Tài xế</Label>
                       <Select
@@ -938,137 +1408,23 @@ function AssignStaffScreen({ ctx }: { ctx: Ctx }) {
                         </SelectContent>
                       </Select>
                     </div>
-                  </div>
-                  <div className="mt-3">
-                    {sid && (
-                      <ExpressiveButton
-                        variant="filled"
-                        size="sm"
-                        onClick={() => save(sid)}
-                        disabled={saving[sid] || locked}
-                      >
-                        {saving[sid] ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
-                        Lưu nhân sự
-                      </ExpressiveButton>
-                    )}
-                  </div>
-                </ExpressiveCard>
-              </StaggerItem>
-            );
-          })}
-        </StaggerGroup>
-      )}
-    </PageTransition>
-  );
-}
-
-// =============================================================================
-// Screen 5: Assign Bus
-// =============================================================================
-function AssignBusScreen({ ctx }: { ctx: Ctx }) {
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [dashboard, setDashboard] = useState<ScheduleDashboard | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState<Record<string, boolean>>({});
-  const [assignments, setAssignments] = useState<Record<string, number | undefined>>({});
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const d = await operationsApi.scheduleDashboard(date);
-      setDashboard(d);
-      const init: Record<string, number | undefined> = {};
-      d.shifts.forEach((s) => {
-        if (s.scheduleId) init[s.scheduleId] = s.busId;
-      });
-      setAssignments(init);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Không tải được lịch");
-    } finally {
-      setLoading(false);
-    }
-  }, [date]);
-
-  useEffect(() => { load(); }, [load]);
-
-  const save = async (scheduleId: number) => {
-    const busId = assignments[scheduleId];
-    if (!busId) {
-      toast.error("Vui lòng chọn xe");
-      return;
-    }
-    setSaving((s) => ({ ...s, [scheduleId]: true }));
-    try {
-      const shift = dashboard!.shifts.find((s) => s.scheduleId === scheduleId);
-      await operationsApi.saveSchedules({
-        serviceDate: date,
-        shifts: [{
-          scheduleId,
-          routeId: shift?.routeId,
-          driverStaffId: shift?.driverStaffId,
-          conductorStaffId: shift?.conductorStaffId,
-          busId,
-          departureTime: shift?.departureTime || shift?.time,
-        }],
-      });
-      toast.success("Đã phân công xe");
-      load();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Không thể phân công");
-    } finally {
-      setSaving((s) => ({ ...s, [scheduleId]: false }));
-    }
-  };
-
-  return (
-    <PageTransition className="space-y-6 min-w-0">
-      <PageHeader
-        title="Phân công xe"
-        description="Gán xe cho các chuyến."
-        icon={<BusIcon className="size-7" />}
-        actions={<DateField value={date} onChange={setDate} />}
-      />
-      {loading ? (
-        <LoadingScreen />
-      ) : !dashboard || dashboard.shifts.length === 0 ? (
-        <EmptyState icon={<BusIcon className="size-7" />} title="Không có chuyến" />
-      ) : (
-        <StaggerGroup className="space-y-3 min-w-0">
-          {dashboard.shifts.map((s, i) => {
-            const sid = s.scheduleId;
-            const locked = ["RUNNING", "COMPLETED"].includes(String(s.status || "").toUpperCase());
-            return (
-              <StaggerItem key={i}>
-                <ExpressiveCard variant="elevated" className="p-5 min-w-0">
-                  <div className="flex items-start justify-between gap-3 mb-3 min-w-0">
                     <div className="min-w-0">
-                      <p className="font-bold truncate">{s.routeName || `Tuyến ${s.routeId}`}</p>
-                      <p className="text-xs text-on-surface-variant">{s.departureTime || s.time || "—"}</p>
-                    </div>
-                    {locked ? (
-                      <M3StatusPill label="Đang chạy/đã xong" tone="neutral" />
-                    ) : s.licensePlate ? (
-                      <M3StatusPill label="Đã gán" tone="success" />
-                    ) : (
-                      <M3StatusPill label="Thiếu xe" tone="warning" />
-                    )}
-                  </div>
-                  <div className="space-y-3">
-                    <div>
-                      <Label className="text-xs font-bold">Xe</Label>
-                        <Select
-                          value={sid && assignments[sid] ? String(assignments[sid]) : ""}
-                          onValueChange={(v) => sid && setAssignments((a) => ({ ...a, [sid]: Number(v) }))}
-                          disabled={locked}
-                        >
+                      <Label className="text-xs font-bold">Xe bus</Label>
+                      <Select
+                        value={sid && buses[sid] ? String(buses[sid]) : ""}
+                        onValueChange={(v) => sid && setBuses((a) => ({ ...a, [sid]: Number(v) }))}
+                        disabled={locked}
+                      >
                         <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn xe" /></SelectTrigger>
                         <SelectContent>
-                          {dashboard.buses.map((b) => (
-                            <SelectItem key={b.busId} value={String(b.busId)}>{b.licensePlate} ({b.seatCount || "?"} chỗ)</SelectItem>
+                          {dashboard.buses.map((bus) => (
+                            <SelectItem key={bus.busId} value={String(bus.busId)}>{bus.licensePlate} ({bus.seatCount || "?"} chỗ)</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
+                  </div>
+                  <div className="mt-3">
                     {sid && (
                       <ExpressiveButton
                         variant="filled"
@@ -1088,6 +1444,187 @@ function AssignBusScreen({ ctx }: { ctx: Ctx }) {
         </StaggerGroup>
       )}
     </PageTransition>
+  );
+}
+
+const HOURS_12 = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, "0"));
+const MINUTES_60 = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, "0"));
+
+function parseTime12(value: string) {
+  const [rawHour = "07", minute = "00"] = (value || "07:00").split(":");
+  const hour24 = Math.max(0, Math.min(23, Number(rawHour) || 7));
+  const period = hour24 >= 12 ? "PM" : "AM";
+  const hour12 = hour24 % 12 || 12;
+  return {
+    hour: String(hour12).padStart(2, "0"),
+    minute: String(Math.max(0, Math.min(59, Number(minute) || 0))).padStart(2, "0"),
+    period,
+  };
+}
+
+function formatTime24(hour: string, minute: string, period: string) {
+  const hour12 = Math.max(1, Math.min(12, Number(hour) || 7));
+  const normalizedMinute = String(Math.max(0, Math.min(59, Number(minute) || 0))).padStart(2, "0");
+  const hour24 = period === "PM" ? (hour12 % 12) + 12 : hour12 % 12;
+  return `${String(hour24).padStart(2, "0")}:${normalizedMinute}`;
+}
+
+function NewShiftCard({
+  dashboard,
+  date,
+  onCreated,
+  compact = false,
+}: {
+  dashboard: ScheduleDashboard;
+  date: string;
+  onCreated: () => void;
+  compact?: boolean;
+}) {
+  const [routeId, setRouteId] = useState("");
+  const [departureTime, setDepartureTime] = useState("07:00");
+  const [driverStaffId, setDriverStaffId] = useState("");
+  const [conductorStaffId, setConductorStaffId] = useState("");
+  const [busId, setBusId] = useState("");
+  const [saving, setSaving] = useState(false);
+  const timeParts = parseTime12(departureTime);
+
+  const setTimePart = (part: "hour" | "minute" | "period", value: string) => {
+    setDepartureTime(formatTime24(
+      part === "hour" ? value : timeParts.hour,
+      part === "minute" ? value : timeParts.minute,
+      part === "period" ? value : timeParts.period
+    ));
+  };
+
+  const save = async () => {
+    if (!routeId || !departureTime) {
+      toast.error("Vui lòng chọn tuyến và giờ chạy");
+      return;
+    }
+    if (!driverStaffId || !conductorStaffId) {
+      toast.error("Vui lòng chọn tài xế và phụ xe");
+      return;
+    }
+    if (!busId) {
+      toast.error("Vui lòng chọn xe");
+      return;
+    }
+    setSaving(true);
+    try {
+      await operationsApi.saveSchedules({
+        serviceDate: date,
+        shifts: [{
+          routeId: Number(routeId),
+          departureTime,
+          driverStaffId: driverStaffId ? Number(driverStaffId) : undefined,
+          conductorStaffId: conductorStaffId ? Number(conductorStaffId) : undefined,
+          busId: busId ? Number(busId) : undefined,
+        }],
+      });
+      toast.success("Đã tạo ca phân công");
+      setRouteId("");
+      setDepartureTime("07:00");
+      setDriverStaffId("");
+      setConductorStaffId("");
+      setBusId("");
+      onCreated();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Không thể tạo ca phân công");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <ExpressiveCard variant="elevated" className="p-5 min-w-0">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <p className="font-bold">{compact ? "Thêm ca phân công" : "Chưa có chuyến để phân công"}</p>
+          <p className="text-xs text-on-surface-variant">Tạo ca chạy mới cho ngày {formatDate(date)}.</p>
+        </div>
+        <M3StatusPill label="Mới" tone="warning" />
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="min-w-0">
+          <Label className="text-xs font-bold">Tuyến</Label>
+          <Select value={routeId} onValueChange={setRouteId}>
+            <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn tuyến" /></SelectTrigger>
+            <SelectContent>
+              {dashboard.routes.map((route) => (
+                <SelectItem key={route.routeId} value={String(route.routeId)}>{route.routeName}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="min-w-0">
+          <Label className="text-xs font-bold">Giờ chạy</Label>
+          <div className="mt-1.5 grid grid-cols-[1fr_1fr_88px] gap-2">
+            <Select value={timeParts.hour} onValueChange={(value) => setTimePart("hour", value)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {HOURS_12.map((hour) => (
+                  <SelectItem key={hour} value={hour}>{hour}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={timeParts.minute} onValueChange={(value) => setTimePart("minute", value)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {MINUTES_60.map((minute) => (
+                  <SelectItem key={minute} value={minute}>{minute}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={timeParts.period} onValueChange={(value) => setTimePart("period", value)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="AM">SA</SelectItem>
+                <SelectItem value="PM">CH</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="min-w-0">
+          <Label className="text-xs font-bold">Tài xế</Label>
+          <Select value={driverStaffId} onValueChange={setDriverStaffId}>
+            <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn tài xế" /></SelectTrigger>
+            <SelectContent>
+              {dashboard.drivers.map((driver) => (
+                <SelectItem key={driver.staffId} value={String(driver.staffId)}>{driver.fullName} ({driver.status})</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="min-w-0">
+          <Label className="text-xs font-bold">Phụ xe</Label>
+          <Select value={conductorStaffId} onValueChange={setConductorStaffId}>
+            <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn phụ xe" /></SelectTrigger>
+            <SelectContent>
+              {dashboard.conductors.map((conductor) => (
+                <SelectItem key={conductor.staffId} value={String(conductor.staffId)}>{conductor.fullName} ({conductor.status})</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="min-w-0 md:col-span-2">
+          <Label className="text-xs font-bold">Xe bus</Label>
+          <Select value={busId} onValueChange={setBusId}>
+            <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn xe" /></SelectTrigger>
+            <SelectContent>
+              {dashboard.buses.map((bus) => (
+                <SelectItem key={bus.busId} value={String(bus.busId)}>{bus.licensePlate} ({bus.seatCount || "?"} chỗ)</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <div className="mt-4">
+        <ExpressiveButton variant="filled" size="sm" onClick={save} disabled={saving}>
+          {saving ? <RefreshCw className="size-4 animate-spin" /> : <Plus className="size-4" />}
+          Tạo ca phân công
+        </ExpressiveButton>
+      </div>
+    </ExpressiveCard>
   );
 }
 
@@ -1262,20 +1799,37 @@ function StopsScreen({ ctx }: { ctx: Ctx }) {
   const [routes, setRoutes] = useState<RouteListItem[]>([]);
   const [selectedRouteId, setSelectedRouteId] = useState<number | null>(null);
   const [stops, setStops] = useState<RouteStopDto[] | null>(null);
+  const [loadingRoutes, setLoadingRoutes] = useState(true);
+  const [routeError, setRouteError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState<number | null>(null);
 
-  useEffect(() => {
-    coordinatorRoutesApi.getRoutes().then(setRoutes).catch(() => setRoutes([]));
+  const loadRoutes = useCallback(async () => {
+    setLoadingRoutes(true);
+    setRouteError(null);
+    try {
+      const r = await coordinatorRoutesApi.getRoutes();
+      setRoutes(r);
+    } catch (e) {
+      setRoutes([]);
+      setRouteError(e instanceof Error ? e.message : "Không thể tải danh sách tuyến");
+    } finally {
+      setLoadingRoutes(false);
+    }
   }, []);
+
+  useEffect(() => { loadRoutes(); }, [loadRoutes]);
 
   useEffect(() => {
     if (!selectedRouteId && routes.length > 0) setSelectedRouteId(routes[0].id);
   }, [routes, selectedRouteId]);
 
   const load = useCallback(async () => {
-    if (!selectedRouteId) return;
+    if (!selectedRouteId) {
+      setStops([]);
+      return;
+    }
     setLoading(true);
     try {
       const s = await coordinatorRoutesApi.getRouteStops(selectedRouteId);
@@ -1308,24 +1862,46 @@ function StopsScreen({ ctx }: { ctx: Ctx }) {
         description="Quản lý trạm trên từng tuyến."
         icon={<MapPin className="size-7" />}
         actions={
-          <Select value={selectedRouteId ? String(selectedRouteId) : ""} onValueChange={(v) => setSelectedRouteId(Number(v))}>
-            <SelectTrigger className="w-full sm:w-64"><SelectValue placeholder="Chọn tuyến" /></SelectTrigger>
-            <SelectContent>
-              {routes.map((r) => (
-                <SelectItem key={r.id} value={String(r.id)}>{r.routeName}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2">
+            <Select
+              value={selectedRouteId ? String(selectedRouteId) : ""}
+              onValueChange={(v) => setSelectedRouteId(Number(v))}
+              disabled={loadingRoutes || routes.length === 0}
+            >
+              <SelectTrigger className="w-full sm:w-72">
+                <SelectValue placeholder={loadingRoutes ? "Đang tải tuyến..." : "Chọn tuyến"} />
+              </SelectTrigger>
+              <SelectContent>
+                {routes.map((r) => (
+                  <SelectItem key={r.id} value={String(r.id)}>
+                    {r.routeName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {routeError && (
+              <ExpressiveButton variant="tonal" size="sm" onClick={loadRoutes}>
+                <RefreshCw className="size-4" /> Tải lại
+              </ExpressiveButton>
+            )}
+          </div>
         }
       />
-      {loading ? (
+      {routes.length === 0 && !loadingRoutes ? (
+        <EmptyState
+          icon={<RouteIcon className="size-7" />}
+          title="Chưa có tuyến"
+          description="Cần tạo tuyến trước khi thêm trạm dừng."
+          action={<ExpressiveButton variant="filled" onClick={() => toast.info("Vào mục Quản lý tuyến đường để tạo tuyến trước")}>Tạo tuyến ở mục tuyến đường</ExpressiveButton>}
+        />
+      ) : loading ? (
         <LoadingScreen />
       ) : !stops || stops.length === 0 ? (
         <EmptyState
           icon={<MapPin className="size-7" />}
           title="Chưa có trạm"
           description="Tuyến này chưa có trạm nào."
-          action={<ExpressiveButton variant="filled" onClick={() => setAdding(true)}><Plus className="size-4" /> Thêm trạm</ExpressiveButton>}
+          action={<ExpressiveButton variant="filled" disabled={!selectedRouteId} onClick={() => setAdding(true)}><Plus className="size-4" /> Thêm trạm</ExpressiveButton>}
         />
       ) : (
         <>
@@ -1615,68 +2191,119 @@ function MetricMini({ label, value }: { label: string; value: number | string })
   );
 }
 
+function isSosFeedback(item: any) {
+  return String(item.content || "").toUpperCase().startsWith("[SOS") || String(item.studentName || "").includes("SOS");
+}
+
+function isPrivateMessageNotification(item: any) {
+  const text = `${item.title || ""} ${item.content || item.body || ""}`.toLowerCase();
+  return text.includes("tin nhắn") || text.includes("message") || text.includes("chat");
+}
+
+﻿// =============================================================================
+// Screen 9: Hỗ trợ và phản hồi (Feedback / Lost Items / SOS)
 // =============================================================================
-// Screen 9: Feedback queue (resolve)
-// =============================================================================
-function FeedbackScreen({ ctx }: { ctx: Ctx }) {
-  const [filter, setFilter] = useState<"all" | "sos" | "new" | "processing" | "resolved">("all");
+function FeedbackScreen({ ctx, initialTab }: { ctx: Ctx; initialTab?: string }) {
+  const [tab, setTab] = useState<'feedback' | 'lost' | 'sos'>(
+    initialTab === 'sos' ? 'sos' : initialTab === 'lost' ? 'lost' : 'feedback'
+  );
+  const [filter, setFilter] = useState<'all' | 'new' | 'processing' | 'resolved'>('all');
   const [responding, setResponding] = useState<number | null>(null);
   const [selectedFeedback, setSelectedFeedback] = useState<any | null>(null);
   const [responses, setResponses] = useState<Record<string, string>>({});
+  const [selectedLost, setSelectedLost] = useState<any | null>(null);
+  const [lostNotes, setLostNotes] = useState<Record<number, string>>({});
+
   const feedbackResource = useApi(() => coordinatorFeedbackApi.all(), (items) => items.map(mapFeedback), []);
+  const lostItemResource = useApi(() => coordinatorLostItemApi.all(), undefined, []);
   const feedbackItems = feedbackResource.data || ctx.feedback;
+  const lostItems: ExperienceLostItemCard[] = lostItemResource.data || [];
 
-  const filtered = feedbackItems.filter((f: any) => {
-    const isSos = String(f.content || "").toUpperCase().startsWith("[SOS") || String(f.studentName || "").includes("SOS");
-    if (filter === "sos") return isSos;
-    if (filter === "all") return true;
-    return f.status === filter;
-  }).sort((a: any, b: any) => {
-    const aTime = new Date(a.createdAt || 0).getTime() || 0;
-    const bTime = new Date(b.createdAt || 0).getTime() || 0;
-    return bTime - aTime;
-  });
+  const feedbackOnly = feedbackItems.filter((f: any) => !isSosFeedback(f));
+  const sosOnly = feedbackItems.filter(isSosFeedback);
 
-  const resolve = async (item: any) => {
+  const applyStatusFilter = (items: any[]) =>
+    items
+      .filter((f: any) => filter === 'all' || f.status === filter)
+      .sort((a: any, b: any) => {
+        const at = new Date(a.createdAt || a.reportedAt || 0).getTime() || 0;
+        const bt = new Date(b.createdAt || b.reportedAt || 0).getTime() || 0;
+        return bt - at;
+      });
+
+  const filteredFeedback = applyStatusFilter(feedbackOnly);
+  const filteredSos = applyStatusFilter(sosOnly);
+  const filteredLost = lostItems
+    .filter((l) => {
+      if (filter === 'all') return true;
+      const mapped = l.status === 'REPORTED' ? 'new' : l.status === 'SEARCHING' ? 'processing' : 'resolved';
+      return mapped === filter;
+    })
+    .sort((a, b) => {
+      const at = new Date(a.reportedAt || 0).getTime() || 0;
+      const bt = new Date(b.reportedAt || 0).getTime() || 0;
+      return bt - at;
+    });
+
+  const pendingFeedback = feedbackOnly.filter((f: any) => f.status !== 'resolved').length;
+  const pendingLost = lostItems.filter((l) => l.status === 'REPORTED' || l.status === 'SEARCHING').length;
+  const pendingSos = sosOnly.filter((f: any) => f.status !== 'resolved').length;
+
+  const resolveFeedback = async (item: any) => {
     const id = Number(item.id);
-    const isSos = String(item.content || "").toUpperCase().startsWith("[SOS") || String(item.studentName || "").includes("SOS");
-    const response = responses[item.id]?.trim() || (isSos ? "Đã tiếp nhận và xử lý thông báo SOS." : "Đã tiếp nhận và xử lý phản hồi.");
+    const isSos = isSosFeedback(item);
+    const response = responses[item.id]?.trim() || (isSos ? 'Đã tiếp nhận và xử lý thông báo SOS.' : 'Đã tiếp nhận và xử lý phản hồi.');
     setResponding(id);
     try {
       await coordinatorFeedbackApi.resolve(id, response);
-      toast.success("Đã xử lý phản hồi");
-      setResponses((prev) => {
-        const next = { ...prev };
-        delete next[item.id];
-        return next;
-      });
+      toast.success(isSos ? 'Đã xử lý SOS' : 'Đã xử lý phản hồi');
+      setResponses((prev) => { const next = { ...prev }; delete next[item.id]; return next; });
       setSelectedFeedback(null);
       ctx.reload();
       feedbackResource.reload();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Không thể xử lý");
+      toast.error(e instanceof Error ? e.message : 'Không thể xử lý');
     } finally {
       setResponding(null);
     }
   };
 
+  const updateLostItem = async (item: ExperienceLostItemCard, status: string) => {
+    const id = item.lostItemReportId;
+    const notes = lostNotes[id]?.trim() || '';
+    setResponding(id);
+    try {
+      await coordinatorLostItemApi.update(id, { status, notes: notes || undefined });
+      toast.success('Đã cập nhật mất đồ');
+      setLostNotes((prev) => { const next = { ...prev }; delete next[id]; return next; });
+      setSelectedLost(null);
+      lostItemResource.reload();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Không thể cập nhật');
+    } finally {
+      setResponding(null);
+    }
+  };
+
+  const reloadAll = () => { feedbackResource.reload(); lostItemResource.reload(); };
+  const loading = (feedbackResource.loading && !feedbackResource.data) || (lostItemResource.loading && !lostItemResource.data);
+
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
-        title="Phản hồi"
-        description="Xử lý phản hồi từ hành khách."
-        icon={<Star className="size-7" />}
+        title="Hỗ trợ và phản hồi"
+        description="Xử lý phản hồi, báo mất đồ và SOS từ hành khách."
+        icon={<MessageSquare className="size-7" />}
         actions={
           <div className="flex gap-2">
-            <ExpressiveButton variant="outlined" size="sm" onClick={feedbackResource.reload}>
-              <RefreshCw className={cn("size-4", feedbackResource.loading && "animate-spin")} />
+            <ExpressiveButton variant="outlined" size="sm" onClick={reloadAll}>
+              <RefreshCw className={cn('size-4', loading && 'animate-spin')} />
               Làm mới
             </ExpressiveButton>
             <Select value={filter} onValueChange={(v: any) => setFilter(v)}>
               <SelectTrigger className="w-full sm:w-44"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tất cả</SelectItem>
-                <SelectItem value="sos">SOS</SelectItem>
                 <SelectItem value="new">Mới</SelectItem>
                 <SelectItem value="processing">Đang xử lý</SelectItem>
                 <SelectItem value="resolved">Đã xử lý</SelectItem>
@@ -1685,96 +2312,216 @@ function FeedbackScreen({ ctx }: { ctx: Ctx }) {
           </div>
         }
       />
-      {feedbackResource.loading && !feedbackResource.data ? (
-        <LoadingScreen label="Đang tải phản hồi..." />
-      ) : feedbackResource.error ? (
-        <ErrorScreen message={feedbackResource.error} onRetry={feedbackResource.reload} />
-      ) : filtered.length === 0 ? (
-        <EmptyState icon={<Star className="size-7" />} title="Không có phản hồi" />
+
+      <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
+        <TabsList className="grid w-full grid-cols-3 rounded-2xl bg-surface-container-low p-1 shadow-none">
+          <TabsTrigger value="feedback" className="rounded-xl gap-1.5">
+            <Star className="size-3.5" />
+            Phản hồi
+            {pendingFeedback > 0 && <Badge variant="secondary" className="ml-1 h-5 min-w-5 px-1 text-[10px]">{pendingFeedback}</Badge>}
+          </TabsTrigger>
+          <TabsTrigger value="lost" className="rounded-xl gap-1.5">
+            <PackageSearch className="size-3.5" />
+            Mất đồ
+            {pendingLost > 0 && <Badge variant="secondary" className="ml-1 h-5 min-w-5 px-1 text-[10px]">{pendingLost}</Badge>}
+          </TabsTrigger>
+          <TabsTrigger value="sos" className="rounded-xl gap-1.5">
+            <AlertTriangle className="size-3.5" />
+            SOS
+            {pendingSos > 0 && <Badge className="ml-1 h-5 min-w-5 px-1 text-[10px] bg-error text-on-error">{pendingSos}</Badge>}
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {loading ? (
+        <LoadingScreen label="Đang tải dữ liệu..." />
       ) : (
-        <StaggerGroup className="space-y-3 min-w-0">
-          {filtered.map((f: any) => {
-            const isSos = String(f.content || "").toUpperCase().startsWith("[SOS") || String(f.studentName || "").includes("SOS");
-            const isResolved = f.status === "resolved";
-            return (
-              <StaggerItem key={f.id}>
-                <ExpressiveCard
-                  variant="elevated"
-                  className={cn("p-5 min-w-0", isSos && "border-error/40 bg-error-container/10")}
-                >
-                  <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-start min-w-0">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2 mb-2 min-w-0">
-                        {isSos && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-error text-on-error px-2.5 py-1 text-xs font-bold">
-                            <AlertTriangle className="size-3.5" />
-                            SOS
-                          </span>
-                        )}
-                        <M3StatusPill
-                          label={isResolved ? "Đã xử lý" : "Chờ xử lý"}
-                          tone={isResolved ? "success" : isSos ? "error" : "warning"}
-                        />
-                        <span className="text-xs text-on-surface-variant">{formatDate(f.createdAt)}</span>
-                      </div>
-                      <p className="font-bold text-on-surface truncate">
-                        {isSos ? "Thông báo SOS" : f.studentName}
-                      </p>
-                      <p className="text-xs text-on-surface-variant mt-0.5">
-                        {f.routeName || f.routeCode || "Chưa rõ tuyến"}{f.tripId ? ` · Chuyến #${f.tripId}` : ""}
-                      </p>
-                      <div className="flex items-center gap-1 mt-2">
-                        {Array.from({ length: 5 }).map((_, i) => (
-                          <Star key={i} className={cn("size-3", i < (f.rating || 0) ? "fill-amber-400 text-amber-400" : "text-outline")} />
-                        ))}
-                        <span className="text-xs text-on-surface-variant ml-2">{isSos ? "Khẩn cấp" : f.category}</span>
-                      </div>
-                      <p className="mt-3 text-sm text-on-surface whitespace-pre-wrap break-words">{f.content}</p>
-                      {f.response && (
-                        <div className="mt-3 p-2 rounded-lg bg-success-container/30 text-xs">
-                          <p className="font-bold text-success">Phản hồi xử lý:</p>
-                          <p>{f.response}</p>
+        <>
+          {/* ===== TAB: PHẢN HỒI ===== */}
+          {tab === "feedback" && (
+            filteredFeedback.length === 0 ? (
+              <EmptyState icon={<Star className="size-7" />} title="Không có phản hồi" />
+            ) : (
+              <StaggerGroup className="space-y-3 min-w-0">
+                {filteredFeedback.map((f: any) => {
+                  const isResolved = f.status === "resolved";
+                  return (
+                    <StaggerItem key={f.id}>
+                      <ExpressiveCard variant="elevated" className="p-5 min-w-0">
+                        <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-start min-w-0">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2 mb-2 min-w-0">
+                              <M3StatusPill label={isResolved ? "Đã xử lý" : "Chờ xử lý"} tone={isResolved ? "success" : "warning"} />
+                              <span className="text-xs text-on-surface-variant">{formatDate(f.createdAt)}</span>
+                            </div>
+                            <p className="font-bold text-on-surface truncate">{f.studentName}</p>
+                            <p className="text-xs text-on-surface-variant mt-0.5">
+                              {f.routeName || f.routeCode || "Chưa rõ tuyến"}{f.tripId ? " · Chuyến #" + f.tripId : ""}
+                            </p>
+                            <div className="flex items-center gap-1 mt-2">
+                              {Array.from({ length: 5 }).map((_, i) => (
+                                <Star key={i} className={cn("size-3", i < (f.rating || 0) ? "fill-amber-400 text-amber-400" : "text-outline")} />
+                              ))}
+                              <span className="text-xs text-on-surface-variant ml-2">{f.category}</span>
+                            </div>
+                            <p className="mt-3 text-sm text-on-surface whitespace-pre-wrap break-words">{f.content}</p>
+                            {f.response && (
+                              <div className="mt-3 p-2 rounded-lg bg-success-container/30 text-xs">
+                                <p className="font-bold text-success">Phản hồi xử lý:</p>
+                                <p>{f.response}</p>
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex md:flex-col gap-2 md:items-end">
+                            {!isResolved ? (
+                              <ExpressiveButton
+                                variant="filled" size="sm"
+                                onClick={() => {
+                                  setSelectedFeedback(f);
+                                  setResponses((prev) => ({ ...prev, [f.id]: prev[f.id] || "Đã tiếp nhận và xử lý phản hồi." }));
+                                }}
+                                disabled={responding === Number(f.id)}
+                              >
+                                {responding === Number(f.id) ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+                                Xử lý
+                              </ExpressiveButton>
+                            ) : (
+                              <ExpressiveButton variant="tonal" size="sm" disabled><CheckCircle2 className="size-4" /> Đã xử lý</ExpressiveButton>
+                            )}
+                          </div>
                         </div>
-                      )}
-                    </div>
-                    <div className="flex md:flex-col gap-2 md:items-end">
-                      {!isResolved ? (
-                        <ExpressiveButton
-                          variant="filled"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedFeedback(f);
-                            setResponses((prev) => ({
-                              ...prev,
-                              [f.id]: prev[f.id] || (isSos ? "Đã tiếp nhận và xử lý thông báo SOS." : "Đã tiếp nhận và xử lý phản hồi."),
-                            }));
-                          }}
-                          disabled={responding === Number(f.id)}
-                        >
-                          {responding === Number(f.id) ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
-                          Xử lý
-                        </ExpressiveButton>
-                      ) : (
-                        <ExpressiveButton variant="tonal" size="sm" disabled>
-                          <CheckCircle2 className="size-4" />
-                          Đã xử lý
-                        </ExpressiveButton>
-                      )}
-                    </div>
-                  </div>
-              </ExpressiveCard>
-            </StaggerItem>
-          );})}
-        </StaggerGroup>
+                      </ExpressiveCard>
+                    </StaggerItem>
+                  );
+                })}
+              </StaggerGroup>
+            )
+          )}
+
+          {/* ===== TAB: MẤT ĐỒ ===== */}
+          {tab === "lost" && (
+            filteredLost.length === 0 ? (
+              <EmptyState icon={<PackageSearch className="size-7" />} title="Không có báo mất đồ" />
+            ) : (
+              <StaggerGroup className="space-y-3 min-w-0">
+                {filteredLost.map((item) => {
+                  const isResolved = item.status === "FOUND" || item.status === "CLOSED";
+                  const statusLabel = item.status === "REPORTED" ? "Mới báo" : item.status === "SEARCHING" ? "Đang tìm" : item.status === "FOUND" ? "Đã tìm thấy" : "Đóng";
+                  const statusTone = item.status === "REPORTED" ? "warning" : item.status === "SEARCHING" ? "info" : "success";
+                  return (
+                    <StaggerItem key={item.lostItemReportId}>
+                      <ExpressiveCard variant="elevated" className="p-5 min-w-0">
+                        <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-start min-w-0">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2 mb-2 min-w-0">
+                              <M3StatusPill label={statusLabel} tone={statusTone as any} />
+                              <span className="text-xs text-on-surface-variant">{formatDate(item.reportedAt)}</span>
+                            </div>
+                            <p className="font-bold text-on-surface truncate">{item.reporterName || "Sinh viên"}</p>
+                            <p className="text-xs text-on-surface-variant mt-0.5">
+                              {item.routeName || item.routeCode || "Chưa rõ tuyến"}{item.tripId ? " · Chuyến #" + item.tripId : ""}
+                            </p>
+                            <p className="mt-3 text-sm text-on-surface whitespace-pre-wrap break-words">{item.itemDescription}</p>
+                            {item.notes && (
+                              <div className="mt-3 p-2 rounded-lg bg-surface-container-low text-xs">
+                                <p className="font-bold">Ghi chú:</p>
+                                <p>{item.notes}</p>
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex md:flex-col gap-2 md:items-end">
+                            {!isResolved ? (
+                              <>
+                                <ExpressiveButton
+                                  variant="filled" size="sm"
+                                  onClick={() => {
+                                    setSelectedLost({ ...item, _nextStatus: item.status });
+                                    setLostNotes((prev) => ({ ...prev, [item.lostItemReportId]: item.notes || "" }));
+                                  }}
+                                  disabled={responding === item.lostItemReportId}
+                                >
+                                  {responding === item.lostItemReportId ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+                                  Xử lý
+                                </ExpressiveButton>
+                              </>
+                            ) : (
+                              <ExpressiveButton variant="tonal" size="sm" disabled><CheckCircle2 className="size-4" /> {statusLabel}</ExpressiveButton>
+                            )}
+                          </div>
+                        </div>
+                      </ExpressiveCard>
+                    </StaggerItem>
+                  );
+                })}
+              </StaggerGroup>
+            )
+          )}
+
+          {/* ===== TAB: SOS ===== */}
+          {tab === "sos" && (
+            filteredSos.length === 0 ? (
+              <EmptyState icon={<AlertTriangle className="size-7" />} title="Không có SOS" description="Tin nhắn riêng sẽ được gom vào biểu tượng chat ở góc màn hình." />
+            ) : (
+              <StaggerGroup className="space-y-3 min-w-0">
+                {filteredSos.map((item: any) => {
+                  const isResolved = item.status === "resolved";
+                  return (
+                    <StaggerItem key={item.id}>
+                      <ExpressiveCard variant="elevated" className="border-error/40 bg-error-container/10 p-5 min-w-0">
+                        <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-start min-w-0">
+                          <div className="min-w-0">
+                            <div className="mb-2 flex flex-wrap items-center gap-2">
+                              <span className="inline-flex items-center gap-1 rounded-full bg-error px-2.5 py-1 text-xs font-bold text-on-error">
+                                <AlertTriangle className="size-3.5" />
+                                SOS
+                              </span>
+                              <M3StatusPill label={isResolved ? "Đã xử lý" : "Khẩn cấp"} tone={isResolved ? "success" : "error"} />
+                              <span className="text-xs text-on-surface-variant">{formatDateTime(item.createdAt)}</span>
+                            </div>
+                            <p className="font-bold text-on-surface truncate">{item.studentName || "Sinh viên báo SOS"}</p>
+                            <p className="text-xs text-on-surface-variant mt-0.5">
+                              {item.routeName || item.routeCode || "Chưa rõ tuyến"}{item.tripId ? " · Chuyến #" + item.tripId : ""}
+                            </p>
+                            <p className="mt-3 whitespace-pre-wrap break-words text-sm text-on-surface">{item.content}</p>
+                            {item.response && (
+                              <div className="mt-3 rounded-lg bg-success-container/30 p-2 text-xs">
+                                <p className="font-bold text-success">Ghi chú xử lý:</p>
+                                <p>{item.response}</p>
+                              </div>
+                            )}
+                          </div>
+                          {!isResolved && (
+                            <ExpressiveButton
+                              variant="filled" size="sm"
+                              onClick={() => {
+                                setSelectedFeedback(item);
+                                setResponses((prev) => ({ ...prev, [item.id]: prev[item.id] || "Đã tiếp nhận và xử lý thông báo SOS." }));
+                              }}
+                              disabled={responding === Number(item.id)}
+                            >
+                              {responding === Number(item.id) ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+                              Xử lý
+                            </ExpressiveButton>
+                          )}
+                        </div>
+                      </ExpressiveCard>
+                    </StaggerItem>
+                  );
+                })}
+              </StaggerGroup>
+            )
+          )}
+        </>
       )}
 
+      {/* Dialog xử lý feedback/SOS */}
       <Dialog open={!!selectedFeedback} onOpenChange={(open) => !open && setSelectedFeedback(null)}>
         {selectedFeedback && (
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>Ghi chú xử lý</DialogTitle>
               <DialogDescription>
-                {selectedFeedback.studentName || "Phản hồi"}{selectedFeedback.tripId ? ` · Chuyến #${selectedFeedback.tripId}` : ""}
+                {selectedFeedback.studentName || "Phản hồi"}{selectedFeedback.tripId ? " · Chuyến #" + selectedFeedback.tripId : ""}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-3 py-2">
@@ -1794,19 +2541,77 @@ function FeedbackScreen({ ctx }: { ctx: Ctx }) {
               </div>
             </div>
             <DialogFooter>
-              <ExpressiveButton
-                variant="text"
-                onClick={() => setSelectedFeedback(null)}
-                disabled={responding === Number(selectedFeedback.id)}
-              >
+              <ExpressiveButton variant="text" onClick={() => setSelectedFeedback(null)} disabled={responding === Number(selectedFeedback.id)}>
+                Hủy
+              </ExpressiveButton>
+              <ExpressiveButton variant="filled" onClick={() => resolveFeedback(selectedFeedback)} disabled={responding === Number(selectedFeedback.id)}>
+                {responding === Number(selectedFeedback.id) ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+                Lưu xử lý
+              </ExpressiveButton>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
+
+      {/* Dialog xử lý mất đồ */}
+      <Dialog open={!!selectedLost} onOpenChange={(open) => !open && setSelectedLost(null)}>
+        {selectedLost && (
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Xử lý mất đồ</DialogTitle>
+              <DialogDescription>
+                {selectedLost.reporterName || "Sinh viên"}{selectedLost.tripId ? " · Chuyến #" + selectedLost.tripId : ""}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <div className="rounded-xl bg-surface-container-low p-3 text-sm text-on-surface">
+                {selectedLost.itemDescription}
+              </div>
+              <div>
+                <Label className="text-xs font-bold">Trạng thái</Label>
+                <div className="flex gap-2 mt-1.5">
+                  <ExpressiveButton
+                    variant={selectedLost._nextStatus === "SEARCHING" ? "filled" : "outlined"} size="sm"
+                    onClick={() => setSelectedLost({ ...selectedLost, _nextStatus: "SEARCHING" })}
+                  >
+                    Đang tìm
+                  </ExpressiveButton>
+                  <ExpressiveButton
+                    variant={selectedLost._nextStatus === "FOUND" ? "filled" : "outlined"} size="sm"
+                    onClick={() => setSelectedLost({ ...selectedLost, _nextStatus: "FOUND" })}
+                  >
+                    Đã tìm thấy
+                  </ExpressiveButton>
+                  <ExpressiveButton
+                    variant={selectedLost._nextStatus === "CLOSED" ? "filled" : "outlined"} size="sm"
+                    onClick={() => setSelectedLost({ ...selectedLost, _nextStatus: "CLOSED" })}
+                  >
+                    Đóng
+                  </ExpressiveButton>
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs font-bold">Ghi chú</Label>
+                <Textarea
+                  className="mt-1.5"
+                  placeholder="Nhập ghi chú..."
+                  value={lostNotes[selectedLost.lostItemReportId] || ""}
+                  onChange={(e) => setLostNotes((prev) => ({ ...prev, [selectedLost.lostItemReportId]: e.target.value }))}
+                  rows={3}
+                  autoFocus
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <ExpressiveButton variant="text" onClick={() => setSelectedLost(null)} disabled={responding === selectedLost.lostItemReportId}>
                 Hủy
               </ExpressiveButton>
               <ExpressiveButton
                 variant="filled"
-                onClick={() => resolve(selectedFeedback)}
-                disabled={responding === Number(selectedFeedback.id)}
+                onClick={() => updateLostItem(selectedLost, selectedLost._nextStatus || "SEARCHING")}
+                disabled={responding === selectedLost.lostItemReportId}
               >
-                {responding === Number(selectedFeedback.id) ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+                {responding === selectedLost.lostItemReportId ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
                 Lưu xử lý
               </ExpressiveButton>
             </DialogFooter>
@@ -1818,7 +2623,7 @@ function FeedbackScreen({ ctx }: { ctx: Ctx }) {
 }
 
 // =============================================================================
-// Screen 10: Notify broadcast
+// Screen 11: Notify broadcast
 // =============================================================================
 function NotifyScreen({ ctx }: { ctx: Ctx }) {
   const [title, setTitle] = useState("");
@@ -1826,6 +2631,7 @@ function NotifyScreen({ ctx }: { ctx: Ctx }) {
   const [target, setTarget] = useState("all");
   const [sending, setSending] = useState(false);
   const notifications = useApi(() => notificationApi.mine(), undefined, []);
+  const recentNotifications = (notifications.raw || ctx.notifications).filter((n: any) => !isPrivateMessageNotification(n));
 
   const send = async () => {
     if (!title.trim() || !content.trim()) {
@@ -1887,15 +2693,15 @@ function NotifyScreen({ ctx }: { ctx: Ctx }) {
         </ScrollReveal>
 
         <ScrollReveal delay={0.1}>
-          <Section title={`Gần đây (${(notifications.raw || ctx.notifications).length})`}>
-            {(notifications.raw || ctx.notifications).length === 0 ? (
+          <Section title={`Gần đây (${recentNotifications.length})`}>
+            {recentNotifications.length === 0 ? (
               <EmptyState icon={<Megaphone className="size-7" />} title="Chưa gửi thông báo" />
             ) : (
               <div className="space-y-2">
-                {(notifications.raw || ctx.notifications).slice(0, 5).map((n: any) => (
-                  <ExpressiveCard key={n.id} variant="filled" className="p-3 min-w-0">
+                {recentNotifications.slice(0, 5).map((n: any, index: number) => (
+                  <ExpressiveCard key={n.notificationId ?? n.id ?? `${n.title}-${n.createdAt ?? index}`} variant="filled" className="p-3 min-w-0">
                     <p className="font-bold text-sm truncate">{n.title}</p>
-                    <p className="text-xs text-on-surface-variant line-clamp-2">{n.body}</p>
+                    <p className="text-xs text-on-surface-variant line-clamp-2">{n.content ?? n.body}</p>
                     <p className="text-[10px] text-on-surface-variant mt-1">{formatDateTime(n.createdAt)}</p>
                   </ExpressiveCard>
                 ))}
@@ -1957,7 +2763,7 @@ function FloatingChatButton({ onClick, open, unreadCount }: { onClick: () => voi
   return (
     <button
       onClick={onClick}
-      className="fixed bottom-6 right-6 z-50 flex size-14 items-center justify-center rounded-full bg-[#14140f] text-[#beff50] shadow-xl hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer"
+      className="fixed bottom-20 right-4 z-[2600] flex size-14 items-center justify-center rounded-full bg-[#14140f] text-[#beff50] shadow-xl transition-all duration-200 hover:scale-105 active:scale-95 sm:bottom-6 sm:right-6"
       aria-label={open ? "Đóng chat nội bộ" : "Mở chat nội bộ"}
     >
       {open ? <X className="size-6" /> : <MessageSquare className="size-6" />}
@@ -1989,6 +2795,9 @@ function InternalChatPanel({ open, onOpenChange, onUnreadCountChange }: Internal
   const [searchQuery, setSearchQuery] = useState("");
 
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const fetchingThreadsRef = useRef(false);
+  const fetchingMessagesRef = useRef(false);
+  const fetchedStaffRef = useRef(false);
 
   const chatMessages = useMemo(() => {
     return messages.filter((msg) => !(msg.body || "").startsWith("[SOS]"));
@@ -1997,6 +2806,8 @@ function InternalChatPanel({ open, onOpenChange, onUnreadCountChange }: Internal
   // Poll active threads & count unread messages
   useEffect(() => {
     const fetchThreads = async () => {
+      if (fetchingThreadsRef.current) return;
+      fetchingThreadsRef.current = true;
       try {
         const data = await messagingApi.getThreads();
         setThreads(data);
@@ -2006,13 +2817,15 @@ function InternalChatPanel({ open, onOpenChange, onUnreadCountChange }: Internal
         onUnreadCountChange(driverConductorUnread);
       } catch (error) {
         console.error("Failed to fetch message threads:", error);
+      } finally {
+        fetchingThreadsRef.current = false;
       }
     };
 
     if (open) {
-      setTimeout(() => setLoadingThreads(true), 0);
+      if (threads.length === 0) setLoadingThreads(true);
       fetchThreads().finally(() => {
-        setTimeout(() => setLoadingThreads(false), 0);
+        setLoadingThreads(false);
       });
       
       const interval = setInterval(() => {
@@ -2020,7 +2833,7 @@ function InternalChatPanel({ open, onOpenChange, onUnreadCountChange }: Internal
       }, 4000);
       return () => clearInterval(interval);
     }
-  }, [open, onUnreadCountChange]);
+  }, [open, onUnreadCountChange, threads.length]);
 
   // Poll conversation messages when a thread is active
   useEffect(() => {
@@ -2030,31 +2843,35 @@ function InternalChatPanel({ open, onOpenChange, onUnreadCountChange }: Internal
     }
 
     const fetchConversation = async () => {
+      if (fetchingMessagesRef.current) return;
+      fetchingMessagesRef.current = true;
       try {
         const data = await messagingApi.getConversation(activeThread.peerUserId);
         setMessages(data);
       } catch (error) {
         console.error("Failed to fetch conversation:", error);
+      } finally {
+        fetchingMessagesRef.current = false;
       }
     };
 
     // Mark as read immediately
     messagingApi.markAsRead(activeThread.peerUserId).catch(() => {});
 
-    setTimeout(() => setLoadingMessages(true), 0);
+    if (messages.length === 0) setLoadingMessages(true);
     fetchConversation().finally(() => {
-      setTimeout(() => setLoadingMessages(false), 0);
+      setLoadingMessages(false);
     });
 
     const interval = setInterval(() => {
       if (!document.hidden) void fetchConversation();
     }, 3000);
     return () => clearInterval(interval);
-  }, [open, activeThread]);
+  }, [open, activeThread, messages.length]);
 
   // Fetch driver/conductor list for starting new chats
   useEffect(() => {
-    if (!open || !isNewChatMode) return;
+    if (!open || !isNewChatMode || fetchedStaffRef.current) return;
 
     const fetchStaff = async () => {
       try {
@@ -2067,6 +2884,7 @@ function InternalChatPanel({ open, onOpenChange, onUnreadCountChange }: Internal
           if (c.userId) list.push({ userId: c.userId, fullName: c.fullName, role: "CONDUCTOR" });
         });
         setStaffList(list);
+        fetchedStaffRef.current = true;
       } catch (error) {
         console.error("Failed to fetch staff list:", error);
       }
@@ -2147,7 +2965,7 @@ function InternalChatPanel({ open, onOpenChange, onUnreadCountChange }: Internal
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 15 }}
           transition={{ duration: 0.2, ease: "easeOut" }}
-          className="fixed bottom-0 right-0 w-full h-full sm:bottom-6 sm:right-[92px] sm:w-[380px] sm:h-[580px] sm:rounded-3xl border border-outline-variant/40 p-0 z-40 flex flex-col bg-surface-container-lowest shadow-2xl overflow-hidden focus:outline-none"
+          className="fixed inset-x-3 bottom-20 top-20 z-[2500] flex flex-col overflow-hidden rounded-3xl border border-outline-variant/40 bg-surface-container-lowest p-0 shadow-2xl focus:outline-none sm:inset-auto sm:bottom-6 sm:right-[92px] sm:h-[580px] sm:w-[380px]"
         >
           {/* Header section */}
           <div className="border-b border-outline-variant/30 p-4 bg-surface-container-low flex items-center justify-between">

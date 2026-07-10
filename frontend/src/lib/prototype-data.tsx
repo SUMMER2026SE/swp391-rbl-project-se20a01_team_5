@@ -31,8 +31,8 @@ import {
   FeedbackView,
   ImportBatchView,
   NotificationView,
-  PaymentTransactionView,
   PaymentView,
+  PaymentTransactionView,
   ReconciliationView,
   RouteUniversityView,
   RosterStudentView,
@@ -309,29 +309,31 @@ export function mapComplaint(c: { complaintId: number; title: string; content: s
 
 export function mapInvoice(p: PaymentTransactionView | PaymentView): Invoice {
   const payment = p as PaymentView;
+  if (payment.paymentId != null) {
+    return {
+      id: String(payment.paymentId),
+      code: payment.invoiceNumber || payment.transactionCode || `PAY-${payment.paymentId}`,
+      studentId: "",
+      description: payment.ticketId ? `Thanh toán vé #${payment.ticketId}` : "Thanh toán UniBus",
+      amount: num(payment.finalAmount ?? payment.amount),
+      method: ((payment.method || "cash").toLowerCase() === "bank_transfer" ? "vnpay" : (payment.method || "cash").toLowerCase()) as Invoice["method"],
+      status: isPaidStatus(payment.status) ? "paid" : isRefundedStatus(payment.status) ? "refunded" : "pending",
+      date: payment.invoiceIssuedAt || payment.createdAt || "",
+    };
+  }
+
   const transaction = p as PaymentTransactionView;
-  const id = transaction.orderId ?? payment.paymentId;
-  const code = transaction.referenceNumber || payment.invoiceNumber || payment.transactionCode || `INV-${id}`;
-  const rawTicketType = transaction.ticketType || payment.ticketType || (payment.ticketId ? "monthly" : "ticket");
-  const loweredTicketType = rawTicketType.toLowerCase();
-  const ticketLabel = loweredTicketType.includes("single") || loweredTicketType.includes("day")
-    ? "Vé thường"
-    : loweredTicketType.includes("month")
-      ? "Vé tháng"
-      : rawTicketType;
-  const routeName = transaction.routeName || payment.routeName || "";
   return {
-    id: String(id),
-    code,
+    id: String(transaction.orderId),
+    code: transaction.referenceNumber || `INV-${transaction.orderId}`,
     studentId: String(transaction.studentCode || transaction.studentName || ""),
-    description: routeName.toLowerCase().startsWith("vé ") ? routeName : `${ticketLabel}${routeName ? ` • ${routeName}` : ""}`,
-    amount: num(transaction.orderTotal ?? transaction.amountIn ?? payment.finalAmount ?? payment.amount),
-    method: (transaction.gateway || payment.method || "cash").toLowerCase() as Invoice["method"],
-    status: isPaidStatus(transaction.paymentStatus || payment.status) ? "paid" : isRefundedStatus(transaction.paymentStatus || payment.status) ? "refunded" : "pending",
-    date: transaction.paidAt || transaction.transactionDate || payment.invoiceIssuedAt || transaction.createdAt || payment.createdAt || "",
+    description: `${transaction.ticketType || "Vé tháng"} • ${transaction.routeName || ""}`.trim(),
+    amount: num(transaction.orderTotal ?? transaction.amountIn),
+    method: (transaction.gateway || "cash").toLowerCase() as Invoice["method"],
+    status: isPaidStatus(transaction.paymentStatus) ? "paid" : isRefundedStatus(transaction.paymentStatus) ? "refunded" : "pending",
+    date: transaction.paidAt || transaction.transactionDate || transaction.createdAt || "",
   };
 }
-
 
 export function mapVerification(v: VerificationView): User {
   return {
@@ -513,7 +515,6 @@ export function useDriverPrototypeData() {
       trips: (trips.raw || []).map((t: DriverTripView) => ({
         id: String(t.tripId),
         routeId: String(t.routeId),
-        routeName: t.routeName,
         busId: String(t.busId ?? 0),
         driverId: "",
         assistantId: "",
@@ -607,10 +608,21 @@ export function useAssistantPrototypeData() {
 /** Coordinator module: dashboard + fleet + feedback + schedule */
 export function useCoordinatorPrototypeData() {
   const dashboard = useApi(() => experienceApi.coordinatorDashboard(), undefined, []);
+  const schedule = useApi(() => operationsApi.scheduleDashboard(), undefined, []);
+  const fleet = useApi(() => operationsApi.liveFleet(), undefined, []);
 
   const mapped = (() => {
     if (!dashboard.raw) return null;
     const d = dashboard.raw;
+    const liveFleet = fleet.raw || d.liveFleet || [];
+    const scheduleData = schedule.raw;
+    const assignedShifts = scheduleData?.shifts?.filter((shift) => shift.busId && shift.driverStaffId && shift.conductorStaffId) || [];
+    const stats = scheduleData ? [
+      { label: "Xe live", value: liveFleet.filter((trip) => trip.status === "RUNNING").length, unit: "xe", tone: "success" },
+      { label: "Ca hôm nay", value: scheduleData.shifts.length, unit: "ca", tone: "primary" },
+      { label: "Đã phân công", value: assignedShifts.length, unit: "ca", tone: "secondary" },
+      { label: "Feedback mở", value: (d.feedback || []).filter((item) => item.status !== "RESOLVED").length, unit: "mục", tone: "warning" },
+    ] : d.stats;
     return {
       user: {
         id: "0",
@@ -625,20 +637,25 @@ export function useCoordinatorPrototypeData() {
       } as User,
       routes: (d.routes || []).map(mapRoute),
       stops: (d.stops || []).map(mapStop),
-      fleet: (d.liveFleet || []).map((v) => ({
+      fleet: liveFleet.map((v) => ({
         ...mapBus(v as any),
         tripId: String(v.tripId),
+        routeId: String(v.routeId),
+        routeName: v.routeName,
         routeCode: "",
+        licensePlate: v.licensePlate,
         driverName: v.driverName,
         conductorName: v.conductorName,
+        status: v.status,
+        speedKmh: v.speedKmh,
       })),
       feedback: (d.feedback || []).map(mapFeedback),
-      stats: d.stats,
-      schedule: null,
+      stats,
+      schedule: scheduleData || null,
       notifications: [],
       dashboard,
-      fleetRaw: { raw: d.liveFleet || [], loading: false, error: null, reload: dashboard.reload },
-      scheduleRaw: { raw: null, loading: false, error: null, reload: dashboard.reload },
+      fleetRaw: { raw: liveFleet, loading: fleet.loading, error: fleet.error, reload: fleet.reload },
+      scheduleRaw: { raw: scheduleData || null, loading: schedule.loading, error: schedule.error, reload: schedule.reload },
       feedbackRaw: { raw: d.feedback || [], loading: false, error: null, reload: dashboard.reload },
       notificationsRaw: { raw: [], loading: false, error: null, reload: dashboard.reload },
       profileRaw: { raw: null, loading: false, error: null, reload: dashboard.reload },
@@ -647,9 +664,9 @@ export function useCoordinatorPrototypeData() {
 
   return {
     data: mapped,
-    loading: dashboard.loading,
-    error: dashboard.error,
-    reload: dashboard.reload,
+    loading: dashboard.loading || schedule.loading || fleet.loading,
+    error: dashboard.error || schedule.error || fleet.error,
+    reload: () => { dashboard.reload(); schedule.reload(); fleet.reload(); },
   };
 }
 

@@ -53,7 +53,7 @@ public class TicketingRepository {
                 LEFT JOIN stops als ON als.stop_id = rr.alighting_stop_id
                 WHERE rr.student_code = ?
                   AND rr.status = 'APPROVED'
-                  AND (CAST(? AS INTEGER) IS NULL OR rr.route_id = ?)
+                  AND (? IS NULL OR rr.route_id = ?)
                 ORDER BY rr.approved_at DESC NULLS LAST, rr.registered_at DESC
                 LIMIT 1
                 """, (rs, rowNum) -> new ApprovedRegistration(
@@ -211,26 +211,14 @@ public class TicketingRepository {
     public List<SingleTripTicketView> findSingleTripTickets(String studentCode) {
         return jdbcTemplate.query("""
                 SELECT stt.single_trip_ticket_id, stt.student_code, stt.route_id, r.route_name,
-                       COALESCE(order_stops.boarding_stop_id, stt.boarding_stop_id) AS boarding_stop_id,
-                       bs.stop_name AS boarding_stop_name,
-                       COALESCE(order_stops.alighting_stop_id, stt.alighting_stop_id) AS alighting_stop_id,
-                       als.stop_name AS alighting_stop_name,
+                       stt.boarding_stop_id, bs.stop_name AS boarding_stop_name,
+                       stt.alighting_stop_id, als.stop_name AS alighting_stop_name,
                        stt.fare_amount, stt.original_fare_amount, stt.subsidy_amount, stt.final_fare_amount,
                        stt.qr_code, stt.status, stt.purchased_at, stt.expires_at
                 FROM single_trip_tickets stt
                 JOIN routes r ON r.route_id = stt.route_id
-                LEFT JOIN payments p ON p.single_trip_ticket_id = stt.single_trip_ticket_id AND p.status = 'PAID'
-                LEFT JOIN tb_transactions tx ON tx.reference_number = p.transaction_code
-                LEFT JOIN tb_orders o ON o.id = tx.matched_order_id AND o.ticket_type = 'single'
-                LEFT JOIN LATERAL (
-                    SELECT
-                        CASE WHEN jsonb_typeof(o.legs_json) = 'object' AND o.legs_json ->> 'boardingStopId' IS NOT NULL
-                             THEN (o.legs_json ->> 'boardingStopId')::integer END AS boarding_stop_id,
-                        CASE WHEN jsonb_typeof(o.legs_json) = 'object' AND o.legs_json ->> 'alightingStopId' IS NOT NULL
-                             THEN (o.legs_json ->> 'alightingStopId')::integer END AS alighting_stop_id
-                ) order_stops ON TRUE
-                LEFT JOIN stops bs ON bs.stop_id = COALESCE(order_stops.boarding_stop_id, stt.boarding_stop_id)
-                LEFT JOIN stops als ON als.stop_id = COALESCE(order_stops.alighting_stop_id, stt.alighting_stop_id)
+                LEFT JOIN stops bs ON bs.stop_id = stt.boarding_stop_id
+                LEFT JOIN stops als ON als.stop_id = stt.alighting_stop_id
                 WHERE stt.student_code = ?
                 ORDER BY stt.purchased_at DESC
                 LIMIT 50
@@ -322,6 +310,80 @@ public class TicketingRepository {
         return findPayment(paymentId).orElseThrow();
     }
 
+    public PaymentView createPendingVnpayPayment(String studentCode, BigDecimal amount, String transactionCode) {
+        KeyHolder keyHolder = new GeneratedKeyHolder();
+        jdbcTemplate.update(connection -> {
+            PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO payments(student_code, amount, method, status, transaction_code, notes)
+                VALUES (?, ?, 'E_WALLET', 'PENDING', ?, 'VNPay payment request')
+                """, new String[] { "payment_id" });
+            statement.setString(1, studentCode);
+            statement.setBigDecimal(2, amount);
+            statement.setString(3, transactionCode);
+            return statement;
+        }, keyHolder);
+        return findPayment(generatedId(keyHolder, "payment")).orElseThrow();
+    }
+
+    public Optional<PaymentView> findPaymentForStudent(Integer paymentId, String studentCode) {
+        List<PaymentView> rows = jdbcTemplate.query(paymentQuery("WHERE p.payment_id = ? AND p.student_code = ?"),
+                (rs, rowNum) -> mapPayment(rs), paymentId, studentCode);
+        return rows.stream().findFirst();
+    }
+
+    public Optional<PaymentView> findPaymentByTransactionCode(String transactionCode) {
+        List<PaymentView> rows = jdbcTemplate.query(paymentQuery("WHERE p.transaction_code = ?"),
+                (rs, rowNum) -> mapPayment(rs), transactionCode);
+        return rows.stream().findFirst();
+    }
+
+    public PaymentView markPaymentPaid(Integer paymentId) {
+        jdbcTemplate.update("""
+                UPDATE payments
+                SET status = 'PAID'
+                WHERE payment_id = ?
+                  AND status <> 'PAID'
+                """, paymentId);
+        createInvoiceIfMissing(paymentId);
+        return findPayment(paymentId).orElseThrow();
+    }
+
+    public PaymentView markPaymentFailed(Integer paymentId) {
+        jdbcTemplate.update("""
+                UPDATE payments
+                SET status = 'FAILED'
+                WHERE payment_id = ?
+                  AND status = 'PENDING'
+                """, paymentId);
+        return findPayment(paymentId).orElseThrow();
+    }
+
+    private void createInvoiceIfMissing(Integer paymentId) {
+        jdbcTemplate.update("""
+                INSERT INTO invoices(payment_id, student_code, description, amount, original_amount, subsidy_amount, final_amount)
+                SELECT p.payment_id,
+                       p.student_code,
+                       CASE
+                           WHEN p.monthly_pass_id IS NOT NULL THEN 'Monthly bus pass payment'
+                           WHEN p.single_trip_ticket_id IS NOT NULL THEN 'Single trip ticket payment'
+                           ELSE 'VNPay payment'
+                       END,
+                       p.amount,
+                       COALESCE(mp.original_fare_amount, stt.original_fare_amount, p.amount),
+                       COALESCE(mp.subsidy_amount, stt.subsidy_amount, 0),
+                       COALESCE(mp.final_fare_amount, stt.final_fare_amount, p.amount)
+                FROM payments p
+                LEFT JOIN monthly_passes mp ON mp.monthly_pass_id = p.monthly_pass_id
+                LEFT JOIN single_trip_tickets stt ON stt.single_trip_ticket_id = p.single_trip_ticket_id
+                WHERE p.payment_id = ?
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM invoices i
+                      WHERE i.payment_id = p.payment_id
+                  )
+                """, paymentId);
+    }
+
     public Integer createJourneyOrder(String studentCode, String originLabel, String destinationLabel,
             BigDecimal totalAmount, BigDecimal subsidyAmount, BigDecimal finalAmount) {
         String qrCode = "UB-JOURNEY-" + UUID.randomUUID();
@@ -404,80 +466,6 @@ public class TicketingRepository {
                         rs.getBigDecimal("final_amount")), journeyOrderId);
     }
 
-    public PaymentView createPendingVnpayPayment(String studentCode, BigDecimal amount, String transactionCode) {
-        KeyHolder keyHolder = new GeneratedKeyHolder();
-        jdbcTemplate.update(connection -> {
-            PreparedStatement statement = connection.prepareStatement("""
-                INSERT INTO payments(student_code, amount, method, status, transaction_code, notes)
-                VALUES (?, ?, 'E_WALLET', 'PENDING', ?, 'VNPay payment request')
-                """, new String[] { "payment_id" });
-            statement.setString(1, studentCode);
-            statement.setBigDecimal(2, amount);
-            statement.setString(3, transactionCode);
-            return statement;
-        }, keyHolder);
-        return findPayment(generatedId(keyHolder, "payment")).orElseThrow();
-    }
-
-    public Optional<PaymentView> findPaymentForStudent(Integer paymentId, String studentCode) {
-        List<PaymentView> rows = jdbcTemplate.query(paymentQuery("WHERE p.payment_id = ? AND p.student_code = ?"),
-                (rs, rowNum) -> mapPayment(rs), paymentId, studentCode);
-        return rows.stream().findFirst();
-    }
-
-    public Optional<PaymentView> findPaymentByTransactionCode(String transactionCode) {
-        List<PaymentView> rows = jdbcTemplate.query(paymentQuery("WHERE p.transaction_code = ?"),
-                (rs, rowNum) -> mapPayment(rs), transactionCode);
-        return rows.stream().findFirst();
-    }
-
-    public PaymentView markPaymentPaid(Integer paymentId) {
-        jdbcTemplate.update("""
-                UPDATE payments
-                SET status = 'PAID'
-                WHERE payment_id = ?
-                  AND status <> 'PAID'
-                """, paymentId);
-        createInvoiceIfMissing(paymentId);
-        return findPayment(paymentId).orElseThrow();
-    }
-
-    public PaymentView markPaymentFailed(Integer paymentId) {
-        jdbcTemplate.update("""
-                UPDATE payments
-                SET status = 'FAILED'
-                WHERE payment_id = ?
-                  AND status = 'PENDING'
-                """, paymentId);
-        return findPayment(paymentId).orElseThrow();
-    }
-
-    private void createInvoiceIfMissing(Integer paymentId) {
-        jdbcTemplate.update("""
-                INSERT INTO invoices(payment_id, student_code, description, amount, original_amount, subsidy_amount, final_amount)
-                SELECT p.payment_id,
-                       p.student_code,
-                       CASE
-                           WHEN p.monthly_pass_id IS NOT NULL THEN 'Monthly bus pass payment'
-                           WHEN p.single_trip_ticket_id IS NOT NULL THEN 'Single trip ticket payment'
-                           ELSE 'VNPay payment'
-                       END,
-                       p.amount,
-                       COALESCE(mp.original_fare_amount, stt.original_fare_amount, p.amount),
-                       COALESCE(mp.subsidy_amount, stt.subsidy_amount, 0),
-                       COALESCE(mp.final_fare_amount, stt.final_fare_amount, p.amount)
-                FROM payments p
-                LEFT JOIN monthly_passes mp ON mp.monthly_pass_id = p.monthly_pass_id
-                LEFT JOIN single_trip_tickets stt ON stt.single_trip_ticket_id = p.single_trip_ticket_id
-                WHERE p.payment_id = ?
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM invoices i
-                      WHERE i.payment_id = p.payment_id
-                  )
-                """, paymentId);
-    }
-
     private Integer generatedId(KeyHolder keyHolder, String entityName) {
         Number key = keyHolder.getKey();
         if (key == null) {
@@ -505,21 +493,13 @@ public class TicketingRepository {
                            COALESCE(i.original_amount, p.amount) AS original_amount,
                            COALESCE(i.subsidy_amount, 0) AS subsidy_amount,
                            COALESCE(i.final_amount, p.amount) AS final_amount,
-                           COALESCE('DH' || tx.matched_order_id, p.transaction_code) AS transaction_code,
-                           COALESCE(o.ticket_type, CASE WHEN p.monthly_pass_id IS NOT NULL THEN 'monthly' WHEN p.single_trip_ticket_id IS NOT NULL THEN 'single' ELSE NULL END) AS ticket_type,
-                           COALESCE(o.name, mp_r.route_name, st_r.route_name) AS route_name,
+                           p.transaction_code,
                            i.invoice_id,
                            i.issued_at AS invoice_issued_at,
                            p.created_at,
                            1 AS sort_group
                     FROM payments p
                     LEFT JOIN invoices i ON i.payment_id = p.payment_id
-                    LEFT JOIN tb_transactions tx ON tx.reference_number = p.transaction_code
-                    LEFT JOIN tb_orders o ON o.id = tx.matched_order_id
-                    LEFT JOIN monthly_passes mp ON mp.monthly_pass_id = p.monthly_pass_id
-                    LEFT JOIN routes mp_r ON mp_r.route_id = mp.route_id
-                    LEFT JOIN single_trip_tickets st ON st.single_trip_ticket_id = p.single_trip_ticket_id
-                    LEFT JOIN routes st_r ON st_r.route_id = st.route_id
                     WHERE p.student_code = ?
                     UNION ALL
                     SELECT -o.id::integer AS payment_id,
@@ -531,14 +511,11 @@ public class TicketingRepository {
                            0 AS subsidy_amount,
                            o.total AS final_amount,
                            'DH' || o.id AS transaction_code,
-                           o.ticket_type AS ticket_type,
-                           COALESCE(o.name, r.route_name) AS route_name,
                            NULL::integer AS invoice_id,
                            NULL::timestamptz AS invoice_issued_at,
                            o.created_at,
                            0 AS sort_group
                     FROM tb_orders o
-                    LEFT JOIN routes r ON r.route_id = o.route_id
                     WHERE o.student_code = ?
                       AND o.payment_status = 'Unpaid'
                 ) rows
@@ -558,7 +535,7 @@ public class TicketingRepository {
 
     private String ticketQuery(String whereClause) {
         return """
-                SELECT mp.monthly_pass_id AS ticket_id, 'MONTHLY' AS ticket_type, mp.route_id, r.route_name,
+                SELECT mp.monthly_pass_id AS ticket_id, 'MONTHLY' AS ticket_type, mp.route_id, r.route_code, r.route_name,
                        bs.stop_name AS boarding_stop_name, als.stop_name AS alighting_stop_name,
                        mp.effective_month, mp.effective_year, mp.valid_from, mp.expires_on AS expires_at,
                        mp.fare_amount,
@@ -608,6 +585,7 @@ public class TicketingRepository {
                 rs.getInt("ticket_id"),
                 rs.getString("ticket_type"),
                 rs.getInt("route_id"),
+                rs.getString("route_code"),
                 rs.getString("route_name"),
                 rs.getString("boarding_stop_name"),
                 rs.getString("alighting_stop_name"),
@@ -638,8 +616,6 @@ public class TicketingRepository {
                 rs.getString("method"),
                 rs.getString("status"),
                 rs.getString("transaction_code"),
-                rs.getString("ticket_type"),
-                rs.getString("route_name"),
                 invoiceId == null ? null : "INV-" + invoiceId,
                 toOffsetDateTime(rs.getTimestamp("invoice_issued_at")),
                 toOffsetDateTime(rs.getTimestamp("created_at")));

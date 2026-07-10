@@ -75,6 +75,7 @@ public final class TicketingDtos {
             Integer ticketId,
             String ticketType,
             Integer routeId,
+            String routeCode,
             String routeName,
             String boardingStopName,
             String alightingStopName,
@@ -103,8 +104,6 @@ public final class TicketingDtos {
             String method,
             String status,
             String transactionCode,
-            String ticketType,
-            String routeName,
             String invoiceNumber,
             OffsetDateTime invoiceIssuedAt,
             OffsetDateTime createdAt) {
