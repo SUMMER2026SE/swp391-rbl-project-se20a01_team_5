@@ -120,36 +120,35 @@ Fix lỗi Next.js 16 khi build trang `/student/payment/result` do page dùng
 ## Kiểm tra
 - `npm run lint` chạy qua, còn các warning hook dependency cũ ở module khác.
 - `npm run build` chạy qua.
-
 ---
 
-# Changelog: ??ng b? xe gi? l?p v?i chuy?n t?i x? ?ang ch?y
+# Changelog: Đồng bộ xe giả lập với chuyến tài xế đang chạy
 
-## T?m t?t
-C?p nh?t tracking ?? xe gi? l?p ch? xu?t hi?n khi c? chuy?n t?i x? ?ang `RUNNING`.
-Backend l? ngu?n d? li?u ch?nh cho v? tr? xe, bi?n s?, t?i x?, t?c ?? v? tr?m k? ti?p.
+## Tóm tắt
+Cập nhật tracking để xe giả lập chỉ xuất hiện khi có chuyến tài xế đang `RUNNING`.
+Backend là nguồn dữ liệu chính cho vị trí xe, biển số, tài xế, tốc độ và trạm kế tiếp.
 
-## Thay ??i g?
-- Backend `JourneyTrackingService` kh?ng c?n t? t?o xe `route-sim-*` cho tuy?n kh?ng c? chuy?n ?ang ch?y.
-- Tracking theo tuy?n ch? tr? v? xe g?n v?i `tripId` c?a chuy?n t?i x? ?ang ch?y.
-- Tracking theo h?nh tr?nh ch? th?m xe khi route trong leg c? trip ?ang `RUNNING`.
-- X?a fallback t?o nhi?u xe gi? l?p companion theo tuy?n.
-- Driver `L? tr?nh chuy?n` ch? hi?n th? dropdown c?c chuy?n ?ang `RUNNING`.
-- Student `Theo d?i xe` ch? hi?n th? vehicle c? `tripId`, tr?nh hi?n xe m? ph?ng c? n?u API/cache c?n d? li?u c?.
-- S?a mojibake nh?n `T?i x?` trong card th?ng tin xe c?a student tracking.
+## Thay đổi gì
+- Backend `JourneyTrackingService` không còn tự tạo xe `route-sim-*` cho tuyến không có chuyến đang chạy.
+- Tracking theo tuyến chỉ trả về xe gắn với `tripId` của chuyến tài xế đang chạy.
+- Tracking theo hành trình chỉ thêm xe khi route trong leg có trip đang `RUNNING`.
+- Xóa fallback tạo nhiều xe giả lập companion theo tuyến.
+- Driver `Lộ trình chuyến` chỉ hiển thị dropdown các chuyến đang `RUNNING`.
+- Student `Theo dõi xe` chỉ hiển thị vehicle có `tripId`, tránh hiện xe mô phỏng cũ nếu API/cache còn dữ liệu cũ.
+- Sửa mojibake nhãn `Tài xế` trong card thông tin xe của student tracking.
 
-## L? do
-- Tr?nh vi?c student v?n th?y xe gi? l?p kh?ng g?n t?i x?.
-- ??m b?o driver v? student c?ng nh?n m?t xe theo chuy?n t?i x? ?ang ch?y.
-- Dropdown l? tr?nh c?a t?i x? kh?ng b? l?n chuy?n ch?a b?t ??u.
+## Lý do
+- Tránh việc student vẫn thấy xe giả lập không gắn tài xế.
+- Đảm bảo driver và student cùng nhìn một xe theo chuyến tài xế đang chạy.
+- Dropdown lộ trình của tài xế không bị lẫn chuyến chưa bắt đầu.
 
-## L?u ? khi test
-- Restart backend sau khi pull code m?i.
-- Khi ch?a c? trip `RUNNING`, student tracking kh?ng hi?n th? xe gi? l?p.
-- Khi t?i x? b?m `B?t ??u chuy?n`, student v? driver ph?i th?y c?ng xe/bi?n s?/t?i x?.
-- Driver `L? tr?nh chuy?n` ch? c? c?c chuy?n ?ang ch?y trong dropdown.
+## Lưu ý khi test
+- Restart backend sau khi pull code mới.
+- Khi chưa có trip `RUNNING`, student tracking không hiển thị xe giả lập.
+- Khi tài xế bấm `Bắt đầu chuyến`, student và driver phải thấy cùng xe/biển số/tài xế.
+- Driver `Lộ trình chuyến` chỉ có các chuyến đang chạy trong dropdown.
 
-## Ki?m tra ?? ch?y
+## Kiểm tra đã chạy
 - `mvn -q -DskipTests compile`
 - `npx eslint src/components/bus/roles/student-module.tsx src/components/bus/roles/driver-module.tsx --quiet`
 - `npx tsc --noEmit`
