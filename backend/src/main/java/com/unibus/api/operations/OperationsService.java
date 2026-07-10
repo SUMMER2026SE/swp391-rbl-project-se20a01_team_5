@@ -104,6 +104,7 @@ public class OperationsService {
         requireDriverStaffId(currentUser);
         List<DriverContactView> contacts = new ArrayList<>(operationsRepository.findDriverDispatcherContacts());
         contacts.add(new DriverContactView(
+                null,
                 "EMERGENCY",
                 "Tổng đài khẩn cấp",
                 "Hỗ trợ 24/7",

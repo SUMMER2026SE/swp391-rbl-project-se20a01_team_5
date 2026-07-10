@@ -120,7 +120,7 @@ export const NAV_CONFIG: Record<Role, NavItem[]> = {
     { id: "crd-routes", label: "Tuyến đường", icon: RouteIcon, group: "Quản lý" },
     { id: "crd-stops", label: "Trạm dừng", icon: MapPinned, group: "Quản lý" },
     { id: "crd-by-university", label: "Điều phối theo trường", icon: School, group: "Quản lý" },
-    { id: "crd-feedback", label: "Ý kiến phản hồi", icon: MessageSquare, group: "Hỗ trợ" },
+    { id: "crd-feedback", label: "Hỗ trợ và phản hồi", icon: MessageSquare, group: "Hỗ trợ" },
     { id: "crd-notify", label: "Gửi thông báo", icon: Megaphone, group: "Hỗ trợ" },
     { id: "crd-notifications", label: "Thông báo", icon: Bell, group: "Tài khoản" },
     { id: "crd-profile", label: "Hồ sơ cá nhân", icon: UserIcon, group: "Tài khoản" },
@@ -152,7 +152,6 @@ export const NAV_CONFIG: Record<Role, NavItem[]> = {
     { id: "uniadm-notify", label: "Gửi thông báo trường", icon: Megaphone, group: "Theo dõi" },
     { id: "uniadm-recon", label: "Báo cáo đối soát", icon: FileBarChart, group: "Theo dõi" },
     { id: "uniadm-notifications", label: "Thông báo", icon: Bell, group: "Tài khoản" },
-    { id: "uniadm-transactions", label: "Lịch sử giao dịch", icon: Receipt, group: "Theo dõi" },
     { id: "uniadm-profile", label: "Hồ sơ cá nhân", icon: UserIcon, group: "Tài khoản" },
   ],
 };

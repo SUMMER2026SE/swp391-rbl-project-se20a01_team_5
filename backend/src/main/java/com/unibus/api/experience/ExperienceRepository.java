@@ -289,6 +289,32 @@ public class ExperienceRepository {
                 """, senderUserId, title, detail, lostItemId);
     }
 
+    public List<LostItemCard> coordinatorLostItems(int limit) {
+        return jdbcTemplate.query("""
+                SELECT li.lost_item_report_id, reporter.full_name AS reporter_name, li.trip_id,
+                       r.route_code, r.route_name, li.item_description, li.status, li.notes, li.reported_at
+                FROM lost_item_reports li
+                JOIN users reporter ON reporter.user_id = li.reported_by_user_id
+                LEFT JOIN trips t ON t.trip_id = li.trip_id
+                LEFT JOIN routes r ON r.route_id = t.route_id
+                ORDER BY CASE li.status WHEN 'REPORTED' THEN 0 WHEN 'SEARCHING' THEN 1 WHEN 'FOUND' THEN 2 ELSE 3 END,
+                         li.reported_at DESC
+                LIMIT ?
+                """, (rs, rowNum) -> mapLostItem(rs), limit);
+    }
+
+    public LostItemCard coordinatorUpdateLostItem(Integer userId, Integer lostItemId, UpdateLostItemStatusRequest request) {
+        jdbcTemplate.update("""
+                UPDATE lost_item_reports
+                SET status = ?, notes = ?, assisted_by_user_id = COALESCE(assisted_by_user_id, ?)
+                WHERE lost_item_report_id = ?
+                """, request.status(), request.notes(), userId, lostItemId);
+        notifyLostItemReporter(userId, lostItemId, request);
+        return coordinatorLostItems(100).stream()
+                .filter(item -> item.lostItemReportId().equals(lostItemId))
+                .findFirst()
+                .orElse(null);
+    }
     public List<FeedbackCard> driverFeedback(Integer driverId, int limit) {
         return jdbcTemplate.query("""
                 SELECT f.feedback_id, submitter.full_name AS student_name, r.route_code, r.route_name,
