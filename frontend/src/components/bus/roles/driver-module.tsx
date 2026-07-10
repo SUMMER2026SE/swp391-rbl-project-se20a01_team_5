@@ -514,6 +514,23 @@ function driverTripKey(trip: DriverTripView): string {
     : `schedule:${trip.scheduleId ?? `${trip.routeId}-${trip.serviceDate ?? "date"}-${trip.departureTime ?? "time"}`}`;
 }
 
+
+function driverTripStatusRank(trip: DriverTripView): number {
+  const status = String(trip.status || "").toUpperCase();
+  if (status === "RUNNING") return 0;
+  if (status === "COMPLETED") return 3;
+  if (status === "CANCELLED") return 4;
+  return 1;
+}
+
+function sortDriverTrips(trips: DriverTripView[]): DriverTripView[] {
+  return [...trips].sort((left, right) => {
+    const rankDelta = driverTripStatusRank(left) - driverTripStatusRank(right);
+    if (rankDelta) return rankDelta;
+    return String(left.departureTime || "").localeCompare(String(right.departureTime || ""));
+  });
+}
+
 // =============================================================================
 // Sub-components
 // =============================================================================
@@ -938,6 +955,7 @@ function DriverSchedule({ ctx }: { ctx: Ctx }) {
     new Date().toISOString().slice(0, 10),
   );
   const [trips, setTrips] = useState<DriverTripView[] | null>(null);
+  const [expandedTripKey, setExpandedTripKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -969,7 +987,7 @@ function DriverSchedule({ ctx }: { ctx: Ctx }) {
             type="date"
             value={filterDate}
             onChange={(e) => setFilterDate(e.target.value)}
-            className="h-12 w-full rounded-full border-[#D8D2C4] bg-white px-5 font-semibold shadow-sm sm:w-52"
+            className="h-10 w-full rounded-full border-[#D8D2C4] bg-white px-4 text-sm font-semibold shadow-sm sm:w-44"
           />
         }
       />
@@ -985,13 +1003,15 @@ function DriverSchedule({ ctx }: { ctx: Ctx }) {
         />
       ) : (
         <StaggerGroup className="space-y-4 min-w-0">
-          {trips.map((t) => {
+          {sortDriverTrips(trips).map((t) => {
             const sp = tripStatusPill(t.status);
             const status = String(t.status || "").toUpperCase();
             const isRunning = status === "RUNNING";
             const isDone = status === "COMPLETED";
+            const tripKey = driverTripKey(t);
+            const isExpanded = expandedTripKey === tripKey;
             return (
-              <StaggerItem key={driverTripKey(t)}>
+              <StaggerItem key={tripKey}>
                 <ExpressiveCard
                   variant="elevated"
                   className={cn(
@@ -1000,8 +1020,8 @@ function DriverSchedule({ ctx }: { ctx: Ctx }) {
                   )}
                 >
                   <div className={cn("h-1.5", isRunning ? "bg-[#22c55e]" : isDone ? "bg-[#9CA3AF]" : "bg-[#F8C26A]")} />
-                  <div className="grid gap-4 p-5 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-center">
-                    <div className="flex min-w-0 items-start gap-4">
+                  <div className="flex items-center gap-4 p-5">
+                    <div className="flex min-w-0 flex-1 items-start gap-4">
                       <div className={cn(
                         "flex size-14 shrink-0 items-center justify-center rounded-2xl shadow-sm",
                         isRunning ? "bg-[#B8F5CC] text-[#14532d]" : isDone ? "bg-[#ECECEC] text-[#4B5563]" : "bg-[#FFF0CF] text-[#92400e]",
@@ -1023,26 +1043,45 @@ function DriverSchedule({ ctx }: { ctx: Ctx }) {
                         </div>
                       </div>
                     </div>
-
-                    <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4 lg:grid-cols-4">
-                      <div className="rounded-2xl bg-[#FAF8F2] px-4 py-3">
-                        <p className="font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Biển số</p>
-                        <p className="mt-1 truncate font-black text-[#14140f]">{t.licensePlate || "--"}</p>
-                      </div>
-                      <div className="rounded-2xl bg-[#FAF8F2] px-4 py-3">
-                        <p className="font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Phụ xe</p>
-                        <p className="mt-1 truncate font-black text-[#14140f]">{t.conductorName || "--"}</p>
-                      </div>
-                      <div className="rounded-2xl bg-[#FAF8F2] px-4 py-3">
-                        <p className="font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Điện thoại</p>
-                        <p className="mt-1 truncate font-black text-[#14140f]">{t.conductorPhone || "--"}</p>
-                      </div>
-                      <div className="rounded-2xl bg-[#FAF8F2] px-4 py-3">
-                        <p className="font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Số trạm</p>
-                        <p className="mt-1 font-black text-[#14140f]">{t.stops?.length || 0}</p>
-                      </div>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setExpandedTripKey(isExpanded ? null : tripKey)}
+                      className="flex size-12 shrink-0 items-center justify-center rounded-full border border-[#E8E2D5] bg-[#FAF8F2] text-[#14140f] transition hover:bg-[#EFE9DC]"
+                      aria-label={isExpanded ? "Thu gọn thông tin chuyến" : "Xem thông tin chuyến"}
+                    >
+                      <ChevronRight className={cn("size-5 transition-transform", isExpanded && "rotate-90")} />
+                    </button>
                   </div>
+                  <AnimatePresence initial={false}>
+                    {isExpanded && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.18, ease: "easeOut" }}
+                        className="overflow-hidden"
+                      >
+                        <div className="grid gap-3 border-t border-[#EEE8DA] px-5 pb-5 pt-4 text-xs sm:grid-cols-2 lg:grid-cols-4">
+                          <div className="rounded-2xl bg-[#FAF8F2] px-4 py-3">
+                            <p className="font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Biển số</p>
+                            <p className="mt-1 truncate font-black text-[#14140f]">{t.licensePlate || "--"}</p>
+                          </div>
+                          <div className="rounded-2xl bg-[#FAF8F2] px-4 py-3">
+                            <p className="font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Phụ xe</p>
+                            <p className="mt-1 truncate font-black text-[#14140f]">{t.conductorName || "--"}</p>
+                          </div>
+                          <div className="rounded-2xl bg-[#FAF8F2] px-4 py-3">
+                            <p className="font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Điện thoại</p>
+                            <p className="mt-1 truncate font-black text-[#14140f]">{t.conductorPhone || "--"}</p>
+                          </div>
+                          <div className="rounded-2xl bg-[#FAF8F2] px-4 py-3">
+                            <p className="font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Số trạm</p>
+                            <p className="mt-1 font-black text-[#14140f]">{t.stops?.length || 0}</p>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </ExpressiveCard>
               </StaggerItem>
             );
@@ -1090,14 +1129,15 @@ function DriverActiveTrip({
 
   const runningTrip =
     trips?.find((trip) => trip.status?.toUpperCase() === "RUNNING") ?? null;
+  const sortedTrips = useMemo(() => sortDriverTrips(trips ?? []), [trips]);
   const startableTrips = useMemo(() => {
-    return (trips ?? []).filter((trip) => {
+    return sortedTrips.filter((trip) => {
       const status = trip.status?.toUpperCase();
       return (
         status !== "RUNNING" && status !== "COMPLETED" && status !== "CANCELLED"
       );
     });
-  }, [trips]);
+  }, [sortedTrips]);
   const nextTrip = runningTrip ?? startableTrips[0] ?? null;
   const elapsed = useElapsed(!!runningTrip);
   const activeVehicle = syncedVehicleForTrip(trackingSnapshot, runningTrip);
@@ -1381,7 +1421,7 @@ function DriverActiveTrip({
 
       <Section title="Danh sách chuyến được phân công">
         <div className="space-y-4">
-          {trips.map((trip, index) => {
+          {sortedTrips.map((trip, index) => {
             const status = trip.status?.toUpperCase();
             const statusPill = tripStatusPill(trip.status);
             const isRunning = status === "RUNNING";
