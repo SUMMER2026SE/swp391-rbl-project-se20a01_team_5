@@ -688,11 +688,11 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
       {validConductorTrips.length === 0 ? (
         <ExpressiveCard variant="elevated" className="p-6 text-center min-w-0 border border-outline-variant">
           <ScanLine className="size-10 mx-auto text-on-surface-variant" />
-          <p className="mt-3 text-base font-bold">{hasInvalidConductorTrips ? "Chuyến hôm nay thiếu dữ liệu" : "Không có chuyến đang mở quét"}</p>
+          <p className="mt-3 text-base font-bold">{hasInvalidConductorTrips ? "Chuyến chưa thể quét" : "Không có chuyến được phân công"}</p>
           <p className="mt-1.5 text-sm text-on-surface-variant">
             {hasInvalidConductorTrips
-              ? "Chuyến cần có mã chuyến, tuyến và tên tuyến trước khi phụ xe quét vé."
-              : "Chỉ mở quét từ 30 phút trước giờ chạy đến 3 giờ sau giờ chạy."}
+              ? `Lý do: ${firstScanBlockReason || "chuyến không hợp lệ"}. Chuyến cần có đủ mã chuyến, mã tuyến, tên tuyến và chưa hoàn thành/hủy.`
+              : "Phụ xe cần có chuyến được phân công trước khi quét vé."}
           </p>
         </ExpressiveCard>
       ) : hasInvalidConductorTrips ? (
@@ -700,8 +700,10 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
           <div className="flex items-start gap-3">
             <AlertTriangle className="size-5 shrink-0 text-warning" />
             <div>
-              <p className="text-sm font-bold">Một số chuyến bị thiếu dữ liệu</p>
-              <p className="mt-1 text-xs text-on-surface-variant">Chỉ các chuyến có đủ mã chuyến, tuyến và tên tuyến mới được phép quét.</p>
+              <p className="text-sm font-bold">Một số chuyến chưa thể quét</p>
+              <p className="mt-1 text-xs text-on-surface-variant">
+                {blockedConductorTrips.slice(0, 3).map(({ trip, reason }) => `${tripLabel(trip)}: ${reason}`).join("; ")}
+              </p>
             </div>
           </div>
         </ExpressiveCard>
