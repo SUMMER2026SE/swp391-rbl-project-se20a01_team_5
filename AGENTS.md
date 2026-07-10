@@ -152,3 +152,38 @@ Backend là nguồn dữ liệu chính cho vị trí xe, biển số, tài xế,
 - `mvn -q -DskipTests compile`
 - `npx eslint src/components/bus/roles/student-module.tsx src/components/bus/roles/driver-module.tsx --quiet`
 - `npx tsc --noEmit`
+---
+
+# Changelog: Dieu chinh quet ve phu xe cho moi truong demo
+
+## Tom tat
+Cap nhat luong quet ve cua phu xe de phu hop demo: khi tai xe bat dau chuyen va phu xe
+co chuyen hop le duoc phan cong, phu xe co the quet ve ngay. Luong khong con bi khoa
+boi lech gio chay, thieu gio khoi hanh trong du lieu seed, hoac cua so 30 phut truoc / 3 gio sau.
+
+## Thay doi gi
+- Frontend phu xe hien thi trang thai quet mem hon: `Dang trong phien quet` va gio chay theo lich.
+- Them ly do cu the khi chuyen chua the quet: thieu ma chuyen, thieu ma tuyen, thieu ten tuyen,
+  chuyen da hoan thanh, da huy hoac chua duoc tao.
+- Backend chi chan quet voi chuyen o trang thai cuoi (`COMPLETED`, `CANCELLED`, `NOT_CREATED`).
+- Giu debounce chong quet trung QR lien tuc trong vai giay.
+- Giu lich su quet gan day de phu xe xem lai ve vua quet, trang thai va ly do fail.
+- Giu bo loc nhanh danh sach ve: tat ca, ve luot, ve thang, da quet, chua quet.
+- Khi ve sai tuyen, backend tra them tuyen dung cua ve de phu xe giai thich ro cho hanh khach.
+
+## Ly do
+- Demo thuong dung du lieu seed, gio he thong va lich chay co the khong khop tuyet doi.
+- Neu van khoa theo cua so gio production, nut quet de bi xam du tai xe da bat dau chuyen.
+- Muc tieu demo la the hien quy trinh nghiep vu day du: tai xe bat dau chuyen -> phu xe quet ve ->
+  xem ket qua va lich su quet, thay vi bi chan boi dieu kien thoi gian ky thuat.
+- Van giu chan cac chuyen da hoan thanh/huy/chua tao de tranh quet nham chuyen khong con hop le.
+
+## Luu y production
+- Logic hien tai co chu thich `ponytail` tai frontend/backend.
+- Khi len production nen khoi phuc kiem tra cua so thoi gian chat hon de giam gian lan ve.
+
+## Kiem tra
+- Phu xe co chuyen hop le: nut quet ve bat.
+- Chuyen thieu `tripId`, `routeId` hoac `routeName`: UI hien ly do cu the.
+- Chuyen `COMPLETED`, `CANCELLED`, `NOT_CREATED`: backend tu choi quet.
+- Khong con text mojibake/dau hoi trong cac chuoi vua sua.

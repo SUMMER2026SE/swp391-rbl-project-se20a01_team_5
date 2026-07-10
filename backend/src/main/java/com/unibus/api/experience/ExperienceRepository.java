@@ -252,7 +252,7 @@ public class ExperienceRepository {
                 LEFT JOIN trips t ON t.trip_id = li.trip_id
                 LEFT JOIN routes r ON r.route_id = t.route_id
                 WHERE li.assisted_by_user_id IS NULL OR li.assisted_by_user_id = ?
-                ORDER BY CASE li.status WHEN 'REPORTED' THEN 0 WHEN 'SEARCHING' THEN 1 ELSE 2 END,
+                ORDER BY CASE li.status WHEN 'REPORTED' THEN 0 WHEN 'SEARCHING' THEN 1 WHEN 'FOUND' THEN 2 ELSE 3 END,
                          li.reported_at DESC
                 LIMIT ?
                 """, (rs, rowNum) -> mapLostItem(rs), userId, limit);
@@ -264,10 +264,28 @@ public class ExperienceRepository {
                 SET status = ?, notes = ?, assisted_by_user_id = COALESCE(assisted_by_user_id, ?)
                 WHERE lost_item_report_id = ?
                 """, request.status(), request.notes(), userId, lostItemId);
+        notifyLostItemReporter(userId, lostItemId, request);
         return lostItemsForAssistant(userId, 50).stream()
                 .filter(item -> item.lostItemReportId().equals(lostItemId))
                 .findFirst()
                 .orElse(null);
+    }
+
+    private void notifyLostItemReporter(Integer senderUserId, Integer lostItemId, UpdateLostItemStatusRequest request) {
+        String title = switch (request.status().toUpperCase()) {
+            case "FOUND", "SEARCHING", "RESOLVED" -> "Đã tìm thấy đồ thất lạc";
+            case "RETURNED", "CLOSED" -> "Đã trả đồ thất lạc";
+            default -> "Đồ thất lạc đang được xử lý";
+        };
+        String detail = request.notes() == null || request.notes().isBlank()
+                ? "Vui lòng mở mục Đồ thất lạc để xem chi tiết."
+                : request.notes().trim();
+        jdbcTemplate.update("""
+                INSERT INTO notifications(recipient_user_id, sender_user_id, title, content, notification_type)
+                SELECT reported_by_user_id, ?, ?, ?, 'ALERT'
+                FROM lost_item_reports
+                WHERE lost_item_report_id = ?
+                """, senderUserId, title, detail, lostItemId);
     }
 
     public List<LostItemCard> coordinatorLostItems(int limit) {

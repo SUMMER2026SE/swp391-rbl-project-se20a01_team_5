@@ -213,8 +213,56 @@ function isRunningTrip(trip: any | null | undefined): boolean {
   return trip?.status === "running" || String(trip?.rawStatus || trip?.status || "").toUpperCase() === "RUNNING";
 }
 
+
+function scanBlockReason(trip: any): string | null {
+  const tripId = trip?.tripId ?? trip?.id;
+  if (!tripId) return "Thiếu mã chuyến";
+  if (!trip?.routeId) return "Thiếu mã tuyến";
+  if (!trip?.routeName?.trim?.()) return "Thiếu tên tuyến";
+  const status = String(trip?.status || trip?.rawStatus || "").toUpperCase();
+  if (status === "COMPLETED") return "Chuyến đã hoàn thành";
+  if (status === "CANCELLED") return "Chuyến đã hủy";
+  if (status === "NOT_CREATED") return "Chuyến chưa được tạo";
+  return null;
+}
+
+function isTripInScanWindow(trip: any): boolean {
+  // ponytail: demo mode keeps scanning open for assigned, non-final trips; restore strict time window for production gatekeeping.
+  return scanBlockReason(trip) === null;
+}
 function tripLabel(trip: any): string {
   return trip?.routeName || `Tuyến #${trip?.routeId || trip?.id || "?"}`;
+}
+
+function tripStatusLabel(status?: string) {
+  switch (String(status || "").toUpperCase()) {
+    case "RUNNING": return "Đang chạy";
+    case "COMPLETED": return "Hoàn thành";
+    case "CANCELLED": return "Đã hủy";
+    case "NOT_STARTED": return "Chưa khởi hành";
+    case "NOT_CREATED": return "Chưa tạo chuyến";
+    default: return status || "—";
+  }
+}
+
+function tripStatusTone(status?: string): "neutral" | "primary" | "tertiary" | "success" | "warning" | "error" {
+  switch (String(status || "").toUpperCase()) {
+    case "RUNNING": return "primary";
+    case "COMPLETED": return "success";
+    case "CANCELLED": return "error";
+    case "NOT_STARTED": return "warning";
+    default: return "neutral";
+  }
+}
+
+function tripSortTime(trip: any): number {
+  const raw = `${trip?.serviceDate || trip?.date || ""}T${trip?.departureTime || trip?.departTime || "00:00:00"}`;
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function tripStableKey(trip: any, index: number): string {
+  return String(trip?.tripId ?? trip?.id ?? `${trip?.scheduleId ?? "schedule"}-${trip?.routeId ?? "route"}-${trip?.serviceDate ?? trip?.date ?? "date"}-${trip?.departureTime ?? trip?.departTime ?? index}`);
 }
 
 // =============================================================================
@@ -479,12 +527,25 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
   const [lastResult, setLastResult] = useState<TicketScanResult | null>(null);
   const [tickets, setTickets] = useState<ConductorTicketView[] | null>(null);
   const [loadingTickets, setLoadingTickets] = useState(false);
-  const validConductorTrips = useMemo(() => ctx.conductorTrips.filter((trip) => hasTripIdentity(trip)), [ctx.conductorTrips]);
+  const [scanAudit, setScanAudit] = useState<{ code: string; result: TicketScanResult; scannedAt: string }[]>([]);
+  const [ticketFilter, setTicketFilter] = useState<"ALL" | "SINGLE" | "MONTHLY" | "SCANNED" | "UNSCANNED">("ALL");
+  const [scanClock, setScanClock] = useState(() => Date.now());
+  const lastScanRef = useRef<{ code: string; at: number } | null>(null);
+  const validConductorTrips = useMemo(() => ctx.conductorTrips.filter((trip) => isTripInScanWindow(trip)), [ctx.conductorTrips]);
   const hasConductorTrips = ctx.conductorTrips.length > 0;
-  const hasInvalidConductorTrips = hasConductorTrips && validConductorTrips.length !== ctx.conductorTrips.length;
+  const blockedConductorTrips = useMemo(() => ctx.conductorTrips.map((trip) => ({ trip, reason: scanBlockReason(trip) })).filter((item) => item.reason), [ctx.conductorTrips]);
+  const hasInvalidConductorTrips = blockedConductorTrips.length > 0;
+  const firstScanBlockReason = blockedConductorTrips[0]?.reason || null;
+  const selectedTrip = validConductorTrips.find((trip) => Number(trip.tripId) === Number(tripId)) || validConductorTrips[0] || null;
 
   useEffect(() => {
-    if (!tripId && validConductorTrips.length > 0) {
+    if (validConductorTrips.length === 0) {
+      setTripId(null);
+      setTickets(null);
+      return;
+    }
+    const stillOpen = validConductorTrips.some((trip) => Number(trip.tripId) === Number(tripId));
+    if (!tripId || !stillOpen) {
       setTripId(validConductorTrips[0].tripId);
     }
   }, [validConductorTrips, tripId]);
@@ -504,6 +565,57 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
 
   useEffect(() => { loadTickets(); }, [loadTickets]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setScanClock(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+
+  const ticketKindLabel = (kind?: string) => {
+    const normalized = String(kind || "").toUpperCase();
+    if (normalized === "SINGLE") return "Vé lượt";
+    if (normalized === "MONTHLY" || normalized === "JOURNEY_MONTHLY") return "Vé tháng";
+    return kind || "—";
+  };
+
+  const ticketStatusLabel = (status?: string) => {
+    switch (String(status || "").toUpperCase()) {
+      case "ACTIVE": return "Đang hiệu lực";
+      case "UNUSED": return "Chưa sử dụng";
+      case "USED": return "Đã sử dụng";
+      case "EXPIRED": return "Hết hạn";
+      default: return status || "—";
+    }
+  };
+
+
+  const scanWindowInfo = useMemo(() => {
+    if (!selectedTrip) return null;
+    const rawStart = `${selectedTrip.serviceDate || selectedTrip.date || ""}T${selectedTrip.departureTime || selectedTrip.departTime || ""}`;
+    const start = new Date(rawStart);
+    const startLabel = Number.isNaN(start.getTime())
+      ? "chưa có giờ chạy"
+      : start.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+    return {
+      isOpen: true,
+      label: "Đang trong phiên quét",
+      detail: `Theo lịch chuyến; giờ chạy: ${startLabel}`,
+    };
+  }, [scanClock, selectedTrip]);
+
+  const filteredTickets = useMemo(() => {
+    const rows = tickets || [];
+    return rows.filter((ticket) => {
+      const kind = String(ticket.ticketKind || "").toUpperCase();
+      const status = String(ticket.status || "").toUpperCase();
+      if (ticketFilter === "SINGLE") return kind === "SINGLE";
+      if (ticketFilter === "MONTHLY") return kind === "MONTHLY" || kind === "JOURNEY_MONTHLY";
+      if (ticketFilter === "SCANNED") return Boolean(ticket.lastScannedAt) || status === "USED";
+      if (ticketFilter === "UNSCANNED") return !ticket.lastScannedAt && status !== "USED";
+      return true;
+    });
+  }, [ticketFilter, tickets]);
+
   const scan = async (qrCode?: string) => {
     const code = qrCode ?? qrInput.trim();
     if (!code || !tripId) {
@@ -511,10 +623,18 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
       return;
     }
     if (scanning) return;
+    const now = Date.now();
+    const lastScan = lastScanRef.current;
+    if (lastScan?.code === code && now - lastScan.at < 2500) {
+      toast.warning("QR vừa được quét, vui lòng chờ vài giây");
+      return;
+    }
+    lastScanRef.current = { code, at: now };
     setScanning(true);
     try {
       const r = await operationsApi.scanTicket(tripId, code);
       setLastResult(r);
+      setScanAudit((items) => [{ code, result: r, scannedAt: new Date().toISOString() }, ...items].slice(0, 8));
       if (r.valid) toast.success(r.message || "Vé hợp lệ");
       else toast.error(r.message || "Vé không hợp lệ");
       setQrInput("");
@@ -530,31 +650,49 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Quét vé"
-        description="Chọn đúng chuyến rồi quét QR để kiểm tra vé theo route/trip hiện tại."
+        description="Quét QR theo chuyến được phân công."
         icon={<ScanLine className="size-7" />}
         actions={
-          <Select value={tripId ? String(tripId) : ""} onValueChange={(value) => setTripId(Number(value))} disabled={validConductorTrips.length === 0}>
-            <SelectTrigger className="w-full sm:w-64">
-              <SelectValue placeholder={hasConductorTrips ? "Chuyến thiếu dữ liệu" : "Chưa có chuyến"} />
-            </SelectTrigger>
-            <SelectContent>
-              {validConductorTrips.map((trip) => (
-                <SelectItem key={trip.tripId} value={String(trip.tripId)}>{tripLabel(trip)} — {formatDate(trip.serviceDate)}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          validConductorTrips.length > 1 ? (
+            <Select value={tripId ? String(tripId) : ""} onValueChange={(value) => setTripId(Number(value))}>
+              <SelectTrigger className="w-full sm:w-72">
+                <SelectValue placeholder="Chọn chuyến được phân công" />
+              </SelectTrigger>
+              <SelectContent>
+                {validConductorTrips.map((trip) => (
+                  <SelectItem key={trip.tripId} value={String(trip.tripId)}>{tripLabel(trip)} — {formatDate(trip.serviceDate)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : selectedTrip ? (
+            <div className="rounded-full border border-outline-variant bg-surface px-4 py-2 text-sm font-bold text-on-surface">
+              {tripLabel(selectedTrip)} · {selectedTrip.departureTime || formatDate(selectedTrip.serviceDate)}
+            </div>
+          ) : null
         }
       />
 
+      {scanWindowInfo && (
+        <ExpressiveCard variant="filled" className="p-4 min-w-0 border border-outline-variant">
+          <div className="flex items-center justify-between gap-3 min-w-0">
+            <div className="min-w-0">
+              <p className="text-xs font-bold uppercase tracking-[0.08em] text-on-surface-variant">Cửa sổ quét</p>
+              <p className="mt-1 text-base font-black text-on-surface">{scanWindowInfo.label}</p>
+              <p className="text-xs text-on-surface-variant">Khung giờ: {scanWindowInfo.detail}</p>
+            </div>
+            <M3StatusPill label={scanWindowInfo.isOpen ? "Đang mở" : "Chưa mở"} tone={scanWindowInfo.isOpen ? "success" : "warning"} />
+          </div>
+        </ExpressiveCard>
+      )}
 
       {validConductorTrips.length === 0 ? (
         <ExpressiveCard variant="elevated" className="p-6 text-center min-w-0 border border-outline-variant">
           <ScanLine className="size-10 mx-auto text-on-surface-variant" />
-          <p className="mt-3 text-base font-bold">{hasConductorTrips ? "Chuyến hôm nay thiếu dữ liệu" : "Hôm nay chưa có chuyến để quét"}</p>
+          <p className="mt-3 text-base font-bold">{hasInvalidConductorTrips ? "Chuyến hôm nay thiếu dữ liệu" : "Không có chuyến đang mở quét"}</p>
           <p className="mt-1.5 text-sm text-on-surface-variant">
-            {hasConductorTrips
+            {hasInvalidConductorTrips
               ? "Chuyến cần có mã chuyến, tuyến và tên tuyến trước khi phụ xe quét vé."
-              : "Khi điều phối viên phân công chuyến hôm nay, màn quét vé sẽ mở lại."}
+              : "Chỉ mở quét từ 30 phút trước giờ chạy đến 3 giờ sau giờ chạy."}
           </p>
         </ExpressiveCard>
       ) : hasInvalidConductorTrips ? (
@@ -587,7 +725,7 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
                 className="w-full h-14 bg-[#beff50] text-[#14140f] hover:bg-[#a6e639]"
                 onClick={() => {
                   if (!tripId || validConductorTrips.length === 0) {
-                    toast.error(hasConductorTrips ? "Chuyến hôm nay thiếu dữ liệu, chưa thể quét" : "Hôm nay chưa có chuyến để quét");
+                    toast.error(hasConductorTrips ? "Chuyến hôm nay thiếu dữ liệu, chưa thể quét" : "Không có chuyến đang mở quét");
                     return;
                   }
                   setScannerOpen(true);
@@ -642,7 +780,7 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
                     </div>
                     <div>
                       <p className="text-on-surface-variant">Loại vé</p>
-                      <p className="font-bold truncate">{lastResult.ticket?.ticketKind || "—"}</p>
+                      <p className="font-bold truncate">{ticketKindLabel(lastResult.ticket?.ticketKind)}</p>
                     </div>
                     <div>
                       <p className="text-on-surface-variant">Tuyến hợp lệ</p>
@@ -650,7 +788,7 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
                     </div>
                     <div>
                       <p className="text-on-surface-variant">Trạng thái vé</p>
-                      <p className="font-bold truncate">{lastResult.ticket?.status || "—"}</p>
+                      <p className="font-bold truncate">{ticketStatusLabel(lastResult.ticket?.status)}</p>
                     </div>
                     <div>
                       <p className="text-on-surface-variant">Hiệu lực từ</p>
@@ -660,6 +798,18 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
                       <p className="text-on-surface-variant">Hết hạn</p>
                       <p className="font-bold truncate">{formatDate(lastResult.ticket?.expiresAt)}</p>
                     </div>
+                    {lastResult.ticket?.ticketKind === "SINGLE" && (
+                      <>
+                        <div>
+                          <p className="text-on-surface-variant">Điểm lên dự kiến</p>
+                          <p className="font-bold truncate">{lastResult.ticket?.boardingStopName || "—"}</p>
+                        </div>
+                        <div>
+                          <p className="text-on-surface-variant">Điểm xuống dự kiến</p>
+                          <p className="font-bold truncate">{lastResult.ticket?.alightingStopName || "—"}</p>
+                        </div>
+                      </>
+                    )}
                     <div className="col-span-2">
                       <p className="text-on-surface-variant">Mã lịch sử chuyến</p>
                       <p className="font-bold truncate">{lastResult.travelHistoryId ?? "—"}</p>
@@ -681,6 +831,30 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
         </ScrollReveal>
       </div>
 
+      {scanAudit.length > 0 && (
+        <Section title={`Lịch sử quét gần đây (${scanAudit.length})`}>
+          <div className="space-y-2">
+            {scanAudit.map((item, index) => (
+              <ExpressiveCard key={`${item.scannedAt}-${index}`} variant="elevated" className="p-3 min-w-0">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={cn("size-10 shrink-0 rounded-xl flex items-center justify-center", item.result.valid ? "bg-success-container text-success" : "bg-error-container text-error")}>
+                    {item.result.valid ? <CheckCircle2 className="size-5" /> : <XCircle className="size-5" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold truncate">{item.result.ticket?.studentName || item.result.ticket?.studentCode || item.code}</p>
+                    <p className="text-xs text-on-surface-variant truncate">{item.result.message || (item.result.valid ? "Vé hợp lệ" : "Vé không hợp lệ")}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-[10px] text-on-surface-variant">{formatDateTime(item.scannedAt)}</p>
+                    <M3StatusPill label={item.result.valid ? "Vé hợp lệ" : "Từ chối"} tone={item.result.valid ? "success" : "error"} />
+                  </div>
+                </div>
+              </ExpressiveCard>
+            ))}
+          </div>
+        </Section>
+      )}
+
       <QrScannerModal
         open={scannerOpen}
         onOpenChange={setScannerOpen}
@@ -688,18 +862,45 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
         isLoading={scanning}
       />
 
-      <Section title={`Vé đã quét chuyến này (${tickets?.length || 0})`}>
+      <Section title={`Vé hợp lệ trên chuyến (${filteredTickets.length}/${tickets?.length || 0})`}>
+        <div className="mb-3 flex flex-wrap gap-2">
+          {[
+            ["ALL", "Tất cả"],
+            ["SINGLE", "Vé lượt"],
+            ["MONTHLY", "Vé tháng"],
+            ["SCANNED", "Đã quét"],
+            ["UNSCANNED", "Chưa quét"],
+          ].map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setTicketFilter(value as typeof ticketFilter)}
+              className={cn(
+                "h-8 rounded-full border px-3 text-xs font-bold transition",
+                ticketFilter === value ? "border-[#14140f] bg-[#14140f] text-[#BDFD4F]" : "border-outline-variant bg-surface text-on-surface-variant hover:text-on-surface",
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         {loadingTickets ? (
           <LoadingScreen label="Đang tải danh sách vé..." />
         ) : !tickets || tickets.length === 0 ? (
           <EmptyState
             icon={<TicketCheck className="size-7" />}
             title="Chưa có vé nào"
-            description="Danh sách vé đã quét sẽ hiển thị tại đây."
+            description="Chuyến này chưa có vé hợp lệ."
           />
         ) : (
           <div className="space-y-2">
-            {tickets.map((t) => (
+            {filteredTickets.length === 0 ? (
+              <EmptyState
+                icon={<TicketCheck className="size-7" />}
+                title="Không có vé phù hợp"
+                description="Thử đổi bộ lọc để xem vé khác."
+              />
+            ) : filteredTickets.map((t) => (
               <ExpressiveCard key={t.ticketId} variant="elevated" className="p-3 min-w-0">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="size-10 shrink-0 rounded-xl bg-success-container text-success flex items-center justify-center">
@@ -884,10 +1085,11 @@ function AssistantIncident({ ctx }: { ctx: Ctx }) {
   const [type, setType] = useState("OTHER");
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const reportableTrips = useMemo(() => ctx.conductorTrips.filter((trip) => hasTripIdentity(trip)), [ctx.conductorTrips]);
 
   useEffect(() => {
-    if (!tripId && ctx.conductorTrips.length > 0) setTripId(ctx.conductorTrips[0].tripId);
-  }, [ctx.conductorTrips, tripId]);
+    if (!tripId && reportableTrips.length > 0) setTripId(reportableTrips[0].tripId);
+  }, [reportableTrips, tripId]);
 
   const submit = async () => {
     if (!tripId || !description.trim()) {
@@ -924,8 +1126,8 @@ function AssistantIncident({ ctx }: { ctx: Ctx }) {
                 <Select value={tripId ? String(tripId) : ""} onValueChange={(v) => setTripId(Number(v))}>
                   <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn chuyến" /></SelectTrigger>
                   <SelectContent>
-                    {ctx.conductorTrips.map((t) => (
-                      <SelectItem key={t.tripId} value={String(t.tripId)}>{t.routeName}</SelectItem>
+                    {reportableTrips.map((t, index) => (
+                      <SelectItem key={tripStableKey(t, index)} value={String(t.tripId)}>{t.routeName}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -1147,43 +1349,71 @@ function AssistantContact({ ctx }: { ctx: Ctx }) {
 // Screen 7: History
 // =============================================================================
 function AssistantHistory({ ctx }: { ctx: Ctx }) {
-  const completed = ctx.trips.filter((t: any) => t.status === "completed");
+  const trips = useMemo(
+    () => [...ctx.conductorTrips]
+      .filter((trip) => ["COMPLETED", "CANCELLED"].includes(String(trip.status || "").toUpperCase()))
+      .sort((a, b) => tripSortTime(b) - tripSortTime(a)),
+    [ctx.conductorTrips]
+  );
+  const completedCount = trips.filter((trip) => String(trip.status || "").toUpperCase() === "COMPLETED").length;
+
   return (
-    <PageTransition className="space-y-6 min-w-0">
-      <PageHeader
-        title="Lịch sử chuyến"
-        description={`${completed.length} chuyến đã hoàn thành`}
-        icon={<History className="size-7" />}
-      />
-      {completed.length === 0 ? (
+    <PageTransition className="space-y-5 min-w-0">
+      <div className="flex items-center justify-between gap-4 min-w-0">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="size-11 shrink-0 rounded-2xl bg-primary text-on-primary flex items-center justify-center">
+            <History className="size-5" />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-3xl font-black tracking-tight text-on-surface">Lịch sử chuyến</h1>
+            <p className="text-sm text-on-surface-variant">{trips.length} chuyến · {completedCount} hoàn thành</p>
+          </div>
+        </div>
+      </div>
+      {trips.length === 0 ? (
         <EmptyState
           icon={<History className="size-7" />}
-          title="Chưa có chuyến hoàn thành"
-          description="Lịch sử các chuyến sẽ hiển thị tại đây."
+          title="Chưa có lịch sử"
+          description="Chuyến đã chạy sẽ hiện tại đây."
         />
       ) : (
-        <StaggerGroup className="space-y-3 min-w-0">
-          {completed.map((t: any) => (
-            <StaggerItem key={t.id}>
-              <ExpressiveCard variant="elevated" className="p-4 min-w-0">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="size-10 shrink-0 rounded-xl bg-success-container text-success flex items-center justify-center">
-                    <CheckCircle2 className="size-5" />
+        <StaggerGroup className="relative max-w-5xl space-y-2.5 min-w-0 before:absolute before:left-[1.15rem] before:top-5 before:bottom-5 before:w-px before:bg-outline-variant">
+          {trips.map((trip: any, index) => {
+            const status = String(trip.status || "").toUpperCase();
+            const isCompleted = status === "COMPLETED";
+            const isRunning = status === "RUNNING";
+            return (
+              <StaggerItem key={tripStableKey(trip, index)}>
+                <ExpressiveCard variant="outlined" className="relative ml-10 px-4 py-3 min-w-0 bg-surface border-outline-variant shadow-none">
+                  <div className={cn(
+                    "absolute -left-[1.9rem] top-3 size-8 rounded-full border-[3px] border-surface flex items-center justify-center",
+                    isCompleted ? "bg-success text-on-primary" : isRunning ? "bg-primary text-on-primary" : "bg-surface-container-high text-on-surface-variant"
+                  )}>
+                    {isCompleted ? <CheckCircle2 className="size-4" /> : isRunning ? <Bus className="size-4" /> : <Clock className="size-4" />}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold truncate">{t.routeName}</p>
-                    <p className="text-xs text-on-surface-variant">{formatDate(t.date)} • {t.departTime}</p>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 min-w-0">
+                    <div className="min-w-0 space-y-1">
+                      <p className="text-base font-extrabold tracking-[-0.01em] text-on-surface truncate">{tripLabel(trip)}</p>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-on-surface-variant">
+                        <span>{formatDate(trip.serviceDate || trip.date)}</span>
+                        <span>{trip.departureTime || trip.departTime || "Chưa có giờ"}</span>
+                        {(trip.licensePlate || trip.busPlate) && <span>Xe {trip.licensePlate || trip.busPlate}</span>}
+                      </div>
+                      {(trip.licensePlate || trip.busPlate) && (
+                        <p className="sr-only">Xe {trip.licensePlate || trip.busPlate}</p>
+                      )}
+                    </div>
+                    <M3StatusPill label={tripStatusLabel(trip.status)} tone={tripStatusTone(trip.status)} />
                   </div>
-                </div>
-              </ExpressiveCard>
-            </StaggerItem>
-          ))}
+                </ExpressiveCard>
+              </StaggerItem>
+            );
+          })}
         </StaggerGroup>
       )}
     </PageTransition>
   );
 }
-
 // =============================================================================
 function FallbackScreen({ activeId }: { activeId: string }) {
   return (
