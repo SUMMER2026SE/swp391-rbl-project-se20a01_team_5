@@ -57,7 +57,7 @@ class OperationsServiceTests {
         ConductorTicketView ticket = monthlyTicket(ROUTE_A, "Campus Gate", "Dormitory");
         ConductorTicketView refreshed = monthlyTicket(ROUTE_A, "Updated Stop", "Dormitory");
         when(operationsRepository.tripRouteInfo(TRIP_ID))
-                .thenReturn(Optional.of(new TripRouteInfo(TRIP_ID, ROUTE_A, LocalDate.now(ZoneOffset.UTC))));
+                .thenReturn(Optional.of(new TripRouteInfo(TRIP_ID, ROUTE_A, LocalDate.now(ZoneOffset.UTC), null, null, null, "RUNNING")));
         when(operationsRepository.findMonthlyTicketByQr("QR-A"))
                 .thenReturn(Optional.of(ticket), Optional.of(refreshed));
         when(operationsRepository.ensureTravelHistoryForScan("SE001", TRIP_ID, CONDUCTOR_ID, ROUTE_A))
@@ -76,13 +76,13 @@ class OperationsServiceTests {
     void monthlyPassScanRejectsDifferentRoute() {
         ConductorTicketView ticket = monthlyTicket(ROUTE_A, "Campus Gate", "Dormitory");
         when(operationsRepository.tripRouteInfo(TRIP_ID))
-                .thenReturn(Optional.of(new TripRouteInfo(TRIP_ID, ROUTE_B, LocalDate.now(ZoneOffset.UTC))));
+                .thenReturn(Optional.of(new TripRouteInfo(TRIP_ID, ROUTE_B, LocalDate.now(ZoneOffset.UTC), null, null, null, "RUNNING")));
         when(operationsRepository.findMonthlyTicketByQr("QR-A")).thenReturn(Optional.of(ticket));
 
         TicketScanResult result = operationsService.scanTicket(conductor, new TicketScanRequest(TRIP_ID, "QR-A"));
 
         assertThat(result.valid()).isFalse();
-        assertThat(result.message()).isEqualTo("Vé không thuộc tuyến của chuyến này.");
+        assertThat(result.message()).contains("Route 501");
         verify(operationsRepository, never()).markMonthlyPassScanned(11);
         verify(operationsRepository, never()).ensureTravelHistoryForScan(anyString(), any(), any(), any());
     }
