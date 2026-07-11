@@ -74,7 +74,7 @@
     },
     {
       "key": "universityAdminEmail",
-      "value": "uni.admin@unibus.local",
+      "value": "uniadmin.demo@unibus.local",
       "type": "string"
     },
     {
@@ -636,7 +636,7 @@
           "response": []
         },
         {
-          "name": "Login - uni.admin",
+          "name": "Login - university admin",
           "event": [
             {
               "listen": "test",

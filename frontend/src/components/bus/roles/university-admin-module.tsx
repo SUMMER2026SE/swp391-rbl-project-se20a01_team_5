@@ -7,7 +7,7 @@
 //   uniadm-subsidy, uniadm-stats, uniadm-notify, uniadm-recon
 // Visual: keeps prototype v1.1 (hero perk card, university info card,
 // import batch progress, roster table, subsidy policy cards, reconciliation summary).
-// Data: real backend via /university-admin/* endpoints.
+// Data: real service data via /university-admin/* endpoints.
 // =============================================================================
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -98,7 +98,6 @@ import {
   M3Progress,
 } from "@/components/m3/primitives";
 import {
-  SplitText,
   ScrollReveal,
   StaggerGroup,
   StaggerItem,
@@ -109,11 +108,17 @@ import { PageHeader, StatCard, Section, EmptyState } from "../primitives";
 
 import {
   useUniversityAdminPrototypeData,
+  useUniAdminCampuses,
+  useUniAdminDomains,
+  useUniAdminRoster,
+  useUniAdminImportBatches,
+  useUniAdminReconciliation,
   formatVND,
   formatDateTime,
   formatDate,
 } from "@/lib/prototype-data";
 import {
+  ApiError,
   universityApi,
   isPaidStatus,
   isUnpaidStatus,
@@ -128,6 +133,7 @@ import {
   type PaymentTransactionView,
   type UniversityAdminView,
   type ExperienceDashboardStat,
+  type SubsidyType,
 } from "@/lib/api/client";
 
 type UniversityAdminModuleProps = {
@@ -149,6 +155,215 @@ const paymentFinalAmount = (payment: PaymentTransactionView) => {
 const paymentOriginalAmount = (payment: PaymentTransactionView) =>
   payment.originalAmount ?? payment.orderTotal ?? payment.amountIn ?? 0;
 
+const normalizedPaymentStatus = (status?: string | null) => (status || "").trim().toUpperCase();
+
+const isSettledPaymentStatus = (status?: string | null) =>
+  ["PAID", "SUCCESS", "COMPLETED"].includes(normalizedPaymentStatus(status));
+
+const paymentStatusLabel = (status?: string | null) => {
+  switch (normalizedPaymentStatus(status)) {
+    case "PAID":
+      return "Đã thanh toán";
+    case "SUCCESS":
+    case "COMPLETED":
+      return "Thành công";
+    case "PENDING":
+    case "UNPAID":
+      return "Chờ thanh toán";
+    case "FAILED":
+      return "Thất bại";
+    case "CANCELLED":
+    case "CANCELED":
+      return "Đã hủy";
+    case "REFUNDED":
+      return "Đã hoàn tiền";
+    default:
+      return status || "Không rõ";
+  }
+};
+
+const paymentStatusTone = (status?: string | null) => {
+  switch (normalizedPaymentStatus(status)) {
+    case "PAID":
+    case "SUCCESS":
+    case "COMPLETED":
+      return "success";
+    case "PENDING":
+    case "UNPAID":
+      return "warning";
+    case "FAILED":
+    case "CANCELLED":
+    case "CANCELED":
+    case "REFUNDED":
+      return "error";
+    default:
+      return "neutral";
+  }
+};
+
+const paymentStatusGroup = (status?: string | null) => {
+  const normalized = normalizedPaymentStatus(status);
+  if (["PAID", "SUCCESS", "COMPLETED"].includes(normalized)) return "paid";
+  if (["PENDING", "UNPAID"].includes(normalized)) return "pending";
+  if (["FAILED"].includes(normalized)) return "failed";
+  if (["CANCELLED", "CANCELED", "REFUNDED"].includes(normalized)) return "cancelled";
+  return "other";
+};
+
+const paymentDateValue = (payment: PaymentTransactionView) =>
+  payment.paidAt || payment.transactionDate || payment.createdAt || "";
+
+const paymentDateKey = (payment: PaymentTransactionView) => paymentDateValue(payment).slice(0, 10);
+
+const rosterStatusLabel = (status?: string | null) => {
+  switch ((status || "").toUpperCase()) {
+    case "ACTIVE":
+      return "Đang học";
+    case "INACTIVE":
+      return "Ngừng học";
+    case "GRADUATED":
+      return "Đã tốt nghiệp";
+    case "SUSPENDED":
+      return "Bị đình chỉ";
+    default:
+      return status || "Không rõ";
+  }
+};
+
+const rosterStatusTone = (status?: string | null) =>
+  (status || "").toUpperCase() === "ACTIVE"
+    ? "success"
+    : (status || "").toUpperCase() === "SUSPENDED"
+      ? "error"
+      : "neutral";
+
+const importStatusLabel = (status?: string | null) => {
+  switch ((status || "").toUpperCase()) {
+    case "COMPLETED":
+      return "Hoàn tất";
+    case "COMPLETED_WITH_ERRORS":
+      return "Hoàn tất có lỗi";
+    case "FAILED":
+      return "Thất bại";
+    default:
+      return status || "Không rõ";
+  }
+};
+
+const importErrorMessage = (message?: string | null) => {
+  switch (message) {
+    case "Email is required":
+      return "Email bắt buộc hoặc không đúng định dạng";
+    case "Student code is required":
+      return "MSSV bắt buộc";
+    case "Full name is required":
+      return "Họ tên bắt buộc";
+    case "Academic year must be a number":
+      return "Năm học phải là số";
+    case "MSSV is duplicated in this import file":
+      return "MSSV bị trùng trong file import";
+    case "MSSV already exists for another student in this university":
+      return "MSSV đã tồn tại cho sinh viên khác trong trường";
+    case "Email domain does not belong to this university":
+      return "Email không thuộc domain đang hoạt động của trường";
+    default:
+      return message || "Dữ liệu không hợp lệ";
+  }
+};
+
+const campusStatusLabel = (status?: string | null) => {
+  switch ((status || "").toUpperCase()) {
+    case "ACTIVE":
+      return "Đang hoạt động";
+    case "INACTIVE":
+      return "Ngừng hoạt động";
+    case "SUSPENDED":
+      return "Tạm khóa";
+    default:
+      return status || "Không rõ";
+  }
+};
+
+const campusStatusTone = (status?: string | null) =>
+  (status || "").toUpperCase() === "ACTIVE"
+    ? "success"
+    : (status || "").toUpperCase() === "SUSPENDED"
+      ? "error"
+      : "neutral";
+
+const domainStatusLabel = (status?: string | null) => {
+  switch ((status || "").toUpperCase()) {
+    case "ACTIVE":
+      return "Đang hoạt động";
+    case "INACTIVE":
+      return "Ngừng hoạt động";
+    case "PENDING":
+      return "Chờ duyệt";
+    case "SUSPENDED":
+      return "Tạm khóa";
+    default:
+      return status || "Không rõ";
+  }
+};
+
+const domainStatusTone = (status?: string | null) =>
+  (status || "").toUpperCase() === "ACTIVE"
+    ? "success"
+    : (status || "").toUpperCase() === "PENDING"
+      ? "warning"
+      : (status || "").toUpperCase() === "SUSPENDED"
+        ? "error"
+        : "neutral";
+
+const subsidyStatusLabel = (status?: string | null) => {
+  switch ((status || "").toUpperCase()) {
+    case "ACTIVE":
+      return "Đang áp dụng";
+    case "INACTIVE":
+      return "Tạm ngưng";
+    case "EXPIRED":
+      return "Hết hiệu lực";
+    case "DRAFT":
+      return "Nháp";
+    default:
+      return status || "Không rõ";
+  }
+};
+
+const subsidyStatusTone = (status?: string | null) => {
+  switch ((status || "").toUpperCase()) {
+    case "ACTIVE":
+      return "success";
+    case "EXPIRED":
+    case "SUSPENDED":
+      return "error";
+    case "DRAFT":
+      return "warning";
+    default:
+      return "neutral";
+  }
+};
+
+const isFixedAmountSubsidy = (subsidyType?: string | null) =>
+  (subsidyType || "").toUpperCase() === "FIXED_AMOUNT";
+
+const subsidyValueLabel = (policy: SubsidyPolicyView) =>
+  isFixedAmountSubsidy(policy.subsidyType) ? formatVND(policy.value) : `${policy.value}%`;
+
+const normalizeDomainInput = (value: string) => value.trim().toLowerCase().replace(/^@+/, "");
+
+const validateDomainInput = (value: string) => {
+  const raw = value.trim();
+  const normalized = normalizeDomainInput(value);
+  if (!raw) return { error: "Vui lòng nhập domain email" };
+  if (/\s/.test(raw)) return { error: "Domain không được chứa khoảng trắng" };
+  if (/^https?:\/\//i.test(raw) || raw.includes("/")) return { error: "Chỉ nhập domain, không nhập http://, https:// hoặc đường dẫn" };
+  if (normalized.includes("@")) return { error: "Không nhập email đầy đủ, chỉ nhập domain như duytan.edu.vn" };
+  if (!normalized.includes(".")) return { error: "Domain phải có dấu chấm, ví dụ duytan.edu.vn" };
+  if (normalized.startsWith(".") || normalized.endsWith(".") || normalized.includes("..")) return { error: "Domain không hợp lệ" };
+  return { domain: normalized };
+};
+
 const paymentModeLabel = (payment: PaymentTransactionView) => {
   if (payment.orderMode === "journey-combo") return "Combo nhiều chặng";
   if (payment.ticketPeriod === "day" || payment.ticketType === "single") return "Vé ngày";
@@ -168,8 +383,8 @@ const paymentJourneyLabel = (payment: PaymentTransactionView) =>
 export function UniversityAdminModule({ activeId, onNavigate }: UniversityAdminModuleProps) {
   const proto = useUniversityAdminPrototypeData();
 
-  if (proto.loading || !proto.data) return <LoadingScreen label="Đang tải dữ liệu admin trường..." />;
   if (proto.error) return <ErrorScreen message={proto.error} onRetry={proto.reload} />;
+  if (proto.loading || !proto.data) return <LoadingScreen label="Đang tải dữ liệu admin trường..." />;
 
   const d = proto.data!;
   const ctx = {
@@ -200,30 +415,44 @@ export function UniversityAdminModule({ activeId, onNavigate }: UniversityAdminM
     reload: proto.reload,
   };
 
+  let screen: React.ReactNode;
+
   switch (activeId) {
     case "uniadm-dashboard":
-      return <DashboardScreen ctx={ctx} onNavigate={onNavigate} />;
+      screen = <DashboardScreen ctx={ctx} onNavigate={onNavigate} />;
+      break;
     case "uniadm-info":
-      return <InfoScreen ctx={ctx} />;
+      screen = <InfoScreen ctx={ctx} />;
+      break;
     case "uniadm-domains":
-      return <DomainsScreen ctx={ctx} />;
+      screen = <DomainsScreen ctx={ctx} />;
+      break;
     case "uniadm-import":
-      return <ImportScreen ctx={ctx} />;
+      screen = <ImportScreen ctx={ctx} />;
+      break;
     case "uniadm-roster":
-      return <RosterScreen ctx={ctx} />;
+      screen = <RosterScreen ctx={ctx} />;
+      break;
     case "uniadm-subsidy":
-      return <SubsidyScreen ctx={ctx} />;
+      screen = <SubsidyScreen ctx={ctx} />;
+      break;
     case "uniadm-stats":
-      return <StatsScreen ctx={ctx} />;
+      screen = <StatsScreen ctx={ctx} />;
+      break;
     case "uniadm-notify":
-      return <NotifyScreen ctx={ctx} />;
+      screen = <NotifyScreen ctx={ctx} />;
+      break;
     case "uniadm-recon":
-      return <ReconScreen ctx={ctx} />;
+      screen = <ReconScreen ctx={ctx} />;
+      break;
     case "uniadm-transactions":
-      return <TransactionsScreen ctx={ctx} />;
+      screen = <TransactionsScreen ctx={ctx} />;
+      break;
     default:
-      return <FallbackScreen activeId={activeId} />;
+      screen = <FallbackScreen activeId={activeId} />;
   }
+
+  return <div className="uniadmin-glm min-w-0">{screen}</div>;
 }
 
 export default UniversityAdminModule;
@@ -275,7 +504,6 @@ function ErrorScreen({ message, onRetry }: { message: string; onRetry?: () => vo
 // Screen 1: Dashboard
 // =============================================================================
 function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
-  const firstName = (ctx.user.name || "bạn").split(" ").slice(-1)[0];
   const ua = ctx.universityAdmin;
   const s = ctx.stats;
 
@@ -287,106 +515,100 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
   const tripsLast7 = s?.tripsSeries || [];
   const subsidyDist = (s?.subsidyDistribution || []).map((point) => ({
     name: point.policyName,
-    value: point.subsidyType === "PERCENT" ? point.value : Math.round(point.value / 1000),
+    value: point.subsidyType === "PERCENTAGE" ? point.value : Math.round(point.value / 1000),
     color: point.colorHex,
-    unit: point.subsidyType === "PERCENT" ? "%" : "k",
+    unit: point.subsidyType === "PERCENTAGE" ? "%" : "k",
   }));
 
   const quickActions = [
-    { id: "uniadm-roster", label: "Danh sách SV", icon: Users, accent: "primary" as const },
-    { id: "uniadm-import", label: "Nhập danh sách", icon: Upload, accent: "tertiary" as const },
-    { id: "uniadm-subsidy", label: "Chính sách trợ giá", icon: Percent, accent: "secondary" as const },
-    { id: "uniadm-stats", label: "Thống kê", icon: FileBarChart, accent: "primary" as const },
+    { id: "uniadm-roster", label: "Danh sách sinh viên", description: "Tra cứu và kiểm tra trạng thái", icon: Users },
+    { id: "uniadm-import", label: "Nhập danh sách", description: "Cập nhật roster sinh viên", icon: Upload },
+    { id: "uniadm-subsidy", label: "Chính sách trợ giá", description: "Thiết lập mức hỗ trợ", icon: Percent },
+    { id: "uniadm-stats", label: "Thống kê", description: "Theo dõi số liệu vận hành", icon: FileBarChart },
   ];
 
   return (
     <PageTransition className="space-y-6 sm:space-y-8 min-w-0">
-      <SplitText
-        as="h1"
-        text={`Quản lý trường ${ua?.universityName || ""}`}
-        className="text-4xl sm:text-5xl font-bold tracking-tight text-on-surface block text-balance"
-        stagger={0.06}
-      />
+      <div className="min-w-0">
+        <h1 className="text-2xl sm:text-3xl font-semibold tracking-normal text-on-surface truncate">
+          {ua?.universityName || "Trường đại học"}
+        </h1>
+        <p className="mt-1 text-sm text-on-surface-variant">
+          Tổng quan hoạt động bus, sinh viên và trợ giá của trường
+        </p>
+      </div>
 
-      {/* Hero card — gradient với logo trường */}
       <ScrollReveal>
-        <ExpressiveCard variant="elevated" className="overflow-hidden min-w-0">
-          <div
-            className="p-6 sm:p-8 relative"
-            style={{
-              background: "linear-gradient(135deg, #144fcc, #144fcccc 70%, #144fcc99)",
-            }}
-          >
-            <div className="absolute inset-0 opacity-20 pointer-events-none">
-              <div className="absolute -right-10 -top-10 size-48 rounded-full bg-white/30 blur-3xl" />
-              <div className="absolute -left-10 bottom-0 size-40 rounded-full bg-black/10 blur-3xl" />
-            </div>
-            <div className="relative z-10 flex flex-col sm:flex-row sm:items-center gap-5 min-w-0">
-              <div className="size-20 rounded-2xl bg-white p-2 flex items-center justify-center shrink-0 ring-1 ring-white/30">
-                <span className="text-2xl font-black text-[#144fcc]">
-                  {(ua?.universityName || "U").slice(0, 2).toUpperCase()}
-                </span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-white/80 text-xs font-medium uppercase tracking-wide">
-                    {ua?.title || "Admin trường"} · Đà Nẵng
-                  </span>
-                  <span className="inline-flex items-center gap-1.5 h-6 px-3 rounded-full bg-white/20 text-white text-xs font-medium backdrop-blur">
-                    <BadgeCheck className="size-3.5" />
-                    Đối tác chính thức
-                  </span>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 min-w-0">
+          {[
+            {
+              label: "Sinh viên",
+              value: (s?.activeRosterStudents || 0).toLocaleString("vi-VN"),
+              icon: GraduationCap,
+              tone: "blue",
+            },
+            {
+              label: "Cơ sở",
+              value: String(s?.activeCampuses || 0),
+              icon: MapPin,
+              tone: "emerald",
+            },
+            {
+              label: "Tuyến bus",
+              value: String(s?.activeRoutes || 0),
+              icon: FileBarChart,
+              tone: "violet",
+            },
+            {
+              label: "Trợ giá",
+              value: ctx.subsidyPolicies.some((p) => p.status === "ACTIVE") ? "Đang áp dụng" : "Chưa có",
+              icon: ShieldCheck,
+              tone: "amber",
+            },
+          ].map((item) => {
+            const Icon = item.icon;
+            return (
+              <div key={item.label} className="flex items-center gap-3 rounded-xl border border-outline-variant bg-surface p-4 min-w-0">
+                <div
+                  className={cn(
+                    "flex size-10 shrink-0 items-center justify-center rounded-lg",
+                    item.tone === "blue" && "bg-blue-50 text-blue-600",
+                    item.tone === "emerald" && "bg-emerald-50 text-emerald-600",
+                    item.tone === "violet" && "bg-violet-50 text-violet-600",
+                    item.tone === "amber" && "bg-amber-50 text-amber-600"
+                  )}
+                >
+                  <Icon className="size-4" />
                 </div>
-                <h2 className="mt-1 text-white text-2xl sm:text-3xl font-bold leading-tight truncate">
-                  {ua?.universityName || "Trường đại học"}
-                </h2>
-                <div className="mt-3 flex flex-wrap gap-4 text-white/95 text-sm">
-                  <span className="inline-flex items-center gap-1.5">
-                    <GraduationCap className="size-4" />
-                    {s?.activeRosterStudents?.toLocaleString("vi-VN") || 0} sinh viên
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <MapPin className="size-4" />
-                    {s?.activeCampuses || 0} cơ sở
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <FileBarChart className="size-4" />
-                    {s?.activeRoutes || 0} tuyến bus
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <ShieldCheck className="size-4" />
-                    {ctx.subsidyPolicies.filter((p) => p.status === "ACTIVE").length > 0 ? "Đang trợ giá" : "Chưa trợ giá"}
-                  </span>
+                <div className="min-w-0">
+                  <p className="text-xs text-on-surface-variant">{item.label}</p>
+                  <p className="text-sm font-semibold tabular-nums text-on-surface truncate">{item.value}</p>
                 </div>
               </div>
-            </div>
-          </div>
-        </ExpressiveCard>
+            );
+          })}
+        </div>
       </ScrollReveal>
 
-      {/* Quick actions */}
       <ScrollReveal>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 min-w-0">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 min-w-0">
           {quickActions.map((action) => {
-            const accentMap: Record<string, { bg: string; fg: string }> = {
-              primary: { bg: "#14140f", fg: "#beff50" },
-              tertiary: { bg: "#ff8c5f", fg: "#14140f" },
-              secondary: { bg: "#144fcc", fg: "#beff50" },
-            };
-            const a = accentMap[action.accent];
+            const Icon = action.icon;
             return (
               <motion.button
                 key={action.id}
                 onClick={() => onNavigate(action.id)}
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                whileHover={{ y: -3, scale: 1.02 }}
-                whileTap={{ scale: 0.96 }}
-                className="group relative overflow-hidden rounded-2xl p-4 elev-1 hover:elev-2 transition-shadow text-left min-w-0"
-                style={{ backgroundColor: a.bg, color: a.fg }}
+                whileHover={{ y: -2 }}
+                whileTap={{ scale: 0.98 }}
+                className="group flex min-h-[118px] flex-col justify-between rounded-xl border border-outline-variant bg-surface p-4 text-left transition-colors hover:bg-surface-container-low min-w-0"
               >
-                <action.icon className="size-6 mb-3" />
-                <p className="text-sm font-bold leading-tight">{action.label}</p>
+                <Icon className="size-5 text-on-surface-variant transition-colors group-hover:text-on-surface" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold leading-tight text-on-surface">{action.label}</p>
+                  <p className="mt-1 text-xs leading-snug text-on-surface-variant">{action.description}</p>
+                </div>
               </motion.button>
             );
           })}
@@ -565,7 +787,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
                       </div>
                       <div className="text-right shrink-0">
                         <p className="font-bold text-primary">{formatVND(paymentFinalAmount(p))}</p>
-                        <M3StatusPill label={p.paymentStatus || "—"} tone={isPaidStatus(p.paymentStatus) ? "success" : "warning"} />
+                        <M3StatusPill label={paymentStatusLabel(p.paymentStatus)} tone={paymentStatusTone(p.paymentStatus)} />
                       </div>
                     </div>
                   </ExpressiveCard>
@@ -584,6 +806,8 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
 // =============================================================================
 function InfoScreen({ ctx }: { ctx: Ctx }) {
   const ua = ctx.universityAdmin;
+  const campusesResource = useUniAdminCampuses();
+  const campuses = campusesResource.raw || ctx.campuses;
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
@@ -610,12 +834,14 @@ function InfoScreen({ ctx }: { ctx: Ctx }) {
       )}
 
       <ScrollReveal delay={0.1}>
-        <Section title={`Cơ sở (${ctx.campuses.length})`}>
-          {ctx.campuses.length === 0 ? (
+        <Section title={`Cơ sở (${campuses.length})`}>
+          {campusesResource.loading ? (
+            <LoadingScreen label="Đang tải cơ sở..." />
+          ) : campuses.length === 0 ? (
             <EmptyState icon={<Building2 className="size-7" />} title="Chưa có cơ sở" />
           ) : (
             <StaggerGroup className="grid grid-cols-1 md:grid-cols-2 gap-3 min-w-0">
-              {ctx.campuses.map((c) => (
+              {campuses.map((c) => (
                 <StaggerItem key={c.campusId}>
                   <ExpressiveCard variant="elevated" className="p-4 min-w-0">
                     <div className="flex items-start gap-3 min-w-0">
@@ -624,9 +850,9 @@ function InfoScreen({ ctx }: { ctx: Ctx }) {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-bold truncate">{c.name}</p>
-                        <p className="text-xs text-on-surface-variant">Mã: {c.code}</p>
+                        {c.code && <p className="text-xs text-on-surface-variant">Mã cơ sở: {c.code}</p>}
                         {c.address && <p className="text-xs text-on-surface-variant line-clamp-2">{c.address}</p>}
-                        <M3StatusPill label={c.status} tone={c.status === "ACTIVE" ? "success" : "neutral"} />
+                        <M3StatusPill label={campusStatusLabel(c.status)} tone={campusStatusTone(c.status)} />
                       </div>
                     </div>
                   </ExpressiveCard>
@@ -644,24 +870,29 @@ function InfoScreen({ ctx }: { ctx: Ctx }) {
 // Screen 3: Domains
 // =============================================================================
 function DomainsScreen({ ctx }: { ctx: Ctx }) {
+  const domainsResource = useUniAdminDomains();
+  const domains = domainsResource.raw || ctx.domains;
   const [adding, setAdding] = useState(false);
   const [domain, setDomain] = useState("");
   const [saving, setSaving] = useState(false);
 
   const add = async () => {
-    if (!domain.trim()) {
-      toast.error("Vui lòng nhập domain");
+    const validation = validateDomainInput(domain);
+    if (validation.error || !validation.domain) {
+      toast.error(validation.error || "Domain không hợp lệ");
       return;
     }
     setSaving(true);
     try {
-      await universityApi.createDomain({ domain: domain.trim() });
+      await universityApi.createDomain({ domain: validation.domain });
       toast.success("Đã thêm domain");
       setDomain("");
       setAdding(false);
+      domainsResource.reload();
       ctx.reload();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Không thể thêm");
+      const message = e instanceof Error ? e.message : "";
+      toast.error(/duplicate|unique|exists|already/i.test(message) ? "Domain này đã tồn tại" : message || "Không thể thêm domain");
     } finally {
       setSaving(false);
     }
@@ -671,15 +902,17 @@ function DomainsScreen({ ctx }: { ctx: Ctx }) {
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Domain email"
-        description={`${ctx.domains.length} domain`}
+        description="Sinh viên dùng email thuộc domain này sẽ được liên kết với trường."
         icon={<Globe className="size-7" />}
         actions={<ExpressiveButton variant="filled" onClick={() => setAdding(true)}><Plus className="size-4" /> Thêm domain</ExpressiveButton>}
       />
-      {ctx.domains.length === 0 ? (
+      {domainsResource.loading ? (
+        <LoadingScreen label="Đang tải domain..." />
+      ) : domains.length === 0 ? (
         <EmptyState icon={<Globe className="size-7" />} title="Chưa có domain" />
       ) : (
         <StaggerGroup className="space-y-2 min-w-0">
-          {ctx.domains.map((d) => (
+          {domains.map((d) => (
             <StaggerItem key={d.domainId}>
               <ExpressiveCard variant="elevated" className="p-4 min-w-0">
                 <div className="flex items-center gap-3 min-w-0">
@@ -690,7 +923,7 @@ function DomainsScreen({ ctx }: { ctx: Ctx }) {
                     <p className="font-bold truncate">@{d.domain}</p>
                     <p className="text-xs text-on-surface-variant">Thêm: {formatDate(d.createdAt)}</p>
                   </div>
-                  <M3StatusPill label={d.status} tone={d.status === "ACTIVE" ? "success" : "neutral"} />
+                  <M3StatusPill label={domainStatusLabel(d.status)} tone={domainStatusTone(d.status)} />
                 </div>
               </ExpressiveCard>
             </StaggerItem>
@@ -707,6 +940,7 @@ function DomainsScreen({ ctx }: { ctx: Ctx }) {
           <div className="py-2">
             <Label className="text-xs font-bold">Domain</Label>
             <Input className="mt-1.5" value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="VD: duytan.edu.vn" />
+            <p className="mt-1 text-xs text-on-surface-variant">Chỉ nhập domain, không nhập email đầy đủ. Có thể nhập dạng @duytan.edu.vn.</p>
           </div>
           <DialogFooter>
             <ExpressiveButton variant="text" onClick={() => setAdding(false)} disabled={saving}>Hủy</ExpressiveButton>
@@ -725,19 +959,50 @@ function DomainsScreen({ ctx }: { ctx: Ctx }) {
 // Screen 4: Import roster (CSV/XLSX)
 // =============================================================================
 function ImportScreen({ ctx }: { ctx: Ctx }) {
+  const importBatchesResource = useUniAdminImportBatches();
+  const importBatches = importBatchesResource.raw || ctx.importBatches;
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [latestBatch, setLatestBatch] = useState<ImportBatchView | null>(null);
+
+  const downloadTemplate = useCallback(() => {
+    const rows = [
+      ["email", "studentCode", "fullName", "faculty", "academicYear", "status"],
+      ["nguyenvana@duytan.edu.vn", "DTU202032312", "Nguyen Van A", "Cong nghe thong tin", "2024", "ACTIVE"],
+      ["tranthib@duytan.edu.vn", "DTU202045678", "Tran Thi B", "Kinh te", "2024", "INACTIVE"],
+      ["# Ghi chu: MSSV bat buoc, khong trung MSSV trong cung file, email nen thuoc domain truong, khong doi ten header, MSSV co so 0 dau nen nhap dang text."],
+    ];
+    const escapeCell = (value: string) => `"${value.replaceAll('"', '""')}"`;
+    const csv = `\uFEFF${rows.map((row) => row.map(escapeCell).join(",")).join("\r\n")}`;
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "uniadmin-roster-template.csv";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }, []);
 
   const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
     setUploading(true);
+    setLatestBatch(null);
     try {
       const batch = await universityApi.importRoster(f);
-      toast.success(`Đã nhập ${batch.successRows}/${batch.totalRows} dòng`);
+      setLatestBatch(batch);
+      if (batch.errorRows > 0) {
+        toast.warning(`Đã nhập ${batch.successRows}/${batch.totalRows} dòng, ${batch.errorRows} dòng lỗi`);
+      } else {
+        toast.success(`Đã nhập ${batch.successRows}/${batch.totalRows} dòng`);
+      }
+      importBatchesResource.reload();
       ctx.reload();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Không thể nhập");
+      const detail = err instanceof ApiError && err.details ? String(err.details) : null;
+      toast.error(detail || (err instanceof Error ? err.message : "Không thể nhập danh sách sinh viên"));
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -750,6 +1015,12 @@ function ImportScreen({ ctx }: { ctx: Ctx }) {
         title="Nhập danh sách sinh viên"
         description="Tải lên file CSV/XLSX danh sách sinh viên."
         icon={<Upload className="size-7" />}
+        actions={
+          <ExpressiveButton variant="tonal" onClick={downloadTemplate}>
+            <Download className="size-4" />
+            Tải template mẫu
+          </ExpressiveButton>
+        }
       />
       <ScrollReveal>
         <ExpressiveCard variant="elevated" className="p-8 text-center min-w-0">
@@ -773,16 +1044,21 @@ function ImportScreen({ ctx }: { ctx: Ctx }) {
             )}
             <p className="mt-4 text-base font-bold">Chọn file để tải lên</p>
             <p className="text-xs text-on-surface-variant mt-1">Hỗ trợ CSV, XLSX. Tối đa 1000 dòng/lần.</p>
+            <p className="text-xs text-on-surface-variant mt-2">
+              Cột bắt buộc: email, studentCode, fullName. Trạng thái hợp lệ: ACTIVE, INACTIVE, GRADUATED, SUSPENDED.
+            </p>
           </motion.div>
         </ExpressiveCard>
       </ScrollReveal>
 
-      <Section title={`Lịch sử nhập (${ctx.importBatches.length})`}>
-        {ctx.importBatches.length === 0 ? (
+      <Section title={`Lịch sử nhập (${importBatches.length})`}>
+        {importBatchesResource.loading ? (
+          <LoadingScreen label="Đang tải lịch sử import..." />
+        ) : importBatches.length === 0 ? (
           <EmptyState icon={<FileSpreadsheet className="size-7" />} title="Chưa có lượt nhập" />
         ) : (
           <StaggerGroup className="space-y-3 min-w-0">
-            {ctx.importBatches.map((b) => (
+            {importBatches.map((b) => (
               <StaggerItem key={b.importBatchId}>
                 <ExpressiveCard variant="elevated" className="p-4 min-w-0">
                   <div className="flex items-start justify-between gap-3 mb-3 min-w-0">
@@ -790,7 +1066,7 @@ function ImportScreen({ ctx }: { ctx: Ctx }) {
                       <p className="font-bold truncate">{b.fileName}</p>
                       <p className="text-xs text-on-surface-variant">{formatDateTime(b.createdAt)}</p>
                     </div>
-                    <M3StatusPill label={b.status} tone={b.status === "COMPLETED" ? "success" : b.status === "FAILED" ? "error" : "warning"} />
+                    <M3StatusPill label={importStatusLabel(b.status)} tone={b.status === "COMPLETED" ? "success" : b.status === "FAILED" ? "error" : "warning"} />
                   </div>
                   <div className="grid grid-cols-3 gap-3 text-xs">
                     <div>
@@ -809,6 +1085,24 @@ function ImportScreen({ ctx }: { ctx: Ctx }) {
                   {b.totalRows > 0 && (
                     <M3Progress value={(b.successRows / b.totalRows) * 100} className="mt-3" />
                   )}
+                  {(() => {
+                    const errors = latestBatch?.importBatchId === b.importBatchId ? latestBatch.errors || [] : b.errors || [];
+                    return errors.length > 0 ? (
+                      <div className="mt-3 rounded-lg border border-error/25 bg-error/5 p-3 text-xs">
+                        <p className="font-bold text-error">Lỗi import cần kiểm tra</p>
+                        <div className="mt-2 space-y-1">
+                          {errors.slice(0, 6).map((error) => (
+                            <p key={error.importErrorId || `${error.rowNumber}-${error.fieldName}`} className="text-on-surface-variant">
+                              Dòng {error.rowNumber}
+                              {error.fieldName ? ` · ${error.fieldName}` : ""}: {importErrorMessage(error.errorMessage)}
+                              {error.rawValue ? ` (${error.rawValue})` : ""}
+                            </p>
+                          ))}
+                          {errors.length > 6 && <p className="text-on-surface-variant">Còn {errors.length - 6} lỗi khác.</p>}
+                        </div>
+                      </div>
+                    ) : null;
+                  })()}
                 </ExpressiveCard>
               </StaggerItem>
             ))}
@@ -825,10 +1119,12 @@ function ImportScreen({ ctx }: { ctx: Ctx }) {
 function RosterScreen({ ctx }: { ctx: Ctx }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const rosterResource = useUniAdminRoster({ keyword: search || undefined, status: statusFilter === "all" ? undefined : statusFilter });
+  const roster = rosterResource.raw || ctx.roster;
 
-  const filtered = ctx.roster.filter((r) => {
+  const filtered = roster.filter((r) => {
     if (statusFilter !== "all" && r.status !== statusFilter) return false;
-    if (search && !`${r.fullName} ${r.email} ${r.studentCode}`.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !`${r.fullName} ${r.email} ${r.studentCode || ""}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
@@ -836,7 +1132,7 @@ function RosterScreen({ ctx }: { ctx: Ctx }) {
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Danh sách sinh viên"
-        description={`${ctx.roster.length} sinh viên`}
+        description={`${roster.length} sinh viên`}
         icon={<Users className="size-7" />}
       />
       <div className="flex flex-wrap gap-2 min-w-0">
@@ -855,7 +1151,9 @@ function RosterScreen({ ctx }: { ctx: Ctx }) {
           </SelectContent>
         </Select>
       </div>
-      {filtered.length === 0 ? (
+      {rosterResource.loading ? (
+        <LoadingScreen label="Đang tải danh sách sinh viên..." />
+      ) : filtered.length === 0 ? (
         <EmptyState icon={<Users className="size-7" />} title="Không có sinh viên" />
       ) : (
         <ExpressiveCard variant="elevated" className="overflow-hidden min-w-0">
@@ -872,11 +1170,11 @@ function RosterScreen({ ctx }: { ctx: Ctx }) {
             <TableBody>
               {filtered.slice(0, 100).map((r) => (
                 <TableRow key={r.rosterId}>
-                  <TableCell className="font-mono font-bold">{r.studentCode}</TableCell>
+                  <TableCell className="font-mono font-bold">{r.studentCode?.trim() || "Chưa có MSSV"}</TableCell>
                   <TableCell className="font-bold truncate">{r.fullName}</TableCell>
                   <TableCell className="text-xs truncate">{r.email}</TableCell>
                   <TableCell className="text-xs">{r.faculty || "—"}</TableCell>
-                  <TableCell><M3StatusPill label={r.status} tone={r.status === "ACTIVE" ? "success" : r.status === "SUSPENDED" ? "error" : "neutral"} /></TableCell>
+                  <TableCell><M3StatusPill label={rosterStatusLabel(r.status)} tone={rosterStatusTone(r.status)} /></TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -893,14 +1191,28 @@ function RosterScreen({ ctx }: { ctx: Ctx }) {
 function SubsidyScreen({ ctx }: { ctx: Ctx }) {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
-  const [type, setType] = useState<"PERCENT" | "FIXED">("PERCENT");
+  const [type, setType] = useState<SubsidyType>("PERCENTAGE");
   const [value, setValue] = useState("");
   const [maxAmount, setMaxAmount] = useState("");
   const [saving, setSaving] = useState(false);
 
   const add = async () => {
-    if (!name.trim() || !value.trim()) {
-      toast.error("Vui lòng nhập tên và giá trị");
+    const numericValue = Number(value);
+    const numericMaxAmount = Number(maxAmount);
+    if (!name.trim()) {
+      toast.error("Vui lòng nhập tên chính sách");
+      return;
+    }
+    if (!value.trim() || Number.isNaN(numericValue) || numericValue <= 0) {
+      toast.error(type === "PERCENTAGE" ? "Vui lòng nhập phần trăm trợ giá hợp lệ" : "Vui lòng nhập số tiền trợ giá hợp lệ");
+      return;
+    }
+    if (type === "PERCENTAGE" && numericValue > 100) {
+      toast.error("Phần trăm trợ giá không được vượt quá 100%");
+      return;
+    }
+    if (type === "PERCENTAGE" && maxAmount.trim() && (Number.isNaN(numericMaxAmount) || numericMaxAmount <= 0)) {
+      toast.error("Số tiền tối đa phải lớn hơn 0");
       return;
     }
     setSaving(true);
@@ -908,15 +1220,15 @@ function SubsidyScreen({ ctx }: { ctx: Ctx }) {
       await universityApi.createSubsidyPolicy({
         policyName: name.trim(),
         subsidyType: type,
-        value: Number(value) || 0,
-        maxAmount: maxAmount ? Number(maxAmount) : undefined,
+        value: numericValue,
+        maxAmount: type === "PERCENTAGE" && maxAmount.trim() ? numericMaxAmount : undefined,
       });
-      toast.success("Đã thêm chính sách");
+      toast.success("Đã thêm chính sách trợ giá");
       setName(""); setValue(""); setMaxAmount("");
       setAdding(false);
       ctx.reload();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Không thể thêm");
+      toast.error(e instanceof Error ? e.message : "Không thể thêm chính sách trợ giá");
     } finally {
       setSaving(false);
     }
@@ -926,12 +1238,12 @@ function SubsidyScreen({ ctx }: { ctx: Ctx }) {
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Chính sách trợ giá"
-        description={`${ctx.subsidyPolicies.length} chính sách`}
+        description="Áp dụng cho sinh viên của trường khi mua vé."
         icon={<Percent className="size-7" />}
         actions={<ExpressiveButton variant="filled" onClick={() => setAdding(true)}><Plus className="size-4" /> Thêm chính sách</ExpressiveButton>}
       />
       {ctx.subsidyPolicies.length === 0 ? (
-        <EmptyState icon={<Percent className="size-7" />} title="Chưa có chính sách" />
+        <EmptyState icon={<Percent className="size-7" />} title="Chưa có chính sách trợ giá" />
       ) : (
         <StaggerGroup className="grid grid-cols-1 md:grid-cols-2 gap-3 min-w-0">
           {ctx.subsidyPolicies.map((p) => (
@@ -939,11 +1251,14 @@ function SubsidyScreen({ ctx }: { ctx: Ctx }) {
               <ExpressiveCard variant="elevated" className="p-5 h-full min-w-0">
                 <div className="flex items-start justify-between gap-2 mb-2 min-w-0">
                   <p className="font-bold truncate">{p.policyName}</p>
-                  <M3StatusPill label={p.status} tone={p.status === "ACTIVE" ? "success" : "neutral"} />
+                  <M3StatusPill label={subsidyStatusLabel(p.status)} tone={subsidyStatusTone(p.status)} />
                 </div>
                 <div className="text-2xl font-black text-primary">
-                  {p.subsidyType === "PERCENT" ? `${p.value}%` : formatVND(p.value)}
+                  {subsidyValueLabel(p)}
                 </div>
+                <p className="text-xs text-on-surface-variant mt-1">
+                  {p.subsidyType === "PERCENTAGE" ? "Theo phần trăm giá vé" : "Số tiền cố định"}
+                </p>
                 {p.maxAmount != null && (
                   <p className="text-xs text-on-surface-variant mt-1">Tối đa: {formatVND(p.maxAmount)}</p>
                 )}
@@ -961,32 +1276,33 @@ function SubsidyScreen({ ctx }: { ctx: Ctx }) {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Thêm chính sách trợ giá</DialogTitle>
+            <DialogDescription>Chính sách áp dụng cho sinh viên của trường. Chọn phần trăm hoặc số tiền cố định.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div>
               <Label className="text-xs font-bold">Tên chính sách</Label>
-              <Input className="mt-1.5" value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Trợ giá 50%" />
+              <Input className="mt-1.5" value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Trợ giá 50% vé tháng" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs font-bold">Loại</Label>
-                <Select value={type} onValueChange={(v: any) => setType(v)}>
+                <Label className="text-xs font-bold">Loại trợ giá</Label>
+                <Select value={type} onValueChange={(v: SubsidyType) => setType(v)}>
                   <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="PERCENT">Theo %</SelectItem>
-                    <SelectItem value="FIXED">Số tiền cố định</SelectItem>
+                    <SelectItem value="PERCENTAGE">Theo %</SelectItem>
+                    <SelectItem value="FIXED_AMOUNT">Số tiền cố định</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div>
-                <Label className="text-xs font-bold">Giá trị</Label>
-                <Input className="mt-1.5" type="number" value={value} onChange={(e) => setValue(e.target.value)} placeholder={type === "PERCENT" ? "VD: 50" : "VD: 100000"} />
+                <Label className="text-xs font-bold">{type === "PERCENTAGE" ? "Phần trăm trợ giá" : "Số tiền trợ giá"}</Label>
+                <Input className="mt-1.5" type="number" min="0" value={value} onChange={(e) => setValue(e.target.value)} placeholder={type === "PERCENTAGE" ? "VD: 50" : "VD: 100000"} />
               </div>
             </div>
-            {type === "PERCENT" && (
+            {type === "PERCENTAGE" && (
               <div>
                 <Label className="text-xs font-bold">Số tiền tối đa (VND, tùy chọn)</Label>
-                <Input className="mt-1.5" type="number" value={maxAmount} onChange={(e) => setMaxAmount(e.target.value)} />
+                <Input className="mt-1.5" type="number" min="0" value={maxAmount} onChange={(e) => setMaxAmount(e.target.value)} placeholder="VD: 90000" />
               </div>
             )}
           </div>
@@ -994,7 +1310,7 @@ function SubsidyScreen({ ctx }: { ctx: Ctx }) {
             <ExpressiveButton variant="text" onClick={() => setAdding(false)} disabled={saving}>Hủy</ExpressiveButton>
             <ExpressiveButton variant="filled" onClick={add} disabled={saving}>
               {saving ? <RefreshCw className="size-4 animate-spin" /> : <Plus className="size-4" />}
-              Thêm
+              Thêm chính sách
             </ExpressiveButton>
           </DialogFooter>
         </DialogContent>
@@ -1066,16 +1382,31 @@ function NotifyScreen({ ctx }: { ctx: Ctx }) {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [sending, setSending] = useState(false);
+  const [sentHistory, setSentHistory] = useState<
+    { id: string; title: string; content: string; recipientCount: number; sentAt: string }[]
+  >([]);
 
   const send = async () => {
     if (!title.trim() || !content.trim()) {
       toast.error("Vui lòng nhập tiêu đề và nội dung");
       return;
     }
+    const sentTitle = title.trim();
+    const sentContent = content.trim();
     setSending(true);
     try {
-      await universityApi.notify({ title: title.trim(), content: content.trim() });
+      const recipientCount = await universityApi.notify({ title: sentTitle, content: sentContent });
       toast.success("Đã gửi thông báo");
+      setSentHistory((items) => [
+        {
+          id: `${Date.now()}`,
+          title: sentTitle,
+          content: sentContent,
+          recipientCount,
+          sentAt: new Date().toISOString(),
+        },
+        ...items,
+      ]);
       setTitle("");
       setContent("");
       ctx.reload();
@@ -1089,8 +1420,8 @@ function NotifyScreen({ ctx }: { ctx: Ctx }) {
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
-        title="Gửi thông báo"
-        description="Gửi thông báo đến sinh viên của trường."
+        title="Gửi thông báo cho sinh viên"
+        description="Trường gửi thông báo đến sinh viên thuộc danh sách của trường."
         icon={<Megaphone className="size-7" />}
       />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
@@ -1108,22 +1439,31 @@ function NotifyScreen({ ctx }: { ctx: Ctx }) {
               </div>
               <ExpressiveButton variant="filled" className="w-full" onClick={send} disabled={sending}>
                 {sending ? <RefreshCw className="size-4 animate-spin" /> : <Megaphone className="size-4" />}
-                Gửi
+                Gửi thông báo
               </ExpressiveButton>
             </div>
           </ExpressiveCard>
         </ScrollReveal>
         <ScrollReveal delay={0.1}>
-          <Section title={`Gần đây (${ctx.notifications.length})`}>
-            {ctx.notifications.length === 0 ? (
-              <EmptyState icon={<Megaphone className="size-7" />} title="Chưa có thông báo" />
+          <Section title={`Đã gửi trong phiên này (${sentHistory.length})`}>
+            {sentHistory.length === 0 ? (
+              <EmptyState
+                icon={<Megaphone className="size-7" />}
+                title="Chưa có lịch sử thông báo đã gửi"
+                description="Các thông báo gửi thành công trong phiên làm việc hiện tại sẽ hiển thị tại đây."
+              />
             ) : (
               <div className="space-y-2">
-                {ctx.notifications.slice(0, 6).map((n: any) => (
-                  <ExpressiveCard key={n.id} variant="filled" className="p-3 min-w-0">
-                    <p className="font-bold text-sm truncate">{n.title}</p>
-                    <p className="text-xs text-on-surface-variant line-clamp-2">{n.body}</p>
-                    <p className="text-[10px] text-on-surface-variant mt-1">{formatDateTime(n.createdAt)}</p>
+                {sentHistory.map((item) => (
+                  <ExpressiveCard key={item.id} variant="filled" className="p-3 min-w-0">
+                    <div className="flex items-start justify-between gap-3 min-w-0">
+                      <div className="min-w-0">
+                        <p className="font-bold text-sm truncate">{item.title}</p>
+                        <p className="text-xs text-on-surface-variant line-clamp-2">{item.content}</p>
+                        <p className="text-[10px] text-on-surface-variant mt-1">{formatDateTime(item.sentAt)}</p>
+                      </div>
+                      <Badge variant="secondary" className="shrink-0">{item.recipientCount} SV</Badge>
+                    </div>
                   </ExpressiveCard>
                 ))}
               </div>
@@ -1140,25 +1480,61 @@ function NotifyScreen({ ctx }: { ctx: Ctx }) {
 // =============================================================================
 function TransactionsScreen({ ctx }: { ctx: Ctx }) {
   const rows = ctx.payments || [];
-  const paidRows = rows.filter((p) => isPaidStatus(p.paymentStatus));
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [dateFilter, setDateFilter] = useState("");
+  const paidRows = rows.filter((p) => isSettledPaymentStatus(p.paymentStatus));
+  const pendingRows = rows.filter((p) => paymentStatusGroup(p.paymentStatus) === "pending");
+  const failedOrCancelledRows = rows.filter((p) => ["failed", "cancelled"].includes(paymentStatusGroup(p.paymentStatus)));
   const finalTotal = paidRows.reduce((sum, p) => sum + paymentFinalAmount(p), 0);
+  const filteredRows = rows.filter((payment) => {
+    if (statusFilter !== "all" && paymentStatusGroup(payment.paymentStatus) !== statusFilter) return false;
+    if (dateFilter && paymentDateKey(payment) !== dateFilter) return false;
+    return true;
+  });
 
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Lịch sử giao dịch"
-        description="Danh sách đơn thanh toán của sinh viên; không phải báo cáo đối soát theo kỳ."
+        description="Tra cứu từng giao dịch/order của sinh viên theo trạng thái và ngày giao dịch."
         icon={<Banknote className="size-7" />}
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 min-w-0">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 min-w-0">
         <StatCard label="Tổng giao dịch" value={rows.length} icon={<Banknote className="size-5" />} accent="primary" />
         <StatCard label="Đã thanh toán" value={paidRows.length} icon={<CheckCircle2 className="size-5" />} accent="success" />
-        <StatCard label="Sinh viên đã trả" value={formatVND(finalTotal)} icon={<Wallet className="size-5" />} accent="tertiary" />
+        <StatCard label="Chờ thanh toán" value={pendingRows.length} icon={<RefreshCw className="size-5" />} accent="secondary" />
+        <StatCard label="Lỗi/Hủy" value={failedOrCancelledRows.length} icon={<XCircle className="size-5" />} accent="error" />
       </div>
 
-      {rows.length === 0 ? (
-        <EmptyState icon={<Banknote className="size-7" />} title="Chưa có giao dịch" />
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_220px_180px] gap-2 min-w-0">
+        <div className="rounded-xl border border-outline-variant bg-surface-container-low px-3 py-2 text-sm text-on-surface-variant">
+          Sinh viên đã trả: <span className="font-bold text-on-surface">{formatVND(finalTotal)}</span>
+        </div>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Tất cả trạng thái</SelectItem>
+            <SelectItem value="paid">Đã thanh toán</SelectItem>
+            <SelectItem value="pending">Chờ thanh toán</SelectItem>
+            <SelectItem value="failed">Thất bại</SelectItem>
+            <SelectItem value="cancelled">Đã hủy/hoàn tiền</SelectItem>
+          </SelectContent>
+        </Select>
+        <Input
+          type="date"
+          value={dateFilter}
+          onChange={(event) => setDateFilter(event.target.value)}
+          onInput={(event) => setDateFilter(event.currentTarget.value)}
+        />
+      </div>
+
+      {filteredRows.length === 0 ? (
+        <EmptyState
+          icon={<Banknote className="size-7" />}
+          title={rows.length === 0 ? "Chưa có giao dịch" : "Không có giao dịch phù hợp"}
+          description={dateFilter ? `Không có giao dịch trong ngày ${formatDate(dateFilter)} với bộ lọc đã chọn.` : undefined}
+        />
       ) : (
         <ExpressiveCard variant="elevated" className="overflow-hidden min-w-0">
           <Table>
@@ -1176,17 +1552,20 @@ function TransactionsScreen({ ctx }: { ctx: Ctx }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.slice(0, 100).map((p) => (
+              {filteredRows.slice(0, 100).map((p) => (
                 <TableRow key={`${p.orderId}-${p.transactionId || p.sepayTransactionId || "order"}`}>
-                  <TableCell className="truncate">{p.studentName || p.studentCode || "—"}</TableCell>
+                  <TableCell className="truncate">
+                    <div className="font-medium truncate">{p.studentName || "—"}</div>
+                    {p.studentCode && <div className="text-[10px] text-on-surface-variant font-mono">{p.studentCode}</div>}
+                  </TableCell>
                   <TableCell className="text-xs whitespace-nowrap">{paymentModeLabel(p)}</TableCell>
                   <TableCell className="text-xs whitespace-nowrap">{paymentPeriodLabel(p)}</TableCell>
                   <TableCell className="truncate text-xs">{paymentJourneyLabel(p)}</TableCell>
                   <TableCell className="text-right font-bold tabular-nums">{formatVND(paymentOriginalAmount(p))}</TableCell>
                   <TableCell className="text-right tabular-nums text-success">{formatVND(p.subsidyAmount || 0)}</TableCell>
                   <TableCell className="text-right font-bold tabular-nums">{formatVND(paymentFinalAmount(p))}</TableCell>
-                  <TableCell><M3StatusPill label={p.paymentStatus || "—"} tone={isPaidStatus(p.paymentStatus) ? "success" : "warning"} /></TableCell>
-                  <TableCell className="text-xs whitespace-nowrap">{formatDate(p.paidAt || p.transactionDate || p.createdAt)}</TableCell>
+                  <TableCell><M3StatusPill label={paymentStatusLabel(p.paymentStatus)} tone={paymentStatusTone(p.paymentStatus)} /></TableCell>
+                  <TableCell className="text-xs whitespace-nowrap">{formatDate(paymentDateValue(p))}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -1201,36 +1580,44 @@ function TransactionsScreen({ ctx }: { ctx: Ctx }) {
 // Screen 9: Reconciliation
 // =============================================================================
 function ReconScreen({ ctx }: { ctx: Ctx }) {
-  const r = ctx.reconciliation;
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const reconciliationResource = useUniAdminReconciliation({
+    from: from || undefined,
+    to: to || undefined,
+  });
+  const r = reconciliationResource.raw || ctx.reconciliation;
 
-  const reload = useCallback(async () => {
-    try {
-      // The reload already happens via ctx.reload which re-fetches all hooks
-      // For now we just trigger reload
-      ctx.reload();
-    } catch (e) {
-      toast.error("Không thể tải dữ liệu đối soát");
-    }
-  }, [ctx]);
+  const reload = useCallback(() => {
+    reconciliationResource.reload();
+  }, [reconciliationResource]);
 
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Đối soát tài chính"
-        description="Tổng hợp theo kỳ, ưu tiên đơn thanh toán V16 và fallback vé tháng legacy khi chưa có dữ liệu đơn."
+        description="Tổng hợp tiền vé, trợ giá và số tiền sinh viên đã thanh toán theo khoảng ngày."
         icon={<ScrollText className="size-7" />}
         actions={
           <div className="flex gap-2">
             <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-36" />
             <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-36" />
-            <ExpressiveButton variant="tonal" size="icon" onClick={reload}><RefreshCw className="size-4" /></ExpressiveButton>
+            <ExpressiveButton variant="tonal" size="icon" onClick={reload} disabled={reconciliationResource.loading}>
+              <RefreshCw className={cn("size-4", reconciliationResource.loading && "animate-spin")} />
+            </ExpressiveButton>
           </div>
         }
       />
-      {!r ? (
-        <EmptyState icon={<ScrollText className="size-7" />} title="Chưa có dữ liệu đối soát" />
+      {reconciliationResource.loading && !r ? (
+        <LoadingScreen label="Đang tải dữ liệu đối soát..." />
+      ) : reconciliationResource.error ? (
+        <ErrorScreen message={reconciliationResource.error} onRetry={reload} />
+      ) : !r ? (
+        <EmptyState
+          icon={<ScrollText className="size-7" />}
+          title="Chưa có dữ liệu đối soát trong khoảng thời gian này"
+          description="Không tìm thấy dữ liệu thanh toán trong khoảng ngày đã chọn."
+        />
       ) : (
         <ScrollReveal>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 min-w-0">
@@ -1259,36 +1646,6 @@ function ReconScreen({ ctx }: { ctx: Ctx }) {
         </ScrollReveal>
       )}
 
-      {ctx.payments.length > 0 && (
-        <ScrollReveal delay={0.1}>
-          <Section title={`Chi tiết giao dịch (${ctx.payments.length})`}>
-            <ExpressiveCard variant="elevated" className="overflow-hidden min-w-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>SV</TableHead>
-                    <TableHead>Loại/Chặng</TableHead>
-                    <TableHead className="text-right">Gốc / Trả</TableHead>
-                    <TableHead>Trạng thái</TableHead>
-                    <TableHead>Ngày</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {ctx.payments.slice(0, 50).map((p) => (
-                    <TableRow key={p.orderId}>
-                      <TableCell className="truncate">{p.studentName || p.studentCode}</TableCell>
-                      <TableCell className="truncate text-xs">{paymentModeLabel(p)}<div className="text-[10px] text-on-surface-variant truncate">{paymentJourneyLabel(p)}</div></TableCell>
-                      <TableCell className="text-right font-bold tabular-nums"><div>{formatVND(paymentOriginalAmount(p))}</div><div className="text-[10px] text-on-surface-variant">→ {formatVND(paymentFinalAmount(p))}</div></TableCell>
-                      <TableCell><M3StatusPill label={p.paymentStatus || "—"} tone={isPaidStatus(p.paymentStatus) ? "success" : "warning"} /></TableCell>
-                      <TableCell className="text-xs whitespace-nowrap">{formatDate(p.paidAt || p.transactionDate)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </ExpressiveCard>
-          </Section>
-        </ScrollReveal>
-      )}
     </PageTransition>
   );
 }
@@ -1303,4 +1660,3 @@ function FallbackScreen({ activeId }: { activeId: string }) {
     />
   );
 }
-

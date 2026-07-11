@@ -138,6 +138,10 @@ public class ExperienceRepository {
     public AdminStatsView adminStats(int days) {
         LocalDate to = LocalDate.now();
         LocalDate from = to.minusDays(days - 1L);
+        return adminStats(from, to);
+    }
+
+    public AdminStatsView adminStats(LocalDate from, LocalDate to) {
         return new AdminStatsView(
                 List.of(
                         stat("Người dùng", count("users"), "tài khoản", "primary"),
@@ -145,7 +149,7 @@ public class ExperienceRepository {
                         stat("Trường đối tác", countWhere("universities", "status = 'ACTIVE'"), "trường", "tertiary"),
                         stat("Chờ xác thực", countWhere("student_verifications", "status = 'PENDING_REVIEW'"), "hồ sơ", "warning"),
                         stat("Tuyến", countWhere("routes", "status = 'ACTIVE'"), "tuyến", "tertiary"),
-                        stat("Doanh thu", revenue(), "VND", "success")),
+                        stat("Doanh thu", revenue(from, to), "VND", "success")),
                 routeMetrics(),
                 complaints(null, 8),
                 violations(null, 8),
@@ -1085,6 +1089,15 @@ public class ExperienceRepository {
     private BigDecimal revenue() {
         return jdbcTemplate.queryForObject("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status = 'PAID'",
                 BigDecimal.class);
+    }
+
+    private BigDecimal revenue(LocalDate from, LocalDate to) {
+        return jdbcTemplate.queryForObject("""
+                SELECT COALESCE(SUM(amount), 0)
+                FROM payments
+                WHERE status = 'PAID'
+                  AND CAST(created_at AS date) BETWEEN ? AND ?
+                """, BigDecimal.class, from, to);
     }
 
     private String defaultText(String value, String fallback) {

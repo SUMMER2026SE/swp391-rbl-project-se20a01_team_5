@@ -1280,7 +1280,8 @@ export const experienceApi = {
   coordinatorByUniversity: () => apiFetch.get<CoordinatorUniversityMetric[]>("/coordinator/by-university"),
   coordinatorUniversityRoutes: (universityId: number) => apiFetch.get<CoordinatorUniversityRouteMetric[]>(`/coordinator/by-university/${universityId}/routes`),
   coordinatorFeedback: (status?: string) => apiFetch.get<ExperienceFeedbackCard[]>("/coordinator/feedback", { status }),
-  adminStats: (days = 7) => apiFetch.get<AdminStatsView>("/admin/stats", { days }),
+  adminStats: (params: number | { days?: number; from?: string; to?: string } = 7) =>
+    apiFetch.get<AdminStatsView>("/admin/stats", typeof params === "number" ? { days: params } : params),
   fares: () => apiFetch.get<AdminStatsView["fares"]>("/admin/fares"),
   updateFare: (fareId: number, data: { amount: number; notes?: string }) =>
     apiFetch.put<AdminStatsView["fares"][number]>(`/admin/fares/${fareId}`, data),
@@ -1536,7 +1537,7 @@ export interface RosterStudentView {
   rosterId: number;
   universityId: number;
   email: string;
-  studentCode: string;
+  studentCode?: string;
   fullName: string;
   faculty?: string;
   academicYear?: number;
@@ -1581,6 +1582,8 @@ export interface RouteUniversityView {
   status: string;
 }
 
+export type SubsidyType = "PERCENTAGE" | "FIXED_AMOUNT";
+
 export interface SubsidyPolicyView {
   subsidyPolicyId: number;
   universityId: number;
@@ -1588,7 +1591,7 @@ export interface SubsidyPolicyView {
   campusId?: number;
   campusName?: string;
   policyName: string;
-  subsidyType: string;
+  subsidyType: SubsidyType;
   value: number;
   maxAmount?: number;
   activeFrom?: string;
@@ -1617,7 +1620,7 @@ export interface UniversityStatsView {
   tripsSeries: { day: string; date: string; trips: number }[];
   subsidyDistribution: {
     policyName: string;
-    subsidyType: string;
+    subsidyType: SubsidyType;
     value: number;
     colorHex: string;
   }[];
@@ -1728,6 +1731,8 @@ export const adminApi = {
   createSubsidyPolicy: (data: { universityId: number; campusId?: number; policyName: string; subsidyType: string; value: number; maxAmount?: number; activeFrom?: string; activeUntil?: string; status?: string }) =>
     apiFetch.post<SubsidyPolicyView>("/admin/subsidy-policies", data),
   auditLogs: (params?: { universityId?: number; action?: string }) => apiFetch.get<AuditLogView[]>("/admin/audit-logs", params),
+  auditReportExport: (data: { from?: string; to?: string; format?: string }) =>
+    apiFetch.post<void>("/admin/audit-logs/report-export", data),
   paymentTransactions: (params?: { universityId?: number }) => apiFetch.get<PaymentTransactionView[]>("/admin/payment-transactions", params),
 };
 
@@ -1747,7 +1752,7 @@ export const universityApi = {
   },
   importBatches: () => apiFetch.get<ImportBatchView[]>("/university-admin/roster/import"),
   subsidyPolicies: () => apiFetch.get<SubsidyPolicyView[]>("/university-admin/subsidy-policies"),
-  createSubsidyPolicy: (data: { campusId?: number; policyName: string; subsidyType: string; value: number; maxAmount?: number; activeFrom?: string; activeUntil?: string; status?: string }) =>
+  createSubsidyPolicy: (data: { campusId?: number; policyName: string; subsidyType: SubsidyType; value: number; maxAmount?: number; activeFrom?: string; activeUntil?: string; status?: string }) =>
     apiFetch.post<SubsidyPolicyView>("/university-admin/subsidy-policies", data),
   stats: () => apiFetch.get<UniversityStatsView>("/university-admin/stats"),
   reconciliation: (params?: { from?: string; to?: string }) => apiFetch.get<ReconciliationView>("/university-admin/reconciliation", params),
