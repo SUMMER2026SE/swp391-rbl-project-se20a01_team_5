@@ -15,6 +15,7 @@ frontend/frontend-run*.log
 .codex/tmp/
 .codex-backend*.log
 .codex-*.log
+.worktrees/
 *.rej
 *.orig
 patch6.patch
