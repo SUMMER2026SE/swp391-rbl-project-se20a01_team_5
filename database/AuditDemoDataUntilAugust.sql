@@ -1,4 +1,4 @@
--- Stable demo coverage audit.
+-- Demo coverage audit.
 -- Returns one readable result set with PASS/WARN/FAIL rows.
 
 WITH params AS (
@@ -112,7 +112,7 @@ full_price_route_status AS (
     FROM students s
     LEFT JOIN route_registrations rr ON rr.student_code = s.student_code AND rr.status = 'APPROVED'
     LEFT JOIN routes r ON r.route_id = rr.route_id
-    WHERE s.student_code = 'SV-STABLE-FULL'
+    WHERE s.student_code = 'SV-DEMO-FULL'
     ORDER BY rr.registration_id DESC
     LIMIT 1
 ),
@@ -123,7 +123,7 @@ today_trips AS (
         CASE WHEN count(*) FILTER (WHERE t.service_date = p.today) >= 2 THEN 'PASS' ELSE 'FAIL' END AS status,
         concat('today_trips=', count(*) FILTER (WHERE t.service_date = p.today), '; routes=', COALESCE(string_agg(DISTINCT r.route_code, ', ' ORDER BY r.route_code), 'none')) AS detail
     FROM params p
-    LEFT JOIN trips t ON t.notes LIKE 'STABLE_DEMO%' AND t.service_date = p.today
+    LEFT JOIN trips t ON (t.notes LIKE 'DEMO_DATA%' OR t.notes LIKE 'DEMO_FLEET%') AND t.service_date = p.today
     LEFT JOIN routes r ON r.route_id = t.route_id
 ),
 trip_coverage AS (
@@ -138,41 +138,41 @@ trip_coverage AS (
         FROM generate_series(p.today, p.end_date, INTERVAL '1 day') AS d
         WHERE NOT EXISTS (
             SELECT 1 FROM trips t
-            WHERE t.notes LIKE 'STABLE_DEMO%'
+            WHERE (t.notes LIKE 'DEMO_DATA%' OR t.notes LIKE 'DEMO_FLEET%')
               AND t.service_date = d::date
         )
     ) missing_days ON true
 ),
 ticket_status AS (
     SELECT 'ticketing' AS section, 'active monthly pass' AS subject,
-           CASE WHEN EXISTS (SELECT 1 FROM monthly_passes WHERE student_code = 'SV-STABLE-MONTH' AND status = 'ACTIVE') THEN 'PASS' ELSE 'FAIL' END AS status,
-           'SV-STABLE-MONTH should have ACTIVE monthly pass' AS detail
+           CASE WHEN EXISTS (SELECT 1 FROM monthly_passes WHERE student_code = 'SV-DEMO-MONTH' AND status = 'ACTIVE') THEN 'PASS' ELSE 'FAIL' END AS status,
+           'SV-DEMO-MONTH should have ACTIVE monthly pass' AS detail
     UNION ALL
     SELECT 'ticketing', 'supported monthly pass',
-           CASE WHEN EXISTS (SELECT 1 FROM monthly_passes mp JOIN linked_routes lr ON lr.route_id = mp.route_id WHERE mp.student_code = 'SV-STABLE-SUB' AND mp.status = 'ACTIVE') THEN 'PASS' ELSE 'FAIL' END,
-           'SV-STABLE-SUB should have ACTIVE monthly pass on Duy Tân linked BUSMAP route'
+           CASE WHEN EXISTS (SELECT 1 FROM monthly_passes mp JOIN linked_routes lr ON lr.route_id = mp.route_id WHERE mp.student_code = 'SV-DEMO-SUB' AND mp.status = 'ACTIVE') THEN 'PASS' ELSE 'FAIL' END,
+           'SV-DEMO-SUB should have ACTIVE monthly pass on Duy Tân linked BUSMAP route'
     UNION ALL
     SELECT 'ticketing', 'day ticket',
-           CASE WHEN EXISTS (SELECT 1 FROM single_trip_tickets WHERE student_code = 'SV-STABLE-DAY' AND status = 'UNUSED') THEN 'PASS' ELSE 'FAIL' END,
-           'SV-STABLE-DAY should have UNUSED single ticket'
+           CASE WHEN EXISTS (SELECT 1 FROM single_trip_tickets WHERE student_code = 'SV-DEMO-DAY' AND status = 'UNUSED') THEN 'PASS' ELSE 'FAIL' END,
+           'SV-DEMO-DAY should have UNUSED single ticket'
     UNION ALL
     SELECT 'ticketing', 'unpaid V16 order',
-           CASE WHEN EXISTS (SELECT 1 FROM tb_orders WHERE student_code = 'SV-STABLE-UNPAID' AND lower(payment_status) = 'unpaid' AND original_amount > 0 AND final_amount > 0 AND order_mode = 'single-route') THEN 'PASS' ELSE 'FAIL' END,
-           'SV-STABLE-UNPAID should have unpaid V16 order'
+           CASE WHEN EXISTS (SELECT 1 FROM tb_orders WHERE student_code = 'SV-DEMO-UNPAID' AND lower(payment_status) = 'unpaid' AND original_amount > 0 AND final_amount > 0 AND order_mode = 'single-route') THEN 'PASS' ELSE 'FAIL' END,
+           'SV-DEMO-UNPAID should have unpaid V16 order'
     UNION ALL
     SELECT 'ticketing', 'paid order transaction',
-           CASE WHEN EXISTS (SELECT 1 FROM tb_orders o JOIN tb_transactions tx ON tx.matched_order_id = o.id WHERE o.student_code = 'SV-STABLE-MONTH' AND lower(o.payment_status) = 'paid') THEN 'PASS' ELSE 'FAIL' END,
-           'SV-STABLE-MONTH should have paid order matched to SePay transaction'
+           CASE WHEN EXISTS (SELECT 1 FROM tb_orders o JOIN tb_transactions tx ON tx.matched_order_id = o.id WHERE o.student_code = 'SV-DEMO-MONTH' AND lower(o.payment_status) = 'paid') THEN 'PASS' ELSE 'FAIL' END,
+           'SV-DEMO-MONTH should have paid order matched to SePay transaction'
     UNION ALL
     SELECT 'ticketing', 'travel history',
-           CASE WHEN EXISTS (SELECT 1 FROM travel_history WHERE student_code = 'SV-STABLE-HIST') THEN 'PASS' ELSE 'FAIL' END,
-           'SV-STABLE-HIST should have QR scan travel history'
+           CASE WHEN EXISTS (SELECT 1 FROM travel_history WHERE student_code = 'SV-DEMO-HIST') THEN 'PASS' ELSE 'FAIL' END,
+           'SV-DEMO-HIST should have QR scan travel history'
     UNION ALL
     SELECT 'ticketing', 'demo monthly scan validity',
            CASE WHEN count(*) FILTER (WHERE expires_on <= (SELECT end_date FROM params)) = 0 AND count(*) >= 4 THEN 'PASS' ELSE 'FAIL' END,
            concat('active_demo_passes=', count(*), '; expiring_too_early=', count(*) FILTER (WHERE expires_on <= (SELECT end_date FROM params)), '; expires_on=', COALESCE(string_agg(DISTINCT expires_on::text, ', ' ORDER BY expires_on::text), 'none'))
     FROM monthly_passes
-    WHERE student_code LIKE 'SV-STABLE-%'
+    WHERE student_code LIKE 'SV-DEMO-%'
       AND status = 'ACTIVE'
       AND qr_code LIKE 'DEMO-%'
 ),
@@ -183,7 +183,7 @@ uniadmin_visibility AS (
         CASE WHEN count(DISTINCT s.student_code) >= 6 AND count(DISTINCT usr.roster_id) >= 6 AND count(DISTINCT o.id) >= 2 THEN 'PASS' ELSE 'FAIL' END AS status,
         concat('students=', count(DISTINCT s.student_code), ', roster_rows=', count(DISTINCT usr.roster_id), ', orders=', count(DISTINCT o.id), ', monthly_passes=', count(DISTINCT mp.monthly_pass_id), ', single_tickets=', count(DISTINCT st.single_trip_ticket_id)) AS detail
     FROM dtu d
-    LEFT JOIN students s ON s.university_id = d.university_id AND (s.student_code LIKE 'SV-STABLE-%' OR s.student_code = 'DTU202032312')
+    LEFT JOIN students s ON s.university_id = d.university_id AND (s.student_code LIKE 'SV-DEMO-%' OR s.student_code = 'DTU202032312')
     LEFT JOIN university_student_rosters usr ON usr.university_id = d.university_id AND usr.student_code = s.student_code AND usr.status = 'ACTIVE'
     LEFT JOIN tb_orders o ON o.student_code = s.student_code
     LEFT JOIN monthly_passes mp ON mp.student_code = s.student_code
@@ -220,17 +220,17 @@ legacy_warnings AS (
     FROM students s
     LEFT JOIN universities u ON u.university_id = s.university_id
     LEFT JOIN dtu d ON true
-    WHERE s.student_code LIKE 'SV-STABLE-%'
+    WHERE s.student_code LIKE 'SV-DEMO-%'
       AND (s.university_id IS DISTINCT FROM d.university_id)
     UNION ALL
     SELECT
         'legacy_warning',
-        'stable registrations using UB-DN routes',
+        'demo registrations using fake UB-DN routes',
         CASE WHEN count(*) = 0 THEN 'PASS' ELSE 'WARN' END,
         concat('count=', count(*), '; route_codes=', COALESCE(string_agg(DISTINCT r.route_code, ', ' ORDER BY r.route_code), 'none'))
     FROM route_registrations rr
     JOIN routes r ON r.route_id = rr.route_id
-    WHERE rr.student_code LIKE 'SV-STABLE-%'
+    WHERE rr.student_code LIKE 'SV-DEMO-%'
       AND rr.status = 'APPROVED'
       AND r.route_code LIKE 'UB-DN-%'
 )

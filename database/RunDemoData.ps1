@@ -30,9 +30,9 @@ function Read-UniBusDbAuth {
 function Get-SqlFileForMode {
     param([string]$CurrentMode)
     switch ($CurrentMode) {
-        'Seed' { return (Join-Path $PSScriptRoot 'SeedStableDemoDataUntilAugust.sql') }
-        'Reset' { return (Join-Path $PSScriptRoot 'ResetStableDemoScenario.sql') }
-        'Audit' { return (Join-Path $PSScriptRoot 'AuditStableDemoDataUntilAugust.sql') }
+        'Seed' { return (Join-Path $PSScriptRoot 'SeedDemoDataUntilAugust.sql') }
+        'Reset' { return (Join-Path $PSScriptRoot 'ResetDemoScenario.sql') }
+        'Audit' { return (Join-Path $PSScriptRoot 'AuditDemoDataUntilAugust.sql') }
         default { throw "Unsupported mode $CurrentMode" }
     }
 }
@@ -72,7 +72,7 @@ function Invoke-WithPythonPsycopg2 {
         'finally:'
         '    conn.close()'
     )
-    $tempRunner = Join-Path ([System.IO.Path]::GetTempPath()) 'unibus_stable_demo_runner.py'
+    $tempRunner = Join-Path ([System.IO.Path]::GetTempPath()) 'unibus_demo_runner.py'
     try {
         Set-Content -LiteralPath $tempRunner -Value ($py -join [Environment]::NewLine) -Encoding UTF8
         $env:PYTHONIOENCODING = 'utf-8'
@@ -107,7 +107,7 @@ function Invoke-WithPsql {
     }
 }
 
-function Invoke-StableDemoSql {
+function Invoke-DemoSql {
     param([string]$CurrentMode)
     $sqlFile = Get-SqlFileForMode -CurrentMode $CurrentMode
     if (-not (Test-Path -LiteralPath $sqlFile)) { throw "Khong tim thay SQL file: $sqlFile" }
@@ -117,7 +117,7 @@ function Invoke-StableDemoSql {
     throw 'Khong co runner kha dung: can python+psycopg2 hoac psql.'
 }
 
-function Confirm-StableDemoMutation {
+function Confirm-DemoMutation {
     param([string]$RequestedMode, [hashtable]$Auth)
     $requiredPhrase = if ($RequestedMode -eq 'Reset') { 'RESET DEMO' } else { 'SEED DEMO' }
     if ($RequestedMode -eq 'All') {
@@ -133,10 +133,9 @@ function Confirm-StableDemoMutation {
 $auth = Read-UniBusDbAuth -Path $AuthFile
 Write-Host "Target database: host=$($auth['endpoint']); port=$($auth['port']); database=$($auth['initialdb']); user=$($auth['username'])"
 if ($Mode -in @('Seed', 'Reset', 'All')) {
-    Confirm-StableDemoMutation -RequestedMode $Mode -Auth $auth
+    Confirm-DemoMutation -RequestedMode $Mode -Auth $auth
 } elseif ($Mode -eq 'Audit') {
     Write-Host 'Mode Audit is read-only and does not require confirmation.'
 }
 $modes = if ($Mode -eq 'All') { @('Seed', 'Audit') } else { @($Mode) }
-foreach ($currentMode in $modes) { Invoke-StableDemoSql -CurrentMode $currentMode }
-
+foreach ($currentMode in $modes) { Invoke-DemoSql -CurrentMode $currentMode }

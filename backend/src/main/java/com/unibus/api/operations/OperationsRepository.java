@@ -138,6 +138,7 @@ public class OperationsRepository {
     }
 
     public void ensureTrip(Integer scheduleId, LocalDate serviceDate) {
+        jdbcTemplate.queryForObject("SELECT schedule_id FROM bus_schedules WHERE schedule_id = ? FOR UPDATE", Integer.class, scheduleId);
         jdbcTemplate.update("""
                 INSERT INTO trips(schedule_id, route_id, bus_id, driver_id, conductor_id, service_date)
                 SELECT schedule_id, route_id, bus_id, driver_id, conductor_id, ?

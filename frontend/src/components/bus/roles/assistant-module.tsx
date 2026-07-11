@@ -214,21 +214,8 @@ function isRunningTrip(trip: any | null | undefined): boolean {
 }
 
 
-function isTripInScanWindow(trip: any): boolean {
-  if (!hasTripIdentity(trip)) return false;
-  const status = String(trip?.status || "").toUpperCase();
-  if (status === "COMPLETED" || status === "CANCELLED" || status === "NOT_CREATED") return false;
-  const date = trip?.serviceDate || trip?.date;
-  const time = trip?.departureTime || trip?.departTime;
-  if (!date || !time) return false;
-  const start = new Date(`${date}T${time}`);
-  if (Number.isNaN(start.getTime())) return false;
-  const now = new Date();
-  const opensAt = new Date(start.getTime() - 30 * 60 * 1000);
-  const closesAt = trip?.endedAt
-    ? new Date(new Date(trip.endedAt).getTime() + 60 * 60 * 1000)
-    : new Date(start.getTime() + 3 * 60 * 60 * 1000);
-  return now >= opensAt && now <= closesAt;
+function isTripOpenForScan(trip: any): boolean {
+  return hasTripIdentity(trip) && isRunningTrip(trip);
 }
 function tripLabel(trip: any): string {
   return trip?.routeName || `Tuyến #${trip?.routeId || trip?.id || "?"}`;
@@ -527,9 +514,9 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
   const [lastResult, setLastResult] = useState<TicketScanResult | null>(null);
   const [tickets, setTickets] = useState<ConductorTicketView[] | null>(null);
   const [loadingTickets, setLoadingTickets] = useState(false);
-  const validConductorTrips = useMemo(() => ctx.conductorTrips.filter((trip) => isTripInScanWindow(trip)), [ctx.conductorTrips]);
+  const validConductorTrips = useMemo(() => ctx.conductorTrips.filter((trip) => isTripOpenForScan(trip)), [ctx.conductorTrips]);
   const hasConductorTrips = ctx.conductorTrips.length > 0;
-  const hasInvalidConductorTrips = hasConductorTrips && ctx.conductorTrips.some((trip) => !hasTripIdentity(trip));
+  const hasInvalidConductorTrips = hasConductorTrips && ctx.conductorTrips.some((trip) => isRunningTrip(trip) && !hasTripIdentity(trip));
   const selectedTrip = validConductorTrips.find((trip) => Number(trip.tripId) === Number(tripId)) || validConductorTrips[0] || null;
 
   useEffect(() => {
@@ -613,7 +600,7 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
               </SelectTrigger>
               <SelectContent>
                 {validConductorTrips.map((trip) => (
-                  <SelectItem key={trip.tripId} value={String(trip.tripId)}>{tripLabel(trip)} — {formatDate(trip.serviceDate)}</SelectItem>
+                  <SelectItem key={trip.tripId} value={String(trip.tripId)}>{tripLabel(trip)} · {trip.licensePlate || trip.busPlate || "Chưa có biển số"} · {trip.departureTime || trip.departTime || formatDate(trip.serviceDate)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -629,11 +616,11 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
       {validConductorTrips.length === 0 ? (
         <ExpressiveCard variant="elevated" className="p-6 text-center min-w-0 border border-outline-variant">
           <ScanLine className="size-10 mx-auto text-on-surface-variant" />
-          <p className="mt-3 text-base font-bold">{hasInvalidConductorTrips ? "Chuyến hôm nay thiếu dữ liệu" : "Không có chuyến đang mở quét"}</p>
+          <p className="mt-3 text-base font-bold">{hasInvalidConductorTrips ? "Chuyến đang chạy thiếu dữ liệu" : "Chưa có chuyến đang chạy"}</p>
           <p className="mt-1.5 text-sm text-on-surface-variant">
             {hasInvalidConductorTrips
               ? "Chuyến cần có mã chuyến, tuyến và tên tuyến trước khi phụ xe quét vé."
-              : "Chỉ mở quét từ 30 phút trước giờ chạy đến 3 giờ sau giờ chạy."}
+              : "Tài xế cần bắt đầu chuyến trước khi phụ xe quét vé."}
           </p>
         </ExpressiveCard>
       ) : hasInvalidConductorTrips ? (
@@ -1314,6 +1301,3 @@ function FallbackScreen({ activeId }: { activeId: string }) {
     />
   );
 }
-
-
-

@@ -34,13 +34,13 @@ The frontend keeps UIPrototype v1.1 as the look and feel, but all runtime data c
 
 ## Database And Seed Order
 
-Run migrations through Flyway first. Demo data is now maintained through one stable runner:
+Run migrations through Flyway first. Demo data is now maintained through one maintained runner:
 
-1. `database/RunStableDemoData.ps1 -Mode Audit`
-2. `database/RunStableDemoData.ps1 -Mode Seed` when the demo scenario must be rebuilt
-3. `database/RunStableDemoData.ps1 -Mode Reset` after rehearsal
+1. `database/RunDemoData.ps1 -Mode Audit`
+2. `database/RunDemoData.ps1 -Mode Seed` when the demo scenario must be rebuilt
+3. `database/RunDemoData.ps1 -Mode Reset` after rehearsal
 
-`SeedStableDemoDataUntilAugust.sql` maintains the demo-owned Duy Tân/BUSMAP scenario used for rehearsals.
+`SeedDemoDataUntilAugust.sql` maintains the demo-owned Duy Tân/BUSMAP scenario used for rehearsals.
 
 Primary student QA account: `khanhnv20a02@gmail.com`. Seed password for password-based demo accounts is `Password123!`.
 

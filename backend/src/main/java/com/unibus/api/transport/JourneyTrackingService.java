@@ -2,9 +2,6 @@ package com.unibus.api.transport;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.Duration;
-import java.time.LocalDate;
-import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -78,12 +75,7 @@ public class JourneyTrackingService {
                 ? List.of(new MapPolyline("route-" + routeId, "BUS", route.colorHex(), shape))
                 : List.of();
 
-        VehicleSnapshot vehicle = latestVehicle(routeId, route, shape, stops, now)
-                .filter(item -> item.latitude() != null && item.longitude() != null)
-                .orElseGet(() -> simulatedRouteVehicle(route, shape, stops, now));
-        List<VehicleSnapshot> vehicles = vehicle.vehicleId().startsWith("route-sim-")
-                ? simulatedRouteVehicles(route, shape, stops, now)
-                : withSimulatedCompanions(vehicle, route, shape, stops, now);
+        List<VehicleSnapshot> vehicles = liveVehicles(routeId, route);
 
         List<StopEta> stopEtas = new ArrayList<>();
         int eta = 0;
@@ -111,7 +103,7 @@ public class JourneyTrackingService {
                 .toList();
         return new JourneyTrackingSnapshot("route-" + routeId, now, vehicles, stopEtas, polylines,
                 route.routeId(), route.routeCode(), route.routeName(), boardingStopId, alightingStopId,
-                trackingStops, vehicle.vehicleId().startsWith("route-sim-"));
+                trackingStops, false);
     }
 
     private VehicleSnapshot vehicleForLeg(JourneyLeg leg, int index, OffsetDateTime now) {
@@ -138,204 +130,38 @@ public class JourneyTrackingService {
                 null);
     }
 
-    private VehicleSnapshot scheduledRouteVehicle(RouteInfo route, List<Coordinate> shape, List<RouteStopPoint> stops, ActiveTrip trip, OffsetDateTime now) {
-        double progress = progressForTrip(trip, now);
-        Coordinate position = interpolate(shape, progress);
-        RouteStopPoint nextStop = nextStopForProgress(stops, progress);
-        int seed = Math.abs((route.routeId() == null ? 0 : route.routeId()) * 31);
-        int distanceMeters = position == null || nextStop == null ? 0 : distanceMeters(position, nextStop);
-        double segmentPosition = stops.size() <= 1 ? 0 : progress * (stops.size() - 1);
-        double segmentRatio = segmentPosition - Math.floor(segmentPosition);
-        double speedKmh = simulatedSpeedKmh(seed, segmentRatio, distanceMeters, now);
-        return new VehicleSnapshot(
-                "route-trip-" + route.routeId(),
-                trip.plateNumber() == null ? route.plateNumber() : trip.plateNumber(),
-                route.routeId(),
-                route.routeCode(),
-                position == null ? null : position.latitude(),
-                position == null ? null : position.longitude(),
-                BigDecimal.valueOf(speedKmh).setScale(1, RoundingMode.HALF_UP),
-                null,
-                45,
-                nextStop == null ? null : nextStop.stopId(),
-                nextStop == null ? null : nextStop.stopName(),
-                nextStop == null ? null : etaMinutes(distanceMeters, speedKmh),
-                distanceMeters);
-    }
-
-    private Optional<VehicleSnapshot> latestVehicle(Integer routeId, RouteInfo route, List<Coordinate> shape, List<RouteStopPoint> stops, OffsetDateTime now) {
-        List<VehicleSnapshot> rows = jdbcTemplate.query("""
-                SELECT vl.latitude, vl.longitude, vl.speed_kmh, vl.occupancy, b.license_plate
-                FROM trips t
-                JOIN bus_schedules bs ON bs.schedule_id = t.schedule_id
-                JOIN buses b ON b.bus_id = t.bus_id
-                JOIN vehicle_locations vl ON vl.trip_id = t.trip_id
-                WHERE t.route_id = ?
-                  AND t.service_date = CURRENT_DATE
-                  AND vl.updated_at >= CURRENT_TIMESTAMP - INTERVAL '5 minutes'
-                  AND (
-                    t.status = 'RUNNING'
-                    OR (CURRENT_TIME BETWEEN bs.departure_time AND bs.end_time)
-                  )
-                ORDER BY vl.updated_at DESC
-                LIMIT 1
-                """, (rs, rowNum) -> {
-            RouteStopPoint nextStop = stops.isEmpty() ? null : stops.get(Math.min(1, stops.size() - 1));
-            return new VehicleSnapshot(
-                    "route-live-" + routeId,
-                    rs.getString("license_plate"),
-                    route.routeId(),
-                    route.routeCode(),
-                    rs.getBigDecimal("latitude"),
-                    rs.getBigDecimal("longitude"),
-                    rs.getBigDecimal("speed_kmh"),
-                    (Integer) rs.getObject("occupancy"),
-                    45,
-                    nextStop == null ? null : nextStop.stopId(),
-                    nextStop == null ? null : nextStop.stopName(),
-                    nextStop == null ? null : 3,
-                    null);
-        }, routeId);
-        if (!rows.isEmpty()) {
-            return Optional.of(rows.get(0));
-        }
-        return Optional.of(activeTrip(routeId, now)
-                .map(trip -> scheduledRouteVehicle(route, shape, stops, trip, now))
-                .orElseGet(() -> simulatedRouteVehicle(route, shape, stops, now)));
-    }
-
-    private List<VehicleSnapshot> simulatedRouteVehicles(RouteInfo route, List<Coordinate> shape, List<RouteStopPoint> stops, OffsetDateTime now) {
-        return List.of(
-                simulatedRouteVehicle(route, shape, stops, now, 0),
-                simulatedRouteVehicle(route, shape, stops, now, 1),
-                simulatedRouteVehicle(route, shape, stops, now, 2));
-    }
-
-    private List<VehicleSnapshot> withSimulatedCompanions(VehicleSnapshot vehicle, RouteInfo route, List<Coordinate> shape, List<RouteStopPoint> stops, OffsetDateTime now) {
-        return List.of(
-                vehicle,
-                simulatedRouteVehicle(route, shape, stops, now, 1),
-                simulatedRouteVehicle(route, shape, stops, now, 2));
-    }
-
-    private VehicleSnapshot simulatedRouteVehicle(RouteInfo route, List<Coordinate> shape, List<RouteStopPoint> stops, OffsetDateTime now) {
-        return simulatedRouteVehicle(route, shape, stops, now, 0);
-    }
-
-    private VehicleSnapshot simulatedRouteVehicle(RouteInfo route, List<Coordinate> shape, List<RouteStopPoint> stops, OffsetDateTime now, int index) {
-        double progress = progressForRoute(route.routeId(), now, index);
-        Coordinate position = interpolate(shape, progress);
-        if (position == null && !stops.isEmpty()) {
-            RouteStopPoint fallbackStop = stops.get(0);
-            position = new Coordinate(fallbackStop.latitude(), fallbackStop.longitude());
-        }
-        RouteStopPoint nextStop = nextStopForProgress(stops, progress);
-        int seed = Math.abs((route.routeId() == null ? 0 : route.routeId()) * 31 + index * 97);
-        int distanceMeters = position == null || nextStop == null ? 0 : distanceMeters(position, nextStop);
-        double segmentPosition = stops.size() <= 1 ? 0 : progress * (stops.size() - 1);
-        double segmentRatio = segmentPosition - Math.floor(segmentPosition);
-        double speedKmh = simulatedSpeedKmh(seed, segmentRatio, distanceMeters, now);
-        int etaMinutes = nextStop == null ? 0 : etaMinutes(distanceMeters, speedKmh);
-        return new VehicleSnapshot(
-                index == 0 ? "route-sim-" + route.routeId() : "route-sim-" + route.routeId() + "-" + index,
-                "43B-" + String.format("%05d", 16000 + seed % 70000),
-                route.routeId(),
-                route.routeCode(),
-                position == null ? null : position.latitude(),
-                position == null ? null : position.longitude(),
-                BigDecimal.valueOf(speedKmh).setScale(1, RoundingMode.HALF_UP),
-                10 + seed % 24,
-                45,
-                nextStop == null ? null : nextStop.stopId(),
-                nextStop == null ? null : nextStop.stopName(),
-                etaMinutes,
-                distanceMeters);
-    }
-
-    private double simulatedSpeedKmh(int seed, double segmentRatio, int distanceMeters, OffsetDateTime now) {
-        int secondOfDay = now.getHour() * 3600 + now.getMinute() * 60 + now.getSecond();
-        double cruise = 35 + Math.abs(seed % 16);
-        double seedWave = Math.sin((seed % 360) * Math.PI / 180.0) * 2.0;
-        double timeWave = Math.sin((secondOfDay + seed * 13) / 5.0) * 3.5;
-        double pulse = Math.sin((secondOfDay + seed * 7) / 2.3) * 1.2;
-        double speed = Math.max(35, Math.min(50, cruise + seedWave + timeWave + pulse));
-        if (distanceMeters <= 18) {
-            return 0;
-        }
-        if (distanceMeters <= 250) {
-            return Math.max(4, speed * distanceMeters / 250.0);
-        }
-        if (segmentRatio < 0.08) {
-            return Math.max(8, speed * (segmentRatio / 0.08));
-        }
-        return speed;
-    }
-
-    private int etaMinutes(int distanceMeters, double speedKmh) {
-        if (distanceMeters <= 0 || speedKmh <= 0) {
-            return 0;
-        }
-        double metersPerMinute = speedKmh * 1000 / 60.0;
-        return Math.max(1, (int) Math.ceil(distanceMeters / metersPerMinute));
-    }
-
-    private int distanceMeters(Coordinate from, RouteStopPoint to) {
-        double lat1 = from.latitude().doubleValue() * Math.PI / 180.0;
-        double lat2 = to.latitude().doubleValue() * Math.PI / 180.0;
-        double dLat = lat2 - lat1;
-        double dLng = (to.longitude().doubleValue() - from.longitude().doubleValue()) * Math.PI / 180.0;
-        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
-                + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
-        return (int) Math.round(6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
-    }
-
-    private Optional<ActiveTrip> activeTrip(Integer routeId, OffsetDateTime now) {
+    private List<VehicleSnapshot> liveVehicles(Integer routeId, RouteInfo route) {
         return jdbcTemplate.query("""
-                SELECT t.trip_id, b.license_plate, t.service_date, bs.departure_time, bs.end_time
+                SELECT t.trip_id, b.license_plate, vl.latitude, vl.longitude, vl.speed_kmh, vl.occupancy
                 FROM trips t
-                JOIN bus_schedules bs ON bs.schedule_id = t.schedule_id
                 JOIN buses b ON b.bus_id = t.bus_id
+                JOIN vehicle_locations vl ON vl.vehicle_location_id = (
+                    SELECT latest.vehicle_location_id
+                    FROM vehicle_locations latest
+                    WHERE latest.trip_id = t.trip_id
+                    ORDER BY latest.updated_at DESC, latest.vehicle_location_id DESC
+                    LIMIT 1
+                )
                 WHERE t.route_id = ?
                   AND t.service_date = CURRENT_DATE
-                  AND (
-                    t.status = 'RUNNING'
-                    OR (CURRENT_TIME BETWEEN bs.departure_time AND bs.end_time)
-                  )
-                ORDER BY CASE t.status WHEN 'RUNNING' THEN 0 ELSE 1 END, bs.departure_time
-                LIMIT 1
-                """, (rs, rowNum) -> {
-            LocalDate serviceDate = rs.getDate("service_date").toLocalDate();
-            LocalTime departureTime = rs.getTime("departure_time").toLocalTime();
-            LocalTime endTime = rs.getTime("end_time").toLocalTime();
-            OffsetDateTime start = serviceDate.atTime(departureTime).atZone(VIETNAM_ZONE).toOffsetDateTime();
-            OffsetDateTime end = serviceDate.atTime(endTime).atZone(VIETNAM_ZONE).toOffsetDateTime();
-            if (!end.isAfter(start)) {
-                end = end.plusDays(1);
-            }
-            return new ActiveTrip(rs.getInt("trip_id"), rs.getString("license_plate"), start, end);
-        }, routeId).stream().findFirst();
+                  AND t.status = 'RUNNING'
+                  AND vl.updated_at >= ?
+                ORDER BY t.trip_id
+                """, (rs, rowNum) -> new VehicleSnapshot(
+                "trip-" + rs.getInt("trip_id"),
+                rs.getString("license_plate"),
+                route.routeId(),
+                route.routeCode(),
+                rs.getBigDecimal("latitude"),
+                rs.getBigDecimal("longitude"),
+                rs.getBigDecimal("speed_kmh"),
+                (Integer) rs.getObject("occupancy"),
+                45,
+                null,
+                null,
+                null,
+                null), routeId, OffsetDateTime.now(VIETNAM_ZONE).minusMinutes(5));
     }
-
-    private double progressForTrip(ActiveTrip trip, OffsetDateTime now) {
-        if (now.isBefore(trip.startsAt())) {
-            return 0;
-        }
-        if (now.isAfter(trip.endsAt())) {
-            return 1;
-        }
-        long totalSeconds = Math.max(1, Duration.between(trip.startsAt(), trip.endsAt()).toSeconds());
-        long elapsedSeconds = Math.max(0, Duration.between(trip.startsAt(), now).toSeconds());
-        return Math.max(0, Math.min(1, elapsedSeconds / (double) totalSeconds));
-    }
-
-    private RouteStopPoint nextStopForProgress(List<RouteStopPoint> stops, double progress) {
-        if (stops.isEmpty()) {
-            return null;
-        }
-        int index = Math.min(stops.size() - 1, Math.max(0, (int) Math.ceil(progress * (stops.size() - 1))));
-        return stops.get(index);
-    }
-
     private RouteInfo routeInfo(Integer routeId) {
         List<RouteInfo> rows = jdbcTemplate.query("""
                 SELECT route_id, route_code, route_name, color_hex
@@ -345,8 +171,7 @@ public class JourneyTrackingService {
                 rs.getInt("route_id"),
                 rs.getString("route_code"),
                 rs.getString("route_name"),
-                rs.getString("color_hex"),
-                null), routeId);
+                rs.getString("color_hex")), routeId);
         if (rows.isEmpty()) {
             throw new com.unibus.api.common.ApiException(org.springframework.http.HttpStatus.NOT_FOUND, "Route not found");
         }
@@ -467,18 +292,6 @@ public class JourneyTrackingService {
         return ((secondOfDay + index * 420) % cycleSeconds) / (double) cycleSeconds;
     }
 
-    private double progressForRoute(Integer routeId, OffsetDateTime now) {
-        return progressForRoute(routeId, now, 0);
-    }
-
-    private double progressForRoute(Integer routeId, OffsetDateTime now, int index) {
-        int cycleMinutes = 55 + Math.abs((routeId == null ? 0 : routeId) % 25);
-        int cycleSeconds = cycleMinutes * 60;
-        int secondOfDay = now.getHour() * 3600 + now.getMinute() * 60 + now.getSecond();
-        int offsetSeconds = (Math.abs(routeId == null ? 0 : routeId) * 60) + index * Math.max(480, cycleSeconds / 3);
-        return ((secondOfDay + offsetSeconds) % cycleSeconds) / (double) cycleSeconds;
-    }
-
     private Coordinate interpolate(List<Coordinate> points, double progress) {
         if (points == null || points.isEmpty()) {
             return null;
@@ -505,11 +318,10 @@ public class JourneyTrackingService {
         return left + (right - left) * ratio;
     }
 
-    private record ActiveTrip(Integer tripId, String plateNumber, OffsetDateTime startsAt, OffsetDateTime endsAt) {}
 
     private record RoutePathRow(Integer stopOrder, String pathPoints, BigDecimal latitude, BigDecimal longitude) {}
 
-    private record RouteInfo(Integer routeId, String routeCode, String routeName, String colorHex, String plateNumber) {
+    private record RouteInfo(Integer routeId, String routeCode, String routeName, String colorHex) {
     }
 
     private record RouteStopPoint(Integer stopId, String stopName, String address, BigDecimal latitude, BigDecimal longitude,

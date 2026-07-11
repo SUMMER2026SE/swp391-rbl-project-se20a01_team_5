@@ -413,6 +413,9 @@ public class OperationsService {
         if ("COMPLETED".equals(status) || "CANCELLED".equals(status) || "NOT_CREATED".equals(status)) {
             return new TicketScanResult(false, "Chuyến không còn mở để quét vé.", null, null);
         }
+        if (!"RUNNING".equals(status)) {
+            return new TicketScanResult(false, "Tài xế chưa bắt đầu chuyến.", null, null);
+        }
         LocalDateTime start = trip.scheduledStart();
         if (start == null) {
             start = trip.departedAt() == null

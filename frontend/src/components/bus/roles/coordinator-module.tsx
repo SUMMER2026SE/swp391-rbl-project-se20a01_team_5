@@ -674,11 +674,15 @@ function LiveMapScreen({ ctx }: { ctx: Ctx }) {
   const [vehicleLocations, setVehicleLocations] = useState<Record<string, string>>({});
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const liveVehicles = useMemo(() => (fleet.raw || ctx.raw.dashboard.raw?.liveFleet || []) as LiveFleetVehicle[], [ctx.raw.dashboard.raw?.liveFleet, fleet.raw]);
-  const vehicles = useMemo(() => (liveVehicles.length ? liveVehicles : mockLiveFleet(ctx.routes))
-    .filter(isRunningVehicle), [ctx.routes, liveVehicles]);
+  const vehicles = useMemo(() => liveVehicles.filter(isRunningVehicle), [liveVehicles]);
   const toggleSelectedVehicle = useCallback((vehicleId: string) => {
     setSelectedVehicleId((current) => current === vehicleId ? null : vehicleId);
   }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(fleet.reload, 3000);
+    return () => window.clearInterval(timer);
+  }, [fleet.reload]);
 
   useEffect(() => {
     if (selectedVehicleId && !vehicles.some((vehicle) => String(vehicle.tripId) === selectedVehicleId)) {
@@ -752,27 +756,6 @@ function LiveMapScreen({ ctx }: { ctx: Ctx }) {
   );
 }
 
-function mockLiveFleet(routes: any[]): LiveFleetVehicle[] {
-  const sourceRoutes = routes.length
-    ? routes.slice(0, 5)
-    : [
-        { routeId: 1, routeName: "UniBus 01: Bách khoa - Trung tâm" },
-        { routeId: 2, routeName: "UniBus 02: Sư phạm - Hòa Khánh" },
-        { routeId: 3, routeName: "UniBus 03: Kinh tế - Sơn Trà" },
-      ];
-  return sourceRoutes.map((route, index) => ({
-    tripId: 9000 + index,
-    routeId: Number(route.routeId || route.id),
-    routeName: route.routeName || route.name || route.code || `Tuyến ${index + 1}`,
-    licensePlate: `MOCK-${String(index + 1).padStart(2, "0")}`,
-    driverName: ["Nguyễn Minh Tài", "Trần Quốc Bảo", "Lê Hoàng Nam", "Phạm Anh Khoa", "Đỗ Gia Huy"][index],
-    departureTime: `${String(6 + index).padStart(2, "0")}:00`,
-    status: "RUNNING",
-    speedKmh: 24 + index * 3,
-    occupancy: 12 + index * 4,
-  })).filter((vehicle) => Number.isFinite(vehicle.routeId) && vehicle.routeId > 0);
-}
-
 function isRunningVehicle(vehicle: LiveFleetVehicle) {
   return String(vehicle.status || "").trim().toUpperCase() === "RUNNING";
 }
@@ -782,13 +765,14 @@ function vehicleLocationLabel(vehicle: LiveFleetVehicle, routes: any[], stops: B
   const preview = route ? buildLocalRoutePreview(Number(vehicle.routeId), routes, stops) : null;
   const actualLat = numberValue(vehicle.latitude);
   const actualLng = numberValue(vehicle.longitude);
-  const point = actualLat && actualLng ? { lat: actualLat, lng: actualLng } : pointOnPreview(preview || undefined, index);
+  if (!actualLat || !actualLng) return "Chưa có dữ liệu GPS";
+  const point = { lat: actualLat, lng: actualLng };
   const routeStops = (route?.stops || [])
     .map((stopId: string | number) => stops.find((stop) => String(stop.id) === String(stopId)))
     .filter(Boolean) as BusStop[];
   const nearest = point ? nearestStop(point, routeStops.length ? routeStops : stops) : routeStops[0];
   if (!nearest) return route?.name || vehicle.routeName || "Đang cập nhật vị trí";
-  return `Mô phỏng trên tuyến • gần ${nearest.name}`;
+  return `Gần ${nearest.name}`;
 }
 
 function nearestStop(point: { lat: number; lng: number }, stops: BusStop[]) {
@@ -817,33 +801,9 @@ function LiveFleetMap({
 }) {
   const [previews, setPreviews] = useState<Record<number, RouteMapPreviewDTO>>({});
   const [roadPreviews, setRoadPreviews] = useState<Record<number, RouteMapPreviewDTO>>({});
-  const [fallbackRouteIds, setFallbackRouteIds] = useState<number[]>([]);
-  const [tick, setTick] = useState(0);
-
-  useEffect(() => {
-    const timer = setInterval(() => setTick((t) => t + 1), 2000);
-    return () => clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    transportApi.routes()
-      .then((routes) => {
-        if (cancelled) return;
-        setFallbackRouteIds(routes.filter((route) => (route.stopCount || 0) >= 2).map((route) => route.routeId).slice(0, 6));
-      })
-      .catch(() => {
-        if (!cancelled) setFallbackRouteIds([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   useEffect(() => {
     const routeIds = Array.from(new Set([
       ...vehicles.map((v) => v.routeId).filter(Boolean),
-      ...fallbackRouteIds,
     ]));
     const missing = routeIds.filter((routeId) => !previews[routeId]);
     if (!missing.length) return;
@@ -862,7 +822,7 @@ function LiveFleetMap({
     return () => {
       cancelled = true;
     };
-  }, [fallbackRouteIds, previews, vehicles]);
+  }, [previews, vehicles]);
 
   useEffect(() => {
     const source = Object.values(previews).filter((preview) => !roadPreviews[preview.routeId]);
@@ -886,14 +846,11 @@ function LiveFleetMap({
   const displayPreviews = useMemo(() => ({ ...previews, ...roadPreviews }), [previews, roadPreviews]);
 
   const buses = useMemo<JourneyBus[]>(() => {
-    const _t = tick;
     return vehicles.map((vehicle, index) => {
-      const preview = displayPreviews[vehicle.routeId] || Object.values(displayPreviews).find((item) =>
-        item.stops?.some((stop) => stop.latitude && stop.longitude)
-      );
+      const preview = displayPreviews[vehicle.routeId];
       const actualLat = numberValue(vehicle.latitude);
       const actualLng = numberValue(vehicle.longitude);
-      const point = actualLat && actualLng ? { lat: actualLat, lng: actualLng } : pointOnPreview(preview, index);
+      const point = actualLat && actualLng ? { lat: actualLat, lng: actualLng } : null;
       if (!point) return null;
       return {
         id: String(vehicle.tripId),
@@ -907,7 +864,7 @@ function LiveFleetMap({
         driverName: vehicle.driverName,
       } satisfies JourneyBus;
     }).filter(Boolean) as JourneyBus[];
-  }, [displayPreviews, vehicles, tick]);
+  }, [displayPreviews, vehicles]);
 
   const selectedRouteLines = useMemo(
     () => selectedVehicleRoutePolylines(selectedVehicleId, vehicles, displayPreviews, buses),
@@ -924,8 +881,7 @@ function LiveFleetMap({
     const locations = Object.fromEntries(buses.map((bus) => {
       const vehicle = vehicles.find((item) => String(item.tripId) === bus.id);
       const preview = vehicle ? displayPreviews[vehicle.routeId] : undefined;
-      const hasGps = !!(vehicle && numberValue(vehicle.latitude) && numberValue(vehicle.longitude));
-      return [bus.id, busLocationLabel(bus, preview, !hasGps)];
+      return [bus.id, busLocationLabel(bus, preview)];
     }));
     onVehicleLocationsChange((current) => shallowEqualRecord(current, locations) ? current : locations);
   }, [buses, onVehicleLocationsChange, displayPreviews, vehicles]);
@@ -946,7 +902,7 @@ function LiveFleetMap({
         allowFallbackPolyline={false}
       />
       <div className="absolute bottom-3 left-3 z-[500] rounded-full bg-[#14140f]/90 px-3 py-1.5 text-xs font-bold text-[#BDFD4F]">
-        {buses.length || vehicles.length} xe • Dữ liệu mô phỏng khi xe chưa gửi GPS
+        {buses.length} xe đang gửi vị trí
       </div>
     </div>
   );
@@ -1089,7 +1045,7 @@ function mapFitPolylines(previews: Record<number, RouteMapPreviewDTO>, buses: Jo
   return [{ id: "fleet-fit", dashed: true, color: "transparent", points }];
 }
 
-function busLocationLabel(bus: JourneyBus, preview?: RouteMapPreviewDTO, simulated = false) {
+function busLocationLabel(bus: JourneyBus, preview?: RouteMapPreviewDTO) {
   const stops = (preview?.stops || [])
     .map((stop) => ({
       id: String(stop.stopId),
@@ -1103,9 +1059,9 @@ function busLocationLabel(bus: JourneyBus, preview?: RouteMapPreviewDTO, simulat
     }))
     .filter((stop) => validCoordinate(stop));
   const nearest = nearestStop({ lat: bus.lat, lng: bus.lng }, stops);
-  if (!nearest) return simulated ? "Mô phỏng trên tuyến" : "Đang cập nhật vị trí";
+  if (!nearest) return "Đang cập nhật vị trí";
   const location = `gần ${nearest.name}${nearest.address ? `, ${nearest.address}` : ""}`;
-  return simulated ? `Mô phỏng trên tuyến • ${location}` : `Gần ${nearest.name}${nearest.address ? `, ${nearest.address}` : ""}`;
+  return `Gần ${nearest.name}${nearest.address ? `, ${nearest.address}` : ""}`;
 }
 
 function buildLocalRoutePreview(routeId: number, routes: any[], stops: BusStop[]): RouteMapPreviewDTO | null {
@@ -1136,43 +1092,6 @@ function buildLocalRoutePreview(routeId: number, routes: any[], stops: BusStop[]
       colorHex: route.color || "#BDFD4F",
       points: validStops.map((stop) => ({ latitude: stop.lat, longitude: stop.lng })),
     }],
-  };
-}
-
-function pointOnPreview(preview: RouteMapPreviewDTO | undefined, index: number) {
-  const points = (preview?.polylines || [])
-    .flatMap((line) => line.points || [])
-    .map((point) => ({ lat: numberValue(point.latitude), lng: numberValue(point.longitude) }))
-    .filter(validCoordinate);
-  if (!points.length) return null;
-
-  const routeId = preview?.routeId || 0;
-  const now = new Date();
-  const cycleMinutes = 55 + Math.abs(routeId % 25);
-  const cycleSeconds = cycleMinutes * 60;
-  const secondOfDay = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
-  const offsetSeconds = (Math.abs(routeId) * 60) + index * Math.max(480, Math.floor(cycleSeconds / 3));
-  const progress = ((secondOfDay + offsetSeconds) % cycleSeconds) / cycleSeconds;
-
-  const segments = points.slice(1).map((point, pointIndex) => {
-    const previous = points[pointIndex];
-    const length = Math.hypot(point.lat - previous.lat, point.lng - previous.lng);
-    return { from: previous, to: point, length };
-  });
-  const totalLength = segments.reduce((sum, segment) => sum + segment.length, 0);
-  if (!totalLength) return points[0];
-  let targetLength = progress * totalLength;
-  const segment = segments.find((item) => {
-    if (targetLength <= item.length) return true;
-    targetLength -= item.length;
-    return false;
-  }) || segments[segments.length - 1];
-  const ratio = segment.length ? targetLength / segment.length : 0;
-  const a = segment.from;
-  const b = segment.to;
-  return {
-    lat: a.lat + (b.lat - a.lat) * ratio,
-    lng: a.lng + (b.lng - a.lng) * ratio,
   };
 }
 
