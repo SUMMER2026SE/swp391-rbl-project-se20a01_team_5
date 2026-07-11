@@ -323,8 +323,17 @@ export function AppShell({
           <div className="flex-1" />
 
           <button
-            className="relative flex size-10 shrink-0 items-center justify-center rounded-xl text-[#111111] transition-colors hover:text-[#2C2C27] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#beff50] focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
-            onClick={() => goTo(notificationsNavId)}
+            type="button"
+            className="relative flex size-10 shrink-0 touch-manipulation items-center justify-center rounded-xl text-[#111111] transition-colors hover:text-[#2C2C27] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#beff50] focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+            onClick={() => {
+              if (navTimerRef.current) clearTimeout(navTimerRef.current);
+              onNavigate(notificationsNavId);
+              window.scrollTo({ top: 0, behavior: "instant" });
+              setUnread(0);
+              void notificationApi.mine()
+                .then((items) => Promise.all(items.filter((item) => !item.read).map((item) => notificationApi.markRead(item.notificationId))))
+                .catch(() => {});
+            }}
             aria-label={unread && unread > 0 ? `Thông báo, ${unread} chưa đọc` : "Thông báo"}
             title={unread && unread > 0 ? `${unread} thông báo chưa đọc` : "Thông báo"}
           >
