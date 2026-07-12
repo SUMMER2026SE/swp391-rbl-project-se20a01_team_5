@@ -79,8 +79,10 @@ public class OtpService {
     public void verify(String rawEmail, VerificationPurpose purpose, String code) {
         VerificationCode verificationCode = latestCode(rawEmail, purpose);
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        verificationCode.setAttemptCount(verificationCode.getAttemptCount() + 1);
+        verificationCodeRepository.save(verificationCode);
         if (verificationCode.getExpiresAt().isBefore(now)
-                || verificationCode.getAttemptCount() >= MAX_ATTEMPTS
+                || verificationCode.getAttemptCount() > MAX_ATTEMPTS
                 || !verificationCode.getCodeHash().equals(hashingService.hash(code))) {
             throw invalidOtp();
         }

@@ -1,5 +1,7 @@
 package com.unibus.api.ticketing;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Map;
 
 import org.springframework.http.HttpStatus;
@@ -53,7 +55,12 @@ public class SePayController {
 
     @PostMapping({"/api/v1/payments/sepay/webhook", "/sepay_webhook.php"})
     public ResponseEntity<Map<String, Object>> handleWebhook(
+            @RequestHeader(name = "Authorization", required = false) String authorization,
             @RequestBody Map<String, Object> payload) {
+        if (!validWebhookAuthorization(authorization)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("success", false, "message", "Invalid webhook API key"));
+        }
         try {
             Map<String, Object> result = sePayService.processWebhook(payload);
             boolean processed = Boolean.TRUE.equals(result.get("processed"));
@@ -65,6 +72,20 @@ public class SePayController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("success", false, "message", "Error processing webhook: " + e.getMessage()));
         }
+    }
+
+    private boolean validWebhookAuthorization(String authorization) {
+        String prefix = "Apikey ";
+        if (authorization == null || !authorization.regionMatches(true, 0, prefix, 0, prefix.length())) {
+            return false;
+        }
+        String expected = sePayService.getWebhookApiKey();
+        String provided = authorization.substring(prefix.length()).trim();
+        return expected != null
+                && !expected.isBlank()
+                && MessageDigest.isEqual(
+                        expected.getBytes(StandardCharsets.UTF_8),
+                        provided.getBytes(StandardCharsets.UTF_8));
     }
 
     private Integer parseInteger(Object rawValue, String fieldName) {

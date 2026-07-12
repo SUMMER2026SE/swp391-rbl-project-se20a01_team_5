@@ -1,7 +1,9 @@
--- Reset stable demo scenario to a ready-to-demo state until 2026-08-31.
--- This intentionally recreates demo-owned dynamic rows instead of only cleaning them up.
--- It keeps the scenario ready: trips, registrations, tickets, orders, transactions and travel history.
+-- UniBus demo data until 2026-08-31.
+-- Idempotent by design: master rows are upserted; generated demo scenario rows
+-- with DEMO_DATA markers are deleted and recreated.
 -- Login password for created demo accounts: Password123!
+
+SET TIME ZONE 'Asia/Ho_Chi_Minh';
 
 BEGIN;
 
@@ -20,13 +22,13 @@ DECLARE
     v_alighting_full_id integer;
     v_bus_id integer;
     v_driver_user_id integer;
+    v_fleet_driver_user_id integer;
     v_conductor_user_id integer;
     v_dispatcher_user_id integer;
     v_driver_id integer;
+    v_fleet_driver_id integer;
     v_conductor_id integer;
     v_dispatcher_id integer;
-    v_schedule_supported_id integer;
-    v_schedule_full_id integer;
     v_policy_id integer;
     v_trip_today_supported_id integer;
     v_trip_today_full_id integer;
@@ -55,6 +57,7 @@ BEGIN
     INSERT INTO users (email, password_hash, full_name, phone_number, role, status, email_verified_at, student_verification_status, created_at, updated_at)
     VALUES
         ('admin.demo@unibus.local', '$2a$10$EBx14iAsXMpv3k69BQ5/C.GtzEiFqeMvBuMNanRkwHlwx//7yMzWu', 'Nguyễn Minh Quân', '0908000001', 'ADMIN', 'ACTIVE', CURRENT_TIMESTAMP, 'NOT_SUBMITTED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+        ('fleet.simulator@unibus.local', '$2a$10$EBx14iAsXMpv3k69BQ5/C.GtzEiFqeMvBuMNanRkwHlwx//7yMzWu', 'Mô phỏng đội xe UniBus', NULL, 'DRIVER', 'LOCKED', CURRENT_TIMESTAMP, 'NOT_SUBMITTED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
         ('driver.demo@unibus.local', '$2a$10$EBx14iAsXMpv3k69BQ5/C.GtzEiFqeMvBuMNanRkwHlwx//7yMzWu', 'Nguyễn Minh Tài', '0908000002', 'DRIVER', 'ACTIVE', CURRENT_TIMESTAMP, 'NOT_SUBMITTED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
         ('conductor.demo@unibus.local', '$2a$10$EBx14iAsXMpv3k69BQ5/C.GtzEiFqeMvBuMNanRkwHlwx//7yMzWu', 'Trần Gia Hân', '0908000003', 'CONDUCTOR', 'ACTIVE', CURRENT_TIMESTAMP, 'NOT_SUBMITTED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
         ('dispatcher.demo@unibus.local', '$2a$10$EBx14iAsXMpv3k69BQ5/C.GtzEiFqeMvBuMNanRkwHlwx//7yMzWu', 'Phạm Quốc Huy', '0908000004', 'DISPATCHER', 'ACTIVE', CURRENT_TIMESTAMP, 'NOT_SUBMITTED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
@@ -77,6 +80,7 @@ BEGIN
 
     SELECT user_id INTO v_admin_user_id FROM users WHERE email = 'admin.demo@unibus.local';
     SELECT user_id INTO v_driver_user_id FROM users WHERE email = 'driver.demo@unibus.local';
+    SELECT user_id INTO v_fleet_driver_user_id FROM users WHERE email = 'fleet.simulator@unibus.local';
     SELECT user_id INTO v_conductor_user_id FROM users WHERE email = 'conductor.demo@unibus.local';
     SELECT user_id INTO v_dispatcher_user_id FROM users WHERE email = 'dispatcher.demo@unibus.local';
 
@@ -97,13 +101,13 @@ BEGIN
     END IF;
 
     IF v_dtu_university_id IS NULL THEN
-        RAISE EXCEPTION 'Không tìm thấy Trường Đại học Duy Tân. Không tạo Đại học Demo UniBus làm trường chính.';
+        RAISE EXCEPTION 'Không tìm thấy Trường Đại học Duy Tân. Không tạo trường giả thay thế.';
     END IF;
 
     v_supported_university_id := v_dtu_university_id;
 
     INSERT INTO campuses (university_id, code, name, address, latitude, longitude, status, created_at, updated_at)
-    VALUES (v_supported_university_id, 'STABLE_MAIN', 'Cơ sở demo Duy Tân', 'Đà Nẵng', 16.0544, 108.2022, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    VALUES (v_supported_university_id, 'DTU_DEMO_MAIN', 'Cơ sở demo Duy Tân', 'Đà Nẵng', 16.0544, 108.2022, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     ON CONFLICT (university_id, code) DO UPDATE
     SET name = EXCLUDED.name,
         address = EXCLUDED.address,
@@ -112,7 +116,7 @@ BEGIN
         status = EXCLUDED.status,
         updated_at = CURRENT_TIMESTAMP;
 
-    SELECT campus_id INTO v_supported_campus_id FROM campuses WHERE university_id = v_supported_university_id AND code = 'STABLE_MAIN';
+    SELECT campus_id INTO v_supported_campus_id FROM campuses WHERE university_id = v_supported_university_id AND code = 'DTU_DEMO_MAIN';
 
     UPDATE university_domains
     SET university_id = v_supported_university_id,
@@ -137,13 +141,12 @@ BEGIN
         ('UDA', 'Trường Đại học Đông Á', 'UDA', 'ACTIVE'),
         ('FPTDN', 'Trường Đại học FPT Đà Nẵng', 'FPT', 'ACTIVE')
     ON CONFLICT (name) DO UPDATE
-    SET short_name = EXCLUDED.short_name,
+    SET code = EXCLUDED.code,
+        short_name = EXCLUDED.short_name,
         status = 'ACTIVE',
         updated_at = CURRENT_TIMESTAMP;
 
-    INSERT INTO university_domains (university_id, domain, status, verified_at, updated_at)
-    SELECT u.university_id, payload.domain, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-    FROM (VALUES
+    WITH domain_payload(university_name, domain) AS (VALUES
         ('Trường Đại học Duy Tân', 'duytan.edu.vn'),
         ('Trường Đại học Duy Tân', 'dtu.edu.vn'),
         ('Trường Đại học Bách khoa - Đại học Đà Nẵng', 'dut.udn.vn'),
@@ -155,16 +158,37 @@ BEGIN
         ('Đại học Đà Nẵng', 'udn.vn'),
         ('Trường Đại học Đông Á', 'donga.edu.vn'),
         ('Trường Đại học FPT Đà Nẵng', 'fpt.edu.vn')
-    ) AS payload(university_name, domain)
-    JOIN universities u ON u.name = payload.university_name
-    ON CONFLICT (domain) DO UPDATE
-    SET university_id = EXCLUDED.university_id,
+    )
+    UPDATE university_domains d
+    SET university_id = u.university_id,
         status = 'ACTIVE',
-        verified_at = COALESCE(university_domains.verified_at, CURRENT_TIMESTAMP),
-        updated_at = CURRENT_TIMESTAMP;
+        verified_at = COALESCE(d.verified_at, CURRENT_TIMESTAMP),
+        updated_at = CURRENT_TIMESTAMP
+    FROM domain_payload payload
+    JOIN universities u ON u.name = payload.university_name
+    WHERE d.domain = payload.domain;
+
+    WITH domain_payload(university_name, domain) AS (VALUES
+        ('Trường Đại học Duy Tân', 'duytan.edu.vn'),
+        ('Trường Đại học Duy Tân', 'dtu.edu.vn'),
+        ('Trường Đại học Bách khoa - Đại học Đà Nẵng', 'dut.udn.vn'),
+        ('Trường Đại học Sư phạm Kỹ thuật - Đại học Đà Nẵng', 'ute.udn.vn'),
+        ('Trường Đại học Sư phạm - Đại học Đà Nẵng', 'ued.udn.vn'),
+        ('Trường Đại học Công nghệ Thông tin và Truyền thông Việt - Hàn', 'vku.udn.vn'),
+        ('Trường Đại học Kinh tế - Đại học Đà Nẵng', 'due.udn.vn'),
+        ('Trường Đại học Ngoại ngữ - Đại học Đà Nẵng', 'ufl.udn.vn'),
+        ('Đại học Đà Nẵng', 'udn.vn'),
+        ('Trường Đại học Đông Á', 'donga.edu.vn'),
+        ('Trường Đại học FPT Đà Nẵng', 'fpt.edu.vn')
+    )
+    INSERT INTO university_domains (university_id, domain, status, verified_at, updated_at)
+    SELECT u.university_id, payload.domain, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+    FROM domain_payload payload
+    JOIN universities u ON u.name = payload.university_name
+    WHERE NOT EXISTS (SELECT 1 FROM university_domains d WHERE d.domain = payload.domain);
 
     INSERT INTO university_admins (user_id, university_id, status, permissions, title, assigned_at, assigned_by_user_id, updated_at)
-    SELECT user_id, v_supported_university_id, 'ACTIVE', 'FINANCE,STUDENTS,REPORTS', 'Lê Thu Hà', CURRENT_TIMESTAMP, v_admin_user_id, CURRENT_TIMESTAMP
+    SELECT user_id, v_supported_university_id, 'ACTIVE', 'FINANCE,STUDENTS,REPORTS', 'Quản trị viên trường', CURRENT_TIMESTAMP, v_admin_user_id, CURRENT_TIMESTAMP
     FROM users
     WHERE email = 'uniadmin.demo@unibus.local'
     ON CONFLICT (user_id) DO UPDATE
@@ -177,12 +201,12 @@ BEGIN
     INSERT INTO students (student_code, user_id, university, faculty, academic_year, date_of_birth, university_id)
     SELECT payload.student_code, users.user_id, payload.university, payload.faculty, payload.academic_year, payload.date_of_birth::date, payload.university_id
     FROM (VALUES
-        ('SV-STABLE-SUB', 'student.supported@unibus.local', 'Trường Đại học Duy Tân', 'Công nghệ thông tin', 2023, '2005-03-10', v_supported_university_id),
-        ('SV-STABLE-FULL', 'student.fullprice@unibus.local', 'Trường Đại học Duy Tân', 'Kinh tế', 2022, '2004-08-12', v_supported_university_id),
-        ('SV-STABLE-MONTH', 'student.monthly@unibus.local', 'Trường Đại học Duy Tân', 'Kỹ thuật phần mềm', 2021, '2003-04-22', v_supported_university_id),
-        ('SV-STABLE-DAY', 'student.day@unibus.local', 'Trường Đại học Duy Tân', 'Du lịch', 2024, '2006-01-19', v_supported_university_id),
-        ('SV-STABLE-UNPAID', 'student.unpaid@unibus.local', 'Trường Đại học Duy Tân', 'Tài chính', 2023, '2005-05-05', v_supported_university_id),
-        ('SV-STABLE-HIST', 'student.history@unibus.local', 'Trường Đại học Duy Tân', 'Logistics', 2022, '2004-11-30', v_supported_university_id)
+        ('SV-DEMO-SUB', 'student.supported@unibus.local', 'Trường Đại học Duy Tân', 'Công nghệ thông tin', 2023, '2005-03-10', v_supported_university_id),
+        ('SV-DEMO-FULL', 'student.fullprice@unibus.local', 'Trường Đại học Duy Tân', 'Kinh tế', 2022, '2004-08-12', v_supported_university_id),
+        ('SV-DEMO-MONTH', 'student.monthly@unibus.local', 'Trường Đại học Duy Tân', 'Kỹ thuật phần mềm', 2021, '2003-04-22', v_supported_university_id),
+        ('SV-DEMO-DAY', 'student.day@unibus.local', 'Trường Đại học Duy Tân', 'Du lịch', 2024, '2006-01-19', v_supported_university_id),
+        ('SV-DEMO-UNPAID', 'student.unpaid@unibus.local', 'Trường Đại học Duy Tân', 'Tài chính', 2023, '2005-05-05', v_supported_university_id),
+        ('SV-DEMO-HIST', 'student.history@unibus.local', 'Trường Đại học Duy Tân', 'Logistics', 2022, '2004-11-30', v_supported_university_id)
     ) AS payload(student_code, email, university, faculty, academic_year, date_of_birth, university_id)
     JOIN users ON users.email = payload.email
     ON CONFLICT (student_code) DO UPDATE
@@ -225,7 +249,7 @@ BEGIN
     FROM students s
     JOIN users u ON u.user_id = s.user_id
     WHERE s.university_id = v_supported_university_id
-      AND (s.student_code LIKE 'SV-STABLE-%' OR s.student_code = 'DTU202032312')
+      AND (s.student_code LIKE 'SV-DEMO-%' OR s.student_code = 'DTU202032312')
     ON CONFLICT (university_id, student_code) DO UPDATE
     SET full_name = EXCLUDED.full_name,
         email = EXCLUDED.email,
@@ -237,6 +261,14 @@ BEGIN
 
     INSERT INTO drivers (user_id, license_number, years_experience, average_rating, work_status)
     VALUES (v_driver_user_id, 'DEMO-DL-2026-01', 6, 4.80, 'READY')
+    ON CONFLICT (user_id) DO UPDATE
+    SET license_number = EXCLUDED.license_number,
+        years_experience = EXCLUDED.years_experience,
+        average_rating = EXCLUDED.average_rating,
+        work_status = EXCLUDED.work_status;
+
+    INSERT INTO drivers (user_id, license_number, years_experience, average_rating, work_status)
+    VALUES (v_fleet_driver_user_id, 'DEMO-FLEET-SIMULATOR', 0, 5.00, 'READY')
     ON CONFLICT (user_id) DO UPDATE
     SET license_number = EXCLUDED.license_number,
         years_experience = EXCLUDED.years_experience,
@@ -255,6 +287,7 @@ BEGIN
         department = EXCLUDED.department;
 
     SELECT driver_id INTO v_driver_id FROM drivers WHERE user_id = v_driver_user_id;
+    SELECT driver_id INTO v_fleet_driver_id FROM drivers WHERE user_id = v_fleet_driver_user_id;
     SELECT conductor_id INTO v_conductor_id FROM conductors WHERE user_id = v_conductor_user_id;
     SELECT dispatcher_id INTO v_dispatcher_id FROM dispatchers WHERE user_id = v_dispatcher_user_id;
 
@@ -267,6 +300,15 @@ BEGIN
         status = EXCLUDED.status;
 
     SELECT bus_id INTO v_bus_id FROM buses WHERE license_plate = '43B-80808';
+
+    INSERT INTO buses (license_plate, seat_count, bus_type, manufacture_year, status)
+    SELECT '43B-' || (82000 + fleet_no)::text, 40, 'Xe buýt UniBus', 2024, 'READY'
+    FROM generate_series(1, 12) AS fleet_no
+    ON CONFLICT (license_plate) DO UPDATE
+    SET seat_count = EXCLUDED.seat_count,
+        bus_type = EXCLUDED.bus_type,
+        manufacture_year = EXCLUDED.manufacture_year,
+        status = EXCLUDED.status;
 
     SELECT route_id INTO v_route_supported_id
     FROM routes
@@ -337,7 +379,7 @@ BEGIN
     END IF;
 
     IF EXISTS (SELECT 1 FROM routes WHERE route_id IN (v_route_supported_id, v_route_full_id) AND route_code LIKE 'UB-DN-%') THEN
-        RAISE EXCEPTION 'Stable demo không được dùng tuyến UB-DN-* làm kịch bản chính.';
+        RAISE EXCEPTION 'Demo không được dùng tuyến UB-DN-* làm kịch bản chính.';
     END IF;
 
     SELECT rs.stop_id INTO v_boarding_supported_id FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id WHERE rs.route_id = v_route_supported_id ORDER BY rs.stop_order ASC LIMIT 1;
@@ -395,13 +437,6 @@ BEGIN
     v_supported_single_subsidy := LEAST(ROUND(v_supported_single_amount * 0.5), 90000);
     v_supported_single_final := v_supported_single_amount - v_supported_single_subsidy;
 
-    UPDATE route_universities
-    SET status = 'INACTIVE', active_until = LEAST(COALESCE(active_until, CURRENT_DATE - 1), CURRENT_DATE - 1), updated_at = CURRENT_TIMESTAMP
-    WHERE university_id = v_supported_university_id
-      AND route_id <> v_route_supported_id
-      AND status = 'ACTIVE'
-      AND created_at >= DATE '2026-01-01';
-
     INSERT INTO route_universities (route_id, university_id, campus_id, active_from, active_until, status, created_at, updated_at)
     SELECT v_route_supported_id, v_supported_university_id, v_supported_campus_id, CURRENT_DATE, v_end_date, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
     WHERE NOT EXISTS (
@@ -433,22 +468,47 @@ BEGIN
     SET status = 'INACTIVE', updated_at = CURRENT_TIMESTAMP
     WHERE university_id = v_supported_university_id
       AND subsidy_policy_id <> v_policy_id
-      AND policy_name IN ('Stable Demo 50% subsidy until Aug 2026', 'Demo trợ giá 50% đến 31/08/2026');
+      AND policy_name = 'Demo trợ giá 50% đến 31/08/2026';
 
     UPDATE subsidy_policies
     SET campus_id = v_supported_campus_id, subsidy_type = 'PERCENTAGE', value = 50, max_amount = 90000, active_from = CURRENT_DATE, active_until = v_end_date, status = 'ACTIVE', updated_at = CURRENT_TIMESTAMP
     WHERE subsidy_policy_id = v_policy_id;
 
     DELETE FROM travel_history
-    WHERE trip_id IN (SELECT trip_id FROM trips WHERE notes LIKE 'STABLE_DEMO%');
+    WHERE trip_id IN (SELECT trip_id FROM trips WHERE (notes LIKE 'DEMO_DATA%' OR notes LIKE 'DEMO_FLEET%'));
+
+    DELETE FROM vehicle_locations
+    WHERE trip_id IN (SELECT trip_id FROM trips WHERE (notes LIKE 'DEMO_DATA%' OR notes LIKE 'DEMO_FLEET%'));
+
+    DELETE FROM internal_messages
+    WHERE trip_id IN (SELECT trip_id FROM trips WHERE (notes LIKE 'DEMO_DATA%' OR notes LIKE 'DEMO_FLEET%'));
+
+    DELETE FROM feedback
+    WHERE trip_id IN (SELECT trip_id FROM trips WHERE (notes LIKE 'DEMO_DATA%' OR notes LIKE 'DEMO_FLEET%'));
+
+    DELETE FROM incidents
+    WHERE trip_id IN (SELECT trip_id FROM trips WHERE (notes LIKE 'DEMO_DATA%' OR notes LIKE 'DEMO_FLEET%'));
+
+    DELETE FROM driver_ratings
+    WHERE trip_id IN (SELECT trip_id FROM trips WHERE (notes LIKE 'DEMO_DATA%' OR notes LIKE 'DEMO_FLEET%'));
+
+    DELETE FROM lost_item_reports
+    WHERE trip_id IN (SELECT trip_id FROM trips WHERE (notes LIKE 'DEMO_DATA%' OR notes LIKE 'DEMO_FLEET%'));
 
     UPDATE single_trip_tickets
-    SET used_on_trip_id = NULL, scanned_by_conductor_id = NULL, status = 'UNUSED'
-    WHERE student_code LIKE 'SV-STABLE-%'
-      AND used_on_trip_id IN (SELECT trip_id FROM trips WHERE notes LIKE 'STABLE_DEMO%');
+    SET used_on_trip_id = NULL, scanned_by_conductor_id = NULL
+    WHERE used_on_trip_id IN (SELECT trip_id FROM trips WHERE (notes LIKE 'DEMO_DATA%' OR notes LIKE 'DEMO_FLEET%'));
 
-    DELETE FROM trips WHERE notes LIKE 'STABLE_DEMO%';
-    DELETE FROM bus_schedules WHERE assigned_by_user_id = v_admin_user_id AND status = 'ACTIVE';
+    DELETE FROM trips WHERE (notes LIKE 'DEMO_DATA%' OR notes LIKE 'DEMO_FLEET%');
+    DELETE FROM bus_schedules
+    WHERE assigned_by_user_id = v_admin_user_id
+      AND bus_id = v_bus_id
+      AND driver_id = v_driver_id
+      AND conductor_id = v_conductor_id
+      AND (
+          (route_id = v_route_supported_id AND departure_time = TIME '07:30')
+          OR (route_id = v_route_full_id AND departure_time = TIME '17:30')
+      );
 
     INSERT INTO bus_schedules (route_id, bus_id, driver_id, conductor_id, weekday_number, departure_time, end_time, status, assigned_by_user_id, assigned_at)
     SELECT v_route_supported_id, v_bus_id, v_driver_id, v_conductor_id, weekday_number, TIME '07:30', TIME '08:30', 'ACTIVE', v_admin_user_id, CURRENT_TIMESTAMP
@@ -458,97 +518,133 @@ BEGIN
     SELECT v_route_full_id, v_bus_id, v_driver_id, v_conductor_id, weekday_number, TIME '17:30', TIME '18:30', 'ACTIVE', v_admin_user_id, CURRENT_TIMESTAMP
     FROM generate_series(1, 7) AS weekday_number;
 
-    SELECT schedule_id INTO v_schedule_supported_id FROM bus_schedules WHERE route_id = v_route_supported_id AND assigned_by_user_id = v_admin_user_id AND departure_time = TIME '07:30' ORDER BY schedule_id DESC LIMIT 1;
-    SELECT schedule_id INTO v_schedule_full_id FROM bus_schedules WHERE route_id = v_route_full_id AND assigned_by_user_id = v_admin_user_id AND departure_time = TIME '17:30' ORDER BY schedule_id DESC LIMIT 1;
-
     INSERT INTO trips (schedule_id, route_id, bus_id, driver_id, conductor_id, service_date, departed_at, ended_at, status, notes)
-    SELECT v_schedule_supported_id, v_route_supported_id, v_bus_id, v_driver_id, v_conductor_id, d::date,
+    SELECT bs.schedule_id, v_route_supported_id, v_bus_id, v_driver_id, v_conductor_id, d::date,
            CASE WHEN d::date < CURRENT_DATE THEN d::date + TIME '07:30' ELSE NULL END,
            CASE WHEN d::date < CURRENT_DATE THEN d::date + TIME '08:25' ELSE NULL END,
            CASE WHEN d::date < CURRENT_DATE THEN 'COMPLETED' ELSE 'NOT_STARTED' END,
-           'STABLE_DEMO supported morning trip'
-    FROM generate_series(CURRENT_DATE, v_end_date, INTERVAL '1 day') AS d
+           'DEMO_DATA supported morning trip'
+    FROM generate_series(CURRENT_DATE - INTERVAL '7 days', v_end_date, INTERVAL '1 day') AS d
+    JOIN bus_schedules bs ON bs.route_id = v_route_supported_id
+        AND bs.bus_id = v_bus_id
+        AND bs.driver_id = v_driver_id
+        AND bs.conductor_id = v_conductor_id
+        AND bs.weekday_number = EXTRACT(ISODOW FROM d::date)::int
+        AND bs.departure_time = TIME '07:30'
+        AND bs.status = 'ACTIVE'
+        AND bs.assigned_by_user_id = v_admin_user_id
     WHERE CURRENT_DATE <= v_end_date;
 
     INSERT INTO trips (schedule_id, route_id, bus_id, driver_id, conductor_id, service_date, departed_at, ended_at, status, notes)
-    SELECT v_schedule_full_id, v_route_full_id, v_bus_id, v_driver_id, v_conductor_id, d::date,
-           NULL, NULL,
-           CASE WHEN d::date = CURRENT_DATE THEN 'RUNNING' ELSE 'NOT_STARTED' END,
-           'STABLE_DEMO full-price afternoon trip'
-    FROM generate_series(CURRENT_DATE, v_end_date, INTERVAL '1 day') AS d
+    SELECT bs.schedule_id, v_route_full_id, v_bus_id, v_driver_id, v_conductor_id, d::date,
+           CASE WHEN d::date < CURRENT_DATE THEN d::date + TIME '17:30' ELSE NULL END,
+           CASE WHEN d::date < CURRENT_DATE THEN d::date + TIME '18:25' ELSE NULL END,
+           CASE WHEN d::date < CURRENT_DATE THEN 'COMPLETED' WHEN d::date = CURRENT_DATE THEN 'RUNNING' ELSE 'NOT_STARTED' END,
+           'DEMO_DATA full-price afternoon trip'
+    FROM generate_series(CURRENT_DATE - INTERVAL '7 days', v_end_date, INTERVAL '1 day') AS d
+    JOIN bus_schedules bs ON bs.route_id = v_route_full_id
+        AND bs.bus_id = v_bus_id
+        AND bs.driver_id = v_driver_id
+        AND bs.conductor_id = v_conductor_id
+        AND bs.weekday_number = EXTRACT(ISODOW FROM d::date)::int
+        AND bs.departure_time = TIME '17:30'
+        AND bs.status = 'ACTIVE'
+        AND bs.assigned_by_user_id = v_admin_user_id
     WHERE CURRENT_DATE <= v_end_date;
 
-    SELECT trip_id INTO v_trip_today_supported_id FROM trips WHERE notes = 'STABLE_DEMO supported morning trip' AND service_date = CURRENT_DATE ORDER BY trip_id LIMIT 1;
-    SELECT trip_id INTO v_trip_today_full_id FROM trips WHERE notes = 'STABLE_DEMO full-price afternoon trip' AND service_date = CURRENT_DATE ORDER BY trip_id LIMIT 1;
+    WITH fleet_plan(fleet_no, route_code) AS (
+        VALUES
+            (1, '02'), (2, '02'), (3, '02'),
+            (4, '12'), (5, '12'), (6, '12'),
+            (7, '01'), (8, '03'), (9, '05'),
+            (10, '06'), (11, '07'), (12, '16')
+    ), fleet_routes AS (
+        SELECT DISTINCT ON (fp.fleet_no)
+               fp.fleet_no, r.route_id
+        FROM fleet_plan fp
+        JOIN routes r ON r.route_code = fp.route_code
+                     AND r.status = 'ACTIVE'
+                     AND COALESCE(r.external_source, '') = 'BUSMAP_DN'
+        ORDER BY fp.fleet_no, r.route_id
+    )
+    INSERT INTO trips (schedule_id, route_id, bus_id, driver_id, conductor_id, service_date, departed_at, ended_at, status, notes)
+    SELECT NULL, fr.route_id, b.bus_id, v_fleet_driver_id, NULL, CURRENT_DATE,
+           CURRENT_TIMESTAMP - INTERVAL '15 minutes', NULL, 'RUNNING',
+           'DEMO_FLEET vehicle ' || lpad(fr.fleet_no::text, 2, '0')
+    FROM fleet_routes fr
+    JOIN buses b ON b.license_plate = '43B-' || (82000 + fr.fleet_no)::text;
 
-    DELETE FROM invoices WHERE student_code LIKE 'SV-STABLE-%';
-    DELETE FROM payments WHERE student_code LIKE 'SV-STABLE-%';
-    DELETE FROM travel_history WHERE student_code LIKE 'SV-STABLE-%';
-    DELETE FROM monthly_passes WHERE student_code LIKE 'SV-STABLE-%';
-    DELETE FROM single_trip_tickets WHERE student_code LIKE 'SV-STABLE-%';
-    DELETE FROM tb_transactions WHERE matched_order_id IN (SELECT id FROM tb_orders WHERE student_code LIKE 'SV-STABLE-%');
-    DELETE FROM tb_orders WHERE student_code LIKE 'SV-STABLE-%';
-    DELETE FROM route_registrations WHERE student_code LIKE 'SV-STABLE-%';
+    SELECT trip_id INTO v_trip_today_supported_id FROM trips WHERE notes = 'DEMO_DATA supported morning trip' AND service_date = CURRENT_DATE ORDER BY trip_id LIMIT 1;
+    SELECT trip_id INTO v_trip_today_full_id FROM trips WHERE notes = 'DEMO_DATA full-price afternoon trip' AND service_date = CURRENT_DATE ORDER BY trip_id LIMIT 1;
+
+    DELETE FROM invoices WHERE student_code LIKE 'SV-DEMO-%';
+    DELETE FROM payments WHERE student_code LIKE 'SV-DEMO-%';
+    DELETE FROM travel_history WHERE student_code LIKE 'SV-DEMO-%';
+    DELETE FROM monthly_passes WHERE student_code LIKE 'SV-DEMO-%';
+    DELETE FROM single_trip_tickets WHERE student_code LIKE 'SV-DEMO-%';
+    DELETE FROM tb_transactions WHERE matched_order_id IN (SELECT id FROM tb_orders WHERE student_code LIKE 'SV-DEMO-%');
+    DELETE FROM tb_orders WHERE student_code LIKE 'SV-DEMO-%';
+    DELETE FROM route_registrations WHERE student_code LIKE 'SV-DEMO-%';
 
     FOR v_student IN
         SELECT student_code,
-               CASE WHEN student_code = 'SV-STABLE-FULL' THEN v_route_full_id ELSE v_route_supported_id END AS route_id,
-               CASE WHEN student_code = 'SV-STABLE-FULL' THEN v_boarding_full_id ELSE v_boarding_supported_id END AS boarding_stop_id,
-               CASE WHEN student_code = 'SV-STABLE-FULL' THEN v_alighting_full_id ELSE v_alighting_supported_id END AS alighting_stop_id
+               CASE WHEN student_code = 'SV-DEMO-FULL' THEN v_route_full_id ELSE v_route_supported_id END AS route_id,
+               CASE WHEN student_code = 'SV-DEMO-FULL' THEN v_boarding_full_id ELSE v_boarding_supported_id END AS boarding_stop_id,
+               CASE WHEN student_code = 'SV-DEMO-FULL' THEN v_alighting_full_id ELSE v_alighting_supported_id END AS alighting_stop_id
         FROM students
-        WHERE student_code LIKE 'SV-STABLE-%'
+        WHERE student_code LIKE 'SV-DEMO-%'
     LOOP
         INSERT INTO route_registrations (student_code, route_id, boarding_stop_id, alighting_stop_id, registered_at, effective_date, status, approved_by_user_id, approved_at)
         VALUES (v_student.student_code, v_student.route_id, v_student.boarding_stop_id, v_student.alighting_stop_id, CURRENT_TIMESTAMP - INTERVAL '2 days', CURRENT_DATE, 'APPROVED', v_admin_user_id, CURRENT_TIMESTAMP - INTERVAL '1 day');
     END LOOP;
 
     INSERT INTO monthly_passes (student_code, route_id, effective_month, effective_year, valid_from, purchased_at, expires_on, fare_amount, original_fare_amount, subsidy_amount, final_fare_amount, subsidy_policy_id, qr_code, status)
-    VALUES ('SV-STABLE-MONTH', v_route_supported_id, EXTRACT(MONTH FROM CURRENT_DATE)::int, EXTRACT(YEAR FROM CURRENT_DATE)::int, date_trunc('month', CURRENT_DATE)::date, CURRENT_TIMESTAMP - INTERVAL '1 day', (v_end_date + INTERVAL '1 day')::date, v_supported_monthly_final, v_supported_monthly_amount, v_supported_monthly_subsidy, v_supported_monthly_final, v_policy_id, 'DEMO-MONTH-SV-STABLE-MONTH', 'ACTIVE')
+    VALUES ('SV-DEMO-MONTH', v_route_supported_id, EXTRACT(MONTH FROM CURRENT_DATE)::int, EXTRACT(YEAR FROM CURRENT_DATE)::int, date_trunc('month', CURRENT_DATE)::date, CURRENT_TIMESTAMP - INTERVAL '1 day', (v_end_date + INTERVAL '1 day')::date, v_supported_monthly_final, v_supported_monthly_amount, v_supported_monthly_subsidy, v_supported_monthly_final, v_policy_id, 'DEMO-MONTH-SV-DEMO-MONTH', 'ACTIVE')
     RETURNING monthly_pass_id INTO v_monthly_pass_id;
 
     INSERT INTO payments (student_code, amount, method, status, transaction_code, created_at, monthly_pass_id, notes)
-    VALUES ('SV-STABLE-MONTH', 70000, 'BANK_TRANSFER', 'PAID', 'DEMO-PAY-MONTH', CURRENT_TIMESTAMP - INTERVAL '1 day', v_monthly_pass_id, 'Thanh toán demo vé tháng')
+    VALUES ('SV-DEMO-MONTH', v_supported_monthly_final, 'BANK_TRANSFER', 'PAID', 'DEMO-PAY-MONTH', CURRENT_TIMESTAMP - INTERVAL '1 day', v_monthly_pass_id, 'Thanh toán demo vé tháng')
     RETURNING payment_id INTO v_payment_id;
 
     INSERT INTO invoices (payment_id, student_code, description, amount, original_amount, subsidy_amount, final_amount, issued_at)
-    VALUES (v_payment_id, 'SV-STABLE-MONTH', 'Hóa đơn demo vé tháng', 70000, 140000, 70000, 70000, CURRENT_TIMESTAMP - INTERVAL '1 day');
+    VALUES (v_payment_id, 'SV-DEMO-MONTH', 'Hóa đơn demo vé tháng', v_supported_monthly_final, v_supported_monthly_amount, v_supported_monthly_subsidy, v_supported_monthly_final, CURRENT_TIMESTAMP - INTERVAL '1 day');
 
     INSERT INTO single_trip_tickets (student_code, route_id, boarding_stop_id, alighting_stop_id, fare_amount, qr_code, purchased_at, expires_at, status)
-    VALUES ('SV-STABLE-DAY', v_route_supported_id, v_boarding_supported_id, v_alighting_supported_id, v_supported_single_final, 'DEMO-DAY-SV-STABLE-DAY', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '12 hours', 'UNUSED')
+    VALUES ('SV-DEMO-DAY', v_route_supported_id, v_boarding_supported_id, v_alighting_supported_id, v_supported_single_final, 'DEMO-DAY-SV-DEMO-DAY', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '12 hours', 'UNUSED')
     RETURNING single_trip_ticket_id INTO v_single_ticket_id;
 
     INSERT INTO payments (student_code, amount, method, status, transaction_code, created_at, single_trip_ticket_id, notes)
-    VALUES ('SV-STABLE-DAY', v_supported_single_final, 'BANK_TRANSFER', 'PAID', 'DEMO-PAY-DAY', CURRENT_TIMESTAMP, v_single_ticket_id, 'Thanh toán demo vé ngày')
+    VALUES ('SV-DEMO-DAY', v_supported_single_final, 'BANK_TRANSFER', 'PAID', 'DEMO-PAY-DAY', CURRENT_TIMESTAMP, v_single_ticket_id, 'Thanh toán demo vé ngày')
     RETURNING payment_id INTO v_payment_id;
 
     INSERT INTO invoices (payment_id, student_code, description, amount, original_amount, subsidy_amount, final_amount, issued_at)
-    VALUES (v_payment_id, 'SV-STABLE-DAY', 'Hóa đơn demo vé ngày', v_supported_single_final, v_supported_single_amount, v_supported_single_subsidy, v_supported_single_final, CURRENT_TIMESTAMP);
+    VALUES (v_payment_id, 'SV-DEMO-DAY', 'Hóa đơn demo vé ngày', v_supported_single_final, v_supported_single_amount, v_supported_single_subsidy, v_supported_single_final, CURRENT_TIMESTAMP);
 
     INSERT INTO monthly_passes (student_code, route_id, effective_month, effective_year, valid_from, purchased_at, expires_on, fare_amount, original_fare_amount, subsidy_amount, final_fare_amount, subsidy_policy_id, qr_code, last_scanned_at, scans_today, status)
-    VALUES ('SV-STABLE-HIST', v_route_supported_id, EXTRACT(MONTH FROM CURRENT_DATE)::int, EXTRACT(YEAR FROM CURRENT_DATE)::int, date_trunc('month', CURRENT_DATE)::date, CURRENT_TIMESTAMP - INTERVAL '3 days', (v_end_date + INTERVAL '1 day')::date, v_supported_monthly_final, v_supported_monthly_amount, v_supported_monthly_subsidy, v_supported_monthly_final, v_policy_id, 'DEMO-HIST-SV-STABLE-HIST', CURRENT_TIMESTAMP - INTERVAL '2 hours', 1, 'ACTIVE');
+    VALUES ('SV-DEMO-HIST', v_route_supported_id, EXTRACT(MONTH FROM CURRENT_DATE)::int, EXTRACT(YEAR FROM CURRENT_DATE)::int, date_trunc('month', CURRENT_DATE)::date, CURRENT_TIMESTAMP - INTERVAL '3 days', (v_end_date + INTERVAL '1 day')::date, v_supported_monthly_final, v_supported_monthly_amount, v_supported_monthly_subsidy, v_supported_monthly_final, v_policy_id, 'DEMO-HIST-SV-DEMO-HIST', CURRENT_TIMESTAMP - INTERVAL '2 hours', 1, 'ACTIVE');
 
     INSERT INTO travel_history (student_code, trip_id, registration_id, boarding_stop_id, alighting_stop_id, boarded_at, alighted_at, confirmation_method, confirmed_by_conductor_id)
-    SELECT 'SV-STABLE-HIST', v_trip_today_supported_id, rr.registration_id, v_boarding_supported_id, v_alighting_supported_id, CURRENT_TIMESTAMP - INTERVAL '2 hours', CURRENT_TIMESTAMP - INTERVAL '1 hour 20 minutes', 'QR_SCAN', v_conductor_id
+    SELECT 'SV-DEMO-HIST', v_trip_today_supported_id, rr.registration_id, v_boarding_supported_id, v_alighting_supported_id, CURRENT_TIMESTAMP - INTERVAL '2 hours', CURRENT_TIMESTAMP - INTERVAL '1 hour 20 minutes', 'QR_SCAN', v_conductor_id
     FROM route_registrations rr
-    WHERE rr.student_code = 'SV-STABLE-HIST'
+    WHERE rr.student_code = 'SV-DEMO-HIST'
     ORDER BY rr.registration_id DESC
     LIMIT 1;
 
     INSERT INTO monthly_passes (student_code, route_id, effective_month, effective_year, valid_from, purchased_at, expires_on, fare_amount, original_fare_amount, subsidy_amount, final_fare_amount, subsidy_policy_id, qr_code, status)
-    VALUES ('SV-STABLE-SUB', v_route_supported_id, EXTRACT(MONTH FROM CURRENT_DATE)::int, EXTRACT(YEAR FROM CURRENT_DATE)::int, date_trunc('month', CURRENT_DATE)::date, CURRENT_TIMESTAMP - INTERVAL '1 hour', (v_end_date + INTERVAL '1 day')::date, v_supported_monthly_final, v_supported_monthly_amount, v_supported_monthly_subsidy, v_supported_monthly_final, v_policy_id, 'DEMO-SUB-SV-STABLE-SUB', 'ACTIVE');
+    VALUES ('SV-DEMO-SUB', v_route_supported_id, EXTRACT(MONTH FROM CURRENT_DATE)::int, EXTRACT(YEAR FROM CURRENT_DATE)::int, date_trunc('month', CURRENT_DATE)::date, CURRENT_TIMESTAMP - INTERVAL '1 hour', (v_end_date + INTERVAL '1 day')::date, v_supported_monthly_final, v_supported_monthly_amount, v_supported_monthly_subsidy, v_supported_monthly_final, v_policy_id, 'DEMO-SUB-SV-DEMO-SUB', 'ACTIVE');
 
     INSERT INTO monthly_passes (student_code, route_id, effective_month, effective_year, valid_from, purchased_at, expires_on, fare_amount, original_fare_amount, subsidy_amount, final_fare_amount, subsidy_policy_id, qr_code, status)
-    VALUES ('SV-STABLE-FULL', v_route_full_id, EXTRACT(MONTH FROM CURRENT_DATE)::int, EXTRACT(YEAR FROM CURRENT_DATE)::int, date_trunc('month', CURRENT_DATE)::date, CURRENT_TIMESTAMP - INTERVAL '1 hour', (v_end_date + INTERVAL '1 day')::date, v_full_monthly_amount, v_full_monthly_amount, 0, v_full_monthly_amount, NULL, 'DEMO-FULL-SV-STABLE-FULL', 'ACTIVE');
+    VALUES ('SV-DEMO-FULL', v_route_full_id, EXTRACT(MONTH FROM CURRENT_DATE)::int, EXTRACT(YEAR FROM CURRENT_DATE)::int, date_trunc('month', CURRENT_DATE)::date, CURRENT_TIMESTAMP - INTERVAL '1 hour', (v_end_date + INTERVAL '1 day')::date, v_full_monthly_amount, v_full_monthly_amount, 0, v_full_monthly_amount, NULL, 'DEMO-FULL-SV-DEMO-FULL', 'ACTIVE');
 
     INSERT INTO tb_orders (student_code, ticket_type, route_id, total, payment_status, name, paid_at, created_at, updated_at, order_mode, ticket_period, origin_label, destination_label, original_amount, subsidy_amount, final_amount)
-    VALUES ('SV-STABLE-UNPAID', 'monthly', v_route_supported_id, v_supported_monthly_final, 'Unpaid', 'Đơn demo vé tháng chưa thanh toán', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'single-route', 'month', v_supported_boarding_label, v_supported_alighting_label, v_supported_monthly_amount, v_supported_monthly_subsidy, v_supported_monthly_final);
+    VALUES ('SV-DEMO-UNPAID', 'monthly', v_route_supported_id, v_supported_monthly_final, 'Unpaid', 'Đơn demo vé tháng chưa thanh toán', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'single-route', 'month', v_supported_boarding_label, v_supported_alighting_label, v_supported_monthly_amount, v_supported_monthly_subsidy, v_supported_monthly_final);
 
     INSERT INTO tb_orders (student_code, ticket_type, route_id, total, payment_status, name, paid_at, created_at, updated_at, order_mode, ticket_period, origin_label, destination_label, original_amount, subsidy_amount, final_amount)
-    VALUES ('SV-STABLE-MONTH', 'monthly', v_route_supported_id, v_supported_monthly_final, 'Paid', 'Đơn demo vé tháng đã thanh toán', CURRENT_TIMESTAMP - INTERVAL '1 day', CURRENT_TIMESTAMP - INTERVAL '1 day', CURRENT_TIMESTAMP, 'single-route', 'month', v_supported_boarding_label, v_supported_alighting_label, v_supported_monthly_amount, v_supported_monthly_subsidy, v_supported_monthly_final)
+    VALUES ('SV-DEMO-MONTH', 'monthly', v_route_supported_id, v_supported_monthly_final, 'Paid', 'Đơn demo vé tháng đã thanh toán', CURRENT_TIMESTAMP - INTERVAL '1 day', CURRENT_TIMESTAMP - INTERVAL '1 day', CURRENT_TIMESTAMP, 'single-route', 'month', v_supported_boarding_label, v_supported_alighting_label, v_supported_monthly_amount, v_supported_monthly_subsidy, v_supported_monthly_final)
     RETURNING id INTO v_order_id;
 
     INSERT INTO tb_transactions (sepay_transaction_id, gateway, transaction_date, amount_in, amount_out, accumulated, code, transaction_content, reference_number, body, raw_payload, matched_order_id, created_at)
-    VALUES (9000008001, 'SEPAY', CURRENT_TIMESTAMP - INTERVAL '1 day', v_supported_monthly_final, 0, v_supported_monthly_final, 'DEMOPAID', 'Giao dịch demo đã khớp', 'DEMO-REF-PAID', 'Nội dung giao dịch demo', '{"source":"STABLE_DEMO"}'::jsonb, v_order_id, CURRENT_TIMESTAMP - INTERVAL '1 day')
+    VALUES (9000008001, 'SEPAY', CURRENT_TIMESTAMP - INTERVAL '1 day', v_supported_monthly_final, 0, v_supported_monthly_final, 'DEMOPAID', 'Giao dịch demo đã khớp', 'DEMO-REF-PAID', 'Nội dung giao dịch demo', '{"source":"DEMO_DATA"}'::jsonb, v_order_id, CURRENT_TIMESTAMP - INTERVAL '1 day')
     ON CONFLICT (sepay_transaction_id) DO UPDATE
     SET gateway = EXCLUDED.gateway,
         transaction_date = EXCLUDED.transaction_date,
@@ -558,7 +654,7 @@ BEGIN
         raw_payload = EXCLUDED.raw_payload;
 
     INSERT INTO notifications (recipient_user_id, sender_user_id, title, content, notification_type, is_read, sent_at)
-    SELECT u.user_id, v_admin_user_id, 'Demo đã sẵn sàng', 'Dữ liệu demo ổn định đã sẵn sàng đến 31/08/2026.', 'SYSTEM', false, CURRENT_TIMESTAMP
+    SELECT u.user_id, v_admin_user_id, 'Dữ liệu demo sẵn sàng', 'Kịch bản demo đã sẵn sàng đến 31/08/2026.', 'SYSTEM', false, CURRENT_TIMESTAMP
     FROM users u
     WHERE u.email IN (
         'student.supported@unibus.local',
@@ -575,26 +671,9 @@ BEGIN
     AND NOT EXISTS (
         SELECT 1 FROM notifications n
         WHERE n.recipient_user_id = u.user_id
-          AND n.title = 'Demo đã sẵn sàng'
-          AND n.content LIKE 'Dữ liệu demo ổn định%'
+          AND n.title = 'Dữ liệu demo sẵn sàng'
+          AND n.content LIKE 'Kịch bản demo đã sẵn sàng%'
     );
 END $$;
 
 COMMIT;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

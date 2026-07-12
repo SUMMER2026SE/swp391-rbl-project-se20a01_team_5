@@ -83,8 +83,7 @@ public class ExperienceRepository {
     public DriverDashboardView driverDashboard(Integer userId) {
         Integer driverId = driverIdForUser(userId).orElse(null);
         List<TripCard> trips = driverId == null ? List.of() : driverTrips(driverId, 12);
-        TripCard activeTrip = trips.stream().filter(t -> "RUNNING".equalsIgnoreCase(t.status())).findFirst()
-                .orElse(trips.stream().findFirst().orElse(null));
+        TripCard activeTrip = trips.stream().filter(t -> "RUNNING".equalsIgnoreCase(t.status())).findFirst().orElse(null);
         List<FeedbackCard> feedback = driverId == null ? List.of() : driverFeedback(driverId, 8);
         return new DriverDashboardView(
                 fullName(userId),
@@ -99,21 +98,21 @@ public class ExperienceRepository {
 
     public AssistantDashboardView assistantDashboard(Integer userId) {
         Integer conductorId = conductorIdForUser(userId).orElse(null);
-        List<TripCard> trips = conductorId == null ? List.of() : conductorTrips(conductorId, 12);
-        TripCard activeTrip = trips.stream().filter(t -> "RUNNING".equalsIgnoreCase(t.status())).findFirst()
-                .orElse(trips.stream().findFirst().orElse(null));
+        List<TripCard> todayTrips = conductorId == null ? List.of() : conductorTrips(conductorId, 12);
+        List<TripCard> historyTrips = conductorId == null ? List.of() : conductorTripHistory(conductorId, 20);
+        TripCard activeTrip = todayTrips.stream().filter(t -> "RUNNING".equalsIgnoreCase(t.status())).findFirst().orElse(null);
         List<TicketCard> tickets = activeTrip == null ? List.of() : ticketsForTrip(activeTrip.tripId(), 20);
         List<IncidentCard> incidents = conductorId == null ? List.of() : incidents(conductorId, 8);
         List<LostItemCard> lostItems = lostItemsForAssistant(userId, 8);
         return new AssistantDashboardView(
                 fullName(userId),
-                trips,
+                historyTrips,
                 activeTrip,
                 tickets,
                 incidents,
                 lostItems,
                 List.of(
-                        stat("Chuyến", trips.size(), "chuyến", "primary"),
+                        stat("Chuyến", todayTrips.size(), "chuyến", "primary"),
                         stat("Vé cần kiểm", tickets.size(), "vé", "secondary"),
                         stat("Sự cố", incidents.size(), "mục", "error")));
     }
@@ -138,6 +137,10 @@ public class ExperienceRepository {
     public AdminStatsView adminStats(int days) {
         LocalDate to = LocalDate.now();
         LocalDate from = to.minusDays(days - 1L);
+        return adminStats(from, to);
+    }
+
+    public AdminStatsView adminStats(LocalDate from, LocalDate to) {
         return new AdminStatsView(
                 List.of(
                         stat("Người dùng", count("users"), "tài khoản", "primary"),
@@ -145,7 +148,7 @@ public class ExperienceRepository {
                         stat("Trường đối tác", countWhere("universities", "status = 'ACTIVE'"), "trường", "tertiary"),
                         stat("Chờ xác thực", countWhere("student_verifications", "status = 'PENDING_REVIEW'"), "hồ sơ", "warning"),
                         stat("Tuyến", countWhere("routes", "status = 'ACTIVE'"), "tuyến", "tertiary"),
-                        stat("Doanh thu", revenue(), "VND", "success")),
+                        stat("Doanh thu", revenue(from, to), "VND", "success")),
                 routeMetrics(),
                 complaints(null, 8),
                 violations(null, 8),
@@ -775,7 +778,7 @@ public class ExperienceRepository {
     private List<TripCard> driverTrips(Integer driverId, int limit) {
         return jdbcTemplate.query(tripSelect("""
                 WHERE t.driver_id = ?
-                  AND t.service_date BETWEEN CURRENT_DATE - INTERVAL '7 days' AND CURRENT_DATE + INTERVAL '7 days'
+                  AND t.service_date = CURRENT_DATE
                 ORDER BY t.service_date DESC, bs.departure_time NULLS LAST, t.trip_id DESC
                 LIMIT ?
                 """), (rs, rowNum) -> mapTrip(rs), driverId, limit);
@@ -784,8 +787,18 @@ public class ExperienceRepository {
     private List<TripCard> conductorTrips(Integer conductorId, int limit) {
         return jdbcTemplate.query(tripSelect("""
                 WHERE t.conductor_id = ?
-                  AND t.service_date BETWEEN CURRENT_DATE - INTERVAL '7 days' AND CURRENT_DATE + INTERVAL '7 days'
+                  AND t.service_date = CURRENT_DATE
                 ORDER BY t.service_date DESC, bs.departure_time NULLS LAST, t.trip_id DESC
+                LIMIT ?
+                """), (rs, rowNum) -> mapTrip(rs), conductorId, limit);
+    }
+
+    private List<TripCard> conductorTripHistory(Integer conductorId, int limit) {
+        return jdbcTemplate.query(tripSelect("""
+                WHERE t.conductor_id = ?
+                  AND t.service_date BETWEEN CURRENT_DATE - INTERVAL '7 days' AND CURRENT_DATE
+                  AND t.status IN ('COMPLETED', 'CANCELLED')
+                ORDER BY t.service_date DESC, bs.departure_time DESC NULLS LAST, t.trip_id DESC
                 LIMIT ?
                 """), (rs, rowNum) -> mapTrip(rs), conductorId, limit);
     }
@@ -1133,6 +1146,15 @@ public class ExperienceRepository {
     private BigDecimal revenue() {
         return jdbcTemplate.queryForObject("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status = 'PAID'",
                 BigDecimal.class);
+    }
+
+    private BigDecimal revenue(LocalDate from, LocalDate to) {
+        return jdbcTemplate.queryForObject("""
+                SELECT COALESCE(SUM(amount), 0)
+                FROM payments
+                WHERE status = 'PAID'
+                  AND CAST(created_at AS date) BETWEEN ? AND ?
+                """, BigDecimal.class, from, to);
     }
 
     private String defaultText(String value, String fallback) {

@@ -2,9 +2,9 @@
 
 // =============================================================================
 // Admin Module — UniBus (M3 Expressive, aligned to UIPrototype v1.1)
-// 10 role-specific screens:
-//   adm-dashboard, adm-universities, adm-uni-admins, adm-route-uni, adm-audit,
-//   adm-users, adm-complaints, adm-violations, adm-fare, adm-notify
+// Admin console screens:
+//   adm-dashboard, adm-accounts, adm-schools, adm-verifications, adm-finance,
+//   adm-pricing, adm-risk, adm-audit
 // Visual: keeps prototype v1.1 (hero perk card, dashboard stat grid,
 // university logo cards, audit log table, user management list).
 // Data: real backend via /admin/* endpoints.
@@ -75,6 +75,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -123,10 +125,14 @@ import {
   Counter,
   PageTransition,
 } from "@/components/m3/motion";
-import { PageHeader, StatCard, Section, EmptyState } from "../primitives";
+import { PageHeader, StatCard, Section, EmptyState } from "../admin-console-primitives";
 
 import {
   useAdminPrototypeData,
+  useAdminUsers,
+  useAdminUniversities,
+  useAdminRouteUnis,
+  useAdminUniAdmins,
   useAdminVerifications,
   useAdminPayments,
   formatVND,
@@ -138,6 +144,7 @@ import {
   isPaidStatus,
   isUnpaidStatus,
   experienceApi,
+  coordinatorRoutesApi,
   notificationApi,
   type AdminUserView,
   type UniversityView,
@@ -187,6 +194,145 @@ const paymentJourneyLabel = (payment: PaymentTransactionView) =>
     ? `${payment.originLabel} → ${payment.destinationLabel}`
     : payment.routeName || payment.ticketType || "—";
 
+const normalizePaymentStatus = (status?: string | null) =>
+  (status || "").trim().toLowerCase();
+
+const isPendingPaymentStatus = (status?: string | null) => {
+  const normalized = normalizePaymentStatus(status);
+  return normalized === "pending" || normalized === "unpaid";
+};
+
+const paymentStatusLabel = (status?: string | null) => {
+  const normalized = normalizePaymentStatus(status);
+  if (normalized === "paid") return "Đã thanh toán";
+  if (normalized === "success") return "Thành công";
+  if (normalized === "completed") return "Hoàn tất";
+  if (normalized === "pending") return "Đang chờ";
+  if (normalized === "unpaid") return "Chưa thanh toán";
+  if (normalized === "failed") return "Thất bại";
+  if (normalized === "cancelled" || normalized === "canceled") return "Đã hủy";
+  if (normalized === "refunded") return "Đã hoàn tiền";
+  return status || "Không rõ";
+};
+
+const paymentStatusTone = (status?: string | null): "neutral" | "primary" | "tertiary" | "success" | "warning" | "error" => {
+  const normalized = normalizePaymentStatus(status);
+  if (normalized === "paid" || normalized === "success" || normalized === "completed") return "success";
+  if (normalized === "pending" || normalized === "unpaid") return "warning";
+  if (normalized === "failed" || normalized === "cancelled" || normalized === "canceled") return "error";
+  return "neutral";
+};
+
+const paymentMethodLabel = (payment: PaymentTransactionView) =>
+  payment.gateway || (payment.sepayTransactionId ? "SePay" : "Đơn nội bộ");
+
+const paymentCode = (payment: PaymentTransactionView) =>
+  payment.referenceNumber || payment.transactionId || payment.sepayTransactionId || payment.orderId || "—";
+
+const auditActionLabel = (action?: string | null) => {
+  const normalized = (action || "").trim().toLowerCase();
+  if (!normalized) return "Cập nhật dữ liệu";
+  if (normalized.includes("student_verification_approve")) return "Sinh viên được xác minh";
+  if (normalized.includes("student_verification_rejected")) return "Từ chối hồ sơ xác minh";
+  if (normalized.includes("student_verification_resubmission_required")) return "Yêu cầu bổ sung hồ sơ";
+  if (normalized.includes("admin_report_export")) return "Xuất báo cáo";
+  if (normalized.includes("university_notification_send")) return "Gửi thông báo trường";
+  if (normalized.includes("university_admin_create")) return "Tạo admin trường";
+  if (normalized.includes("domain_create")) return "Thêm domain trường";
+  if (normalized.includes("domain_status_update")) return "Cập nhật trạng thái domain";
+  if (normalized.includes("campus_create")) return "Thêm cơ sở trường";
+  if (normalized.includes("roster_import")) return "Import danh sách sinh viên";
+  if (normalized.includes("subsidy_policy_create")) return "Tạo chính sách trợ giá";
+  if (normalized.includes("route_university_create")) return "Gán tuyến cho trường";
+  if (normalized.includes("student") && normalized.includes("register")) return "Sinh viên mới đăng ký";
+  if (normalized.includes("verify") || normalized.includes("approve")) return "Sinh viên được xác minh";
+  if (normalized.includes("university") && normalized.includes("create")) return "Trường mới được thêm";
+  if ((normalized.includes("route") && normalized.includes("university")) || normalized.includes("assign")) return "Gán tuyến cho trường";
+  if (normalized.includes("payment") || normalized.includes("transaction") || normalized.includes("order")) return "Giao dịch mới";
+  if (normalized.includes("create")) return "Tạo dữ liệu";
+  if (normalized.includes("update")) return "Admin cập nhật dữ liệu";
+  if (normalized.includes("delete")) return "Xóa dữ liệu";
+  if (normalized.includes("lock")) return "Khóa tài khoản";
+  if (normalized.includes("reject")) return "Từ chối hồ sơ";
+  return (action || "Cập nhật dữ liệu").replace(/_/g, " ");
+};
+
+const auditTargetLabel = (table?: string | null) => {
+  const normalized = (table || "").trim().toLowerCase();
+  if (!normalized) return "";
+  if (normalized.includes("universit")) return "Trường";
+  if (normalized.includes("route")) return "Tuyến xe";
+  if (normalized.includes("student")) return "Sinh viên";
+  if (normalized.includes("payment") || normalized.includes("transaction") || normalized.includes("order")) return "Thanh toán";
+  if (normalized.includes("subsid")) return "Trợ giá";
+  if (normalized.includes("user")) return "Tài khoản";
+  return (table || "").replace(/_/g, " ");
+};
+
+const hiddenAuditActions = new Set([
+  "DOMAIN_AUTO_LINK",
+  "GOOGLE_ROSTER_AUTO_LINK",
+]);
+
+const isVisibleAdminAudit = (action?: string | null) =>
+  !hiddenAuditActions.has((action || "").trim().toUpperCase());
+
+type AdminReportPreset = "today" | "last7" | "month" | "custom";
+
+const toDateInputValue = (date: Date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+};
+
+const addDays = (date: Date, days: number) => {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+};
+
+const monthStartValue = () => {
+  const now = new Date();
+  return toDateInputValue(new Date(now.getFullYear(), now.getMonth(), 1));
+};
+
+const todayValue = () => toDateInputValue(new Date());
+
+const csvEscape = (value: unknown) => {
+  const text = value == null ? "" : String(value);
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+};
+
+const normalizeForFilter = (value?: string | number | null) =>
+  String(value ?? "").trim().toLowerCase();
+
+const includesFilter = (value: unknown, search: string) =>
+  normalizeForFilter(value as string).includes(normalizeForFilter(search));
+
+const dateOnly = (value?: string | null) => value?.slice(0, 10) || "";
+
+const isDateInRange = (value: string | undefined, from: string, to: string) => {
+  const date = dateOnly(value);
+  if (!date) return !from && !to;
+  if (from && date < from) return false;
+  if (to && date > to) return false;
+  return true;
+};
+
+const downloadCsv = (filename: string, rows: unknown[][]) => {
+  const csv = `\uFEFF${rows.map((row) => row.map(csvEscape).join(",")).join("\r\n")}`;
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
 export function AdminModule({ activeId, onNavigate }: AdminModuleProps) {
   const proto = useAdminPrototypeData();
 
@@ -232,6 +378,16 @@ export function AdminModule({ activeId, onNavigate }: AdminModuleProps) {
   switch (activeId) {
     case "adm-dashboard":
       return <DashboardScreen ctx={ctx} onNavigate={onNavigate} />;
+    case "adm-accounts":
+      return <AccountsScreen ctx={ctx} />;
+    case "adm-schools":
+      return <SchoolsScreen ctx={ctx} />;
+    case "adm-finance":
+      return <TransactionsScreen />;
+    case "adm-pricing":
+      return <FareScreen ctx={ctx} />;
+    case "adm-risk":
+      return <RiskScreen ctx={ctx} />;
     case "adm-universities":
       return <UniversitiesScreen ctx={ctx} />;
     case "adm-uni-admins":
@@ -240,6 +396,8 @@ export function AdminModule({ activeId, onNavigate }: AdminModuleProps) {
       return <RouteUniScreen ctx={ctx} />;
     case "adm-audit":
       return <AuditScreen ctx={ctx} />;
+    case "adm-notify":
+      return <NotifyScreen ctx={ctx} />;
     case "adm-users":
       return <UsersScreen ctx={ctx} />;
     case "adm-complaints":
@@ -252,8 +410,6 @@ export function AdminModule({ activeId, onNavigate }: AdminModuleProps) {
       return <TransactionsScreen />;
     case "adm-fare":
       return <FareScreen ctx={ctx} />;
-    case "adm-notify":
-      return <NotifyScreen ctx={ctx} />;
     default:
       return <FallbackScreen activeId={activeId} />;
   }
@@ -308,13 +464,128 @@ function ErrorScreen({ message, onRetry }: { message: string; onRetry?: () => vo
   );
 }
 
+function AccountsScreen({ ctx }: { ctx: Ctx }) {
+  return (
+    <PageTransition className="space-y-6 min-w-0">
+      <PageHeader
+        title="Tài khoản & phân quyền"
+        description="Quản lý tài khoản người dùng và Admin trường."
+        icon={<Users className="size-7" />}
+      />
+      <Tabs defaultValue="users" className="min-w-0">
+        <TabsList className="w-full justify-start overflow-x-auto rounded-2xl bg-surface-container-high p-1 scrollbar-soft">
+          <TabsTrigger value="users">Tài khoản</TabsTrigger>
+          <TabsTrigger value="uni-admins">Admin trường</TabsTrigger>
+        </TabsList>
+        <TabsContent value="users" className="mt-4">
+          <UsersScreen ctx={ctx} />
+        </TabsContent>
+        <TabsContent value="uni-admins" className="mt-4">
+          <UniAdminsScreen ctx={ctx} />
+        </TabsContent>
+      </Tabs>
+    </PageTransition>
+  );
+}
+
+function SchoolsScreen({ ctx }: { ctx: Ctx }) {
+  return (
+    <PageTransition className="space-y-6 min-w-0">
+      <PageHeader
+        title="Trường đối tác"
+        description="Quản lý trường, campus, domain và tuyến được gán."
+        icon={<School className="size-7" />}
+      />
+      <Tabs defaultValue="universities" className="min-w-0">
+        <TabsList className="w-full justify-start overflow-x-auto rounded-2xl bg-surface-container-high p-1 scrollbar-soft">
+          <TabsTrigger value="universities">Danh sách trường</TabsTrigger>
+          <TabsTrigger value="routes">Tuyến được gán</TabsTrigger>
+        </TabsList>
+        <TabsContent value="universities" className="mt-4">
+          <UniversitiesScreen ctx={ctx} />
+        </TabsContent>
+        <TabsContent value="routes" className="mt-4">
+          <RouteUniScreen ctx={ctx} />
+        </TabsContent>
+      </Tabs>
+    </PageTransition>
+  );
+}
+
+function RiskScreen({ ctx }: { ctx: Ctx }) {
+  return (
+    <PageTransition className="space-y-6 min-w-0">
+      <PageHeader
+        title="Khiếu nại & vi phạm"
+        description="Theo dõi các vấn đề cần Admin rà soát."
+        icon={<ShieldAlert className="size-7" />}
+      />
+      <Tabs defaultValue="complaints" className="min-w-0">
+        <TabsList className="w-full justify-start overflow-x-auto rounded-2xl bg-surface-container-high p-1 scrollbar-soft">
+          <TabsTrigger value="complaints">Khiếu nại</TabsTrigger>
+          <TabsTrigger value="violations">Vi phạm</TabsTrigger>
+        </TabsList>
+        <TabsContent value="complaints" className="mt-4">
+          <ComplaintsScreen ctx={ctx} />
+        </TabsContent>
+        <TabsContent value="violations" className="mt-4">
+          <ViolationsScreen ctx={ctx} />
+        </TabsContent>
+      </Tabs>
+    </PageTransition>
+  );
+}
+
 // =============================================================================
 // Screen 1: Dashboard
 // =============================================================================
 function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
-  const statsRaw = ctx.raw.statsRaw?.raw as AdminStatsView | null;
+  const initialStats = ctx.raw.statsRaw?.raw as AdminStatsView | null;
+  const [reportPreset, setReportPreset] = useState<AdminReportPreset>("last7");
+  const [customFrom, setCustomFrom] = useState(toDateInputValue(addDays(new Date(), -6)));
+  const [customTo, setCustomTo] = useState(todayValue());
+  const [reportStatsRaw, setReportStatsRaw] = useState<AdminStatsView | null>(initialStats);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+
+  const reportRange = useMemo(() => {
+    const today = todayValue();
+    if (reportPreset === "today") return { from: today, to: today, label: "Hôm nay" };
+    if (reportPreset === "month") return { from: monthStartValue(), to: today, label: "Tháng hiện tại" };
+    if (reportPreset === "custom") return { from: customFrom, to: customTo, label: "Tùy chỉnh" };
+    return { from: toDateInputValue(addDays(new Date(), -6)), to: today, label: "7 ngày gần nhất" };
+  }, [customFrom, customTo, reportPreset]);
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      if (!reportRange.from || !reportRange.to) return;
+      if (reportRange.from > reportRange.to) {
+        setReportError("Ngày bắt đầu không được sau ngày kết thúc");
+        return;
+      }
+      setReportLoading(true);
+      setReportError(null);
+      try {
+        const data = await experienceApi.adminStats({ from: reportRange.from, to: reportRange.to });
+        if (active) setReportStatsRaw(data);
+      } catch (e) {
+        if (active) setReportError(e instanceof Error ? e.message : "Không thể tải báo cáo");
+      } finally {
+        if (active) setReportLoading(false);
+      }
+    };
+    load();
+    return () => {
+      active = false;
+    };
+  }, [reportRange.from, reportRange.to]);
+
+  const statsRaw = reportStatsRaw || initialStats;
+  const reportStats = statsRaw?.stats || ctx.stats;
   const statValue = (label: string) => {
-    const value = ctx.stats.find((item) => item.label?.toLowerCase().includes(label))?.value;
+    const value = reportStats.find((item) => item.label?.toLowerCase().includes(label))?.value;
     return typeof value === "number" ? value : Number(value) || 0;
   };
   const totalUsers = statValue("người dùng");
@@ -353,8 +624,42 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
     }));
   }, [statsRaw]);
 
-  const totalRevenue = revenueData.reduce((s, d) => s + d.revenue, 0);
-  const tripsToday = statsRaw?.tripsSeries.at(-1)?.trips || 0;
+  const totalRevenue = statValue("doanh thu") || revenueData.reduce((s, d) => s + d.revenue, 0);
+  const totalTripsInRange = tripsData.reduce((s, d) => s + d.trips, 0);
+  const hasRevenueData = revenueData.some((d) => d.revenue > 0);
+  const hasTripsData = tripsData.some((d) => d.trips > 0);
+
+  const exportReport = async () => {
+    if (!statsRaw) {
+      toast.error("Chưa có dữ liệu báo cáo để xuất");
+      return;
+    }
+    setExporting(true);
+    try {
+      const rows: unknown[][] = [
+        ["Khoảng thời gian", reportRange.from, reportRange.to],
+        [],
+        ["Nhóm", "Chỉ số", "Giá trị", "Đơn vị"],
+        ...reportStats.map((item) => ["Tổng quan", item.label, item.value, item.unit || ""]),
+        ["Tổng quan", "Chuyến trong kỳ", totalTripsInRange, "chuyến"],
+        [],
+        ["Ngày", "Doanh thu", "Số chuyến"],
+        ...revenueData.map((point) => [
+          point.date,
+          point.revenue,
+          statsRaw.tripsSeries.find((trip) => trip.date === point.date)?.trips || 0,
+        ]),
+      ];
+      downloadCsv(`admin-report-${reportRange.from}-to-${reportRange.to}.csv`, rows);
+      await adminApi.auditReportExport({ from: reportRange.from, to: reportRange.to, format: "CSV" });
+      ctx.reload();
+      toast.success("Đã xuất báo cáo");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Không thể xuất hoặc ghi nhật ký báo cáo");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // Activities (derive from recent audit logs)
   const activities = useMemo(() => {
@@ -376,8 +681,8 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
         id: a.auditLogId,
         icon,
         tint,
-        title: a.action?.replace(/_/g, " ") || "Thao tác",
-        desc: `${a.performerName || "Hệ thống"} · ${a.affectedTable || ""}`.trim(),
+        title: auditActionLabel(a.action),
+        desc: [a.performerName || "Hệ thống", auditTargetLabel(a.affectedTable)].filter(Boolean).join(" · "),
         time: a.performedAt ? formatDateTime(a.performedAt) : "",
       };
     });
@@ -420,13 +725,45 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
             <ShieldAlert className="size-3.5" />
             Quản trị viên
           </span>
-          <ExpressiveButton variant="outlined" size="sm">
-            <CalendarClock className="size-4" /> Tháng {new Date().getMonth() + 1}, {new Date().getFullYear()}
+          <Select value={reportPreset} onValueChange={(value) => setReportPreset(value as AdminReportPreset)}>
+            <SelectTrigger className="h-9 w-[180px] rounded-full">
+              <CalendarClock className="mr-2 size-4" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="today">Hôm nay</SelectItem>
+              <SelectItem value="last7">7 ngày gần nhất</SelectItem>
+              <SelectItem value="month">Tháng hiện tại</SelectItem>
+              <SelectItem value="custom">Tùy chỉnh</SelectItem>
+            </SelectContent>
+          </Select>
+          {reportPreset === "custom" && (
+            <>
+              <Input
+                type="date"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                className="h-9 w-[150px] rounded-full"
+              />
+              <Input
+                type="date"
+                value={customTo}
+                onChange={(e) => setCustomTo(e.target.value)}
+                className="h-9 w-[150px] rounded-full"
+              />
+            </>
+          )}
+          <ExpressiveButton variant="text" size="sm" onClick={exportReport} disabled={exporting || reportLoading || !!reportError}>
+            {exporting ? <RefreshCw className="size-4 animate-spin" /> : <BarChart3 className="size-4" />}
+            Xuất báo cáo
           </ExpressiveButton>
-          <ExpressiveButton variant="text" size="sm" onClick={() => toast.info("Xuất báo cáo đang được phát triển")}>
-            <BarChart3 className="size-4" /> Xuất báo cáo
-          </ExpressiveButton>
+          {reportLoading && (
+            <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-outline-variant px-3 text-xs font-bold text-on-surface-variant">
+              <RefreshCw className="size-3.5 animate-spin" /> Đang tải báo cáo
+            </span>
+          )}
         </div>
+        {reportError && <p className="text-sm font-semibold text-error">{reportError}</p>}
       </motion.div>
 
       {/* StatCards — 1 hàng 4 card (giống prototype, bỏ quickActions row riêng) */}
@@ -443,10 +780,10 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
         </StaggerItem>
         <StaggerItem>
           <StatCard
-            label="Chuyến hôm nay"
-            value={<Counter to={tripsToday} />}
+            label="Chuyến trong kỳ"
+            value={<Counter to={totalTripsInRange} />}
             icon={<Bus className="size-6" />}
-            hint={`${ctx.routeMetrics.length} tuyến hoạt động`}
+            hint={reportRange.label}
             trend="up"
             accent="tertiary"
           />
@@ -461,7 +798,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
               />
             }
             icon={<Wallet className="size-6" />}
-            hint="Dữ liệu thanh toán thực"
+            hint={reportRange.label}
             trend="up"
             accent="success"
           />
@@ -489,24 +826,28 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
               </div>
               <M3StatusPill label="Tuần này" tone="primary" />
             </div>
-            <ResponsiveContainer width="100%" height={260}>
-              <AreaChart data={revenueData} margin={{ left: -16, right: 8, top: 8 }}>
-                <defs>
-                  <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#144fcc" stopOpacity={0.32} />
-                    <stop offset="100%" stopColor="#144fcc" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-outline-variant)" opacity={0.5} vertical={false} />
-                <XAxis dataKey="day" stroke="var(--color-on-surface-variant)" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke="var(--color-on-surface-variant)" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `${(v / 1000000).toFixed(1)}tr`} />
-                <RTooltip
-                  contentStyle={{ background: "#14140f", border: "1px solid #14140f", borderRadius: 16, color: "#beff50" }}
-                  formatter={(v: any) => [formatVND(v), "Doanh thu"]}
-                />
-                <Area type="monotone" dataKey="revenue" stroke="#144fcc" strokeWidth={2.5} fill="url(#revGrad)" />
-              </AreaChart>
-            </ResponsiveContainer>
+            {!hasRevenueData ? (
+              <EmptyState icon={<Wallet className="size-7" />} title="Không có giao dịch trong khoảng thời gian này" />
+            ) : (
+              <ResponsiveContainer width="100%" height={260}>
+                <AreaChart data={revenueData} margin={{ left: -16, right: 8, top: 8 }}>
+                  <defs>
+                    <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#144fcc" stopOpacity={0.32} />
+                      <stop offset="100%" stopColor="#144fcc" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-outline-variant)" opacity={0.5} vertical={false} />
+                  <XAxis dataKey="day" stroke="var(--color-on-surface-variant)" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis stroke="var(--color-on-surface-variant)" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `${(v / 1000000).toFixed(1)}tr`} />
+                  <RTooltip
+                    contentStyle={{ background: "#14140f", border: "1px solid #14140f", borderRadius: 16, color: "#beff50" }}
+                    formatter={(v: any) => [formatVND(v), "Doanh thu"]}
+                  />
+                  <Area type="monotone" dataKey="revenue" stroke="#144fcc" strokeWidth={2.5} fill="url(#revGrad)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
           </ExpressiveCard>
         </ScrollReveal>
 
@@ -558,8 +899,8 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
               </div>
               <M3StatusPill label="7 ngày" tone="tertiary" />
             </div>
-            {tripsData.length === 0 ? (
-              <EmptyState icon={<BarChart3 className="size-7" />} title="Chưa có dữ liệu" />
+            {!hasTripsData ? (
+              <EmptyState icon={<BarChart3 className="size-7" />} title="Chưa có dữ liệu vận hành trong khoảng thời gian này" />
             ) : (
               <ResponsiveContainer width="100%" height={260}>
                 <BarChart data={tripsData} margin={{ left: -16, right: 8, top: 8 }}>
@@ -615,7 +956,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
             </ExpressiveButton>
           </div>
           {activities.length === 0 ? (
-            <EmptyState icon={<Info className="size-7" />} title="Chưa có hoạt động" />
+            <EmptyState icon={<Info className="size-7" />} title="Chưa có hoạt động gần đây" />
           ) : (
             <div className="max-h-96 overflow-y-auto scrollbar-soft pr-1 min-w-0">
               <StaggerGroup className="space-y-2 min-w-0">
@@ -647,19 +988,24 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
 // =============================================================================
 function UniversitiesScreen({ ctx }: { ctx: Ctx }) {
   const [adding, setAdding] = useState(false);
+  const universities = useAdminUniversities();
+  const rows = universities.raw || [];
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Trường đại học"
-        description={`${ctx.universities.length} trường trong hệ thống`}
+        description={`${rows.length} trường trong hệ thống`}
         icon={<School className="size-7" />}
         actions={<ExpressiveButton variant="filled" onClick={() => setAdding(true)}><Plus className="size-4" /> Thêm trường</ExpressiveButton>}
       />
-      {ctx.universities.length === 0 ? (
+      {universities.error && (
+        <ExpressiveCard variant="filled" className="p-4 text-sm text-error">{universities.error}</ExpressiveCard>
+      )}
+      {rows.length === 0 && !universities.loading ? (
         <EmptyState icon={<School className="size-7" />} title="Chưa có trường" />
       ) : (
         <StaggerGroup className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 min-w-0">
-          {ctx.universities.map((u) => (
+          {rows.map((u) => (
             <StaggerItem key={u.universityId}>
               <ExpressiveCard variant="elevated" className="p-5 h-full min-w-0">
                 <div className="flex items-start gap-3 min-w-0">
@@ -683,7 +1029,7 @@ function UniversitiesScreen({ ctx }: { ctx: Ctx }) {
         </StaggerGroup>
       )}
       <Dialog open={adding} onOpenChange={setAdding}>
-        <UniversityAddDialog onClose={() => setAdding(false)} onAdded={() => { setAdding(false); ctx.reload(); }} />
+        <UniversityAddDialog onClose={() => setAdding(false)} onAdded={() => { setAdding(false); universities.reload(); ctx.reload(); }} />
       </Dialog>
     </PageTransition>
   );
@@ -758,18 +1104,23 @@ function UniversityAddDialog({ onClose, onAdded }: { onClose: () => void; onAdde
 // Screen 3: University Admins
 // =============================================================================
 function UniAdminsScreen({ ctx }: { ctx: Ctx }) {
+  const admins = useAdminUniAdmins();
+  const rows = admins.raw || [];
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Admin trường ĐH"
-        description={`${ctx.uniAdmins.length} quản trị viên trường`}
+        description={`${rows.length} quản trị viên trường`}
         icon={<UserCog className="size-7" />}
       />
-      {ctx.uniAdmins.length === 0 ? (
+      {admins.error && (
+        <ExpressiveCard variant="filled" className="p-4 text-sm text-error">{admins.error}</ExpressiveCard>
+      )}
+      {rows.length === 0 && !admins.loading ? (
         <EmptyState icon={<UserCog className="size-7" />} title="Chưa có admin trường" />
       ) : (
         <StaggerGroup className="space-y-3 min-w-0">
-          {ctx.uniAdmins.map((u) => (
+          {rows.map((u) => (
             <StaggerItem key={u.universityAdminId}>
               <ExpressiveCard variant="elevated" className="p-4 min-w-0">
                 <div className="flex items-center gap-3 min-w-0">
@@ -796,14 +1147,143 @@ function UniAdminsScreen({ ctx }: { ctx: Ctx }) {
 // Screen 4: Route-University linking
 // =============================================================================
 function RouteUniScreen({ ctx }: { ctx: Ctx }) {
+  const routeLinks = useAdminRouteUnis();
+  const universities = useAdminUniversities();
+  const [routes, setRoutes] = useState<{ routeId: number; routeCode?: string; routeName: string }[]>([]);
+  const [routesLoading, setRoutesLoading] = useState(false);
+  const [universityId, setUniversityId] = useState("");
+  const [routeIds, setRouteIds] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const rows = useMemo(() => routeLinks.raw || [], [routeLinks.raw]);
+  const parsedUniversityId = Number(universityId);
+  const activeRouteIdsForUniversity = useMemo(
+    () => new Set(rows
+      .filter((item) => item.universityId === parsedUniversityId && item.status === "ACTIVE")
+      .map((item) => item.routeId)),
+    [rows, parsedUniversityId]
+  );
+  const availableRoutes = useMemo(
+    () => routes.filter((route) => !activeRouteIdsForUniversity.has(route.routeId)),
+    [routes, activeRouteIdsForUniversity]
+  );
+
+  useEffect(() => {
+    let active = true;
+    setRoutesLoading(true);
+    coordinatorRoutesApi.getRoutes()
+      .then((items) => {
+        if (!active) return;
+        setRoutes((items || [])
+          .filter((route) => route.status === "ACTIVE")
+          .map((route) => ({
+            routeId: Number(route.id),
+            routeName: route.routeName || `Tuyến #${route.id}`,
+          }))
+          .filter((route) => Number.isFinite(route.routeId)));
+      })
+      .catch((e) => toast.error(e instanceof Error ? e.message : "Không thể tải danh sách tuyến"))
+      .finally(() => {
+        if (active) setRoutesLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const saveRouteUniversity = async () => {
+    const selectedRouteIds = routeIds.map(Number).filter(Number.isFinite);
+    if (!parsedUniversityId || selectedRouteIds.length === 0) {
+      toast.error("Vui lòng chọn trường và tuyến");
+      return;
+    }
+    const duplicatedRouteIds = selectedRouteIds.filter((selectedRouteId) => activeRouteIdsForUniversity.has(selectedRouteId));
+    if (duplicatedRouteIds.length) {
+      toast.error("Có tuyến đã được gán cho trường");
+      return;
+    }
+    setSaving(true);
+    try {
+      await Promise.all(selectedRouteIds.map((selectedRouteId) =>
+        adminApi.createRouteUniversity({
+          universityId: parsedUniversityId,
+          routeId: selectedRouteId,
+          status: "ACTIVE",
+        })
+      ));
+      toast.success(selectedRouteIds.length > 1 ? "Đã gán các tuyến cho trường" : "Đã gán tuyến cho trường");
+      setRouteIds([]);
+      await routeLinks.reload();
+      await ctx.reload();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Không thể gán tuyến");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
-        title="Tuyến ↔ Trường"
-        description={`${ctx.routeUnis.length} liên kết tuyến-trường`}
+        title="Gán tuyến cho trường"
+        description={`${rows.length} liên kết tuyến-trường`}
         icon={<RouteIcon className="size-7" />}
       />
-      {ctx.routeUnis.length === 0 ? (
+      <ExpressiveCard variant="elevated" className="p-4 min-w-0">
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
+          <div>
+            <Label className="text-xs font-bold">Trường</Label>
+            <Select value={universityId} onValueChange={(value) => {
+              setUniversityId(value);
+              setRouteIds([]);
+            }}>
+              <SelectTrigger className="mt-1.5"><SelectValue placeholder={universities.loading ? "Đang tải trường..." : "Chọn trường"} /></SelectTrigger>
+              <SelectContent>
+                {(universities.raw || []).map((u) => (
+                  <SelectItem key={u.universityId} value={String(u.universityId)}>{u.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs font-bold">Tuyến</Label>
+            <div className="mt-1.5 max-h-44 overflow-y-auto rounded-2xl border border-outline-variant bg-surface p-2">
+              {routesLoading ? (
+                <p className="px-2 py-2 text-sm text-on-surface-variant">Đang tải tuyến...</p>
+              ) : !universityId ? (
+                <p className="px-2 py-2 text-sm text-on-surface-variant">Chọn trường trước</p>
+              ) : availableRoutes.length === 0 ? (
+                <p className="px-2 py-2 text-sm text-on-surface-variant">Trường này đã được gán tất cả tuyến khả dụng</p>
+              ) : (
+                availableRoutes.map((route) => {
+                  const value = String(route.routeId);
+                  const checked = routeIds.includes(value);
+                  return (
+                    <label key={route.routeId} className="flex cursor-pointer items-center gap-2 rounded-xl px-2 py-2 text-sm hover:bg-surface-container">
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(isChecked) => setRouteIds((current) =>
+                          isChecked ? [...current, value] : current.filter((id) => id !== value)
+                        )}
+                      />
+                      <span className="min-w-0 truncate">
+                        {route.routeCode ? `${route.routeCode} - ${route.routeName}` : route.routeName}
+                      </span>
+                    </label>
+                  );
+                })
+              )}
+            </div>
+          </div>
+          <ExpressiveButton variant="filled" onClick={saveRouteUniversity} disabled={saving || universities.loading || routesLoading || !universityId || routeIds.length === 0}>
+            {saving ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
+            Lưu
+          </ExpressiveButton>
+        </div>
+        {(routeLinks.error || universities.error) && (
+          <p className="mt-3 text-sm font-semibold text-error">{routeLinks.error || universities.error}</p>
+        )}
+      </ExpressiveCard>
+      {rows.length === 0 && !routeLinks.loading ? (
         <EmptyState icon={<RouteIcon className="size-7" />} title="Chưa có liên kết" />
       ) : (
         <ExpressiveCard variant="elevated" className="overflow-hidden min-w-0">
@@ -818,7 +1298,7 @@ function RouteUniScreen({ ctx }: { ctx: Ctx }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {ctx.routeUnis.map((ru) => (
+              {rows.map((ru) => (
                 <TableRow key={ru.routeUniversityId}>
                   <TableCell className="font-bold truncate">{ru.routeName}</TableCell>
                   <TableCell className="truncate">{ru.universityName}</TableCell>
@@ -839,15 +1319,127 @@ function RouteUniScreen({ ctx }: { ctx: Ctx }) {
 // Screen 5: Audit logs
 // =============================================================================
 function AuditScreen({ ctx }: { ctx: Ctx }) {
+  const [search, setSearch] = useState("");
+  const [universityFilter, setUniversityFilter] = useState("all");
+  const [actionFilter, setActionFilter] = useState("all");
+  const [resultFilter, setResultFilter] = useState("all");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const visibleAudits = useMemo(
+    () => ctx.audits.filter((audit) => isVisibleAdminAudit(audit.action)),
+    [ctx.audits]
+  );
+
+  const universityOptions = useMemo(() => {
+    const map = new Map<number, string>();
+    visibleAudits.forEach((audit) => {
+      if (audit.universityId && audit.universityName) map.set(audit.universityId, audit.universityName);
+    });
+    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [visibleAudits]);
+
+  const actionOptions = useMemo(() => {
+    const actions = new Set<string>();
+    visibleAudits.forEach((audit) => {
+      if (audit.action) actions.add(audit.action);
+    });
+    return Array.from(actions).sort();
+  }, [visibleAudits]);
+
+  const filteredAudits = useMemo(() => visibleAudits.filter((audit) => {
+    if (universityFilter !== "all" && String(audit.universityId || "") !== universityFilter) return false;
+    if (actionFilter !== "all" && audit.action !== actionFilter) return false;
+    if (resultFilter !== "all" && normalizeForFilter(audit.result || "SUCCESS") !== resultFilter) return false;
+    if (!isDateInRange(audit.performedAt, fromDate, toDate)) return false;
+    if (search) {
+      const target = [
+        audit.performerName,
+        auditActionLabel(audit.action),
+        audit.action,
+        auditTargetLabel(audit.affectedTable),
+        audit.affectedTable,
+        audit.universityName,
+        audit.notes,
+        audit.affectedRecordId,
+      ].join(" ");
+      if (!includesFilter(target, search)) return false;
+    }
+    return true;
+  }), [actionFilter, fromDate, resultFilter, search, toDate, universityFilter, visibleAudits]);
+
+  const resetFilters = () => {
+    setSearch("");
+    setUniversityFilter("all");
+    setActionFilter("all");
+    setResultFilter("all");
+    setFromDate("");
+    setToDate("");
+  };
+
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
-        title="Nhật ký hệ thống"
-        description={`${ctx.audits.length} bản ghi`}
+        title="Nhật ký hoạt động"
+        description={`${filteredAudits.length}/${visibleAudits.length} hoạt động được ghi nhận`}
         icon={<ScrollText className="size-7" />}
       />
-      {ctx.audits.length === 0 ? (
-        <EmptyState icon={<ScrollText className="size-7" />} title="Chưa có log" />
+      <ExpressiveCard variant="filled" className="p-4 min-w-0">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+          <div className="relative xl:col-span-2">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-on-surface-variant" />
+            <Input
+              className="pl-9"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Tìm người, hành động, ghi chú"
+            />
+          </div>
+          <Select value={universityFilter} onValueChange={setUniversityFilter}>
+            <SelectTrigger><SelectValue placeholder="Trường" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả trường</SelectItem>
+              {universityOptions.map(([id, name]) => (
+                <SelectItem key={id} value={String(id)}>{name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={actionFilter} onValueChange={setActionFilter}>
+            <SelectTrigger><SelectValue placeholder="Hoạt động" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả hoạt động</SelectItem>
+              {actionOptions.map((action) => (
+                <SelectItem key={action} value={action}>{auditActionLabel(action)}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={resultFilter} onValueChange={setResultFilter}>
+            <SelectTrigger><SelectValue placeholder="Kết quả" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả kết quả</SelectItem>
+              <SelectItem value="success">Thành công</SelectItem>
+              <SelectItem value="failure">Thất bại</SelectItem>
+            </SelectContent>
+          </Select>
+          <ExpressiveButton variant="tonal" onClick={resetFilters}>
+            <Filter className="size-4" />
+            Xóa lọc
+          </ExpressiveButton>
+        </div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+          <div>
+            <Label className="text-xs font-bold">Từ ngày</Label>
+            <Input className="mt-1.5" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
+          </div>
+          <div>
+            <Label className="text-xs font-bold">Đến ngày</Label>
+            <Input className="mt-1.5" type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
+          </div>
+        </div>
+      </ExpressiveCard>
+      {visibleAudits.length === 0 ? (
+        <EmptyState icon={<ScrollText className="size-7" />} title="Chưa có hoạt động gần đây" />
+      ) : filteredAudits.length === 0 ? (
+        <EmptyState icon={<ScrollText className="size-7" />} title="Chưa có nhật ký phù hợp với bộ lọc" />
       ) : (
         <ExpressiveCard variant="elevated" className="overflow-hidden min-w-0">
           <Table>
@@ -855,16 +1447,19 @@ function AuditScreen({ ctx }: { ctx: Ctx }) {
               <TableRow>
                 <TableHead>Thời gian</TableHead>
                 <TableHead>Người thực hiện</TableHead>
-                <TableHead>Action</TableHead>
+                <TableHead>Hoạt động</TableHead>
                 <TableHead>Kết quả</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {ctx.audits.slice(0, 100).map((a) => (
+              {filteredAudits.slice(0, 100).map((a) => (
                 <TableRow key={a.auditLogId}>
                   <TableCell className="text-xs whitespace-nowrap">{formatDateTime(a.performedAt)}</TableCell>
                   <TableCell className="truncate">{a.performerName || "—"}</TableCell>
-                  <TableCell className="font-mono text-xs truncate">{a.action}</TableCell>
+                  <TableCell className="truncate">
+                    <p className="text-sm font-semibold">{auditActionLabel(a.action)}</p>
+                    <p className="text-[11px] text-on-surface-variant">{auditTargetLabel(a.affectedTable) || "—"}</p>
+                  </TableCell>
                   <TableCell>
                     <M3StatusPill label={a.result || "SUCCESS"} tone={a.result === "FAILURE" ? "error" : "success"} />
                   </TableCell>
@@ -889,8 +1484,10 @@ function UsersScreen({ ctx }: { ctx: Ctx }) {
   const [lockReason, setLockReason] = useState("");
   const [working, setWorking] = useState(false);
   const [adding, setAdding] = useState(false);
+  const users = useAdminUsers();
+  const rows = users.raw || [];
 
-  const filtered = ctx.users.filter((u) => {
+  const filtered = rows.filter((u) => {
     if (roleFilter !== "all" && u.role !== roleFilter) return false;
     if (search && !`${u.fullName} ${u.email}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
@@ -904,6 +1501,7 @@ function UsersScreen({ ctx }: { ctx: Ctx }) {
       toast.success(newStatus === "LOCKED" ? "Đã khóa tài khoản" : "Đã mở khóa");
       setLockTarget(null);
       setLockReason("");
+      users.reload();
       ctx.reload();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Không thể cập nhật");
@@ -916,10 +1514,13 @@ function UsersScreen({ ctx }: { ctx: Ctx }) {
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Người dùng"
-        description={`${ctx.users.length} người dùng`}
+        description={`${rows.length} người dùng`}
         icon={<Users className="size-7" />}
         actions={<ExpressiveButton variant="filled" onClick={() => setAdding(true)}><Plus className="size-4" /> Thêm nhân viên</ExpressiveButton>}
       />
+      {users.error && (
+        <ExpressiveCard variant="filled" className="p-4 text-sm text-error">{users.error}</ExpressiveCard>
+      )}
       <div className="flex flex-wrap gap-2 min-w-0">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant" />
@@ -938,7 +1539,7 @@ function UsersScreen({ ctx }: { ctx: Ctx }) {
           </SelectContent>
         </Select>
       </div>
-      {filtered.length === 0 ? (
+      {filtered.length === 0 && !users.loading ? (
         <EmptyState icon={<Users className="size-7" />} title="Không có người dùng" />
       ) : (
         <StaggerGroup className="space-y-2 min-w-0">
@@ -996,7 +1597,7 @@ function UsersScreen({ ctx }: { ctx: Ctx }) {
       </AlertDialog>
 
       <Dialog open={adding} onOpenChange={setAdding}>
-        <CreateStaffDialog onClose={() => setAdding(false)} onCreated={() => { setAdding(false); ctx.reload(); }} />
+        <CreateStaffDialog onClose={() => setAdding(false)} onCreated={() => { setAdding(false); users.reload(); ctx.reload(); }} />
       </Dialog>
     </PageTransition>
   );
@@ -1085,12 +1686,12 @@ function CreateStaffDialog({ onClose, onCreated }: { onClose: () => void; onCrea
         {role === "DRIVER" ? (
           <div>
             <Label className="text-xs font-bold">Số giấy phép lái xe</Label>
-            <Input className="mt-1.5" value={licenseNumber} onChange={(e) => setLicenseNumber(e.target.value)} placeholder="Ví dụ: GPLX-DEMO-001" />
+            <Input className="mt-1.5" value={licenseNumber} onChange={(e) => setLicenseNumber(e.target.value)} placeholder="Ví dụ: 480123456789" />
           </div>
         ) : role === "CONDUCTOR" || role === "DISPATCHER" ? (
           <div>
             <Label className="text-xs font-bold">Mã nhân viên</Label>
-            <Input className="mt-1.5" value={employeeCode} onChange={(e) => setEmployeeCode(e.target.value)} placeholder="Ví dụ: NV-DEMO-001" />
+            <Input className="mt-1.5" value={employeeCode} onChange={(e) => setEmployeeCode(e.target.value)} placeholder="Ví dụ: NV-0001" />
           </div>
         ) : null}
       </div>
@@ -1113,10 +1714,10 @@ type VerificationReviewAction = "approve" | "reject" | "resubmit";
 function adminVerificationMeta(status?: string) {
   const meta: Record<string, { label: string; tone: "neutral" | "primary" | "tertiary" | "success" | "warning" | "error" }> = {
     NOT_SUBMITTED: { label: "Chưa gửi", tone: "neutral" },
-    PENDING_REVIEW: { label: "Chờ duyệt", tone: "warning" },
-    VERIFIED: { label: "Đã duyệt", tone: "success" },
+    PENDING_REVIEW: { label: "Chờ xác minh", tone: "warning" },
+    VERIFIED: { label: "Đã xác minh", tone: "success" },
     REJECTED: { label: "Từ chối", tone: "error" },
-    RESUBMISSION_REQUIRED: { label: "Cần gửi lại", tone: "warning" },
+    RESUBMISSION_REQUIRED: { label: "Cần bổ sung thông tin", tone: "warning" },
   };
   return meta[status || ""] || { label: status || "Không rõ", tone: "neutral" as const };
 }
@@ -1157,11 +1758,11 @@ function ReviewField({
     <div className="rounded-2xl bg-surface-container-low p-3 min-w-0">
       <div className="flex items-center justify-between gap-2">
         <p className="text-[11px] font-bold uppercase tracking-wide text-on-surface-variant">{label}</p>
-        {mismatch && <Badge variant="destructive" className="text-[10px]">Lệch OCR</Badge>}
+        {mismatch && <Badge variant="destructive" className="text-[10px]">Cần đối chiếu</Badge>}
       </div>
       <p className="mt-1 truncate text-sm font-bold text-on-surface">{submitted || "—"}</p>
       <p className={cn("mt-1 truncate text-xs", mismatch ? "text-error" : "text-on-surface-variant")}>
-        OCR: {ocr || "—"}
+        Thông tin từ ảnh thẻ: {ocr || "—"}
       </p>
     </div>
   );
@@ -1191,7 +1792,7 @@ function VerificationsScreen({ ctx }: { ctx: Ctx }) {
     try {
       if (review.action === "approve") {
         await adminApi.approveVerification(review.item.verificationId);
-        toast.success("Đã duyệt xác minh sinh viên");
+        toast.success("Đã xác minh sinh viên");
       } else if (review.action === "reject") {
         await adminApi.rejectVerification(review.item.verificationId, reason.trim());
         toast.success("Đã từ chối hồ sơ");
@@ -1211,7 +1812,7 @@ function VerificationsScreen({ ctx }: { ctx: Ctx }) {
   };
 
   const actionCopy = review?.action === "approve"
-    ? { title: "Duyệt hồ sơ?", description: "Sinh viên sẽ được liên kết với trường và trạng thái chuyển sang đã xác minh.", cta: "Duyệt" }
+    ? { title: "Xác minh hồ sơ?", description: "Sinh viên sẽ được liên kết với trường và trạng thái chuyển sang đã xác minh.", cta: "Xác minh" }
     : review?.action === "reject"
       ? { title: "Từ chối hồ sơ?", description: "Sinh viên sẽ thấy lý do từ chối và có thể gửi lại hồ sơ mới.", cta: "Từ chối" }
       : { title: "Yêu cầu gửi lại?", description: "Sinh viên sẽ phải bổ sung ảnh hoặc thông tin theo lý do bạn nhập.", cta: "Yêu cầu gửi lại" };
@@ -1220,7 +1821,7 @@ function VerificationsScreen({ ctx }: { ctx: Ctx }) {
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Xác minh sinh viên"
-        description={`${items.length} hồ sơ theo bộ lọc hiện tại`}
+        description={`Admin hệ thống xử lý ${items.length} hồ sơ theo bộ lọc hiện tại`}
         icon={<BadgeCheck className="size-7" />}
         actions={
           <ExpressiveButton variant="tonal" onClick={resource.reload} disabled={resource.loading}>
@@ -1236,10 +1837,10 @@ function VerificationsScreen({ ctx }: { ctx: Ctx }) {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="PENDING_REVIEW">Chờ duyệt</SelectItem>
-            <SelectItem value="RESUBMISSION_REQUIRED">Cần gửi lại</SelectItem>
+            <SelectItem value="PENDING_REVIEW">Chờ xác minh</SelectItem>
+            <SelectItem value="RESUBMISSION_REQUIRED">Cần bổ sung thông tin</SelectItem>
             <SelectItem value="REJECTED">Từ chối</SelectItem>
-            <SelectItem value="VERIFIED">Đã duyệt</SelectItem>
+            <SelectItem value="VERIFIED">Đã xác minh</SelectItem>
             <SelectItem value="all">Tất cả</SelectItem>
           </SelectContent>
         </Select>
@@ -1250,8 +1851,8 @@ function VerificationsScreen({ ctx }: { ctx: Ctx }) {
       {items.length === 0 && !resource.loading ? (
         <EmptyState
           icon={<BadgeCheck className="size-7" />}
-          title="Không có hồ sơ"
-          description="Bộ lọc hiện tại chưa có sinh viên cần xử lý."
+          title={statusFilter === "PENDING_REVIEW" ? "Chưa có sinh viên chờ xác minh" : "Chưa có hồ sơ phù hợp với bộ lọc"}
+          description="Dữ liệu hiển thị theo danh sách xác minh sinh viên hiện có."
         />
       ) : (
         <StaggerGroup className="space-y-4 min-w-0">
@@ -1279,6 +1880,7 @@ function VerificationsScreen({ ctx }: { ctx: Ctx }) {
                             Gửi lúc: {formatDateTime(item.submittedAt)}
                           </p>
                         </div>
+                        <M3StatusPill label={`Độ tin cậy ${formatAdminConfidence(item.ocrConfidenceScore)}`} tone="primary" />
                       </div>
 
                       <div className="grid gap-2 md:grid-cols-3">
@@ -1316,7 +1918,7 @@ function VerificationsScreen({ ctx }: { ctx: Ctx }) {
                           disabled={!pending}
                           onClick={() => openReview(item, "approve")}
                         >
-                          <CheckCircle2 className="size-4" /> Duyệt
+                          <CheckCircle2 className="size-4" /> Xác minh
                         </ExpressiveButton>
                         <ExpressiveButton
                           variant="tonal"
@@ -1379,16 +1981,71 @@ function VerificationsScreen({ ctx }: { ctx: Ctx }) {
 
 function TransactionsScreen() {
   const payments = useAdminPayments();
-  const rows = payments.raw || [];
-  const paidRows = rows.filter((row) => isPaidStatus(row.paymentStatus));
+  const [search, setSearch] = useState("");
+  const [universityFilter, setUniversityFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const rows = useMemo(() => payments.raw || [], [payments.raw]);
+
+  const universityOptions = useMemo(() => {
+    const map = new Map<number, string>();
+    rows.forEach((payment) => {
+      if (payment.universityId && payment.universityName) map.set(payment.universityId, payment.universityName);
+    });
+    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [rows]);
+
+  const filteredRows = useMemo(() => rows.filter((payment) => {
+    if (universityFilter !== "all" && String(payment.universityId || "") !== universityFilter) return false;
+    if (statusFilter !== "all") {
+      const normalized = normalizePaymentStatus(payment.paymentStatus);
+      if (statusFilter === "pending") {
+        if (!isPendingPaymentStatus(payment.paymentStatus)) return false;
+      } else if (statusFilter === "cancelled") {
+        if (normalized !== "cancelled" && normalized !== "canceled") return false;
+      } else if (normalized !== statusFilter) {
+        return false;
+      }
+    }
+    if (!isDateInRange(payment.paidAt || payment.transactionDate || payment.createdAt, fromDate, toDate)) return false;
+    if (search) {
+      const target = [
+        paymentCode(payment),
+        payment.studentName,
+        payment.studentCode,
+        payment.universityName,
+        payment.routeName,
+        payment.ticketType,
+        payment.orderMode,
+        payment.originLabel,
+        payment.destinationLabel,
+        payment.referenceNumber,
+        payment.transactionContent,
+        payment.paymentStatus,
+      ].join(" ");
+      if (!includesFilter(target, search)) return false;
+    }
+    return true;
+  }), [fromDate, rows, search, statusFilter, toDate, universityFilter]);
+
+  const paidRows = filteredRows.filter((row) => isPaidStatus(row.paymentStatus));
   const totalPaid = paidRows.reduce((sum, row) => sum + paymentFinalAmount(row), 0);
-  const pendingRows = rows.filter((row) => !isPaidStatus(row.paymentStatus)).length;
+  const pendingRows = filteredRows.filter((row) => isPendingPaymentStatus(row.paymentStatus)).length;
+
+  const resetFilters = () => {
+    setSearch("");
+    setUniversityFilter("all");
+    setStatusFilter("all");
+    setFromDate("");
+    setToDate("");
+  };
 
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Lịch sử giao dịch"
-        description={`${rows.length} giao dịch SePay/vé tháng`}
+        description={`${filteredRows.length}/${rows.length} đơn thanh toán và giao dịch đã phát sinh`}
         icon={<Receipt className="size-7" />}
         actions={
           <ExpressiveButton variant="tonal" onClick={payments.reload} disabled={payments.loading}>
@@ -1401,34 +2058,89 @@ function TransactionsScreen() {
       <div className="grid gap-3 sm:grid-cols-3">
         <StatCard label="Đã thanh toán" value={paidRows.length} icon={<CheckCircle2 className="size-5" />} accent="success" />
         <StatCard label="Tổng tiền" value={formatVND(totalPaid)} icon={<Banknote className="size-5" />} accent="primary" />
-        <StatCard label="Chưa tất toán" value={pendingRows} icon={<Clock className="size-5" />} accent="warning" />
+        <StatCard label="Đang chờ thanh toán" value={pendingRows} icon={<Clock className="size-5" />} accent="warning" />
       </div>
 
       {payments.error && (
         <ExpressiveCard variant="filled" className="p-4 text-sm text-error">{payments.error}</ExpressiveCard>
       )}
 
+      <ExpressiveCard variant="filled" className="p-4 min-w-0">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+          <div className="relative xl:col-span-2">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-on-surface-variant" />
+            <Input
+              className="pl-9"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Tìm mã, sinh viên, tuyến"
+            />
+          </div>
+          <Select value={universityFilter} onValueChange={setUniversityFilter}>
+            <SelectTrigger><SelectValue placeholder="Trường" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả trường</SelectItem>
+              {universityOptions.map(([id, name]) => (
+                <SelectItem key={id} value={String(id)}>{name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger><SelectValue placeholder="Trạng thái" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả trạng thái</SelectItem>
+              <SelectItem value="paid">Đã thanh toán</SelectItem>
+              <SelectItem value="pending">Đang chờ / Chưa thanh toán</SelectItem>
+              <SelectItem value="failed">Thất bại</SelectItem>
+              <SelectItem value="cancelled">Đã hủy</SelectItem>
+              <SelectItem value="refunded">Đã hoàn tiền</SelectItem>
+            </SelectContent>
+          </Select>
+          <div>
+            <Label className="text-xs font-bold">Từ ngày</Label>
+            <Input className="mt-1.5" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
+          </div>
+          <div>
+            <Label className="text-xs font-bold">Đến ngày</Label>
+            <Input className="mt-1.5" type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
+          </div>
+        </div>
+        <div className="mt-3 flex justify-end">
+          <ExpressiveButton variant="tonal" onClick={resetFilters}>
+            <Filter className="size-4" />
+            Xóa lọc
+          </ExpressiveButton>
+        </div>
+      </ExpressiveCard>
+
       {rows.length === 0 && !payments.loading ? (
-        <EmptyState icon={<Receipt className="size-7" />} title="Chưa có giao dịch" />
+        <EmptyState icon={<Receipt className="size-7" />} title="Không có giao dịch trong khoảng thời gian này" />
+      ) : filteredRows.length === 0 ? (
+        <EmptyState icon={<Receipt className="size-7" />} title="Không có giao dịch phù hợp với bộ lọc" />
       ) : (
         <ExpressiveCard variant="elevated" className="overflow-hidden min-w-0">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Sinh viên</TableHead>
+                <TableHead>Mã giao dịch</TableHead>
+                <TableHead>Người thanh toán</TableHead>
                 <TableHead>Trường</TableHead>
                 <TableHead>Loại/Chặng</TableHead>
-                <TableHead className="text-right">Gốc / Trả</TableHead>
+                <TableHead className="text-right">Số tiền</TableHead>
                 <TableHead>Trạng thái</TableHead>
-                <TableHead>Ngày</TableHead>
+                <TableHead>Thời gian</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.slice(0, 100).map((p) => (
+              {filteredRows.slice(0, 100).map((p) => (
                 <TableRow key={`${p.orderId}-${p.transactionId || p.sepayTransactionId || "order"}`}>
                   <TableCell className="truncate">
+                    <p className="font-semibold">{paymentCode(p)}</p>
+                    <p className="text-[11px] text-on-surface-variant">{paymentMethodLabel(p)}</p>
+                  </TableCell>
+                  <TableCell className="truncate">
                     <p className="font-semibold">{p.studentName || p.studentCode || "—"}</p>
-                    {p.referenceNumber && <p className="text-[11px] text-on-surface-variant">{p.referenceNumber}</p>}
+                    {p.studentCode && <p className="text-[11px] text-on-surface-variant">{p.studentCode}</p>}
                   </TableCell>
                   <TableCell className="truncate text-xs">{p.universityName || "—"}</TableCell>
                   <TableCell className="truncate text-xs">{paymentModeLabel(p)}<div className="text-[10px] text-on-surface-variant truncate">{paymentJourneyLabel(p)}</div></TableCell>
@@ -1437,7 +2149,7 @@ function TransactionsScreen() {
                     <div className="text-[10px] text-on-surface-variant">→ {formatVND(paymentFinalAmount(p))}</div>
                   </TableCell>
                   <TableCell>
-                    <M3StatusPill label={p.paymentStatus || "—"} tone={isPaidStatus(p.paymentStatus) ? "success" : "warning"} />
+                    <M3StatusPill label={paymentStatusLabel(p.paymentStatus)} tone={paymentStatusTone(p.paymentStatus)} />
                   </TableCell>
                   <TableCell className="text-xs whitespace-nowrap">{formatDateTime(p.paidAt || p.transactionDate || p.createdAt)}</TableCell>
                 </TableRow>
@@ -1627,8 +2339,8 @@ function NotifyScreen({ ctx }: { ctx: Ctx }) {
       setTitle("");
       setContent("");
       ctx.reload();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Không thể gửi");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể gửi");
     } finally {
       setSending(false);
     }
@@ -1636,11 +2348,7 @@ function NotifyScreen({ ctx }: { ctx: Ctx }) {
 
   return (
     <PageTransition className="space-y-6 min-w-0">
-      <PageHeader
-        title="Gửi thông báo"
-        description="Gửi thông báo toàn hệ thống."
-        icon={<Megaphone className="size-7" />}
-      />
+      <PageHeader title="Gửi thông báo" description="Gửi thông báo toàn hệ thống." icon={<Megaphone className="size-7" />} />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
         <ScrollReveal>
           <ExpressiveCard variant="elevated" className="p-5 min-w-0">
@@ -1648,11 +2356,11 @@ function NotifyScreen({ ctx }: { ctx: Ctx }) {
             <div className="space-y-3">
               <div>
                 <Label className="text-xs font-bold">Tiêu đề</Label>
-                <Input className="mt-1.5" value={title} onChange={(e) => setTitle(e.target.value)} />
+                <Input className="mt-1.5" value={title} onChange={(event) => setTitle(event.target.value)} />
               </div>
               <div>
                 <Label className="text-xs font-bold">Nội dung</Label>
-                <Textarea className="mt-1.5" value={content} onChange={(e) => setContent(e.target.value)} rows={5} />
+                <Textarea className="mt-1.5" value={content} onChange={(event) => setContent(event.target.value)} rows={5} />
               </div>
               <ExpressiveButton variant="filled" className="w-full" onClick={send} disabled={sending}>
                 {sending ? <RefreshCw className="size-4 animate-spin" /> : <Megaphone className="size-4" />}
@@ -1667,11 +2375,11 @@ function NotifyScreen({ ctx }: { ctx: Ctx }) {
               <EmptyState icon={<Megaphone className="size-7" />} title="Chưa có thông báo" />
             ) : (
               <div className="space-y-2">
-                {ctx.notifications.slice(0, 6).map((n: any) => (
-                  <ExpressiveCard key={n.id} variant="filled" className="p-3 min-w-0">
-                    <p className="font-bold text-sm truncate">{n.title}</p>
-                    <p className="text-xs text-on-surface-variant line-clamp-2">{n.body}</p>
-                    <p className="text-[10px] text-on-surface-variant mt-1">{formatDateTime(n.createdAt)}</p>
+                {ctx.notifications.slice(0, 6).map((notification: any) => (
+                  <ExpressiveCard key={notification.id} variant="filled" className="p-3 min-w-0">
+                    <p className="font-bold text-sm truncate">{notification.title}</p>
+                    <p className="text-xs text-on-surface-variant line-clamp-2">{notification.body}</p>
+                    <p className="text-[10px] text-on-surface-variant mt-1">{formatDateTime(notification.createdAt)}</p>
                   </ExpressiveCard>
                 ))}
               </div>

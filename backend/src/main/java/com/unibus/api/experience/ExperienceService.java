@@ -145,6 +145,22 @@ public class ExperienceService {
 
     @Transactional(readOnly = true)
     public AdminStatsView adminStats(int days) {
+        return adminStats(days, null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public AdminStatsView adminStats(int days, LocalDate from, LocalDate to) {
+        if (from != null || to != null) {
+            LocalDate effectiveTo = to == null ? LocalDate.now() : to;
+            LocalDate effectiveFrom = from == null ? effectiveTo.minusDays(Math.max(1, Math.min(days, 90)) - 1L) : from;
+            if (effectiveFrom.isAfter(effectiveTo)) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid report date range");
+            }
+            if (effectiveFrom.plusDays(366).isBefore(effectiveTo)) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Report date range is too large");
+            }
+            return repository.adminStats(effectiveFrom, effectiveTo);
+        }
         return repository.adminStats(Math.max(1, Math.min(days, 90)));
     }
 

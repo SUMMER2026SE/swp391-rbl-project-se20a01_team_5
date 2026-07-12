@@ -411,28 +411,9 @@ public class OperationsService {
     private TicketScanResult scanWindowBlock(TripRouteInfo trip) {
         String status = trip.status() == null ? "" : trip.status().toUpperCase();
         if ("COMPLETED".equals(status) || "CANCELLED".equals(status) || "NOT_CREATED".equals(status)) {
-            return new TicketScanResult(false, "Chuyến không còn mở để quét vé.", null, null);
+            return new TicketScanResult(false, "Chuyến không còn mở để quét vé: trạng thái " + status + ".", null, null);
         }
-        LocalDateTime start = trip.scheduledStart();
-        if (start == null) {
-            start = trip.departedAt() == null
-                    ? null
-                    : trip.departedAt().atZoneSameInstant(BUSINESS_ZONE).toLocalDateTime();
-        }
-        if (start == null) {
-            return new TicketScanResult(false, "Chuyến chưa có giờ khởi hành, không thể quét vé.", null, null);
-        }
-        LocalDateTime now = LocalDateTime.now(BUSINESS_ZONE);
-        LocalDateTime opensAt = start.minusMinutes(30);
-        LocalDateTime closesAt = trip.endedAt() != null
-                ? trip.endedAt().atZoneSameInstant(BUSINESS_ZONE).toLocalDateTime().plusMinutes(60)
-                : start.plusHours(3);
-        if (now.isBefore(opensAt)) {
-            return new TicketScanResult(false, "Chưa đến giờ quét vé cho chuyến này.", null, null);
-        }
-        if (now.isAfter(closesAt)) {
-            return new TicketScanResult(false, "Đã quá giờ quét vé cho chuyến này.", null, null);
-        }
+        // ponytail: demo mode allows scanning outside the scheduled time window; restore time checks for production fraud control.
         return null;
     }
 

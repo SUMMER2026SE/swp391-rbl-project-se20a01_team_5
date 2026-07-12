@@ -65,6 +65,10 @@ class UniversityManagementServiceTests {
         userRepository.deleteAll();
 
         universityId = insertUniversity("UNI-TEST", "UniBus Test University");
+        jdbcTemplate.update("""
+                INSERT INTO university_domains(university_id, domain, status, verified_at)
+                VALUES (?, 'unitest.edu.vn', 'ACTIVE', CURRENT_TIMESTAMP)
+                """, universityId);
         universityAdmin = userRepository.save(user("admin@unitest.edu.vn", "University Admin", UserRole.UNIVERSITY_ADMIN));
     }
 

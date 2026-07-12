@@ -441,6 +441,32 @@ public class UniversityManagementRepository {
                 """, universityId, email, studentCode, fullName, faculty, academicYear, status, batchId);
     }
 
+    public boolean rosterStudentCodeExistsForDifferentEmail(Integer universityId, String studentCode, String email) {
+        Boolean exists = jdbcTemplate.queryForObject("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM university_student_rosters
+                    WHERE university_id = ?
+                      AND LOWER(student_code) = LOWER(?)
+                      AND LOWER(email) <> LOWER(?)
+                )
+                """, Boolean.class, universityId, studentCode, email);
+        return Boolean.TRUE.equals(exists);
+    }
+
+    public boolean activeDomainBelongsToUniversity(Integer universityId, String domain) {
+        Boolean exists = jdbcTemplate.queryForObject("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM university_domains
+                    WHERE university_id = ?
+                      AND LOWER(domain) = LOWER(?)
+                      AND status = 'ACTIVE'
+                )
+                """, Boolean.class, universityId, domain);
+        return Boolean.TRUE.equals(exists);
+    }
+
     public void addImportError(Long batchId, int rowNumber, String fieldName, String rawValue, String errorMessage) {
         jdbcTemplate.update("""
                 INSERT INTO university_import_errors(import_batch_id, row_number, field_name, raw_value, error_message)
@@ -564,6 +590,43 @@ public class UniversityManagementRepository {
                 """ + where + """
                 ORDER BY u.name, r.route_name
                 """, (rs, rowNum) -> mapRouteUniversity(rs), params.toArray());
+    }
+
+    public boolean routeExists(Integer routeId) {
+        Boolean exists = jdbcTemplate.queryForObject("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM routes
+                    WHERE route_id = ?
+                )
+                """, Boolean.class, routeId);
+        return Boolean.TRUE.equals(exists);
+    }
+
+    public boolean campusBelongsToUniversity(Integer campusId, Integer universityId) {
+        Boolean exists = jdbcTemplate.queryForObject("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM campuses
+                    WHERE campus_id = ?
+                      AND university_id = ?
+                )
+                """, Boolean.class, campusId, universityId);
+        return Boolean.TRUE.equals(exists);
+    }
+
+    public boolean activeRouteUniversityExists(Integer routeId, Integer universityId) {
+        Boolean exists = jdbcTemplate.queryForObject("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM route_universities
+                    WHERE route_id = ?
+                      AND university_id = ?
+                      AND status = 'ACTIVE'
+                      AND (active_until IS NULL OR active_until >= CURRENT_DATE)
+                )
+                """, Boolean.class, routeId, universityId);
+        return Boolean.TRUE.equals(exists);
     }
 
     public RouteUniversityView createRouteUniversity(Integer routeId, Integer universityId, Integer campusId,

@@ -75,14 +75,13 @@ public class SePayService {
 
     @Transactional
     public Map<String, Object> createOrder(CurrentUser currentUser, String ticketType, Integer requestedRouteId, Integer requestedBoardingStopId, Integer requestedAlightingStopId) {
+        String normalizedTicketType = ticketType == null ? "" : ticketType.trim().toLowerCase();
+        if (!"monthly".equals(normalizedTicketType) && !"single".equals(normalizedTicketType)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid ticket type: " + normalizedTicketType);
+        }
         String studentCode = ticketingRepository.studentCodeForUser(currentUser.userId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Student profile not found"));
-
-        boolean testOrder = "test".equalsIgnoreCase(ticketType);
-        if (testOrder && !"OKNIGGA".equalsIgnoreCase(studentCode)) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "Test payment is not enabled for this user");
-        }
-        String storedTicketType = testOrder ? "single" : ticketType.toLowerCase();
+        String storedTicketType = normalizedTicketType;
         ApprovedRegistration registration = null;
         Integer routeId = null;
         BigDecimal amount;
@@ -93,71 +92,63 @@ public class SePayService {
         Integer orderBoardingStopId = null;
         Integer orderAlightingStopId = null;
 
-        if ("test".equalsIgnoreCase(ticketType)) {
-            routeId = jdbcTemplate.queryForObject("SELECT route_id FROM routes ORDER BY route_id LIMIT 1", Integer.class);
-            amount = new BigDecimal("3000");
-            originalFare = amount;
-            finalAmount = amount;
-        } else {
-            if ("monthly".equalsIgnoreCase(ticketType)) {
-                registration = ticketingRepository.approvedRegistration(studentCode, requestedRouteId)
-                        .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Student must have an approved route registration"));
-                routeId = registration.routeId();
-                LocalDate now = LocalDate.now();
-                int year = now.getYear();
-                int month = now.getMonthValue();
+        if ("monthly".equalsIgnoreCase(ticketType)) {
+            registration = ticketingRepository.approvedRegistration(studentCode, requestedRouteId)
+                    .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Student must have an approved route registration"));
+            routeId = registration.routeId();
+            LocalDate now = LocalDate.now();
+            int year = now.getYear();
+            int month = now.getMonthValue();
 
-                // Check if already has active monthly pass to avoid double purchase
-                boolean exists = jdbcTemplate.queryForObject(
-                        "SELECT EXISTS(SELECT 1 FROM monthly_passes WHERE student_code = ? AND route_id = ? AND effective_year = ? AND effective_month = ? AND status = 'ACTIVE')",
-                        Boolean.class, studentCode, routeId, year, month);
-                if (exists) {
-                    throw new ApiException(HttpStatus.BAD_REQUEST, "Active monthly pass already exists for this month");
-                }
-
-                BigDecimal baseFare = ticketingRepository.monthlyFare(routeId);
-                MonthlyPassQuote quote = subsidyService.quoteFor(currentUser, routeId, registration.routeName(), baseFare, now);
-
-                if (SubsidyService.STATUS_NOT_VERIFIED.equals(quote.subsidyStatus())) {
-                    throw new ApiException(HttpStatus.FORBIDDEN, "Student verification is required before buying a monthly pass");
-                }
-                if (SubsidyService.STATUS_NO_UNIVERSITY.equals(quote.subsidyStatus())) {
-                    throw new ApiException(HttpStatus.CONFLICT, "Student university is not linked to a partner university yet");
-                }
-                amount = quote.finalFareAmount();
-                originalFare = quote.originalFareAmount();
-                subsidyAmount = quote.subsidyAmount();
-                finalAmount = quote.finalFareAmount();
-                subsidyPolicyId = quote.subsidyPolicyId();
-            } else if ("single".equalsIgnoreCase(ticketType)) {
-                if (requestedRouteId == null) {
-                    throw new ApiException(HttpStatus.BAD_REQUEST, "routeId is required for single ticket");
-                }
-                routeId = requestedRouteId;
-                String routeName = activeRouteName(routeId);
-                if (requestedBoardingStopId == null || requestedAlightingStopId == null) {
-                    throw new ApiException(HttpStatus.BAD_REQUEST, "Vui lòng chọn điểm lên và điểm xuống cho vé lượt");
-                }
-                validateStopDirection(routeId, requestedBoardingStopId, requestedAlightingStopId);
-                orderBoardingStopId = requestedBoardingStopId;
-                orderAlightingStopId = requestedAlightingStopId;
-
-                List<BigDecimal> fares = jdbcTemplate.queryForList(
-                        "SELECT amount FROM fares WHERE route_id = ? AND fare_type = 'SINGLE' AND effective_from <= CURRENT_DATE AND (effective_until IS NULL OR effective_until >= CURRENT_DATE) ORDER BY effective_from DESC LIMIT 1",
-                        BigDecimal.class, routeId);
-                BigDecimal singleFare = fares.isEmpty() ? new BigDecimal("7000") : fares.get(0);
-                MonthlyPassQuote quote = subsidyService.quoteFor(currentUser, routeId, routeName, singleFare);
-
-                amount = quote.finalFareAmount();
-                originalFare = quote.originalFareAmount();
-                subsidyAmount = quote.subsidyAmount();
-                finalAmount = quote.finalFareAmount();
-                subsidyPolicyId = quote.subsidyPolicyId();
-            } else {
-                throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid ticket type: " + ticketType);
+            // Check if already has active monthly pass to avoid double purchase
+            boolean exists = jdbcTemplate.queryForObject(
+                    "SELECT EXISTS(SELECT 1 FROM monthly_passes WHERE student_code = ? AND route_id = ? AND effective_year = ? AND effective_month = ? AND status = 'ACTIVE')",
+                    Boolean.class, studentCode, routeId, year, month);
+            if (exists) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Active monthly pass already exists for this month");
             }
-        }
 
+            BigDecimal baseFare = ticketingRepository.monthlyFare(routeId);
+            MonthlyPassQuote quote = subsidyService.quoteFor(currentUser, routeId, registration.routeName(), baseFare, now);
+
+            if (SubsidyService.STATUS_NOT_VERIFIED.equals(quote.subsidyStatus())) {
+                throw new ApiException(HttpStatus.FORBIDDEN, "Student verification is required before buying a monthly pass");
+            }
+            if (SubsidyService.STATUS_NO_UNIVERSITY.equals(quote.subsidyStatus())) {
+                throw new ApiException(HttpStatus.CONFLICT, "Student university is not linked to a partner university yet");
+            }
+            amount = quote.finalFareAmount();
+            originalFare = quote.originalFareAmount();
+            subsidyAmount = quote.subsidyAmount();
+            finalAmount = quote.finalFareAmount();
+            subsidyPolicyId = quote.subsidyPolicyId();
+        } else if ("single".equalsIgnoreCase(ticketType)) {
+            if (requestedRouteId == null) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "routeId is required for single ticket");
+            }
+            routeId = requestedRouteId;
+            String routeName = activeRouteName(routeId);
+            if (requestedBoardingStopId == null || requestedAlightingStopId == null) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Vui lòng chọn điểm lên và điểm xuống cho vé lượt");
+            }
+            validateStopDirection(routeId, requestedBoardingStopId, requestedAlightingStopId);
+            orderBoardingStopId = requestedBoardingStopId;
+            orderAlightingStopId = requestedAlightingStopId;
+
+            List<BigDecimal> fares = jdbcTemplate.queryForList(
+                    "SELECT amount FROM fares WHERE route_id = ? AND fare_type = 'SINGLE' AND effective_from <= CURRENT_DATE AND (effective_until IS NULL OR effective_until >= CURRENT_DATE) ORDER BY effective_from DESC LIMIT 1",
+                    BigDecimal.class, routeId);
+            BigDecimal singleFare = fares.isEmpty() ? new BigDecimal("7000") : fares.get(0);
+            MonthlyPassQuote quote = subsidyService.quoteFor(currentUser, routeId, routeName, singleFare);
+
+            amount = quote.finalFareAmount();
+            originalFare = quote.originalFareAmount();
+            subsidyAmount = quote.subsidyAmount();
+            finalAmount = quote.finalFareAmount();
+            subsidyPolicyId = quote.subsidyPolicyId();
+        } else {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid ticket type: " + ticketType);
+        }
         // Check for an existing unpaid order with same student_code, ticket_type, route_id and total amount to avoid spamming
         List<Map<String, Object>> existingOrders = jdbcTemplate.queryForList(
                 "SELECT id, total, legs_json FROM tb_orders WHERE student_code = ? AND ticket_type = ? AND route_id IS NOT DISTINCT FROM ? AND LOWER(payment_status) = 'unpaid' ORDER BY created_at DESC LIMIT 1",
@@ -175,7 +166,7 @@ public class SePayService {
                 String description = "DH" + orderId;
                 String qrUrl = String.format("https://qr.sepay.vn/img?bank=%s&acc=%s&template=%s&amount=%s&des=%s",
                         bankCode, accountNo, qrTemplate, amount.toPlainString(), description);
-                return orderResponse(orderId, studentCode, testOrder ? "test" : storedTicketType, routeId,
+                return orderResponse(orderId, studentCode, storedTicketType, routeId,
                         registration == null ? activeRouteNameOrNull(routeId) : registration.routeName(), amount, description, qrUrl);
             }
         }
@@ -199,7 +190,7 @@ public class SePayService {
             statement.setString(2, storedTicketType);
             statement.setObject(3, orderRouteId);
             statement.setBigDecimal(4, amount);
-            statement.setString(5, testOrder ? "Test UniBus" : orderName(ticketType));
+            statement.setString(5, orderName(ticketType));
             statement.setString(6, orderMode);
             statement.setString(7, ticketPeriod);
             statement.setString(8, originLabel);
@@ -221,7 +212,7 @@ public class SePayService {
         String qrUrl = String.format("https://qr.sepay.vn/img?bank=%s&acc=%s&template=%s&amount=%s&des=%s",
                 bankCode, accountNo, qrTemplate, amount.toPlainString(), description);
 
-        return orderResponse(orderId, studentCode, testOrder ? "test" : storedTicketType, routeId,
+        return orderResponse(orderId, studentCode, storedTicketType, routeId,
                 registration == null ? activeRouteNameOrNull(routeId) : registration.routeName(), amount, description, qrUrl);
     }
 
@@ -253,7 +244,6 @@ public class SePayService {
     private String orderName(String ticketType) {
         if ("monthly".equalsIgnoreCase(ticketType)) return "Vé tháng UniBus";
         if ("single".equalsIgnoreCase(ticketType)) return "Vé thường UniBus";
-        if ("test".equalsIgnoreCase(ticketType)) return "Test thanh toán UniBus";
         return "Thanh toán UniBus";
     }
 
@@ -373,11 +363,6 @@ public class SePayService {
         String studentCode = (String) order.get("student_code");
         String ticketType = (String) order.get("ticket_type");
         Integer routeId = (Integer) order.get("route_id");
-        String orderName = (String) order.get("name");
-        if (orderName != null && orderName.startsWith("Test UniBus")) {
-            return Map.of("processed", true, "reason", "TEST_ORDER_PAID", "orderId", orderId);
-        }
-
         BigDecimal originalAmount = (BigDecimal) order.getOrDefault("original_amount", total);
         BigDecimal subsidyAmount = (BigDecimal) order.getOrDefault("subsidy_amount", BigDecimal.ZERO);
         BigDecimal finalAmount = (BigDecimal) order.getOrDefault("final_amount", total);

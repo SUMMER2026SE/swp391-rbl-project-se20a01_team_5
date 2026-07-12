@@ -89,16 +89,16 @@ class OperationsServiceTests {
     }
 
     @Test
-    void scanRejectsBeforeTripWindow() {
+    void demoModeAllowsTicketLookupBeforeTripWindow() {
         when(operationsRepository.tripRouteInfo(TRIP_ID))
                 .thenReturn(Optional.of(new TripRouteInfo(TRIP_ID, ROUTE_A, LocalDate.now().plusDays(1), LocalTime.NOON, null, null, "NOT_STARTED")));
 
         TicketScanResult result = operationsService.scanTicket(conductor, new TicketScanRequest(TRIP_ID, "QR-A"));
 
         assertThat(result.valid()).isFalse();
-        assertThat(result.message()).isEqualTo("Chưa đến giờ quét vé cho chuyến này.");
-        verify(operationsRepository, never()).findMonthlyTicketByQr(anyString());
-        verify(operationsRepository, never()).findSingleTicketByQr(anyString());
+        assertThat(result.message()).isEqualTo("Không tìm thấy vé với mã QR này.");
+        verify(operationsRepository).findMonthlyTicketByQr("QR-A");
+        verify(operationsRepository).findSingleTicketByQr("QR-A");
     }
 
     @Test
