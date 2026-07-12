@@ -242,13 +242,22 @@ export function CoordinatorChatOverlay() {
 export function CoordinatorAlertsScreen() {
   const feedback = useApi(() => coordinatorFeedbackApi.all(), undefined, []);
   const lostItems = useApi(() => coordinatorLostItemApi.all(), undefined, []);
+  const notifications = useApi(() => notificationApi.mine(), undefined, []);
   const feedbackItems = ((feedback.raw || []) as any[]);
   const sosItems = feedbackItems.filter(isSosFeedback);
   const feedbackOnly = feedbackItems.filter((item) => !isSosFeedback(item));
+  const historicalAlerts = ((notifications.raw || []) as any[])
+    .filter((item) => !isPrivateMessageNotification(item))
+    .map((item) => ({
+      ...item,
+      _type: isSosFeedback(item) ? "sos" as const : isLostItemNotification(item) ? "lost" as const : "feedback" as const,
+    }))
+    .filter((item) => item._type === "sos" || item._type === "lost" || isFeedbackNotification(item));
   const alertItems = [
     ...sosItems.map((item) => ({ ...item, _type: "sos" as const })),
     ...feedbackOnly.map((item) => ({ ...item, _type: "feedback" as const })),
     ...((lostItems.raw || []) as any[]).map((item) => ({ ...item, _type: "lost" as const })),
+    ...historicalAlerts,
   ].sort((left, right) => Date.parse(right.createdAt || right.reportedAt || "") - Date.parse(left.createdAt || left.reportedAt || ""));
 
   return (
@@ -258,16 +267,16 @@ export function CoordinatorAlertsScreen() {
         description="Hiển thị SOS, phản hồi và mất đồ. Tin nhắn riêng nằm trong pop up chat."
         icon={<AlertTriangle className="size-7" />}
         actions={
-          <ExpressiveButton variant="outlined" size="sm" onClick={() => { feedback.reload(); lostItems.reload(); }}>
-            <RefreshCw className={cn("size-4", (feedback.loading || lostItems.loading) && "animate-spin")} />
+          <ExpressiveButton variant="outlined" size="sm" onClick={() => { feedback.reload(); lostItems.reload(); notifications.reload(); }}>
+            <RefreshCw className={cn("size-4", (feedback.loading || lostItems.loading || notifications.loading) && "animate-spin")} />
             Làm mới
           </ExpressiveButton>
         }
       />
-      {feedback.loading || lostItems.loading ? (
+      {feedback.loading || lostItems.loading || notifications.loading ? (
         <LoadingScreen label="Đang tải thông báo..." />
-      ) : feedback.error || lostItems.error ? (
-        <ErrorScreen message={feedback.error || lostItems.error || "Không tải được thông báo"} onRetry={() => { feedback.reload(); lostItems.reload(); }} />
+      ) : feedback.error || lostItems.error || notifications.error ? (
+        <ErrorScreen message={feedback.error || lostItems.error || notifications.error || "Không tải được thông báo"} onRetry={() => { feedback.reload(); lostItems.reload(); notifications.reload(); }} />
       ) : alertItems.length === 0 ? (
         <EmptyState icon={<Bell className="size-7" />} title="Không có thông báo" description="Tin nhắn riêng được gom vào biểu tượng chat ở góc màn hình." />
       ) : (
@@ -288,7 +297,7 @@ export function CoordinatorAlertsScreen() {
                   <M3StatusPill label={isResolved ? "Đã xử lý" : isSos ? "Khẩn cấp" : "Cần xử lý"} tone={isResolved ? "success" : isSos ? "error" : "warning"} />
                   <span className="text-xs text-on-surface-variant">{formatDateTime(item.createdAt || item.reportedAt)}</span>
                 </div>
-                <p className="font-bold text-on-surface truncate">{item.studentName || item.reporterName || item.itemName || (isLost ? "Báo mất đồ" : "Sinh viên gửi phản hồi")}</p>
+                <p className="font-bold text-on-surface truncate">{item.studentName || item.reporterName || item.senderName || item.itemName || (isLost ? "Báo mất đồ" : "Sinh viên gửi phản hồi")}</p>
                 <p className="mt-2 whitespace-pre-wrap break-words text-sm text-on-surface">{item.content || item.description || item.notes || "Không có nội dung"}</p>
               </ExpressiveCard>
             </StaggerItem>
@@ -1631,6 +1640,25 @@ function NewShiftCard({
 // =============================================================================
 // Screen 6: Routes management (CRUD)
 // =============================================================================
+function routeOperationalDetails(route: RouteListItem, lookup?: any) {
+  const description = route.description || '';
+  const operationTime = description.match(/operationTime=([^|]+)/i)?.[1]?.trim();
+  const outbound = description.match(/outBound=([^|]+)/i)?.[1]?.trim();
+  const inbound = description.match(/inBound=([^|]+)/i)?.[1]?.trim();
+  const firstTrip = lookup?.firstTrip;
+  const lastTrip = lookup?.lastTrip;
+  const estimatedMinutes = Number(route.estimatedMinutes || lookup?.estimatedMinutes);
+
+  return {
+    serviceTime: firstTrip && lastTrip ? firstTrip + ' – ' + lastTrip : operationTime,
+    frequency: Number(lookup?.frequencyMin) > 0 ? Number(lookup.frequencyMin) + ' phút/chuyến' : undefined,
+    stopCount: Number(lookup?.stopCount) > 0 ? Number(lookup.stopCount) : undefined,
+    estimatedMinutes: estimatedMinutes > 0 ? estimatedMinutes : undefined,
+    direction: outbound || inbound || 'Lộ trình hai chiều đang cập nhật',
+    routeCode: lookup?.routeCode,
+  };
+}
+
 function RoutesScreen({ ctx }: { ctx: Ctx }) {
   const [routes, setRoutes] = useState<RouteListItem[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1677,26 +1705,36 @@ function RoutesScreen({ ctx }: { ctx: Ctx }) {
         <EmptyState icon={<RouteIcon className="size-7" />} title="Chưa có tuyến" />
       ) : (
         <StaggerGroup className="space-y-3 min-w-0">
-          {routes.map((r) => (
-            <StaggerItem key={r.id}>
-              <ExpressiveCard variant="elevated" className="p-4 min-w-0">
-                <div className="flex items-start justify-between gap-3 min-w-0">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold truncate">{r.routeName}</p>
-                    <p className="text-xs text-on-surface-variant line-clamp-2">{r.description}</p>
-                    <div className="flex items-center gap-3 mt-2 text-xs">
-                      <span className="flex items-center gap-1"><Clock className="size-3" /> {r.estimatedMinutes} phút</span>
-                      <M3StatusPill label={r.status} tone={r.status === "ACTIVE" ? "success" : "neutral"} />
+          {routes.map((r) => {
+            const lookup = (ctx.routes || []).find((item: any) => Number(item.routeId || item.id) === r.id || item.routeName === r.routeName);
+            const details = routeOperationalDetails(r, lookup);
+            return (
+              <StaggerItem key={r.id}>
+                <ExpressiveCard variant="elevated" className="p-4 min-w-0">
+                  <div className="flex items-start justify-between gap-3 min-w-0">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {details.routeCode && <span className="rounded-full bg-primary-container px-2 py-0.5 text-[11px] font-bold text-on-primary-container">Tuyến {details.routeCode}</span>}
+                        <p className="font-bold text-on-surface truncate">{r.routeName}</p>
+                      </div>
+                      <p className="mt-1 text-xs text-on-surface-variant line-clamp-1">Lượt đi: {details.direction}</p>
+                      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-on-surface-variant">
+                        {details.serviceTime && <span className="flex items-center gap-1"><Clock className="size-3" /> Hoạt động {details.serviceTime}</span>}
+                        {details.frequency && <span className="flex items-center gap-1"><RefreshCw className="size-3" /> Mỗi {details.frequency}</span>}
+                        {details.stopCount && <span className="flex items-center gap-1"><MapPin className="size-3" /> {details.stopCount} trạm</span>}
+                        {details.estimatedMinutes && <span className="flex items-center gap-1"><Gauge className="size-3" /> Khoảng {details.estimatedMinutes} phút/chuyến</span>}
+                        <M3StatusPill label={r.status === "ACTIVE" ? "Đang hoạt động" : r.status} tone={r.status === "ACTIVE" ? "success" : "neutral"} />
+                      </div>
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <ExpressiveButton variant="text" size="icon-sm" onClick={() => setEditing(r)}><Edit className="size-4" /></ExpressiveButton>
+                      <ExpressiveButton variant="text" size="icon-sm" onClick={() => setDeleting(r.id)}><Trash2 className="size-4 text-error" /></ExpressiveButton>
                     </div>
                   </div>
-                  <div className="flex gap-1 shrink-0">
-                    <ExpressiveButton variant="text" size="icon-sm" onClick={() => setEditing(r)}><Edit className="size-4" /></ExpressiveButton>
-                    <ExpressiveButton variant="text" size="icon-sm" onClick={() => setDeleting(r.id)}><Trash2 className="size-4 text-error" /></ExpressiveButton>
-                  </div>
-                </div>
-              </ExpressiveCard>
-            </StaggerItem>
-          ))}
+                </ExpressiveCard>
+              </StaggerItem>
+            );
+          })}
         </StaggerGroup>
       )}
 
@@ -2032,31 +2070,46 @@ function ByUniversityScreen({ onNavigate }: { onNavigate: (id: string) => void }
     [selectedUniversityId]
   );
 
-  useEffect(() => {
-    if (!selectedUniversityId && metrics.raw?.length) {
-      setSelectedUniversityId(metrics.raw[0].universityId);
-    }
-  }, [metrics.raw, selectedUniversityId]);
+  const visibleUniversities = useMemo(() => {
+    const priorityUniversityIds = [1, 2, 103, 3, 4];
+    const universityMetrics = metrics.raw || [];
+    return [...universityMetrics]
+      .sort((left, right) => {
+        const leftPriority = priorityUniversityIds.indexOf(left.universityId);
+        const rightPriority = priorityUniversityIds.indexOf(right.universityId);
+        const leftRank = leftPriority === -1 ? priorityUniversityIds.length : leftPriority;
+        const rightRank = rightPriority === -1 ? priorityUniversityIds.length : rightPriority;
+        if (leftRank !== rightRank) return leftRank - rightRank;
+        return (right.tripsToday + right.routeCount + right.studentCount) - (left.tripsToday + left.routeCount + left.studentCount);
+      })
+      .slice(0, 5);
+  }, [metrics.raw]);
 
-  const selectedUniversity = metrics.raw?.find((u) => u.universityId === selectedUniversityId) || metrics.raw?.[0] || null;
+  useEffect(() => {
+    if (!selectedUniversityId && visibleUniversities.length) {
+      setSelectedUniversityId(visibleUniversities[0].universityId);
+    }
+  }, [selectedUniversityId, visibleUniversities]);
+
+  const selectedUniversity = visibleUniversities.find((u) => u.universityId === selectedUniversityId) || visibleUniversities[0] || null;
   const routes = routeMetrics.raw || [];
-  const totalRegistered = routes.reduce((sum, r) => sum + r.registeredStudents, 0);
-  const totalPasses = routes.reduce((sum, r) => sum + r.activeMonthlyPasses, 0);
   const totalRunning = routes.reduce((sum, r) => sum + r.runningTrips, 0);
 
   const routeStatus = (route: CoordinatorUniversityRouteMetric) => {
     const demand = Math.max(route.activeMonthlyPasses, route.registeredStudents);
-    if (demand > 0 && route.tripsToday === 0) return { label: "Thiếu chuyến", tone: "error" as const };
+    if (route.tripsToday === 0) return { label: "Cần tạo chuyến", tone: "error" as const };
     if (route.tripsToday > 0 && route.runningTrips === 0) return { label: "Chưa chạy", tone: "warning" as const };
     if (demand > route.tripsToday * 40) return { label: "Có nguy cơ quá tải", tone: "warning" as const };
+    if (!route.assignedDrivers || !route.assignedConductors) return { label: "Thiếu nhân sự", tone: "warning" as const };
     return { label: "Ổn định", tone: "success" as const };
   };
+  const routesNeedingAction = routes.filter((route) => routeStatus(route).tone !== "success").length;
 
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Điều phối theo trường"
-        description="Theo dõi nhu cầu sinh viên và năng lực vận hành theo từng trường."
+        description="Chọn trường, xem tuyến cần xử lý, mở lịch hoặc phân công ngay."
         icon={<School className="size-7" />}
         actions={
           <div className="flex flex-col sm:flex-row gap-2">
@@ -2064,9 +2117,9 @@ function ByUniversityScreen({ onNavigate }: { onNavigate: (id: string) => void }
               value={selectedUniversityId ? String(selectedUniversityId) : ""}
               onValueChange={(value) => setSelectedUniversityId(Number(value))}
             >
-              <SelectTrigger className="w-full sm:w-72"><SelectValue placeholder="Chọn trường" /></SelectTrigger>
+              <SelectTrigger className="w-full sm:w-80"><SelectValue placeholder="Chọn trường cần điều phối" /></SelectTrigger>
               <SelectContent>
-                {(metrics.raw || []).map((u) => (
+                {visibleUniversities.map((u) => (
                   <SelectItem key={u.universityId} value={String(u.universityId)}>
                     {u.shortName || u.universityName}
                   </SelectItem>
@@ -2106,9 +2159,9 @@ function ByUniversityScreen({ onNavigate }: { onNavigate: (id: string) => void }
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 min-w-0">
                   {[
                     { label: "Tuyến", value: routes.length || selectedUniversity.routeCount, icon: RouteIcon },
-                    { label: "Vé tháng", value: totalPasses, icon: Badge },
-                    { label: "Đăng ký", value: totalRegistered, icon: Users },
+                    { label: "Sinh viên", value: selectedUniversity.studentCount, icon: Users },
                     { label: "Đang chạy", value: totalRunning, icon: Navigation },
+                    { label: "Cần xử lý", value: routesNeedingAction, icon: AlertTriangle },
                   ].map((metric) => (
                     <div key={metric.label} className="rounded-xl bg-surface-container-high px-3 py-2 min-w-0">
                       <metric.icon className="size-4 text-on-surface-variant" />
@@ -2200,6 +2253,16 @@ function isPrivateMessageNotification(item: any) {
   return text.includes("tin nhắn") || text.includes("message") || text.includes("chat");
 }
 
+function isLostItemNotification(item: any) {
+  const text = `${item.title || ""} ${item.content || item.body || ""}`.toLowerCase();
+  return text.includes("[lost_item]") || text.includes("mất đồ") || text.includes("lost item");
+}
+
+function isFeedbackNotification(item: any) {
+  const text = `${item.title || ""} ${item.content || item.body || ""}`.toLowerCase();
+  return text.includes("phản hồi") || text.includes("feedback");
+}
+
 ﻿// =============================================================================
 // Screen 9: Hỗ trợ và phản hồi (Feedback / Lost Items / SOS)
 // =============================================================================
@@ -2216,11 +2279,44 @@ function FeedbackScreen({ ctx, initialTab }: { ctx: Ctx; initialTab?: string }) 
 
   const feedbackResource = useApi(() => coordinatorFeedbackApi.all(), (items) => items.map(mapFeedback), []);
   const lostItemResource = useApi(() => coordinatorLostItemApi.all(), undefined, []);
+  const notificationResource = useApi(() => notificationApi.mine(), undefined, []);
   const feedbackItems = feedbackResource.data || ctx.feedback;
-  const lostItems: ExperienceLostItemCard[] = lostItemResource.data || [];
+  const historicalItems = ((notificationResource.raw || []) as any[])
+    .filter((item) => !isPrivateMessageNotification(item))
+    .map((item) => ({
+      ...item,
+      _history: true,
+      _type: isSosFeedback(item) ? 'sos' : isLostItemNotification(item) ? 'lost' : 'feedback',
+      status: 'resolved',
+      id: 'notification-' + item.notificationId,
+      studentName: item.senderName || 'Hệ thống',
+      reporterName: item.senderName || 'Hệ thống',
+      content: item.content || item.body || '',
+      createdAt: item.createdAt,
+      category: 'Lịch sử hệ thống',
+    }))
+    .filter((item) => item._type !== 'feedback' || isFeedbackNotification(item));
+  const historicalLostItems = historicalItems
+    .filter((item) => item._type === 'lost')
+    .map((item) => ({
+      lostItemReportId: -Number(item.notificationId),
+      reporterName: item.senderName || 'Hệ thống',
+      itemDescription: item.content,
+      status: 'CLOSED',
+      reportedAt: item.createdAt,
+      notes: 'Lịch sử hệ thống',
+      _history: true,
+    })) as ExperienceLostItemCard[];
+  const lostItems: ExperienceLostItemCard[] = [...(lostItemResource.data || []), ...historicalLostItems];
 
-  const feedbackOnly = feedbackItems.filter((f: any) => !isSosFeedback(f));
-  const sosOnly = feedbackItems.filter(isSosFeedback);
+  const feedbackOnly = [
+    ...feedbackItems.filter((f: any) => !isSosFeedback(f)),
+    ...historicalItems.filter((item) => item._type === 'feedback'),
+  ];
+  const sosOnly = [
+    ...feedbackItems.filter(isSosFeedback),
+    ...historicalItems.filter((item) => item._type === 'sos'),
+  ];
 
   const applyStatusFilter = (items: any[]) =>
     items
@@ -2285,8 +2381,8 @@ function FeedbackScreen({ ctx, initialTab }: { ctx: Ctx; initialTab?: string }) 
     }
   };
 
-  const reloadAll = () => { feedbackResource.reload(); lostItemResource.reload(); };
-  const loading = (feedbackResource.loading && !feedbackResource.data) || (lostItemResource.loading && !lostItemResource.data);
+  const reloadAll = () => { feedbackResource.reload(); lostItemResource.reload(); notificationResource.reload(); };
+  const loading = (feedbackResource.loading && !feedbackResource.data) || (lostItemResource.loading && !lostItemResource.data) || (notificationResource.loading && !notificationResource.raw);
 
   return (
     <PageTransition className="space-y-6 min-w-0">
@@ -2762,8 +2858,9 @@ function FallbackScreen({ activeId }: { activeId: string }) {
 function FloatingChatButton({ onClick, open, unreadCount }: { onClick: () => void; open: boolean; unreadCount: number }) {
   return (
     <button
-      onClick={onClick}
-      className="fixed bottom-20 right-4 z-[2600] flex size-14 items-center justify-center rounded-full bg-[#14140f] text-[#beff50] shadow-xl transition-all duration-200 hover:scale-105 active:scale-95 sm:bottom-6 sm:right-6"
+      type="button"
+      onClick={(event) => { event.stopPropagation(); onClick(); }}
+      className="fixed bottom-20 right-4 z-[2600] flex size-14 touch-manipulation items-center justify-center rounded-full bg-[#14140f] text-[#beff50] shadow-xl transition-all duration-200 hover:scale-105 active:scale-95 sm:bottom-6 sm:right-6"
       aria-label={open ? "Đóng chat nội bộ" : "Mở chat nội bộ"}
     >
       {open ? <X className="size-6" /> : <MessageSquare className="size-6" />}
@@ -2786,7 +2883,7 @@ function InternalChatPanel({ open, onOpenChange, onUnreadCountChange }: Internal
   const [threads, setThreads] = useState<ContactThreadCard[]>([]);
   const [activeThread, setActiveThread] = useState<ContactThreadCard | null>(null);
   const [messages, setMessages] = useState<InternalMessageCard[]>([]);
-  const [loadingThreads, setLoadingThreads] = useState(false);
+  const [loadingThreads, setLoadingThreads] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [messageText, setMessageText] = useState("");
   const [sending, setSending] = useState(false);
@@ -2809,12 +2906,16 @@ function InternalChatPanel({ open, onOpenChange, onUnreadCountChange }: Internal
       if (fetchingThreadsRef.current) return;
       fetchingThreadsRef.current = true;
       try {
-        const data = await messagingApi.getThreads();
+        const [data, notifications] = await Promise.all([
+          messagingApi.getThreads(),
+          notificationApi.mine(),
+        ]);
         setThreads(data);
         const driverConductorUnread = data
           .filter((t) => ["DRIVER", "CONDUCTOR"].includes(t.peerRole?.toUpperCase()))
           .reduce((sum, t) => sum + t.unreadCount, 0);
-        onUnreadCountChange(driverConductorUnread);
+        const notificationUnread = notifications.filter((item) => !item.read && isPrivateMessageNotification(item)).length;
+        onUnreadCountChange(Math.max(driverConductorUnread, notificationUnread));
       } catch (error) {
         console.error("Failed to fetch message threads:", error);
       } finally {
@@ -2822,18 +2923,15 @@ function InternalChatPanel({ open, onOpenChange, onUnreadCountChange }: Internal
       }
     };
 
-    if (open) {
-      if (threads.length === 0) setLoadingThreads(true);
-      fetchThreads().finally(() => {
-        setLoadingThreads(false);
-      });
-      
-      const interval = setInterval(() => {
-        if (!document.hidden) void fetchThreads();
-      }, 4000);
-      return () => clearInterval(interval);
-    }
-  }, [open, onUnreadCountChange, threads.length]);
+    void fetchThreads().finally(() => {
+      setLoadingThreads(false);
+    });
+
+    const interval = setInterval(() => {
+      if (!document.hidden) void fetchThreads();
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [onUnreadCountChange]);
 
   // Poll conversation messages when a thread is active
   useEffect(() => {
@@ -2855,8 +2953,12 @@ function InternalChatPanel({ open, onOpenChange, onUnreadCountChange }: Internal
       }
     };
 
-    // Mark as read immediately
     messagingApi.markAsRead(activeThread.peerUserId).catch(() => {});
+    notificationApi.mine()
+      .then((items) => items.filter((item) => !item.read && isPrivateMessageNotification(item) && item.senderName === activeThread.peerName))
+      .then((items) => Promise.all(items.map((item) => notificationApi.markRead(item.notificationId))))
+      .then((items) => items.forEach(() => window.dispatchEvent(new Event("notification-read"))))
+      .catch(() => {});
 
     if (messages.length === 0) setLoadingMessages(true);
     fetchConversation().finally(() => {
