@@ -83,8 +83,7 @@ public class ExperienceRepository {
     public DriverDashboardView driverDashboard(Integer userId) {
         Integer driverId = driverIdForUser(userId).orElse(null);
         List<TripCard> trips = driverId == null ? List.of() : driverTrips(driverId, 12);
-        TripCard activeTrip = trips.stream().filter(t -> "RUNNING".equalsIgnoreCase(t.status())).findFirst()
-                .orElse(trips.stream().findFirst().orElse(null));
+        TripCard activeTrip = trips.stream().filter(t -> "RUNNING".equalsIgnoreCase(t.status())).findFirst().orElse(null);
         List<FeedbackCard> feedback = driverId == null ? List.of() : driverFeedback(driverId, 8);
         return new DriverDashboardView(
                 fullName(userId),
@@ -99,21 +98,21 @@ public class ExperienceRepository {
 
     public AssistantDashboardView assistantDashboard(Integer userId) {
         Integer conductorId = conductorIdForUser(userId).orElse(null);
-        List<TripCard> trips = conductorId == null ? List.of() : conductorTrips(conductorId, 12);
-        TripCard activeTrip = trips.stream().filter(t -> "RUNNING".equalsIgnoreCase(t.status())).findFirst()
-                .orElse(trips.stream().findFirst().orElse(null));
+        List<TripCard> todayTrips = conductorId == null ? List.of() : conductorTrips(conductorId, 12);
+        List<TripCard> historyTrips = conductorId == null ? List.of() : conductorTripHistory(conductorId, 20);
+        TripCard activeTrip = todayTrips.stream().filter(t -> "RUNNING".equalsIgnoreCase(t.status())).findFirst().orElse(null);
         List<TicketCard> tickets = activeTrip == null ? List.of() : ticketsForTrip(activeTrip.tripId(), 20);
         List<IncidentCard> incidents = conductorId == null ? List.of() : incidents(conductorId, 8);
         List<LostItemCard> lostItems = lostItemsForAssistant(userId, 8);
         return new AssistantDashboardView(
                 fullName(userId),
-                trips,
+                historyTrips,
                 activeTrip,
                 tickets,
                 incidents,
                 lostItems,
                 List.of(
-                        stat("Chuyến", trips.size(), "chuyến", "primary"),
+                        stat("Chuyến", todayTrips.size(), "chuyến", "primary"),
                         stat("Vé cần kiểm", tickets.size(), "vé", "secondary"),
                         stat("Sự cố", incidents.size(), "mục", "error")));
     }
@@ -161,6 +160,10 @@ public class ExperienceRepository {
 
     public List<RouteCard> routeSuggestions(Integer universityId) {
         return routeCards(universityId);
+    }
+
+    public List<RouteCard> studentRouteSuggestions(Integer userId) {
+        return routeCards(studentProfile(userId).universityId());
     }
 
     public List<LostItemCard> studentLostItems(Integer userId) {
@@ -253,7 +256,7 @@ public class ExperienceRepository {
                 LEFT JOIN trips t ON t.trip_id = li.trip_id
                 LEFT JOIN routes r ON r.route_id = t.route_id
                 WHERE li.assisted_by_user_id IS NULL OR li.assisted_by_user_id = ?
-                ORDER BY CASE li.status WHEN 'REPORTED' THEN 0 WHEN 'SEARCHING' THEN 1 ELSE 2 END,
+                ORDER BY CASE li.status WHEN 'REPORTED' THEN 0 WHEN 'SEARCHING' THEN 1 WHEN 'FOUND' THEN 2 ELSE 3 END,
                          li.reported_at DESC
                 LIMIT ?
                 """, (rs, rowNum) -> mapLostItem(rs), userId, limit);
@@ -265,12 +268,56 @@ public class ExperienceRepository {
                 SET status = ?, notes = ?, assisted_by_user_id = COALESCE(assisted_by_user_id, ?)
                 WHERE lost_item_report_id = ?
                 """, request.status(), request.notes(), userId, lostItemId);
+        notifyLostItemReporter(userId, lostItemId, request);
         return lostItemsForAssistant(userId, 50).stream()
                 .filter(item -> item.lostItemReportId().equals(lostItemId))
                 .findFirst()
                 .orElse(null);
     }
 
+    private void notifyLostItemReporter(Integer senderUserId, Integer lostItemId, UpdateLostItemStatusRequest request) {
+        String title = switch (request.status().toUpperCase()) {
+            case "FOUND", "SEARCHING", "RESOLVED" -> "Đã tìm thấy đồ thất lạc";
+            case "RETURNED", "CLOSED" -> "Đã trả đồ thất lạc";
+            default -> "Đồ thất lạc đang được xử lý";
+        };
+        String detail = request.notes() == null || request.notes().isBlank()
+                ? "Vui lòng mở mục Đồ thất lạc để xem chi tiết."
+                : request.notes().trim();
+        jdbcTemplate.update("""
+                INSERT INTO notifications(recipient_user_id, sender_user_id, title, content, notification_type)
+                SELECT reported_by_user_id, ?, ?, ?, 'ALERT'
+                FROM lost_item_reports
+                WHERE lost_item_report_id = ?
+                """, senderUserId, title, detail, lostItemId);
+    }
+
+    public List<LostItemCard> coordinatorLostItems(int limit) {
+        return jdbcTemplate.query("""
+                SELECT li.lost_item_report_id, reporter.full_name AS reporter_name, li.trip_id,
+                       r.route_code, r.route_name, li.item_description, li.status, li.notes, li.reported_at
+                FROM lost_item_reports li
+                JOIN users reporter ON reporter.user_id = li.reported_by_user_id
+                LEFT JOIN trips t ON t.trip_id = li.trip_id
+                LEFT JOIN routes r ON r.route_id = t.route_id
+                ORDER BY CASE li.status WHEN 'REPORTED' THEN 0 WHEN 'SEARCHING' THEN 1 WHEN 'FOUND' THEN 2 ELSE 3 END,
+                         li.reported_at DESC
+                LIMIT ?
+                """, (rs, rowNum) -> mapLostItem(rs), limit);
+    }
+
+    public LostItemCard coordinatorUpdateLostItem(Integer userId, Integer lostItemId, UpdateLostItemStatusRequest request) {
+        jdbcTemplate.update("""
+                UPDATE lost_item_reports
+                SET status = ?, notes = ?, assisted_by_user_id = COALESCE(assisted_by_user_id, ?)
+                WHERE lost_item_report_id = ?
+                """, request.status(), request.notes(), userId, lostItemId);
+        notifyLostItemReporter(userId, lostItemId, request);
+        return coordinatorLostItems(100).stream()
+                .filter(item -> item.lostItemReportId().equals(lostItemId))
+                .findFirst()
+                .orElse(null);
+    }
     public List<FeedbackCard> driverFeedback(Integer driverId, int limit) {
         return jdbcTemplate.query("""
                 SELECT f.feedback_id, submitter.full_name AS student_name, r.route_code, r.route_name,
@@ -731,7 +778,7 @@ public class ExperienceRepository {
     private List<TripCard> driverTrips(Integer driverId, int limit) {
         return jdbcTemplate.query(tripSelect("""
                 WHERE t.driver_id = ?
-                  AND t.service_date BETWEEN CURRENT_DATE - INTERVAL '7 days' AND CURRENT_DATE + INTERVAL '7 days'
+                  AND t.service_date = CURRENT_DATE
                 ORDER BY t.service_date DESC, bs.departure_time NULLS LAST, t.trip_id DESC
                 LIMIT ?
                 """), (rs, rowNum) -> mapTrip(rs), driverId, limit);
@@ -740,8 +787,18 @@ public class ExperienceRepository {
     private List<TripCard> conductorTrips(Integer conductorId, int limit) {
         return jdbcTemplate.query(tripSelect("""
                 WHERE t.conductor_id = ?
-                  AND t.service_date BETWEEN CURRENT_DATE - INTERVAL '7 days' AND CURRENT_DATE + INTERVAL '7 days'
+                  AND t.service_date = CURRENT_DATE
                 ORDER BY t.service_date DESC, bs.departure_time NULLS LAST, t.trip_id DESC
+                LIMIT ?
+                """), (rs, rowNum) -> mapTrip(rs), conductorId, limit);
+    }
+
+    private List<TripCard> conductorTripHistory(Integer conductorId, int limit) {
+        return jdbcTemplate.query(tripSelect("""
+                WHERE t.conductor_id = ?
+                  AND t.service_date BETWEEN CURRENT_DATE - INTERVAL '7 days' AND CURRENT_DATE
+                  AND t.status IN ('COMPLETED', 'CANCELLED')
+                ORDER BY t.service_date DESC, bs.departure_time DESC NULLS LAST, t.trip_id DESC
                 LIMIT ?
                 """), (rs, rowNum) -> mapTrip(rs), conductorId, limit);
     }

@@ -18,8 +18,6 @@ import {
   Sparkles,
   ChevronDown,
   User as UserIcon,
-  Phone,
-  Check,
   QrCode,
   Route,
   Star,
@@ -34,6 +32,65 @@ import type { Role } from "@/lib/types";
 import { authApi, setTokens, universityApi } from "@/lib/api/client";
 
 type AuthScreen = "login" | "register" | "forgot";
+
+const GOOGLE_IDENTITY_SCRIPT_ID = "google-identity-services";
+const OTP_COOLDOWN_SECONDS = 60;
+
+function useOtpCooldown() {
+  const [seconds, setSeconds] = useState(0);
+
+  useEffect(() => {
+    if (seconds <= 0) return;
+    const timer = window.setTimeout(() => setSeconds((value) => Math.max(0, value - 1)), 1000);
+    return () => window.clearTimeout(timer);
+  }, [seconds]);
+
+  return {
+    seconds,
+    active: seconds > 0,
+    start: () => setSeconds(OTP_COOLDOWN_SECONDS),
+  };
+}
+
+function loadGoogleIdentity(): Promise<void> {
+  if (typeof window === "undefined") return Promise.reject(new Error("Google Identity chỉ chạy trên trình duyệt."));
+  if (window.google?.accounts?.oauth2) return Promise.resolve();
+
+  return new Promise((resolve, reject) => {
+    const existing = document.getElementById(GOOGLE_IDENTITY_SCRIPT_ID) as HTMLScriptElement | null;
+    const script = existing ?? document.createElement("script");
+
+    const done = () => {
+      if (window.google?.accounts?.oauth2) resolve();
+      else reject(new Error("Google Identity chưa sẵn sàng."));
+    };
+    const waitUntilReady = (attempt = 0) => {
+      if (window.google?.accounts?.oauth2) {
+        resolve();
+        return;
+      }
+      if (attempt >= 30) {
+        reject(new Error("Google Identity chưa sẵn sàng."));
+        return;
+      }
+      window.setTimeout(() => waitUntilReady(attempt + 1), 100);
+    };
+
+    script.addEventListener("load", done, { once: true });
+    script.addEventListener("error", () => reject(new Error("Không tải được Google Identity.")), { once: true });
+
+    if (!existing) {
+      script.id = GOOGLE_IDENTITY_SCRIPT_ID;
+      script.src = "https://accounts.google.com/gsi/client";
+      script.async = true;
+      script.defer = true;
+      document.head.appendChild(script);
+      return;
+    }
+
+    waitUntilReady();
+  });
+}
 
 declare global {
   interface Window {
@@ -74,7 +131,7 @@ export function AuthScreens({
   onLogin: (role: Role) => void;
 }) {
   const [screen, setScreen] = useState<AuthScreen>("login");
-  const [googleReady, setGoogleReady] = useState(false);
+  const [, setGoogleReady] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [partnerNames, setPartnerNames] = useState<string[]>([]);
   const authRef = useRef<HTMLDivElement>(null);
@@ -90,38 +147,50 @@ export function AuthScreens({
     universityApi.daNang()
       .then(setPartnerNames)
       .catch(() => setPartnerNames([]));
+    loadGoogleIdentity()
+      .then(() => setGoogleReady(true))
+      .catch(() => setGoogleReady(false));
   }, []);
 
-  const handleGoogleLogin = useCallback(() => {
+  const handleGoogleLogin = useCallback(async () => {
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
     if (!clientId) {
       toast.error("Thiếu NEXT_PUBLIC_GOOGLE_CLIENT_ID để đăng nhập Google.");
       return;
     }
-    if (!googleReady || !window.google?.accounts?.oauth2) {
+
+    setGoogleLoading(true);
+    try {
+      await loadGoogleIdentity();
+    } catch {
+      setGoogleReady(false);
+      setGoogleLoading(false);
       toast.error("Google Identity chưa sẵn sàng. Vui lòng thử lại sau vài giây.");
       return;
     }
 
-    setGoogleLoading(true);
-
-    // Revoke any existing Google OAuth token before requesting a new one.
-    // This fixes the bug where after logout → login again, Google popup
-    // doesn't appear because GIS caches the previous token.
-    try {
-      // @ts-ignore — revoke exists on google.accounts.oauth2
-      window.google.accounts.oauth2.revoke(null, () => {});
-    } catch {
-      // ignore revoke errors
+    const oauth2 = window.google?.accounts?.oauth2;
+    if (!oauth2) {
+      setGoogleReady(false);
+      setGoogleLoading(false);
+      toast.error("Google Identity chưa sẵn sàng. Vui lòng thử lại sau vài giây.");
+      return;
     }
 
-    const client = window.google.accounts.oauth2.initTokenClient({
+    setGoogleReady(true);
+    let completed = false;
+    const releaseLoading = window.setTimeout(() => {
+      if (!completed) setGoogleLoading(false);
+    }, 45000);
+
+    const client = oauth2.initTokenClient({
       client_id: clientId,
       scope: "openid email profile",
       callback: async (response) => {
+        completed = true;
+        window.clearTimeout(releaseLoading);
         if (response.error || !response.access_token) {
           setGoogleLoading(false);
-          // User closed popup or error — don't show error toast if user cancelled
           if (response.error !== "user_closed") {
             toast.error("Không nhận được token Google hợp lệ.");
           }
@@ -144,15 +213,12 @@ export function AuthScreens({
         }
       },
     });
-    // prompt: '' forces Google to show account picker every time,
-    // even if user previously logged in. Combined with revoke above,
-    // this ensures login-logout-login works without F5.
-    client.requestAccessToken({ prompt: "consent" });
-  }, [googleReady, onLogin]);
-
+    client.requestAccessToken({ prompt: "select_account consent" });
+  }, [onLogin]);
   return (
     <div className="min-h-screen w-full bg-background overflow-x-hidden">
       <Script
+        id={GOOGLE_IDENTITY_SCRIPT_ID}
         src="https://accounts.google.com/gsi/client"
         strategy="afterInteractive"
         onLoad={() => setGoogleReady(true)}
@@ -219,7 +285,7 @@ export function AuthScreens({
             <SplitText
               as="h2"
               text={screen === "register" ? "Tạo tài khoản" : screen === "forgot" ? "Quên mật khẩu" : "Đăng nhập"}
-              className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-on-surface"
+              className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight leading-[1.15] text-on-surface"
               stagger={0.04}
             />
             <p className="mt-3 text-base sm:text-lg text-on-surface-variant text-pretty">
@@ -425,7 +491,7 @@ function Hero({ onGetStarted }: { onGetStarted: () => void }) {
             </div>
             <div className="relative mt-3 flex items-center justify-between text-sm gap-2">
               <span className="text-white/70 truncate">Tuyến, ETA, vé QR, phản hồi</span>
-              <span className="font-bold text-[#beff50] whitespace-nowrap">API thật</span>
+              <span className="font-bold text-[#beff50] whitespace-nowrap">UniBus</span>
             </div>
           </div>
         </ClipReveal>
@@ -460,6 +526,7 @@ function LoginForm({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const passwordRef = useRef<HTMLInputElement>(null);
 
   const submitLogin = async () => {
     if (!email || !password) {
@@ -516,20 +583,20 @@ function LoginForm({
           <Label htmlFor="email">Email</Label>
           <div className="relative">
             <Mail className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant pointer-events-none" />
-            <Input id="email" type="email" placeholder="ten@duytan.edu.vn" className="pl-11 h-12 rounded-xl bg-surface-container-lowest border-outline-variant" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <Input id="email" type="email" placeholder="ten@duytan.edu.vn" className="pl-11 h-12 rounded-xl bg-surface-container-lowest border-outline-variant" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" || (e.key === "Tab" && !e.shiftKey)) { e.preventDefault(); passwordRef.current?.focus(); } }} />
           </div>
         </div>
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
             <Label htmlFor="password" className="shrink-0">Mật khẩu</Label>
-            <button type="button" onClick={() => onSwitch("forgot")} className="text-xs text-[#144fcc] font-bold hover:underline whitespace-nowrap">
+            <button type="button" tabIndex={-1} onClick={() => onSwitch("forgot")} className="text-xs text-[#144fcc] font-bold hover:underline whitespace-nowrap">
               Quên mật khẩu?
             </button>
           </div>
           <div className="relative">
             <Lock className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant pointer-events-none" />
-            <Input id="password" type={showPwd ? "text" : "password"} placeholder="••••••••" className="pl-11 pr-11 h-12 rounded-xl bg-surface-container-lowest border-outline-variant" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submitLogin(); }} />
-            <button type="button" onClick={() => setShowPwd((s) => !s)} className="absolute right-4 top-1/2 -translate-y-1/2 size-8 flex items-center justify-center text-on-surface-variant hover:text-on-surface rounded-lg">
+            <Input ref={passwordRef} id="password" type={showPwd ? "text" : "password"} placeholder="••••••••" className="pl-11 pr-11 h-12 rounded-xl bg-surface-container-lowest border-outline-variant" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submitLogin(); }} />
+            <button type="button" tabIndex={-1} onClick={() => setShowPwd((s) => !s)} className="absolute right-4 top-1/2 -translate-y-1/2 size-8 flex items-center justify-center text-on-surface-variant hover:text-on-surface rounded-lg">
               {showPwd ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
             </button>
           </div>
@@ -577,20 +644,30 @@ function RegisterForm({
   const [lastName, setLastName] = useState("");
   const [firstName, setFirstName] = useState("");
   const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [otp, setOtp] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
   const [sendingOtp, setSendingOtp] = useState(false);
   const [registering, setRegistering] = useState(false);
+  const otpCooldown = useOtpCooldown();
+
+  const canRequestOtp = lastName.trim() && firstName.trim() && email.trim() && password.length >= 8;
 
   const requestOtp = async () => {
-    if (!email) {
-      toast.error("Vui lòng nhập email trường trước");
+    if (otpCooldown.active) return;
+    if (!lastName.trim() || !firstName.trim() || !email.trim() || !password) {
+      toast.error("Vui lòng nhập đủ thông tin tài khoản");
+      return;
+    }
+    if (password.length < 8) {
+      toast.error("Mật khẩu cần tối thiểu 8 ký tự");
       return;
     }
     setSendingOtp(true);
     try {
-      await authApi.registerOtp(email);
+      await authApi.registerOtp(email.trim());
+      setOtpSent(true);
+      otpCooldown.start();
       toast.success("Đã gửi mã OTP", { description: "Kiểm tra email trường của bạn." });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Không thể gửi OTP");
@@ -608,9 +685,9 @@ function RegisterForm({
     try {
       await authApi.register({
         name: `${lastName.trim()} ${firstName.trim()}`.trim(),
-        email,
+        email: email.trim(),
         password,
-        otp,
+        otp: otp.trim(),
       });
       toast.success("Đăng ký thành công!", { description: "Bạn có thể đăng nhập bằng tài khoản vừa tạo." });
       onBack();
@@ -653,53 +730,37 @@ function RegisterForm({
             <Label htmlFor="lastname">Họ</Label>
             <div className="relative">
               <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant pointer-events-none" />
-              <Input id="lastname" placeholder="Nguyễn" className="pl-11 h-12 rounded-xl bg-surface-container-lowest border-outline-variant" value={lastName} onChange={(e) => setLastName(e.target.value)} />
+              <Input id="lastname" placeholder="Nguyễn" className="pl-11 h-12 rounded-xl bg-surface-container-lowest border-outline-variant" value={lastName} onChange={(e) => { setLastName(e.target.value); setOtpSent(false); setOtp(""); }} />
             </div>
           </div>
           <div className="space-y-2">
             <Label htmlFor="firstname">Tên</Label>
-            <Input id="firstname" placeholder="Minh Anh" className="h-12 rounded-xl bg-surface-container-lowest border-outline-variant" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+            <Input id="firstname" placeholder="Minh Anh" className="h-12 rounded-xl bg-surface-container-lowest border-outline-variant" value={firstName} onChange={(e) => { setFirstName(e.target.value); setOtpSent(false); setOtp(""); }} />
           </div>
         </div>
         <div className="space-y-2">
           <Label htmlFor="remail">Email trường</Label>
           <div className="relative">
             <Mail className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant pointer-events-none" />
-            <Input id="remail" type="email" placeholder="ten@duytan.edu.vn" className="pl-11 h-12 rounded-xl bg-surface-container-lowest border-outline-variant" value={email} onChange={(e) => setEmail(e.target.value)} />
-          </div>
-          <p className="text-xs text-on-surface-variant">Dùng email trường để tự động nhận diện trường đại học.</p>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="rotp">Mã OTP</Label>
-          <div className="flex gap-2">
-            <Input id="rotp" inputMode="numeric" maxLength={6} placeholder="6 số" className="h-12 rounded-xl bg-surface-container-lowest border-outline-variant" value={otp} onChange={(e) => setOtp(e.target.value)} />
-            <button
-              type="button"
-              onClick={requestOtp}
-              disabled={sendingOtp}
-              className="state-layer h-12 shrink-0 rounded-full border border-[#14140f]/20 bg-white px-4 text-sm font-bold text-[#14140f] disabled:opacity-60"
-            >
-              {sendingOtp ? "Đang gửi..." : "Gửi OTP"}
-            </button>
-          </div>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="rphone">Số điện thoại</Label>
-          <div className="relative">
-            <Phone className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant pointer-events-none" />
-            <Input id="rphone" type="tel" placeholder="09xx xxx xxx" className="pl-11 h-12 rounded-xl bg-surface-container-lowest border-outline-variant" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <Input id="remail" type="email" placeholder="ten@duytan.edu.vn" className="pl-11 h-12 rounded-xl bg-surface-container-lowest border-outline-variant" value={email} onChange={(e) => { setEmail(e.target.value); setOtpSent(false); setOtp(""); }} />
           </div>
         </div>
         <div className="space-y-2">
           <Label htmlFor="rpassword">Mật khẩu</Label>
           <div className="relative">
             <Lock className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant pointer-events-none" />
-            <Input id="rpassword" type={showPwd ? "text" : "password"} placeholder="Ít nhất 8 ký tự" className="pl-11 pr-11 h-12 rounded-xl bg-surface-container-lowest border-outline-variant" value={password} onChange={(e) => setPassword(e.target.value)} />
-            <button type="button" onClick={() => setShowPwd((s) => !s)} className="absolute right-4 top-1/2 -translate-y-1/2 size-8 flex items-center justify-center text-on-surface-variant hover:text-on-surface rounded-lg">
+            <Input id="rpassword" type={showPwd ? "text" : "password"} placeholder="Ít nhất 8 ký tự" className="pl-11 pr-11 h-12 rounded-xl bg-surface-container-lowest border-outline-variant" value={password} onChange={(e) => { setPassword(e.target.value); setOtpSent(false); setOtp(""); }} />
+            <button type="button" tabIndex={-1} onClick={() => setShowPwd((s) => !s)} className="absolute right-4 top-1/2 -translate-y-1/2 size-8 flex items-center justify-center text-on-surface-variant hover:text-on-surface rounded-lg">
               {showPwd ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
             </button>
           </div>
         </div>
+        {otpSent && (
+          <div className="space-y-2 rounded-2xl border border-[#E8E2D5] bg-[#FAF8F2] p-4">
+            <Label htmlFor="rotp">Mã OTP</Label>
+            <Input id="rotp" inputMode="numeric" maxLength={6} placeholder="6 số" className="h-12 rounded-xl bg-white border-outline-variant" value={otp} onChange={(e) => setOtp(e.target.value)} />
+          </div>
+        )}
         <div className="flex items-start gap-2">
           <Checkbox id="terms" className="mt-0.5" defaultChecked />
           <Label htmlFor="terms" className="text-sm text-on-surface-variant font-normal cursor-pointer">
@@ -712,11 +773,10 @@ function RegisterForm({
           whileTap={{ scale: 0.98 }}
           transition={{ type: "spring", stiffness: 400, damping: 22 }}
           className="w-full h-12 rounded-full bg-[#beff50] text-[#14140f] text-base font-bold elev-2 flex items-center justify-center gap-2 disabled:opacity-60"
-          disabled={registering}
-          onClick={submitRegister}
+          disabled={registering || sendingOtp || (!otpSent && (!canRequestOtp || otpCooldown.active))}
+          onClick={otpSent ? submitRegister : requestOtp}
         >
-          {registering ? "Đang tạo..." : "Tạo tài khoản"}
-          <Check className="size-5" />
+          {registering ? "Đang tạo..." : sendingOtp ? "Đang gửi OTP..." : !otpSent && otpCooldown.active ? `Gửi lại sau ${otpCooldown.seconds}s` : otpSent ? "Xác minh & tạo tài khoản" : "Gửi OTP"}
         </motion.button>
       </div>
     </ExpressiveCard>
@@ -725,20 +785,65 @@ function RegisterForm({
 
 function ForgotForm({ onBack }: { onBack: () => void }) {
   const [email, setEmail] = useState("");
+  const [otp, setOtp] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpVerified, setOtpVerified] = useState(false);
+  const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
+  const otpCooldown = useOtpCooldown();
 
   const requestReset = async () => {
-    if (!email) {
+    if (otpCooldown.active) return;
+    if (!email.trim()) {
       toast.error("Vui lòng nhập email đăng ký");
       return;
     }
     setLoading(true);
     try {
-      await authApi.forgotPasswordOtp(email);
+      await authApi.forgotPasswordOtp(email.trim());
+      setOtpSent(true);
+      setOtpVerified(false);
+      otpCooldown.start();
       toast.success("Nếu email tồn tại, mã OTP đặt lại đã được gửi.");
-      onBack();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Không thể gửi OTP đặt lại");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const verifyOtp = async () => {
+    if (!email.trim()) return toast.error("Vui lòng nhập email đăng ký");
+    if (!otp.trim()) return toast.error("Vui lòng nhập mã OTP");
+    setLoading(true);
+    try {
+      await authApi.forgotPasswordVerify({ email: email.trim(), otp: otp.trim() });
+      setOtpVerified(true);
+      toast.success("OTP hợp lệ. Tạo mật khẩu mới.");
+    } catch (error) {
+      setOtpVerified(false);
+      toast.error(error instanceof Error ? error.message : "OTP không hợp lệ");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submitReset = async () => {
+    if (!email.trim()) return toast.error("Vui lòng nhập email đăng ký");
+    if (!otp.trim()) return toast.error("Vui lòng nhập mã OTP");
+    if (!otpVerified) return toast.error("Vui lòng xác minh OTP trước");
+    if (!newPassword) return toast.error("Vui lòng nhập mật khẩu mới");
+    if (newPassword.length < 8) return toast.error("Mật khẩu mới cần tối thiểu 8 ký tự");
+    if (newPassword !== confirmPassword) return toast.error("Mật khẩu xác nhận không khớp");
+    setLoading(true);
+    try {
+      await authApi.forgotPasswordReset({ email: email.trim(), otp: otp.trim(), newPassword });
+      toast.success("Đặt lại mật khẩu thành công. Vui lòng đăng nhập lại.");
+      onBack();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể đặt lại mật khẩu");
     } finally {
       setLoading(false);
     }
@@ -750,7 +855,7 @@ function ForgotForm({ onBack }: { onBack: () => void }) {
         <ArrowLeft className="size-4" /> Quay lại đăng nhập
       </button>
       <h3 className="text-2xl font-bold tracking-tight">Quên mật khẩu</h3>
-      <p className="text-sm text-on-surface-variant mt-1">Nhập email — hệ thống gửi mã OTP đặt lại mật khẩu.</p>
+      <p className="text-sm text-on-surface-variant mt-1">Nhập email, nhận OTP rồi tạo mật khẩu mới.</p>
       <div className="mt-6 space-y-4">
         <div className="space-y-2">
           <Label htmlFor="femail">Email đăng ký</Label>
@@ -759,15 +864,44 @@ function ForgotForm({ onBack }: { onBack: () => void }) {
             <Input id="femail" type="email" placeholder="ten@duytan.edu.vn" className="pl-11 h-12 rounded-xl bg-surface-container-lowest border-outline-variant" value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
         </div>
+        {otpSent && (
+          <div className="space-y-4 rounded-2xl border border-[#E8E2D5] bg-[#FAF8F2] p-4">
+            <div className="space-y-2">
+              <Label htmlFor="fotp">Mã OTP</Label>
+              <Input id="fotp" inputMode="numeric" placeholder="Nhập mã OTP" className="h-12 rounded-xl bg-white border-outline-variant" value={otp} onChange={(e) => { setOtp(e.target.value); setOtpVerified(false); }} />
+            </div>
+            {otpVerified && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="fnew">Mật khẩu mới</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant pointer-events-none" />
+                    <Input id="fnew" type={showPwd ? "text" : "password"} placeholder="Tối thiểu 8 ký tự" className="pl-11 pr-11 h-12 rounded-xl bg-white border-outline-variant" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+                    <button type="button" onClick={() => setShowPwd((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface">
+                      {showPwd ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="fconfirm">Xác nhận mật khẩu</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant pointer-events-none" />
+                    <Input id="fconfirm" type={showPwd ? "text" : "password"} placeholder="Nhập lại mật khẩu mới" className="pl-11 h-12 rounded-xl bg-white border-outline-variant" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
         <motion.button
           whileHover={{ y: -2 }}
           whileTap={{ scale: 0.98 }}
           transition={{ type: "spring", stiffness: 400, damping: 22 }}
           className="w-full h-12 rounded-full bg-[#beff50] text-[#14140f] text-base font-bold elev-2 flex items-center justify-center gap-2 disabled:opacity-60"
-          disabled={loading}
-          onClick={requestReset}
+          disabled={loading || (!otpSent && otpCooldown.active)}
+          onClick={!otpSent ? requestReset : otpVerified ? submitReset : verifyOtp}
         >
-          {loading ? "Đang gửi..." : "Gửi OTP đặt lại"}
+          {loading ? "Đang xử lý..." : !otpSent && otpCooldown.active ? `Gửi lại sau ${otpCooldown.seconds}s` : !otpSent ? "Gửi OTP đặt lại" : otpVerified ? "Đặt lại mật khẩu" : "Xác minh OTP"}
           <ArrowRight className="size-5" />
         </motion.button>
       </div>
@@ -785,4 +919,3 @@ function GoogleIcon() {
     </svg>
   );
 }
-

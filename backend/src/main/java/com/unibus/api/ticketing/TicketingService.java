@@ -59,6 +59,19 @@ public class TicketingService {
                 quote);
     }
 
+    @Transactional(readOnly = true)
+    public MonthlyPassQuote quote(CurrentUser currentUser, Integer routeId, String ticketType) {
+        String studentCode = requireStudentCode(currentUser);
+        ApprovedRegistration registration = ticketingRepository.approvedRegistration(studentCode, routeId)
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Student must have an approved route registration"));
+        if ("SINGLE".equalsIgnoreCase(ticketType) || "single".equalsIgnoreCase(ticketType)) {
+            BigDecimal amount = ticketingRepository.singleFare(registration.routeId());
+            return subsidyService.quoteFor(currentUser, registration.routeId(), registration.routeName(), amount);
+        }
+        BigDecimal amount = ticketingRepository.monthlyFare(registration.routeId());
+        return subsidyService.quoteFor(currentUser, registration.routeId(), registration.routeName(), amount);
+    }
+
     @Transactional
     public TicketView purchaseMonthlyPass(CurrentUser currentUser, PurchaseMonthlyPassRequest request) {
         String studentCode = requireStudentCode(currentUser);
@@ -268,14 +281,6 @@ public class TicketingService {
                 : request.method();
     }
 
-    private String method(String method) {
-        return method == null || method.isBlank() ? "BANK_TRANSFER" : method;
-    }
-
-    private String label(String value, String fallback) {
-        return value == null || value.isBlank() ? fallback : value.trim();
-    }
-
     private boolean hasVnpayCredentials() {
         return vnPayConfig.tmnCode() != null && !vnPayConfig.tmnCode().isBlank()
                 && vnPayConfig.hashSecret() != null && !vnPayConfig.hashSecret().isBlank();
@@ -303,6 +308,14 @@ public class TicketingService {
             builder.queryParam("txnRef", transactionCode);
         }
         return builder.build().toUriString();
+    }
+
+    private String method(String method) {
+        return method == null || method.isBlank() ? "BANK_TRANSFER" : method;
+    }
+
+    private String label(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value.trim();
     }
 
     private void ensurePurchasableQuote(MonthlyPassQuote quote) {

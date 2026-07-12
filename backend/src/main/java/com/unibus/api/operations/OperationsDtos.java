@@ -148,6 +148,7 @@ public final class OperationsDtos {
     }
 
     public record DriverContactView(
+            Integer userId,
             String type,
             String name,
             String role,
@@ -211,7 +212,11 @@ public final class OperationsDtos {
             Integer stopId,
             String stopName,
             Integer stopOrder,
-            Integer minutesFromPreviousStop) {
+            Integer minutesFromPreviousStop,
+            Integer stationDirection,
+            String pathPoints,
+            Double latitude,
+            Double longitude) {
     }
 
     public record VehicleLocationRequest(

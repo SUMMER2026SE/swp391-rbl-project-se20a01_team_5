@@ -11,7 +11,7 @@ import {
 import { StudentModule } from "@/components/bus/roles/student-module";
 import { DriverModule } from "@/components/bus/roles/driver-module";
 import { AssistantModule } from "@/components/bus/roles/assistant-module";
-import { CoordinatorModule } from "@/components/bus/roles/coordinator-module";
+import { CoordinatorAlertsScreen, CoordinatorChatOverlay, CoordinatorModule } from "@/components/bus/roles/coordinator-module";
 import { AdminModule } from "@/components/bus/roles/admin-module";
 import { UniversityAdminModule } from "@/components/bus/roles/university-admin-module";
 import { NAV_CONFIG } from "@/components/bus/nav-config";
@@ -134,8 +134,8 @@ export default function Page() {
   };
 
   const renderContent = () => {
-    if (activeId.endsWith("-profile")) return <ProfileScreen />;
-    if (activeId.endsWith("-notifications")) return <NotificationsScreen />;
+    if (activeId.endsWith("-profile")) return role === "coordinator" ? <><ProfileScreen /><CoordinatorChatOverlay /></> : <ProfileScreen />;
+    if (activeId.endsWith("-notifications")) return role === "coordinator" ? <><CoordinatorAlertsScreen /><CoordinatorChatOverlay /></> : <NotificationsScreen />;
     if (activeId === "stu-support") return <SupportScreen />;
     if (activeId === "stu-settings") return <ProfileScreen />;
 

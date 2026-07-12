@@ -99,8 +99,8 @@ public class RouteRegistrationService {
             return toResponse(routeRegistrationRepository.save(existing));
         }
 
-        if (routeRegistrationRepository.countActiveMonthlyPassesOnDifferentRoute(
-                student.getStudentCode(), selection.route().getId()) > 0) {
+        if (routeRegistrationRepository.countActiveMonthlyPassesByRoute(
+                student.getStudentCode(), existing.getRoute().getId()) > 0) {
             throw new ApiException(HttpStatus.CONFLICT,
                     "Active monthly pass locks the current route until the pass expires");
         }
@@ -170,9 +170,12 @@ public class RouteRegistrationService {
     }
 
     private Registration toResponse(RouteRegistration registration) {
+        LocalDate monthlyPassExpiresOn = routeRegistrationRepository.activeMonthlyPassExpiresOnByRoute(
+                registration.getStudent().getStudentCode(), registration.getRoute().getId());
         return new Registration(
                 registration.getId(),
                 registration.getRoute().getId(),
+                registration.getRoute().getRouteCode(),
                 registration.getRoute().getRouteName(),
                 registration.getBoardingStop().getId(),
                 registration.getBoardingStop().getStopName(),
@@ -180,6 +183,8 @@ public class RouteRegistrationService {
                 registration.getAlightingStop().getStopName(),
                 registration.getEffectiveDate(),
                 registration.getStatus(),
-                registration.getRegisteredAt());
+                registration.getRegisteredAt(),
+                monthlyPassExpiresOn != null,
+                monthlyPassExpiresOn);
     }
 }

@@ -18,6 +18,6 @@ public final class RegistrationDtos {
 ) String reason) {
    }
 
-   public static record Registration(Integer registrationId, Integer routeId, String routeName, Integer boardingStopId, String boardingStopName, Integer alightingStopId, String alightingStopName, LocalDate effectiveDate, RegistrationStatus status, OffsetDateTime registeredAt) {
+   public static record Registration(Integer registrationId, Integer routeId, String routeCode, String routeName, Integer boardingStopId, String boardingStopName, Integer alightingStopId, String alightingStopName, LocalDate effectiveDate, RegistrationStatus status, OffsetDateTime registeredAt, Boolean hasActiveMonthlyPass, LocalDate monthlyPassExpiresOn) {
    }
 }

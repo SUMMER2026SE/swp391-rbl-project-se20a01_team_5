@@ -214,6 +214,8 @@ export const authApi = {
   refresh: (refreshToken: string) => apiFetch.post<TokenPair>("/auth/refresh", { refreshToken }),
   logout: () => apiFetch.post<void>("/auth/logout"),
   forgotPasswordOtp: (email: string) => apiFetch.post<void>("/auth/forgot-password/otp", { email }),
+  forgotPasswordVerify: (data: { email: string; otp: string }) =>
+    apiFetch.post<void>("/auth/forgot-password/verify", data),
   forgotPasswordReset: (data: { email: string; otp: string; newPassword: string }) =>
     apiFetch.post<void>("/auth/forgot-password/reset", data),
 };
@@ -443,9 +445,11 @@ export interface JourneyTrackingSnapshotDTO {
   simulated?: boolean;
   vehicles?: {
     vehicleId: string;
+    tripId?: number;
     plateNumber?: string;
     routeId?: number;
     routeCode?: string;
+    driverName?: string;
     latitude?: number | string;
     longitude?: number | string;
     speedKmh?: number | string;
@@ -453,6 +457,7 @@ export interface JourneyTrackingSnapshotDTO {
     capacity?: number;
     nextStopId?: number;
     nextStopName?: string;
+    distanceMeters?: number;
     etaMinutes?: number;
   }[];
   stopEtas?: {
@@ -851,6 +856,12 @@ export const coordinatorFeedbackApi = {
   all: (status?: string) => apiFetch.get<FeedbackView[]>("/coordinator/feedback", { status }),
   resolve: (feedbackId: number, response?: string) =>
     apiFetch.patch<FeedbackView>(`/coordinator/feedback/${feedbackId}/resolve`, { response }),
+};
+
+export const coordinatorLostItemApi = {
+  all: () => apiFetch.get<ExperienceLostItemCard[]>("/coordinator/lost-items"),
+  update: (lostItemId: number, data: { status: string; notes?: string }) =>
+    apiFetch.put<ExperienceLostItemCard>(`/coordinator/lost-items/${lostItemId}`, data),
 };
 
 export interface ExperienceStopCard {
@@ -1327,7 +1338,12 @@ export interface TripStopView {
   stopId: number;
   stopName: string;
   stopOrder: number;
+  stationDirection?: number;
   minutesFromPreviousStop?: number;
+  pathPoints?: string;
+  latitude?: number | string;
+  longitude?: number | string;
+  address?: string;
 }
 
 export interface DriverTripView {
@@ -1347,6 +1363,12 @@ export interface DriverTripView {
   endedAt?: string;
   status: string;
   stops?: TripStopView[];
+}
+
+export interface DriverTripOverview {
+  nearestTrip?: DriverTripView | null;
+  upcomingTrips: DriverTripView[];
+  historyTrips: DriverTripView[];
 }
 
 export interface ConductorTicketView {
@@ -1429,6 +1451,7 @@ export interface DriverContactView {
 
 export const operationsApi = {
   driverTrips: (date?: string) => apiFetch.get<DriverTripView[]>("/driver/trips", { date }),
+  driverTripOverview: () => apiFetch.get<DriverTripOverview>("/driver/trips/overview"),
   driverContacts: () => apiFetch.get<DriverContactView[]>("/driver/contacts"),
   startTrip: (tripId: number) => apiFetch.post<DriverTripView>(`/driver/trips/${tripId}/start`),
   endTrip: (tripId: number) => apiFetch.post<DriverTripView>(`/driver/trips/${tripId}/end`),

@@ -5,8 +5,14 @@ param(
     [Parameter(Mandatory = $true)]
     [decimal]$Amount,
 
-    [string]$BackendUrl = "http://localhost:8080"
+    [string]$BackendUrl = "http://localhost:8080",
+
+    [string]$WebhookApiKey = $env:SEPAY_WEBHOOK_API_KEY
 )
+
+if ([string]::IsNullOrWhiteSpace($WebhookApiKey)) {
+    throw "Set SEPAY_WEBHOOK_API_KEY or pass -WebhookApiKey before simulating a payment."
+}
 
 $transactionId = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
 $payload = @{
@@ -25,5 +31,6 @@ $payload = @{
 } | ConvertTo-Json
 
 $uri = "$($BackendUrl.TrimEnd('/'))/api/v1/payments/sepay/webhook"
-$response = Invoke-RestMethod -Method Post -Uri $uri -ContentType "application/json" -Body $payload
+$headers = @{ Authorization = "Apikey $WebhookApiKey" }
+$response = Invoke-RestMethod -Method Post -Uri $uri -Headers $headers -ContentType "application/json" -Body $payload
 $response | ConvertTo-Json -Depth 5

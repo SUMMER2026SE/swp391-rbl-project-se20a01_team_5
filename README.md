@@ -70,14 +70,15 @@ Flyway baselines that existing schema at version `1` and applies:
 - `V9__university_linkage_mvp.sql`: adds role `UNIVERSITY_ADMIN`, university domains/admins, student rosters, import batches/errors, audit trace fields, and the University Linkage MVP API schema.
 - `V10__align_university_linkage_schema.sql`: idempotently aligns databases that applied the early V9 university-admin/roster/domains draft with the final V9 schema contract.
 
-Demo/QA seeds are intentionally separate from production migrations:
+Demo data is intentionally separate from production migrations. The repository keeps one maintained demo set:
 
-- `database/SeedStudentVerificationTestData.sql`: idempotent auth, role, route, trip, ticket, fleet, and student verification data.
-- `database/SeedUniversitySubsidyDemo.sql`: idempotently links the Iteration 1 demo student, route, university, campus, and 50% subsidy policy.
-- `database/SeedUiV11MvpDemo.sql`: idempotently adds UI v1.1 QA data for university admin, domains, roster import/errors, notifications, feedback, and audit logs.
-- `database/SeedKhanhStudentUiTestData.sql`: optional account-specific QA data for `khanhnv20a02@gmail.com`, including linked route, active monthly pass QR, invoice, history, notifications, roster, and feedback.
-- `database/rollback/V8__rollback_university_subsidy_foundation.sql`: manual rollback script for the additive V8 schema if the environment needs to back out the MVP foundation.
-- `database/rollback/V9__rollback_university_linkage_mvp.sql`: manual rollback script for the additive V9 schema.
+- `database/RunDemoData.ps1`: runner for `Audit`, `Seed`, and `Reset`.
+- `database/SeedDemoDataUntilAugust.sql`: creates the Duy Tân/BUSMAP demo scenario.
+- `database/ResetDemoScenario.sql`: resets only demo-owned rows.
+- `database/AuditDemoDataUntilAugust.sql`: validates demo accounts, routes, trips, tickets, SePay orders, and role data.
+- `database/CompleteDemoSePayWebhook.ps1`: helper for SePay demo confirmation.
+
+For role-by-role rehearsal, use `docs/demo-practice-checklist.md`.
 
 On May 24, 2026, the shared AWS PostgreSQL database was migrated to version `2`; Flyway created
 `flyway_schema_history` and the application table `verification_codes`.

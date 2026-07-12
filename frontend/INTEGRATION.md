@@ -34,15 +34,13 @@ The frontend keeps UIPrototype v1.1 as the look and feel, but all runtime data c
 
 ## Database And Seed Order
 
-Run migrations through Flyway first. For the prototype-fidelity demo world, apply seed scripts in this order on a development database:
+Run migrations through Flyway first. Demo data is now maintained through one stable runner:
 
-1. `database/SeedStudentVerificationTestData.sql`
-2. `database/SeedUniversitySubsidyDemo.sql`
-3. `database/SeedUiV11MvpDemo.sql`
-4. `database/SeedKhanhStudentUiTestData.sql`
-5. `database/SeedPrototypeFidelityDemo.sql`
+1. `database/RunDemoData.ps1 -Mode Audit`
+2. `database/RunDemoData.ps1 -Mode Seed` when the demo scenario must be rebuilt
+3. `database/RunDemoData.ps1 -Mode Reset` after rehearsal
 
-`SeedPrototypeFidelityDemo.sql` enriches the UI with route codes/colors/frequency, stop codes/shelter state, vehicle occupancy, Duy Tan/VKU data, running trips, notifications, feedback, incidents, lost items, support tickets, route registrations, monthly pass, and travel history.
+`SeedDemoDataUntilAugust.sql` maintains the demo-owned Duy Tân/BUSMAP scenario used for rehearsals.
 
 Primary student QA account: `khanhnv20a02@gmail.com`. Seed password for password-based demo accounts is `Password123!`.
 

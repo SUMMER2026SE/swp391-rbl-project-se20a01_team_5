@@ -32,7 +32,7 @@ public class ExperienceService {
 
     @Transactional(readOnly = true)
     public List<RouteCard> studentRouteSuggestions(CurrentUser currentUser) {
-        return repository.studentDashboard(currentUser.userId()).routes();
+        return repository.studentRouteSuggestions(currentUser.userId());
     }
 
     @Transactional(readOnly = true)
@@ -100,10 +100,30 @@ public class ExperienceService {
     public LostItemCard updateAssistantLostItem(CurrentUser currentUser, Integer lostItemId,
             UpdateLostItemStatusRequest request) {
         requireConductor(currentUser);
-        return repository.updateLostItem(currentUser.userId(), lostItemId, request);
+        return repository.updateLostItem(currentUser.userId(), lostItemId, normalizeLostItemStatus(request));
+    }
+
+    private UpdateLostItemStatusRequest normalizeLostItemStatus(UpdateLostItemStatusRequest request) {
+        String status = switch (request.status().trim().toUpperCase()) {
+            case "FOUND", "SEARCHING" -> "FOUND";
+            case "RETURNED", "CLOSED" -> "FOUND";
+            case "NOT_FOUND" -> "NOT_FOUND";
+            case "REPORTED" -> "REPORTED";
+            default -> throw new ApiException(HttpStatus.BAD_REQUEST, "Trạng thái đồ thất lạc không hợp lệ");
+        };
+        return new UpdateLostItemStatusRequest(status, request.notes());
     }
 
     @Transactional(readOnly = true)
+    public List<LostItemCard> coordinatorLostItems() {
+        return repository.coordinatorLostItems(100);
+    }
+
+    @Transactional
+    public LostItemCard coordinatorUpdateLostItem(CurrentUser currentUser, Integer lostItemId, UpdateLostItemStatusRequest request) {
+        return repository.coordinatorUpdateLostItem(currentUser.userId(), lostItemId, normalizeLostItemStatus(request));
+    }
+
     public CoordinatorDashboardView coordinatorDashboard() {
         return repository.coordinatorDashboard();
     }
