@@ -87,7 +87,7 @@ export function AppShell({
       : nav[0]);
   const isStudentFindPage = role === "student" && activeId === "stu-find";
   const isAdminConsole = role === "admin";
-  const sidebarWidth = isAdminConsole ? 260 : 288;
+  const sidebarWidth = 288;
   const sidebarVisible = !sidebarCollapsed || sidebarPreviewOpen;
   const showSidebarHoverEdge = isStudentFindPage && sidebarCollapsed && !sidebarPreviewOpen;
   const [scrolled, setScrolled] = useState(false);
@@ -209,7 +209,7 @@ export function AppShell({
                       onClick={() => goTo(item.id)}
                       className={cn(
                         "group relative flex min-h-11 w-full min-w-0 items-center gap-3 px-4 py-2.5 text-sm font-medium transition-colors",
-                        isAdminConsole ? "min-h-9 rounded-md px-3 py-2 text-[13px]" : "rounded-2xl",
+                        isAdminConsole ? "min-h-11 rounded-xl px-4 py-2.5 text-sm" : "rounded-2xl",
                         active
                           ? isAdminConsole ? "text-on-primary" : "text-[#beff50]"
                           : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
@@ -218,11 +218,11 @@ export function AppShell({
                       {active && (
                         <motion.div
                           layoutId={`nav-pill-${role}`}
-                          className={cn("absolute inset-0 bg-primary", isAdminConsole ? "rounded-md" : "rounded-2xl bg-[#14140f]")}
+                          className={cn("absolute inset-0 bg-primary", isAdminConsole ? "rounded-xl" : "rounded-2xl bg-[#14140f]")}
                           transition={{ type: "spring", stiffness: 400, damping: 32 }}
                         />
                       )}
-                      <item.icon className={cn("relative size-5 shrink-0", isAdminConsole && "size-4", active ? isAdminConsole ? "text-on-primary" : "text-[#beff50]" : "text-on-surface-variant group-hover:text-on-surface")} />
+                      <item.icon className={cn("relative size-5 shrink-0", active ? isAdminConsole ? "text-on-primary" : "text-[#beff50]" : "text-on-surface-variant group-hover:text-on-surface")} />
                       <span className="relative min-w-0 flex-1 truncate text-left">{item.label}</span>
                       {badge && (
                         <span className={cn("relative inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[10px] font-bold",
@@ -289,7 +289,7 @@ export function AppShell({
       <div
         className={cn(
           "flex min-h-screen min-w-0 flex-1 flex-col transition-[margin] duration-300",
-          sidebarCollapsed ? "lg:ml-0" : isAdminConsole ? "lg:ml-[260px]" : "lg:ml-72",
+          sidebarCollapsed ? "lg:ml-0" : "lg:ml-72",
         )}
       >
         <motion.header
