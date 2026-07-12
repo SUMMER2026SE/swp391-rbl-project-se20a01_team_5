@@ -841,7 +841,7 @@ function DriverDashboard({
             initial={{ opacity: 0, y: 16, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ type: "spring", stiffness: 260, damping: 24 }}
-            className="relative overflow-hidden rounded-[32px] border border-[#DDEFD0] p-0 shadow-[0_16px_45px_rgba(20,20,15,0.06)]"
+            className="relative overflow-hidden rounded-[32px] border border-[#DDEFD0] p-5 sm:p-6 shadow-[0_16px_45px_rgba(20,20,15,0.06)]"
             style={{ backgroundColor: "#beff50", color: "#14140f" }}
           >
             <div className="absolute -top-12 -right-12 size-48 rounded-full bg-[#14140f]/8 blur-3xl pointer-events-none" />

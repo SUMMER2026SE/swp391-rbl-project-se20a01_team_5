@@ -262,3 +262,11 @@ dong ho tinh tu departedAt, map nam trong Chuyen hien tai va lich su khong tai s
 - Chuyen dang hien trong card chinh bi loai khoi danh sach phan cong ben duoi.
 - Truoc khi bat dau, nut phu mo `Lien he dieu phoi`.
 - Nut phu luon mo `Lien he dieu phoi`; tracking da nam truc tiep trong man chuyen hien tai.
+
+---
+
+# Changelog: Can bang card chuyen dang chay tren dashboard tai xe
+
+## Thay doi
+- Khoi phuc padding responsive cho card chuyen dang chay trong `Lich hom nay`.
+- Giu nguyen mau lime, badge, CTA va bo cuc hien tai; chi sua spacing bi sat vien.
