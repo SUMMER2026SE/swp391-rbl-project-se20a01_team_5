@@ -125,7 +125,7 @@ import {
   Counter,
   PageTransition,
 } from "@/components/m3/motion";
-import { PageHeader, StatCard, Section, EmptyState } from "../admin-console-primitives";
+import { PageHeader, StatCard, Section, EmptyState } from "../primitives";
 
 import {
   useAdminPrototypeData,
@@ -767,7 +767,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
       </motion.div>
 
       {/* StatCards — 1 hàng 4 card (giống prototype, bỏ quickActions row riêng) */}
-      <StaggerGroup className="grid grid-cols-2 lg:grid-cols-4 gap-3 min-w-0">
+      <StaggerGroup className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 min-w-0">
         <StaggerItem>
           <StatCard
             label="Tổng người dùng"
@@ -1070,7 +1070,7 @@ function UniversityAddDialog({ onClose, onAdded }: { onClose: () => void; onAdde
         <DialogTitle>Thêm trường đại học</DialogTitle>
       </DialogHeader>
       <div className="space-y-3 py-2">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Label className="text-xs font-bold">Mã trường</Label>
             <Input className="mt-1.5" value={code} onChange={(e) => setCode(e.target.value)} placeholder="VD: DTU" />
@@ -1522,12 +1522,12 @@ function UsersScreen({ ctx }: { ctx: Ctx }) {
         <ExpressiveCard variant="filled" className="p-4 text-sm text-error">{users.error}</ExpressiveCard>
       )}
       <div className="flex flex-wrap gap-2 min-w-0">
-        <div className="relative flex-1 min-w-[200px]">
+        <div className="relative w-full flex-1 min-w-0 sm:min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant" />
           <Input className="pl-9" placeholder="Tìm theo tên hoặc email..." value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <Select value={roleFilter} onValueChange={setRoleFilter}>
-          <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-full sm:w-40"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Tất cả vai trò</SelectItem>
             <SelectItem value="STUDENT">Sinh viên</SelectItem>
@@ -1665,7 +1665,7 @@ function CreateStaffDialog({ onClose, onCreated }: { onClose: () => void; onCrea
           <Label className="text-xs font-bold">Mật khẩu tạm</Label>
           <Input className="mt-1.5" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Label className="text-xs font-bold">Vai trò</Label>
             <Select value={role} onValueChange={(v: any) => setRole(v)}>
@@ -1833,7 +1833,7 @@ function VerificationsScreen({ ctx }: { ctx: Ctx }) {
 
       <div className="flex flex-wrap items-center gap-2">
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-56">
+          <SelectTrigger className="w-full sm:w-56">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
