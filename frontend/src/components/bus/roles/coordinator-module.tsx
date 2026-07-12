@@ -286,7 +286,7 @@ export function CoordinatorAlertsScreen() {
             const isLost = item._type === "lost";
             const title = isSos ? "SOS" : isLost ? "Mất đồ" : "Phản hồi";
             const icon = isSos ? <AlertTriangle className="size-3.5" /> : isLost ? <PackageSearch className="size-3.5" /> : <MessageSquare className="size-3.5" />;
-            const isResolved = ["RESOLVED", "FOUND", "CLOSED", "resolved"].includes(String(item.status || ""));
+            const isResolved = ["RESOLVED", "FOUND", "NOT_FOUND", "CLOSED", "resolved"].includes(String(item.status || ""));
             return (
             <StaggerItem key={`${item._type}-${item.feedbackId || item.lostItemReportId || item.lostItemId || item.supportTicketId || item.id || index}`}>
               <ExpressiveCard variant="elevated" className={cn("p-5 min-w-0", isSos ? "border-error/40 bg-error-container/10" : "") }>
@@ -2501,8 +2501,8 @@ function FeedbackScreen({ ctx, initialTab }: { ctx: Ctx; initialTab?: string }) 
             ) : (
               <StaggerGroup className="space-y-3 min-w-0">
                 {filteredLost.map((item) => {
-                  const isResolved = item.status === "FOUND" || item.status === "CLOSED";
-                  const statusLabel = item.status === "REPORTED" ? "Mới báo" : item.status === "SEARCHING" ? "Đang tìm" : item.status === "FOUND" ? "Đã tìm thấy" : "Đóng";
+                  const isResolved = item.status === "FOUND" || item.status === "NOT_FOUND";
+                  const statusLabel = item.status === "REPORTED" ? "Mới báo" : item.status === "SEARCHING" ? "Đang tìm" : item.status === "FOUND" ? "Đã tìm thấy" : item.status === "NOT_FOUND" ? "Không tìm thấy" : "Đang xử lý";
                   const statusTone = item.status === "REPORTED" ? "warning" : item.status === "SEARCHING" ? "info" : "success";
                   return (
                     <StaggerItem key={item.lostItemReportId}>
@@ -2679,10 +2679,10 @@ function FeedbackScreen({ ctx, initialTab }: { ctx: Ctx; initialTab?: string }) 
                     Đã tìm thấy
                   </ExpressiveButton>
                   <ExpressiveButton
-                    variant={selectedLost._nextStatus === "CLOSED" ? "filled" : "outlined"} size="sm"
-                    onClick={() => setSelectedLost({ ...selectedLost, _nextStatus: "CLOSED" })}
+                    variant={selectedLost._nextStatus === "NOT_FOUND" ? "filled" : "outlined"} size="sm"
+                    onClick={() => setSelectedLost({ ...selectedLost, _nextStatus: "NOT_FOUND" })}
                   >
-                    Đóng
+                    Không tìm thấy
                   </ExpressiveButton>
                 </div>
               </div>

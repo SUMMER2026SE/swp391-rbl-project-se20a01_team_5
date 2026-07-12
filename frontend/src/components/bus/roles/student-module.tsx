@@ -155,6 +155,8 @@ import {
   formatDateTime,
   formatDate,
   mapInvoice,
+  mapFeedback,
+  mapLostItem,
 } from "@/lib/prototype-data";
 import {
   studentApi,
@@ -198,6 +200,25 @@ import {
 } from "@/lib/api/client";
 import { ProtectedImage } from "@/components/bus/protected-image";
 import { JourneyPlannerDesktop } from "@/components/bus/student/journey-planner-desktop";
+
+const normalizeStopText = (value?: string | null) =>
+  String(value || "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+
+const displayStopLabel = (value?: string | null, fallback = "Chưa xác định") => {
+  const raw = String(value || "").trim();
+  if (!raw) return fallback;
+  const normalized = normalizeStopText(raw);
+  if (normalized === "dai hoc") return fallback;
+  if (normalized === "dai hoc viet") return "Đại học Việt Hàn";
+  return raw;
+};
 
 type StudentModuleProps = {
   activeId: string;
@@ -261,7 +282,7 @@ export function StudentModule({ activeId, onNavigate, onProfileRefresh }: Studen
     case "stu-my-ticket":
       return <MyTicketScreen ctx={ctx} onNavigate={onNavigate} />;
     case "stu-history":
-      return <HistoryScreen ctx={ctx} onNavigate={onNavigate} />;
+      return <HistoryScreen ctx={ctx} />;
     case "stu-notifications":
       return <NotificationsScreen ctx={ctx} onNavigate={onNavigate} />;
     case "stu-ai":
@@ -541,16 +562,38 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
 
   const [qrExpanded, setQrExpanded] = useState(false);
   const [registrations, setRegistrations] = useState<RegistrationDTO[]>([]);
+  const [singleTickets, setSingleTickets] = useState<SingleTripTicketView[]>([]);
+  const [selectedQrTicketId, setSelectedQrTicketId] = useState("");
+  const [qrNowMs] = useState(() => Date.now());
 
   const activeTicket = ctx.activeTicket;
+  const monthlyQrTickets = useMemo(() => collectMonthlyTickets(ctx), [ctx]);
+  const qrTicketOptions = useMemo(() => {
+    const byId = new Map<string, any>();
+    const addTicket = (ticket: any, kind: "MONTHLY" | "SINGLE") => {
+      if (!ticket?.qrCode) return;
+      const status = String(ticket.status || (kind === "MONTHLY" ? "ACTIVE" : "UNUSED")).toUpperCase();
+      if (kind === "MONTHLY" && status !== "ACTIVE") return;
+      if (kind === "SINGLE") {
+        if (status !== "UNUSED") return;
+        if (ticket.expiresAt && Date.parse(ticket.expiresAt) < qrNowMs) return;
+      }
+      const id = `${kind}-${ticket.ticketId ?? ticket.singleTripTicketId ?? ticket.qrCode}`;
+      byId.set(id, { ...ticket, __id: id, __kind: kind });
+    };
+    monthlyQrTickets.forEach((ticket) => addTicket(ticket, "MONTHLY"));
+    if (activeTicket) addTicket(activeTicket, "MONTHLY");
+    singleTickets.forEach((ticket) => addTicket(ticket, "SINGLE"));
+    return Array.from(byId.values());
+  }, [activeTicket, monthlyQrTickets, qrNowMs, singleTickets]);
+  const selectedQrTicket = qrTicketOptions.find((ticket) => ticket.__id === selectedQrTicketId) || qrTicketOptions[0] || null;
   const nextTrip = ctx.nextTrip;
   const activeRoute = nextTrip
     ? ctx.routes.find((r) => r.id === String(nextTrip.routeId))
     : ctx.routes[0];
   const normalizeTripText = (value?: string | null) => {
-    const text = String(value || "").trim();
+    const text = displayStopLabel(value, "");
     if (!text) return "";
-    if (/^đại học việt$/i.test(text)) return "Chưa xác định";
     const letters = text.replace(/[^A-Za-zÀ-ỹĐđ]/g, "");
     const isAllCaps = letters.length > 3 && letters === letters.toLocaleUpperCase("vi-VN");
     if (!isAllCaps) return text;
@@ -595,18 +638,30 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
       .catch(() => {
         if (!cancelled) setRegistrations(ctx.registration ? [ctx.registration] : []);
       });
+    studentApi.singleTripTickets()
+      .then((list) => {
+        if (!cancelled) setSingleTickets(Array.isArray(list) ? list : []);
+      })
+      .catch(() => undefined);
     return () => {
       cancelled = true;
     };
   }, [ctx.registration]);
+
+  useEffect(() => {
+    if (!qrExpanded || !qrTicketOptions.length) return;
+    if (!selectedQrTicketId || !qrTicketOptions.some((ticket) => ticket.__id === selectedQrTicketId)) {
+      setSelectedQrTicketId(qrTicketOptions[0].__id);
+    }
+  }, [qrExpanded, qrTicketOptions, selectedQrTicketId]);
 
   const myRoutes = activeRegistrations.slice(0, 3).map((registration: RegistrationDTO) => {
     const route = ctx.routes.find((r: any) => r.id === String(registration.routeId));
     return {
       id: String(registration.registrationId || registration.routeId),
       name: registration.routeName || route?.name || "Tuyến đã đăng ký",
-      from: registration.boardingStopName || route?.from || "Điểm lên",
-      to: registration.alightingStopName || route?.to || "Điểm xuống",
+      from: displayStopLabel(registration.boardingStopName || route?.from, "Điểm lên"),
+      to: displayStopLabel(registration.alightingStopName || route?.to, "Điểm xuống"),
       color: route?.color || "#beff50",
       code: route?.code || "UB",
       registration,
@@ -646,8 +701,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
 
       {/* Upcoming trip HERO — perk-style: bold lime card, dark text, QR round button */}
       {(activeRoute || nextTrip) && (
-        <ScrollReveal>
-          <motion.div
+        <motion.div
             initial={{ opacity: 0, y: 16, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ type: "spring", stiffness: 260, damping: 24 }}
@@ -670,14 +724,14 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
                       animate={{ opacity: [1, 0.3, 1] }}
                       transition={{ duration: 1.4, repeat: Infinity }}
                     />
-                    {nextTrip?.status === "RUNNING" ? "Đang chạy" : "Sắp khởi hành"}
+                    {nextTrip ? (nextTrip.status === "RUNNING" ? "Đang chạy" : "Sắp khởi hành") : "Chưa có chuyến"}
                   </span>
                 </div>
                 <h3 className="text-2xl sm:text-3xl font-bold text-balance leading-tight">
-                  Chuyến sắp tới
+                  {nextTrip ? "Chuyến sắp tới" : "Chưa có chuyến sắp tới"}
                 </h3>
                 <p className="text-sm sm:text-base font-medium opacity-80 line-clamp-2">
-                  {tripRouteName}
+                  {nextTrip ? tripRouteName : "Xem tuyến hoặc mua vé khi cần."}
                 </p>
                 {(tripFrom || tripTo) && (
                   <p className="text-xs sm:text-sm font-medium opacity-70 line-clamp-1">
@@ -702,10 +756,11 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
               <div className="flex flex-col items-center gap-3 shrink-0">
                 <motion.button
                   onClick={() => {
-                    if (!activeTicket) {
-                      toast.info("Bạn chưa có vé để hiển thị. Hãy mua vé sau khi đăng ký tuyến.");
+                    if (!qrTicketOptions.length) {
+                      toast.info("Chưa có vé để hiển thị.");
                       return;
                     }
+                    setSelectedQrTicketId(qrTicketOptions[0].__id);
                     setQrExpanded(true);
                   }}
                   whileHover={{ scale: 1.05 }}
@@ -749,44 +804,42 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
                 </div>
               </div>
             </div>
-          </motion.div>
-        </ScrollReveal>
+        </motion.div>
       )}
 
       {/* Stat cards — perk-style: dark cards with lime/coral/sky/purple accents (like prototype) */}
-      <StaggerGroup className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 min-w-0">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 min-w-0">
         {statCards.map((s, i) => (
-          <StaggerItem key={i}>
-            <motion.div
-              whileHover={{ y: -1 }}
-              transition={{ type: "spring", stiffness: 300, damping: 20 }}
-              className="rounded-2xl p-4 sm:p-5 elev-2 h-full min-w-0"
-              style={{ backgroundColor: s.bg, color: s.fg }}
+          <motion.div
+            key={i}
+            whileHover={{ y: -1 }}
+            transition={{ type: "spring", stiffness: 300, damping: 20 }}
+            className="rounded-2xl p-4 sm:p-5 elev-2 h-full min-w-0"
+            style={{ backgroundColor: s.bg, color: s.fg }}
+          >
+            <div
+              className="flex size-10 items-center justify-center rounded-xl mb-3 shrink-0"
+              style={{ backgroundColor: s.iconBg, color: s.iconFg }}
             >
-              <div
-                className="flex size-10 items-center justify-center rounded-xl mb-3 shrink-0"
-                style={{ backgroundColor: s.iconBg, color: s.iconFg }}
-              >
-                <s.icon className="size-5" />
-              </div>
-              <p className="text-[11px] font-medium opacity-70 uppercase tracking-wide truncate">{s.label}</p>
-              <p className="text-2xl sm:text-3xl font-bold mt-1 tabular-nums">
-                {s.isMoney ? (
-                  <Counter to={s.value} format={(n) => formatVND(Math.round(n))} />
-                ) : (
-                  <Counter to={s.value} />
-                )}
-              </p>
-              <p className="text-[11px] font-bold mt-1 truncate" style={{ color: s.hintColor }}>{s.hint}</p>
-            </motion.div>
-          </StaggerItem>
+              <s.icon className="size-5" />
+            </div>
+            <p className="text-[11px] font-medium opacity-70 uppercase tracking-wide truncate">{s.label}</p>
+            <p className="text-2xl sm:text-3xl font-bold mt-1 tabular-nums">
+              {s.isMoney ? (
+                <Counter start="mount" to={Number(s.value || 0)} format={(n) => formatVND(Math.round(n))} />
+              ) : (
+                <Counter start="mount" to={Number(s.value || 0)} />
+              )}
+            </p>
+            <p className="text-[11px] font-bold mt-1 truncate" style={{ color: s.hintColor }}>{s.hint}</p>
+          </motion.div>
         ))}
-      </StaggerGroup>
+      </div>
 
       {/* My routes + Quick actions — 2-column layout like prototype */}
       <div className="grid lg:grid-cols-2 gap-6 min-w-0">
-        <ScrollReveal>
-          <Section title="Tuyến của tôi" description={activeRegistrations.length > 1 ? `${activeRegistrations.length} tuyến đang hoạt động` : "Đang sử dụng tháng này"}>
+        <div>
+          <Section title="Tuyến của tôi" description={activeRegistrations.length > 1 ? `${activeRegistrations.length} tuyến` : "Đang sử dụng"}>
             <ExpressiveCard variant="filled" className="p-2 min-w-0">
               {myRoutes.length === 0 ? (
                 <div className="p-6 text-center text-sm text-on-surface-variant min-w-0">
@@ -837,9 +890,9 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
               )}
             </ExpressiveCard>
           </Section>
-        </ScrollReveal>
+        </div>
 
-        <ScrollReveal delay={0.1}>
+        <div>
           <Section title="Truy cập nhanh" description="Lối tắt các tác vụ phổ biến">
             <div className="grid grid-cols-2 gap-2 sm:gap-4 items-stretch min-w-0">
               {quickActions.map((qa) => (
@@ -864,11 +917,11 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
               ))}
             </div>
           </Section>
-        </ScrollReveal>
+        </div>
       </div>
 
       {/* Recent notifications */}
-      <ScrollReveal>
+      <div>
         <Section
           title="Thông báo gần đây"
           description="Cập nhật mới nhất từ hệ thống"
@@ -931,11 +984,11 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
             )}
           </ExpressiveCard>
         </Section>
-      </ScrollReveal>
+      </div>
 
       {/* QR expand overlay — framer-motion animation (matches prototype) */}
       <AnimatePresence>
-        {qrExpanded && activeTicket?.qrCode && (
+        {qrExpanded && selectedQrTicket?.qrCode && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -947,10 +1000,10 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
           >
             <motion.div
               initial={{ scale: 0.5, opacity: 0, borderRadius: "50%" }}
-              animate={{ scale: 1, opacity: 1, borderRadius: "24px" }}
+              animate={{ scale: 1, opacity: 1, borderRadius: "32px" }}
               exit={{ scale: 0.5, opacity: 0, borderRadius: "50%" }}
               transition={{ type: "spring", stiffness: 300, damping: 25 }}
-              className="relative bg-[#14140f] text-white rounded-3xl p-5 sm:p-8 max-w-sm w-full min-w-0"
+              className="relative bg-[#14140f] text-white rounded-[32px] p-5 sm:p-8 max-w-sm w-full min-w-0"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between mb-4">
@@ -975,9 +1028,37 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
                   transition={{ delay: 0.15, type: "spring", stiffness: 200, damping: 18 }}
                   className="bg-white rounded-2xl p-4"
                 >
-                  <QRCodeCanvas value={activeTicket.qrCode} size={200} level="H" />
+                  <QRCodeCanvas value={selectedQrTicket.qrCode} size={200} level="H" />
                 </motion.div>
               </div>
+
+              {qrTicketOptions.length > 1 && (
+                <div className="mb-4 rounded-[24px] bg-white/6 p-2">
+                  <p className="mb-2 px-2 text-[11px] font-bold uppercase tracking-wide text-white/45">Đổi vé</p>
+                  <div className="space-y-1.5">
+                    {qrTicketOptions.map((ticket) => {
+                      const selected = ticket.__id === selectedQrTicket.__id;
+                      const routeLabel = ticket.routeCode || ticket.routeName || `#${ticket.ticketId}`;
+                      return (
+                        <button
+                          key={ticket.__id}
+                          type="button"
+                          onClick={() => setSelectedQrTicketId(ticket.__id)}
+                          className={cn(
+                            "flex w-full items-center justify-between gap-3 rounded-[18px] px-3 py-2 text-left text-xs transition-colors",
+                            selected ? "bg-[#beff50] text-[#14140f]" : "text-white/75 hover:bg-white/10"
+                          )}
+                        >
+                          <span className="min-w-0 truncate font-bold">
+                            {ticket.__kind === "SINGLE" ? "Vé lượt" : "Vé tháng"} · {routeLabel}
+                          </span>
+                          <span className="shrink-0 font-mono font-bold">#{ticket.ticketId}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
@@ -987,16 +1068,16 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
               >
                 <div className="flex justify-between text-sm">
                   <span className="text-white/60">Mã vé</span>
-                  <span className="font-bold tabular-nums">#{activeTicket.ticketId}</span>
+                  <span className="font-bold tabular-nums">#{selectedQrTicket.ticketId}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-white/60">Tuyến</span>
-                  <span className="font-bold truncate ml-2">{activeTicket.routeCode || activeTicket.routeName}</span>
+                  <span className="font-bold truncate ml-2">{selectedQrTicket.routeCode || selectedQrTicket.routeName}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-white/60">Hiệu lực</span>
                   <span className="font-bold text-[#beff50]">
-                    Đến {formatDate(activeTicket.expiresAt || activeTicket.expiresOn)}
+                    Đến {formatDate(selectedQrTicket.expiresAt || selectedQrTicket.expiresOn)}
                   </span>
                 </div>
               </motion.div>
@@ -1074,7 +1155,7 @@ function NotificationsScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: s
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Thông báo"
-        description={unreadCount > 0 ? `${unreadCount} thông báo chưa đọc` : "Bạn đã đọc hết thông báo mới."}
+        description={unreadCount > 0 ? `${unreadCount} thông báo chưa đọc` : "Đã đọc hết."}
         icon={<Bell className="size-7" />}
         actions={(
           <div className="flex flex-wrap items-center gap-2">
@@ -1095,7 +1176,7 @@ function NotificationsScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: s
           <EmptyState
             icon={<Bell className="size-7" />}
             title="Chưa có thông báo"
-            description="Các cập nhật từ UniBus sẽ xuất hiện tại đây."
+            description="Thông báo sẽ hiển thị tại đây."
           />
         ) : (
           <div className="space-y-2">
@@ -1158,55 +1239,126 @@ function NotificationRow({ notification }: { notification: any }) {
   );
 }
 
-function HistoryRow({
+function formatTimeOnly(value?: string | null): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("vi-VN", { timeStyle: "short" }).format(date);
+}
+
+function dayKeyOf(value?: string | null): string {
+  const d = new Date(value || "");
+  if (Number.isNaN(d.getTime())) return "unknown";
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+function dayLabelOf(value?: string | null): string {
+  const d = new Date(value || "");
+  if (Number.isNaN(d.getTime())) return "Không rõ ngày";
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  const sameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  if (sameDay(d, today)) return "Hôm nay";
+  if (sameDay(d, yesterday)) return "Hôm qua";
+  return formatDate(value);
+}
+
+function HistoryTimelineCard({
   history,
   routes,
+  selected,
+  onSelect,
   onFeedback,
   onLostItem,
 }: {
   history: any;
   routes: any[];
+  selected?: boolean;
+  onSelect: () => void;
   onFeedback: () => void;
   onLostItem: () => void;
 }) {
   const route = routes.find((r) => r.id === String(history.routeId));
+  const boardingLabel = displayStopLabel(history.boardingStopName, "Điểm lên chưa rõ");
+  const alightingLabel = displayStopLabel(history.alightingStopName, "Điểm xuống chưa rõ");
+  const boardedAt = history.boardedAt || history.serviceDate;
+  const boardingTime = formatTimeOnly(boardedAt);
+  const alightingTime = formatTimeOnly(history.alightedAt);
+
   return (
-    <div className="flex flex-wrap items-center gap-3 p-3 rounded-xl bg-surface-container-low min-w-0">
-      <div
-        className="size-9 shrink-0 rounded-xl flex items-center justify-center font-bold text-xs"
-        style={{ backgroundColor: route?.color || "#14b8a6", color: "#14140f" }}
-      >
-        {route?.code?.slice(0, 2) || "?"}
+    <motion.div
+      whileHover={{ y: -1 }}
+      whileTap={{ scale: 0.995 }}
+      onClick={onSelect}
+      className={cn(
+        "group cursor-pointer overflow-hidden rounded-[24px] border border-[#14140f]/10 bg-white p-3 min-w-0 transition-all hover:border-[#14140f]/20 hover:bg-[#fffdf7]",
+        selected && "border-[#BDFD4F] ring-2 ring-[#BDFD4F]/70",
+      )}
+    >
+      <div className="flex items-start gap-2.5 min-w-0">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#BDFD4F] text-xs font-black text-[#14140f] ring-1 ring-[#14140f]/10">
+          {route?.code?.slice(0, 2) || history.routeCode?.slice(0, 2) || "?"}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-3">
+            <p className="min-w-0 flex-1 truncate text-sm font-bold text-[#14140f]">
+              {history.routeName || route?.name || `Tuyến ${history.routeCode || "UniBus"}`}
+            </p>
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#ECFDF3] px-2 py-0.5 text-[10px] font-bold text-[#16803c]">
+              <CheckCircle2 className="size-3" />
+              Hoàn tất
+            </span>
+          </div>
+          {(boardingTime || alightingTime) && (
+            <p className="mt-0.5 flex items-center gap-1.5 text-xs font-semibold tabular-nums text-[#6B6B6B]">
+              <Clock className="size-3.5" />
+              {boardingTime || "—"}{alightingTime ? ` → ${alightingTime}` : ""}
+            </p>
+          )}
+        </div>
       </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-bold truncate">{history.routeName || route?.name}</p>
-        <p className="text-xs text-on-surface-variant truncate">
-          {history.boardingStopName || "?"} → {history.alightingStopName || "?"}
-        </p>
+
+      <div className="mt-3 rounded-[18px] bg-[#F8F6EF] px-3 py-2.5">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-[#6B6B6B]">Lên xe</p>
+            <p className="mt-0.5 truncate text-sm font-bold text-[#14140f]">{boardingLabel}</p>
+          </div>
+          <ArrowRight className="size-4 shrink-0 text-[#6B6B6B]" />
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-[#6B6B6B]">Xuống xe</p>
+            <p className="mt-0.5 truncate text-sm font-bold text-[#14140f]">{alightingLabel}</p>
+          </div>
+        </div>
       </div>
-      <div className="text-right shrink-0">
-        <p className="text-[10px] text-on-surface-variant">{formatDate(history.boardedAt || history.serviceDate)}</p>
-        <CheckCircle2 className="size-4 text-success ml-auto" />
-      </div>
-      <div className="ml-auto flex shrink-0 flex-wrap gap-2">
+
+      <div className="mt-3 flex shrink-0 justify-end gap-2 border-t border-[#14140f]/8 pt-2.5">
         <button
           type="button"
-          onClick={onFeedback}
-          className="inline-flex h-8 items-center gap-1.5 rounded-full bg-[#BDFD4F] px-3 text-xs font-bold text-[#14140f]"
+          onClick={(event) => {
+            event.stopPropagation();
+            onFeedback();
+          }}
+          className="inline-flex h-8 items-center gap-1.5 rounded-full bg-[#BDFD4F] px-3 text-xs font-bold text-[#14140f] transition-all duration-150 hover:-translate-y-0.5 hover:shadow-[0_8px_18px_rgba(189,253,79,0.32)] active:translate-y-0 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BDFD4F] focus-visible:ring-offset-2"
         >
           <Star className="size-3.5" />
           Đánh giá
         </button>
         <button
           type="button"
-          onClick={onLostItem}
-          className="inline-flex h-8 items-center gap-1.5 rounded-full border border-outline-variant bg-surface px-3 text-xs font-bold text-on-surface"
+          onClick={(event) => {
+            event.stopPropagation();
+            onLostItem();
+          }}
+          className="inline-flex h-8 items-center gap-1.5 rounded-full border border-outline-variant bg-surface px-3 text-xs font-bold text-on-surface transition-all duration-150 hover:-translate-y-0.5 hover:border-[#14140f]/30 hover:bg-white hover:shadow-[0_8px_18px_rgba(20,20,15,0.08)] active:translate-y-0 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BDFD4F] focus-visible:ring-offset-2"
         >
           <PackageSearch className="size-3.5" />
           Mất đồ
         </button>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -1225,12 +1377,12 @@ function verificationStatusCopy(status: string) {
   const copy: Record<string, { label: string; description: string; tone: "neutral" | "primary" | "tertiary" | "success" | "warning" | "error" }> = {
     NOT_SUBMITTED: {
       label: "Chưa xác minh",
-      description: "Gửi ảnh thẻ sinh viên để hệ thống OCR đọc thông tin và admin duyệt.",
+      description: "Gửi ảnh thẻ sinh viên.",
       tone: "neutral",
     },
     PENDING_REVIEW: {
       label: "Đang chờ duyệt",
-      description: "Hồ sơ đã gửi thành công. Admin sẽ kiểm tra ảnh thẻ và kết quả OCR.",
+      description: "Đang chờ UniBus duyệt.",
       tone: "warning",
     },
     VERIFIED: {
@@ -1284,70 +1436,40 @@ function OcrSummary({ verification }: { verification?: VerificationView | null }
 
   return (
     <ExpressiveCard variant="elevated" className="p-5 min-w-0">
-      {/* Header with icon + confidence bar */}
-      <div className="flex items-center gap-3 mb-4 min-w-0">
+      <div className="mb-4 flex items-center gap-3 min-w-0">
         <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-[#c8a0ff] text-[#14140f]">
           <Sparkles className="size-5" />
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="text-base font-bold flex items-center gap-2">
-            Kết quả OCR
-            <span className="inline-flex items-center h-5 px-2 rounded-full bg-[#c8a0ff]/20 text-[#c8a0ff] text-[10px] font-bold uppercase tracking-wide">
-              AI
-            </span>
-          </h3>
-          <p className="text-xs text-on-surface-variant mt-0.5">Dữ liệu backend đọc từ ảnh thẻ sinh viên</p>
+          <h3 className="text-base font-bold">Thông tin đọc từ thẻ</h3>
+          <p className="text-xs text-on-surface-variant mt-0.5">Thông tin từ ảnh thẻ</p>
         </div>
       </div>
-
-      {/* Confidence progress bar */}
-      {confidencePercent != null && (
-        <div className="mb-4">
-          <div className="flex items-center justify-between text-xs mb-1.5">
-            <span className="text-on-surface-variant font-medium">Độ tin cậy</span>
-            <span className={cn(
-              "font-bold",
-              confidenceTone === "success" && "text-success",
-              confidenceTone === "warning" && "text-warning",
-              confidenceTone === "error" && "text-error"
-            )}>
-              {Math.round(confidencePercent)}%
-            </span>
-          </div>
-          <div className="h-2 rounded-full bg-surface-container-high overflow-hidden">
-            <motion.div
-              className={cn(
-                "h-full rounded-full",
-                confidenceTone === "success" && "bg-success",
-                confidenceTone === "warning" && "bg-warning",
-                confidenceTone === "error" && "bg-error"
-              )}
-              initial={{ width: 0 }}
-              animate={{ width: `${confidencePercent}%` }}
-              transition={{ type: "spring", stiffness: 120, damping: 20 }}
-            />
-          </div>
-        </div>
-      )}
 
       {/* Fields grid */}
       <div className="grid gap-2 sm:grid-cols-3">
-        <FieldLine label="Họ tên OCR" value={verification.ocrFullName} />
-        <FieldLine label="MSSV OCR" value={verification.ocrStudentCode} />
-        <FieldLine label="Trường OCR" value={verification.ocrUniversity} />
+        <FieldLine label="Họ tên trên thẻ" value={verification.ocrFullName} />
+        <FieldLine label="MSSV trên thẻ" value={verification.ocrStudentCode} />
+        <FieldLine label="Trường trên thẻ" value={verification.ocrUniversity} />
       </div>
 
-      {/* Raw text collapsible */}
-      {verification.ocrRawText && (
+      {(verification.ocrRawText || confidencePercent != null) && (
         <details className="mt-3 group">
           <summary className="cursor-pointer text-xs font-bold text-on-surface-variant hover:text-on-surface flex items-center gap-1.5 list-none">
             <ChevronRight className="size-3.5 group-open:rotate-90 transition-transform" />
-            Xem raw text OCR
+            Xem chi tiết OCR
           </summary>
-          <div className="mt-2 rounded-2xl border border-outline-variant/50 bg-surface-container-lowest p-3">
-            <p className="max-h-32 overflow-y-auto whitespace-pre-wrap text-xs text-on-surface-variant scrollbar-soft font-mono">
-              {verification.ocrRawText}
-            </p>
+          <div className="mt-2 space-y-3 rounded-2xl border border-outline-variant/50 bg-surface-container-lowest p-3">
+            {confidencePercent != null && (
+              <div className="text-xs text-on-surface-variant">
+                Độ tin cậy: <span className="font-bold text-on-surface">{Math.round(confidencePercent)}%</span>
+              </div>
+            )}
+            {verification.ocrRawText && (
+              <p className="max-h-32 overflow-y-auto whitespace-pre-wrap text-xs text-on-surface-variant scrollbar-soft font-mono">
+                {verification.ocrRawText}
+              </p>
+            )}
           </div>
         </details>
       )}
@@ -1512,7 +1634,7 @@ function UniversityScreen({ ctx, onProfileRefresh }: { ctx: Ctx; onProfileRefres
         icon={isVerified ? <School className="size-7" /> : <ShieldCheck className="size-7" />}
       />
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid gap-4">
         <div className="space-y-4 min-w-0">
           <ExpressiveCard variant="elevated" className="p-5 min-w-0">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -1527,11 +1649,6 @@ function UniversityScreen({ ctx, onProfileRefresh }: { ctx: Ctx; onProfileRefres
                   <p className="mt-1 text-sm text-on-surface-variant">
                     MSSV: <span className="font-bold text-on-surface">{currentUniversity?.studentCode || currentVerification?.studentCode || "—"}</span>
                   </p>
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <M3StatusPill label={statusCopy.label} tone={statusCopy.tone} />
-                    {currentUniversity?.rosterStatus && <M3StatusPill label={currentUniversity.rosterStatus} tone="primary" />}
-                    {currentUniversity?.linkStatus && <M3StatusPill label={currentUniversity.linkStatus} tone="success" />}
-                  </div>
                 </div>
               </div>
               {(verification.loading || university.loading) && (
@@ -1546,19 +1663,6 @@ function UniversityScreen({ ctx, onProfileRefresh }: { ctx: Ctx; onProfileRefres
             )}
           </ExpressiveCard>
 
-          {isVerified && (
-            <ExpressiveCard variant="filled" className="p-5 min-w-0">
-              <h3 className="text-base font-bold mb-3">Domain xác thực</h3>
-              {currentUniversity?.domainHint ? (
-                <p className="text-sm">
-                  Email trường: <span className="font-mono font-bold text-primary">@{currentUniversity.domainHint}</span>
-                </p>
-              ) : (
-                <p className="text-sm text-on-surface-variant">Chưa có thông tin domain</p>
-              )}
-            </ExpressiveCard>
-          )}
-
           {isPending && (
             <ExpressiveCard variant="filled" className="p-5 min-w-0">
               <div className="flex items-start gap-3">
@@ -1566,7 +1670,7 @@ function UniversityScreen({ ctx, onProfileRefresh }: { ctx: Ctx; onProfileRefres
                 <div className="min-w-0">
                   <h3 className="font-bold">Hồ sơ đang chờ admin duyệt</h3>
                   <p className="mt-1 text-sm text-on-surface-variant">
-                    Bạn không cần gửi lại. Nếu admin yêu cầu bổ sung, form upload sẽ mở lại ở màn này.
+                    Không cần gửi lại.
                   </p>
                   {currentVerification?.submittedAt && (
                     <p className="mt-2 text-xs font-semibold text-on-surface-variant">
@@ -1578,14 +1682,14 @@ function UniversityScreen({ ctx, onProfileRefresh }: { ctx: Ctx; onProfileRefres
             </ExpressiveCard>
           )}
 
-          <OcrSummary verification={currentVerification} />
+          {!isVerified && <OcrSummary verification={currentVerification} />}
 
           {canSubmit && (
             <ExpressiveCard variant="elevated" className="p-5 min-w-0">
               <div className="mb-4">
                 <h3 className="text-base font-bold">Gửi hồ sơ xác minh</h3>
                 <p className="mt-1 text-sm text-on-surface-variant">
-                  Nhập đúng trường/MSSV và chọn ảnh thẻ rõ nét để OCR đọc thông tin.
+                  Nhập trường/MSSV và ảnh thẻ rõ nét.
                 </p>
               </div>
 
@@ -1624,7 +1728,7 @@ function UniversityScreen({ ctx, onProfileRefresh }: { ctx: Ctx; onProfileRefres
                 </div>
               </div>
 
-              <div className="mt-4 grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
+              <div className="mt-4 grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
                 <StudentCardPreview verification={currentVerification} previewUrl={previewUrl} />
                 <div className="space-y-3 min-w-0">
                   <Label htmlFor="student-card-image" className="text-xs font-bold uppercase tracking-wide">Ảnh thẻ sinh viên</Label>
@@ -1661,17 +1765,6 @@ function UniversityScreen({ ctx, onProfileRefresh }: { ctx: Ctx; onProfileRefres
                       </p>
                     </div>
                   </label>
-                  <div className="rounded-2xl bg-[#144fcc]/5 border border-[#144fcc]/20 p-4 text-sm text-on-surface-variant">
-                    <p className="font-bold text-[#144fcc] flex items-center gap-1.5">
-                      <Sparkles className="size-4" />
-                      Mẹo OCR đọc tốt hơn
-                    </p>
-                    <ul className="mt-2 space-y-1 text-xs">
-                      <li className="flex items-start gap-1.5"><span className="text-[#144fcc]">•</span> Chụp thẳng mặt thẻ, không nghiêng</li>
-                      <li className="flex items-start gap-1.5"><span className="text-[#144fcc]">•</span> Đủ sáng, không bóng đổ</li>
-                      <li className="flex items-start gap-1.5"><span className="text-[#144fcc]">•</span> Không che MSSV và tên trường</li>
-                    </ul>
-                  </div>
                   <ExpressiveButton variant="filled" onClick={submit} disabled={submitting || !cardImage} className="w-full">
                     {submitting ? <RefreshCw className="size-4 animate-spin" /> : <Upload className="size-4" />}
                     {submitting ? "Đang gửi..." : "Gửi xác minh"}
@@ -1690,26 +1783,6 @@ function UniversityScreen({ ctx, onProfileRefresh }: { ctx: Ctx; onProfileRefres
           )}
         </div>
 
-        <div className="space-y-4 min-w-0">
-          <StudentCardPreview verification={currentVerification} previewUrl={previewUrl} />
-          <ExpressiveCard variant="filled" className="p-5 min-w-0">
-            <h3 className="text-base font-bold">Quy trình duyệt</h3>
-            <div className="mt-4 space-y-3">
-              {[
-                ["1", "Sinh viên gửi ảnh thẻ và MSSV"],
-                ["2", "OCR đọc tên, MSSV, trường"],
-                ["3", "Admin đối chiếu và duyệt"],
-              ].map(([step, label]) => (
-                <div key={step} className="flex items-center gap-3">
-                  <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[#14140f] text-xs font-bold text-[#beff50]">
-                    {step}
-                  </span>
-                  <span className="text-sm font-medium text-on-surface">{label}</span>
-                </div>
-              ))}
-            </div>
-          </ExpressiveCard>
-        </div>
       </div>
     </PageTransition>
   );
@@ -1804,7 +1877,7 @@ function JourneyPlannerDesktopScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate
     const originPoint = placePoint(nextOrigin, originQuery);
     const destinationPoint = placePoint(nextDestination, destinationQuery);
     if (!originPoint || !destinationPoint) {
-      toast.error("Hãy chọn điểm xuất phát và điểm đến từ gợi ý.");
+      toast.error("Chọn điểm đi và điểm đến.");
       return;
     }
     setLoading(true);
@@ -1817,9 +1890,9 @@ function JourneyPlannerDesktopScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate
       setJourneys(result);
       setSelectedId(result[0]?.optionId || "");
       if (result.length) {
-        toast.success(`Đã tìm thấy ${result.length} lộ trình phù hợp.`);
+        toast.success(`Đã tìm thấy ${result.length} lộ trình.`);
       } else {
-        toast.info("Chưa tìm thấy lộ trình phù hợp trong mạng tuyến hiện tại.");
+        toast.info("Chưa có lộ trình.");
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Không thể tìm lộ trình");
@@ -2129,7 +2202,7 @@ function JourneyPlannerDesktopScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate
           </span>
           <div>
             <h1 className="text-2xl font-black text-on-surface">Tìm tuyến</h1>
-            <p className="text-sm text-on-surface-variant">Lập hành trình, đăng ký tuyến và theo dõi xe trên bản đồ.</p>
+            <p className="text-sm text-on-surface-variant">Tìm tuyến, đăng ký, theo dõi.</p>
           </div>
         </div>
         <div className="hidden items-center gap-2 rounded-full bg-surface-container px-4 py-2 text-sm font-bold text-on-surface-variant lg:flex">
@@ -2773,20 +2846,30 @@ function FindRoutesScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
           lng: Number(s.lng),
         }))
     : [];
-  const selectedWalkLines: JourneyPolyline[] = userLocation && selectedJourneyStops.length
+  const nearestJourneyStop = userLocation && selectedJourneyStops.length
+    ? selectedJourneyStops
+        .filter((stop: any) => Number.isFinite(Number(stop.lat)) && Number.isFinite(Number(stop.lng)))
+        .map((stop: any) => ({
+          stop,
+          meters: Math.round(distanceKm(userLocation, { lat: Number(stop.lat), lng: Number(stop.lng) }) * 1000),
+        }))
+        .sort((a, b) => a.meters - b.meters)[0]?.stop
+    : null;
+  const selectedWalkLines: JourneyPolyline[] = userLocation && nearestJourneyStop
     ? [{
-        id: "gps-to-boarding",
-        label: "Đi bộ đến trạm lên",
+        id: "gps-to-nearest-stop",
+        label: "Đi bộ đến trạm gần nhất",
         dashed: true,
         points: [
           userLocation,
-          { lat: Number(selectedJourneyStops[0].lat), lng: Number(selectedJourneyStops[0].lng) },
+          { lat: Number(nearestJourneyStop.lat), lng: Number(nearestJourneyStop.lng) },
         ],
       }]
     : [];
-  const selectedMarkers: JourneyExtraMarker[] = userLocation
-    ? [{ id: "current", label: "Vị trí hiện tại", lat: userLocation.lat, lng: userLocation.lng, tone: "current" }]
-    : [];
+  const selectedMarkers: JourneyExtraMarker[] = [
+    ...(userLocation ? [{ id: "current", label: "Vị trí hiện tại", lat: userLocation.lat, lng: userLocation.lng, tone: "current" as const }] : []),
+    ...(nearestJourneyStop ? [{ id: "nearest-route-stop", label: "Trạm gần nhất", lat: Number(nearestJourneyStop.lat), lng: Number(nearestJourneyStop.lng), tone: "nearest" as const }] : []),
+  ];
 
   return (
     <PageTransition className="space-y-6 min-w-0">
@@ -2998,7 +3081,7 @@ function FindRoutesScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
                       </div>
 
                       <div className="relative flex flex-wrap items-center justify-between gap-3 min-w-0">
-                        <p className="text-xs opacity-75">Polyline bản đồ theo thứ tự trạm, chưa phải routing theo làn đường thật.</p>
+                        <p className="text-xs opacity-75">Bản đồ hiển thị theo thứ tự trạm trên tuyến.</p>
                         <motion.span
                           whileHover={{ y: -2 }}
                           whileTap={{ scale: 0.97 }}
@@ -3392,7 +3475,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
       .map((stop) => ({ stop, meters: distanceMeters(userLocation, { lat: stop.lat, lng: stop.lng }) }))
       .sort((left, right) => left.meters - right.meters)[0]
     : null;
-  const preferredWalkStop = userLocation && boardingStop ? { stop: boardingStop, meters: distanceMeters(userLocation, { lat: boardingStop.lat, lng: boardingStop.lng }) } : nearestStop;
+  const preferredWalkStop = nearestStop;
   const selectedStop = trackingStops.find((stop) => stop.id === selectedStopId)
     || boardingStop
     || nearestStop?.stop
@@ -3428,13 +3511,13 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
       ...journeyPolylines,
       {
         id: "user-nearest-stop",
-        label: boardingStop ? "Đường đi bộ tới trạm lên" : "Đường đi bộ tới trạm gần nhất",
+        label: "Đường đi bộ tới trạm gần nhất",
         color: "#16a34a",
         dashed: true,
         points: nearestStopWalkLine,
       },
     ];
-  }, [boardingStop, journeyPolylines, nearestStopWalkLine]);
+  }, [journeyPolylines, nearestStopWalkLine]);
 
   useEffect(() => {
     if (!userLocation || !preferredWalkStop?.stop) {
@@ -3530,7 +3613,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
       },
       () => {
         setLocationLoading(false);
-        toast.info("Không thể lấy vị trí. Bạn vẫn có thể chọn trạm trong danh sách.");
+        toast.info("Không thể lấy vị trí.");
       },
       { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 },
     );
@@ -3783,7 +3866,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                     </div>
                     <p className="mt-3 line-clamp-2 text-sm font-black text-on-surface">{registration.routeName || `Tuyến ${registration.routeCode || registration.routeId}`}</p>
                     <p className="mt-2 text-xs leading-5 text-on-surface-variant">
-                      {registration.boardingStopName || "Trạm lên"} → {registration.alightingStopName || "Trạm xuống"}
+                      {displayStopLabel(registration.boardingStopName, "Trạm lên")} → {displayStopLabel(registration.alightingStopName, "Trạm xuống")}
                     </p>
                   </button>
                 ))}
@@ -3792,7 +3875,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
               <EmptyState
                 icon={<RouteIcon className="size-7" />}
                 title="Bạn chưa có tuyến để theo dõi"
-                description="Hãy đăng ký tuyến trước, sau đó quay lại màn này để xem xe sắp tới trạm của bạn."
+                description="Đăng ký tuyến để theo dõi."
                 action={onNavigate ? (
                   <ExpressiveButton variant="filled" onClick={() => onNavigate("stu-find")}>
                     <RouteIcon className="size-4" />
@@ -3961,7 +4044,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
                     <EmptyState
                       icon={<Bus className="size-7" />}
                       title="Chưa có chuyến đang chạy"
-                      description="Bạn vẫn có thể xem danh sách trạm đi qua và thời gian dự kiến bên dưới."
+                      description="Xem trạm và thời gian dự kiến bên dưới."
                     />
                   )}
                   {collapsedVehicles.length > 0 && (
@@ -4147,11 +4230,10 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false, onTrackRoute }: { ct
   } as Record<string, string>)[String(status || "").toUpperCase()] || "Đã đăng ký";
   const cleanStopLabel = (value?: string | null) => {
     const raw = String(value || "").replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
-    if (!raw) return "Chưa xác định";
-    const normalized = raw.toLowerCase();
-    if (["dai hoc", "dai hoc viet", "đại học", "đại học việt"].includes(normalized)) return "Chưa xác định";
-    if (/^[a-z0-9\s]+$/.test(raw) && raw === normalized && raw.length > 12) return "Chưa xác định";
-    return raw;
+    const label = displayStopLabel(raw);
+    if (label === "Chưa xác định") return label;
+    if (/^[a-z0-9\s]+$/.test(raw) && raw === raw.toLowerCase() && raw.length > 12) return "Chưa xác định";
+    return label;
   };
   const routeTickets = useMemo(() => freshPasses ? collectMonthlyTicketsFrom(freshPasses, null) : collectMonthlyTickets(ctx), [ctx, freshPasses]);
 
@@ -4216,7 +4298,7 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false, onTrackRoute }: { ct
       {!compact && (
         <PageHeader
           title="Tuyến của tôi"
-          description="Quản lý tuyến đã đăng ký, vé và theo dõi tuyến."
+          description="Tuyến, vé và theo dõi."
           icon={<TicketCheck className="size-7" />}
           actions={
             <ExpressiveButton variant="filled" onClick={() => onNavigate("stu-find")}>
@@ -4233,7 +4315,7 @@ function MyRoutesScreen({ ctx, onNavigate, compact = false, onTrackRoute }: { ct
             <RouteIcon className="size-6" />
           </div>
           <h3 className="mt-4 text-lg font-semibold text-[#111111]">Chưa đăng ký tuyến nào</h3>
-          <p className="mx-auto mt-2 max-w-md text-sm text-[#6B6B6B]">Chọn tuyến phù hợp để bắt đầu mua vé và theo dõi tuyến.</p>
+          <p className="mx-auto mt-2 max-w-md text-sm text-[#6B6B6B]">Chọn tuyến để mua vé.</p>
           <ExpressiveButton variant="filled" className="mt-5" onClick={() => onNavigate("stu-find")}>
             <Plus className="size-4" />
             Tìm tuyến mới
@@ -4502,7 +4584,7 @@ function RegisterRouteDialog({
       <DialogHeader>
         <DialogTitle>Đăng ký tuyến mới</DialogTitle>
         <DialogDescription>
-          Chọn tuyến và trạm lên/xuống. Bạn có thể thay đổi sau nếu cần.
+          Chọn tuyến và trạm lên/xuống.
         </DialogDescription>
       </DialogHeader>
       <div className="space-y-4 py-2">
@@ -4568,44 +4650,81 @@ function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
   const t = monthlyTickets[0] || ctx.activeTicket;
   const [expanded, setExpanded] = useState(false);
   const [singleTickets, setSingleTickets] = useState<SingleTripTicketView[]>([]);
+  const [singleTicketNow, setSingleTicketNow] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     studentApi.tickets()
       .then((passes) => { if (!cancelled) setFreshPasses(passes); })
       .catch(() => { if (!cancelled) setFreshPasses(null); });
+    setSingleTicketNow(Date.now());
     studentApi.singleTripTickets()
       .then((items) => { if (!cancelled) setSingleTickets(items); })
       .catch(() => { if (!cancelled) setSingleTickets([]); });
     return () => { cancelled = true; };
   }, []);
 
-  const singleTicketSection = singleTickets.length > 0 ? (
-    <Section title="Vé lượt" description="Vé ngày / vé lượt đã mua">
+  const ticketStatusLabel = (status?: string | null) => {
+    switch (String(status || "").toUpperCase()) {
+      case "UNUSED":
+      case "ACTIVE":
+        return "Chưa sử dụng";
+      case "USED":
+        return "Đã sử dụng";
+      case "EXPIRED":
+        return "Hết hạn";
+      case "CANCELLED":
+      case "CANCELED":
+        return "Đã hủy";
+      default:
+        return "Chưa xác định";
+    }
+  };
+
+  const visibleSingleTickets = useMemo(() => singleTickets.filter((ticket) => {
+    if (String(ticket.status || "").toUpperCase() !== "UNUSED") return false;
+    if (!ticket.expiresAt) return true;
+    const expiresAt = new Date(ticket.expiresAt).getTime();
+    return Number.isFinite(expiresAt) && expiresAt > singleTicketNow;
+  }), [singleTicketNow, singleTickets]);
+  const stopLabel = displayStopLabel;
+
+  const singleTicketSection = visibleSingleTickets.length > 0 ? (
+    <Section title="Vé lượt" description="Vé lượt còn hiệu lực">
       <div className="grid gap-3 md:grid-cols-2">
-        {singleTickets.map((ticket) => (
-          <ExpressiveCard key={ticket.ticketId} variant="filled" className="flex h-full flex-col p-5 min-w-0">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-xs font-black uppercase text-on-surface-variant">Vé lượt / vé ngày</p>
-                <h3 className="mt-1 truncate text-base font-black text-on-surface">{ticket.routeName}</h3>
-                <p className="mt-1 text-xs text-on-surface-variant">{ticket.boardingStopName || "—"} → {ticket.alightingStopName || "—"}</p>
-              </div>
-              <span className="rounded-full bg-[#14140f] px-3 py-1 text-[10px] font-black text-[#beff50]">{ticket.status}</span>
-            </div>
-            <div className="mt-4 flex items-center gap-4">
-              {ticket.qrCode && (
-                <div className="rounded-2xl bg-white p-3 shadow-sm">
-                  <QRCodeCanvas value={ticket.qrCode} size={96} level="H" />
+        {visibleSingleTickets.map((ticket) => {
+          const originalFare = Number(ticket.originalFareAmount ?? ticket.finalFareAmount ?? 0);
+          const subsidy = Number(ticket.subsidyAmount ?? 0);
+          const finalFare = Number(ticket.finalFareAmount ?? Math.max(0, originalFare - subsidy));
+          return (
+            <ExpressiveCard key={ticket.ticketId} variant="filled" className="flex h-full flex-col p-5 min-w-0">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-on-surface-variant">Vé lượt</p>
+                  <h3 className="mt-1 truncate text-base font-black text-on-surface">{ticket.routeName}</h3>
+                  <div className="mt-3 grid gap-2 text-xs text-on-surface-variant">
+                    <p><span className="font-semibold text-on-surface">Điểm lên dự kiến:</span> {stopLabel(ticket.boardingStopName)}</p>
+                    <p><span className="font-semibold text-on-surface">Điểm xuống dự kiến:</span> {stopLabel(ticket.alightingStopName)}</p>
+                  </div>
                 </div>
-              )}
-              <div className="min-w-0 text-sm">
-                <p><span className="font-bold">Sinh viên trả:</span> {formatVND(Number(ticket.finalFareAmount ?? 0))}</p>
-                <p className="text-xs text-on-surface-variant">Hết hạn: {formatDate(ticket.expiresAt)}</p>
+                <span className="rounded-full bg-[#14140f] px-3 py-1 text-[10px] font-bold text-[#beff50]">{ticketStatusLabel(ticket.status)}</span>
               </div>
-            </div>
-          </ExpressiveCard>
-        ))}
+              <div className="mt-4 flex items-center gap-4">
+                {ticket.qrCode && (
+                  <div className="rounded-2xl bg-white p-3 shadow-sm">
+                    <QRCodeCanvas value={ticket.qrCode} size={96} level="H" />
+                  </div>
+                )}
+                <div className="min-w-0 text-sm">
+                  <p><span className="font-bold">Sinh viên trả:</span> {formatVND(finalFare)}</p>
+                  {originalFare > 0 && <p className="text-xs text-on-surface-variant">Giá gốc: {formatVND(originalFare)}</p>}
+                  {subsidy > 0 && <p className="text-xs text-on-surface-variant">Trường hỗ trợ: {formatVND(subsidy)}</p>}
+                  <p className="text-xs text-on-surface-variant">Hết hạn: {ticket.expiresAt ? formatDateTime(ticket.expiresAt) : "Chưa xác định"}</p>
+                </div>
+              </div>
+            </ExpressiveCard>
+          );
+        })}
       </div>
     </Section>
   ) : null;
@@ -4685,12 +4804,12 @@ function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
               <div className="rounded-2xl border border-[#EEE7DA] bg-[#FAF8F2] p-3 min-w-0">
                 <MapPin className="size-4 mb-1 opacity-70" />
                 <p className="text-[10px] font-bold opacity-70 uppercase">Trạm lên</p>
-                <p className="font-bold text-sm truncate">{t.boardingStopName || "—"}</p>
+                <p className="font-bold text-sm truncate">{stopLabel(t.boardingStopName)}</p>
               </div>
               <div className="rounded-2xl border border-[#EEE7DA] bg-[#FAF8F2] p-3 min-w-0">
                 <MapPin className="size-4 mb-1 opacity-70" />
                 <p className="text-[10px] font-bold opacity-70 uppercase">Trạm xuống</p>
-                <p className="font-bold text-sm truncate">{t.alightingStopName || "—"}</p>
+                <p className="font-bold text-sm truncate">{stopLabel(t.alightingStopName)}</p>
               </div>
               <div className="rounded-2xl border border-[#EEE7DA] bg-[#FAF8F2] p-3 min-w-0">
                 <Calendar className="size-4 mb-1 opacity-70" />
@@ -4755,7 +4874,7 @@ function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
                   )}
                   <div className="min-w-0 text-sm">
                     <p><span className="font-bold">Sinh viên trả:</span> {formatVND(Number(ticket.finalFareAmount ?? ticket.fareAmount ?? 0))}</p>
-                    <p className="text-xs text-on-surface-variant">{ticket.boardingStopName || "—"} → {ticket.alightingStopName || "—"}</p>
+                    <p className="text-xs text-on-surface-variant">{stopLabel(ticket.boardingStopName)} → {stopLabel(ticket.alightingStopName)}</p>
                   </div>
                 </div>
               </ExpressiveCard>
@@ -4770,9 +4889,7 @@ function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
         <ExpressiveCard variant="filled" className="p-5 space-y-2 text-sm">
           <p className="flex items-start gap-2"><CheckCircle2 className="size-4 text-success mt-0.5 shrink-0" />Mã QR được sử dụng để kiểm tra vé khi lên xe.</p>
           <p className="flex items-start gap-2"><CheckCircle2 className="size-4 text-success mt-0.5 shrink-0" />Vé tháng có hiệu lực theo kỳ vé hiện tại.</p>
-          <p className="flex items-start gap-2"><CheckCircle2 className="size-4 text-success mt-0.5 shrink-0" />Có thể đi không giới hạn số chuyến trong tuyến đã đăng ký.</p>
-          <p className="flex items-start gap-2"><Info className="size-4 text-primary mt-0.5 shrink-0" />Nếu gặp lỗi quét mã, vui lòng liên hệ điều phối viên.</p>
-        </ExpressiveCard>
+          <p className="flex items-start gap-2"><CheckCircle2 className="size-4 text-success mt-0.5 shrink-0" />Có thể đi không giới hạn số chuyến trong tuyến đã đăng ký.</p>        </ExpressiveCard>
       </Section>
     </PageTransition>
   );
@@ -4781,8 +4898,16 @@ function MyTicketScreen({ ctx, onNavigate, compact = false }: { ctx: Ctx; onNavi
 // =============================================================================
 // Screen 8: History — travel history list with stat cards
 // =============================================================================
-function HistoryScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
-  const [supportAction, setSupportAction] = useState<null | { type: "feedback" | "lost"; tripId: string; routeId?: string }>(null);
+function HistoryScreen({ ctx }: { ctx: Ctx }) {
+  const [query, setQuery] = useState("");
+  const [selectedMonth, setSelectedMonth] = useState<string>("all");
+  const [selectedHistoryId, setSelectedHistoryId] = useState<string>("");
+  const [detailMode, setDetailMode] = useState<"summary" | "feedback" | "lost">("summary");
+  const [feedbackItems, setFeedbackItems] = useState<any[]>(ctx.feedback || []);
+  const [feedbackRating, setFeedbackRating] = useState(5);
+  const [feedbackContent, setFeedbackContent] = useState("");
+  const [lostDescription, setLostDescription] = useState("");
+  const [submittingAction, setSubmittingAction] = useState<"feedback" | "lost" | null>(null);
   const totalTrips = ctx.tripsHistory.length;
   // Estimate monthly spend from active ticket fare
   const monthlyFare = ctx.activeTicket?.finalFareAmount ?? ctx.activeTicket?.originalFareAmount ?? 0;
@@ -4792,33 +4917,284 @@ function HistoryScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
   }).length;
 
+  // Build month options from data (newest first)
+  const monthOptions = useMemo(() => {
+    const set = new Map<string, string>();
+    for (const h of ctx.tripsHistory as any[]) {
+      const d = new Date(h.boardedAt || h.serviceDate || "");
+      if (Number.isNaN(d.getTime())) continue;
+      const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, "0")}`;
+      if (!set.has(key)) {
+        set.set(key, new Intl.DateTimeFormat("vi-VN", { month: "long", year: "numeric" }).format(d));
+      }
+    }
+    return Array.from(set.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+  }, [ctx.tripsHistory]);
+
+  // Filter + group trips by day (newest first)
+  const groupedTrips = useMemo(() => {
+    const q = normalizeStopText(query);
+    const filtered = (ctx.tripsHistory as any[]).filter((h) => {
+      const route = ctx.routes.find((r) => r.id === String(h.routeId));
+      const hay = [
+        h.routeName,
+        route?.name,
+        h.routeCode,
+        route?.code,
+        h.boardingStopName,
+        h.alightingStopName,
+      ]
+        .filter(Boolean)
+        .map((v) => normalizeStopText(String(v)))
+        .join(" ");
+      if (q && !hay.includes(q)) return false;
+      if (selectedMonth !== "all") {
+        const d = new Date(h.boardedAt || h.serviceDate || "");
+        const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, "0")}`;
+        if (key !== selectedMonth) return false;
+      }
+      return true;
+    });
+    const groups = new Map<string, { label: string; items: any[] }>();
+    for (const h of filtered) {
+      const ref = h.boardedAt || h.serviceDate;
+      const key = dayKeyOf(ref);
+      if (!groups.has(key)) groups.set(key, { label: dayLabelOf(ref), items: [] });
+      groups.get(key)!.items.push(h);
+    }
+    return Array.from(groups.entries())
+      .map(([key, group]) => ({ key, ...group }))
+      .sort((a, b) => (a.key < b.key ? 1 : -1));
+  }, [ctx.tripsHistory, ctx.routes, query, selectedMonth]);
+
+  useEffect(() => {
+    let cancelled = false;
+    feedbackApi.mine()
+      .then((rows) => {
+        if (!cancelled) setFeedbackItems(rows.map(mapFeedback));
+      })
+      .catch(() => {
+        if (!cancelled) setFeedbackItems(ctx.feedback || []);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ctx.feedback]);
+
+  const allVisibleTrips = groupedTrips.flatMap((group) => group.items);
+  const selectedHistory = selectedHistoryId
+    ? allVisibleTrips.find((trip: any) => String(trip.travelHistoryId ?? trip.tripId ?? trip.id) === selectedHistoryId)
+    : null;
+  const selectedTripId = selectedHistory ? Number(selectedHistory.tripId || selectedHistory.id || 0) : 0;
+  const selectedFeedback = selectedTripId
+    ? feedbackItems.find((item: any) => Number(item.tripId) === selectedTripId)
+    : null;
+
+  useEffect(() => {
+    if (!selectedHistoryId) return;
+    const handleStudentBack = (event: Event) => {
+      event.preventDefault();
+      setSelectedHistoryId("");
+      setDetailMode("summary");
+    };
+    window.addEventListener("unibus:student-back", handleStudentBack);
+    return () => window.removeEventListener("unibus:student-back", handleStudentBack);
+  }, [selectedHistoryId]);
+
+  const openTripDetail = (history: any, mode: "summary" | "feedback" | "lost" = "summary") => {
+    setSelectedHistoryId(String(history.travelHistoryId ?? history.tripId ?? history.id));
+    setDetailMode(mode);
+  };
+
+  const submitTripFeedback = async () => {
+    if (!selectedHistory || !selectedTripId) return;
+    if (selectedFeedback) {
+      toast.info("Bạn đã đánh giá chuyến này");
+      return;
+    }
+    if (!feedbackContent.trim()) {
+      toast.error("Vui lòng nhập nội dung đánh giá");
+      return;
+    }
+    setSubmittingAction("feedback");
+    try {
+      const created = await feedbackApi.create({
+        tripId: selectedTripId,
+        routeId: selectedHistory.routeId ? Number(selectedHistory.routeId) : undefined,
+        rating: feedbackRating,
+        category: "SERVICE_QUALITY",
+        content: feedbackContent.trim(),
+      });
+      setFeedbackItems((items) => [mapFeedback(created), ...items]);
+      setFeedbackContent("");
+      setFeedbackRating(5);
+      setDetailMode("summary");
+      toast.success("Đã gửi đánh giá chuyến này");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể gửi đánh giá");
+    } finally {
+      setSubmittingAction(null);
+    }
+  };
+
+  const submitTripLostItem = async () => {
+    if (!selectedTripId) return;
+    if (!lostDescription.trim()) {
+      toast.error("Vui lòng mô tả vật dụng mất");
+      return;
+    }
+    setSubmittingAction("lost");
+    try {
+      await experienceApi.createStudentLostItem({ itemDescription: lostDescription.trim(), tripId: selectedTripId });
+      setLostDescription("");
+      setDetailMode("summary");
+      toast.success("Đã báo mất đồ cho chuyến này");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể báo mất đồ");
+    } finally {
+      setSubmittingAction(null);
+    }
+  };
+
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Lịch sử chuyến đi"
-        description="Xem chuyến đã đi, gửi đánh giá hoặc báo thất lạc theo từng chuyến."
+        description="Chọn một chuyến để đánh giá hoặc báo mất đồ."
         icon={<History className="size-7" />}
       />
 
-      {/* Stat cards — 3 mini cards giống prototype */}
+      {selectedHistory ? (
+        <ExpressiveCard variant="elevated" className="overflow-hidden rounded-[28px] border border-[#14140f]/10 bg-white p-0 shadow-[0_18px_48px_rgba(20,20,15,0.10)]">
+          <div className="flex flex-col gap-4 border-b border-[#14140f]/10 bg-[#14140f] p-5 text-white sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex min-w-0 gap-3">
+              <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-[#BDFD4F] text-sm font-black text-[#14140f]">
+                {selectedHistory.routeCode?.slice(0, 2) || "UB"}
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/55">Chuyến đang chọn</p>
+                <h3 className="mt-1 line-clamp-2 text-[19px] font-semibold leading-snug tracking-[-0.025em] text-white sm:text-xl">{selectedHistory.routeName || `Tuyến ${selectedHistory.routeCode || "UniBus"}`}</h3>
+                <p className="mt-1 text-sm font-medium text-white/70">
+                  {formatDate(selectedHistory.boardedAt || selectedHistory.serviceDate)} · {formatTimeOnly(selectedHistory.boardedAt || selectedHistory.serviceDate) || "—"}
+                </p>
+              </div>
+            </div>
+            <button type="button" onClick={() => setSelectedHistoryId("")} className="self-start rounded-full px-3 py-1.5 text-xs font-bold text-white/70 transition-all duration-150 hover:bg-white/10 hover:text-white active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BDFD4F]">
+              Đóng
+            </button>
+          </div>
+          <div className="grid gap-4 p-4 lg:grid-cols-[1fr_1.15fr]">
+            <div className="space-y-4 rounded-[24px] bg-[#F8F6EF] p-4">
+              <div className="rounded-2xl bg-white p-4 shadow-[0_8px_20px_rgba(20,20,15,0.05)]">
+                <div className="flex gap-3">
+                  <div className="flex shrink-0 flex-col items-center pt-1">
+                    <span className="size-3 rounded-full bg-[#BDFD4F] ring-4 ring-[#BDFD4F]/20" />
+                    <span className="my-1 h-10 w-0.5 rounded-full bg-[#14140f]/10" />
+                    <span className="size-3 rounded-full bg-[#ff8c5f] ring-4 ring-[#ff8c5f]/20" />
+                  </div>
+                  <div className="min-w-0 flex-1 space-y-3">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-wide text-[#6B6B6B]">Lên xe</p>
+                      <p className="mt-0.5 truncate text-sm font-black text-[#14140f]">{displayStopLabel(selectedHistory.boardingStopName, "Trạm lên")}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-wide text-[#6B6B6B]">Xuống xe</p>
+                      <p className="mt-0.5 truncate text-sm font-black text-[#14140f]">{displayStopLabel(selectedHistory.alightingStopName, "Trạm xuống")}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <InfoCell label="Giờ" value={`${formatTimeOnly(selectedHistory.boardedAt || selectedHistory.serviceDate) || "—"}${selectedHistory.alightedAt ? ` → ${formatTimeOnly(selectedHistory.alightedAt)}` : ""}`} />
+                <InfoCell label="Đánh giá" value={selectedFeedback ? "Đã gửi" : "Chưa gửi"} />
+              </div>
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setDetailMode("feedback")}
+                  disabled={Boolean(selectedFeedback)}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-[#14140f] px-4 text-xs font-bold text-[#BDFD4F] transition-all duration-150 hover:-translate-y-0.5 hover:shadow-[0_10px_22px_rgba(20,20,15,0.18)] active:translate-y-0 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0 disabled:hover:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BDFD4F] focus-visible:ring-offset-2"
+                >
+                  <Star className="size-4" />
+                  Đánh giá
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDetailMode("lost")}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-outline-variant bg-white px-4 text-xs font-bold text-on-surface transition-all duration-150 hover:-translate-y-0.5 hover:border-[#14140f]/30 hover:shadow-[0_10px_22px_rgba(20,20,15,0.08)] active:translate-y-0 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BDFD4F] focus-visible:ring-offset-2"
+                >
+                  <PackageSearch className="size-4" />
+                  Mất đồ
+                </button>
+              </div>
+            </div>
+            <div className="rounded-[24px] border border-[#14140f]/10 bg-white p-4 shadow-[0_8px_20px_rgba(20,20,15,0.04)]">
+              {detailMode === "lost" ? (
+                <div className="space-y-3">
+                  <Label className="text-xs font-bold">Vật dụng bị mất</Label>
+                  <Textarea value={lostDescription} onChange={(event) => setLostDescription(event.target.value)} rows={4} placeholder="VD: balo đen, ví, tai nghe..." />
+                  <ExpressiveButton variant="filled" className="w-full transition-all duration-150 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]" onClick={submitTripLostItem} disabled={submittingAction === "lost"}>
+                    {submittingAction === "lost" ? "Đang gửi..." : "Báo mất đồ"}
+                  </ExpressiveButton>
+                </div>
+              ) : selectedFeedback ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-black text-on-surface">Đánh giá đã gửi</p>
+                    <M3StatusPill label={selectedFeedback.status === "resolved" ? "Đã phản hồi" : "Đã gửi"} tone={selectedFeedback.status === "resolved" ? "success" : "neutral"} />
+                  </div>
+                  <p className="text-sm text-on-surface">{selectedFeedback.content}</p>
+                  {selectedFeedback.response ? <p className="rounded-xl bg-surface-container-low px-3 py-2 text-xs text-on-surface">UniBus phản hồi: {selectedFeedback.response}</p> : null}
+                </div>
+              ) : detailMode === "feedback" ? (
+                <div className="space-y-3">
+                  <Label className="text-xs font-bold">Điểm đánh giá</Label>
+                  <div className="flex gap-1.5">
+                    {[1, 2, 3, 4, 5].map((value) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setFeedbackRating(value)}
+                        className={cn("rounded-full p-1 transition-all duration-150 hover:scale-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BDFD4F]", value <= feedbackRating ? "text-[#f59e0b]" : "text-outline")}
+                        aria-label={`${value} sao`}
+                      >
+                        <Star className="size-5 fill-current" />
+                      </button>
+                    ))}
+                  </div>
+                  <Textarea value={feedbackContent} onChange={(event) => setFeedbackContent(event.target.value)} rows={4} placeholder="Chuyến đi hôm nay thế nào?" />
+                  <ExpressiveButton variant="filled" className="w-full transition-all duration-150 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]" onClick={submitTripFeedback} disabled={submittingAction === "feedback"}>
+                    {submittingAction === "feedback" ? "Đang gửi..." : "Gửi đánh giá"}
+                  </ExpressiveButton>
+                </div>
+              ) : (
+                <div className="grid h-full min-h-32 place-items-center text-center text-sm text-on-surface-variant">
+                  Chọn đánh giá hoặc báo mất đồ cho chuyến này.
+                </div>
+              )}
+            </div>
+          </div>
+        </ExpressiveCard>
+      ) : null}
+
       {totalTrips > 0 && (
-        <StaggerGroup className="grid grid-cols-3 gap-2 sm:gap-3 min-w-0">
+        <StaggerGroup className="grid grid-cols-1 gap-3 sm:grid-cols-3 min-w-0">
           <StaggerItem>
-            <div className="rounded-2xl bg-[#14140f] text-[#beff50] p-3 sm:p-4 text-center min-w-0">
-              <p className="text-xl sm:text-2xl font-bold tabular-nums">{totalTrips}</p>
-              <p className="text-[10px] sm:text-xs font-bold opacity-70 uppercase truncate">Tổng chuyến</p>
+            <div className="rounded-[22px] border border-[#14140f]/10 bg-white p-4 min-w-0 shadow-[0_10px_24px_rgba(20,20,15,0.05)]">
+              <p className="text-2xl font-black tabular-nums text-[#14140f]">{totalTrips}</p>
+              <p className="mt-1 text-xs font-bold text-[#6B6B6B]">Tổng chuyến</p>
             </div>
           </StaggerItem>
           <StaggerItem>
-            <div className="rounded-2xl bg-[#144fcc] text-white p-3 sm:p-4 text-center min-w-0">
-              <p className="text-xl sm:text-2xl font-bold tabular-nums">{thisMonthTrips}</p>
-              <p className="text-[10px] sm:text-xs font-bold opacity-70 uppercase truncate">Tháng này</p>
+            <div className="rounded-[22px] border border-[#14140f]/10 bg-white p-4 min-w-0 shadow-[0_10px_24px_rgba(20,20,15,0.05)]">
+              <p className="text-2xl font-black tabular-nums text-[#144fcc]">{thisMonthTrips}</p>
+              <p className="mt-1 text-xs font-bold text-[#6B6B6B]">Tháng này</p>
             </div>
           </StaggerItem>
           <StaggerItem>
-            <div className="rounded-2xl bg-[#ff8c5f] text-[#14140f] p-3 sm:p-4 text-center min-w-0">
-              <p className="text-base sm:text-lg font-bold tabular-nums truncate">{monthlyFare ? formatVND(monthlyFare) : "—"}</p>
-              <p className="text-[10px] sm:text-xs font-bold opacity-70 uppercase truncate">Chi phí tháng</p>
+            <div className="rounded-[22px] border border-[#14140f]/10 bg-white p-4 min-w-0 shadow-[0_10px_24px_rgba(20,20,15,0.05)]">
+              <p className="truncate text-2xl font-black tabular-nums text-[#14140f]">{monthlyFare ? formatVND(monthlyFare) : "—"}</p>
+              <p className="mt-1 text-xs font-bold text-[#6B6B6B]">Chi phí tháng</p>
             </div>
           </StaggerItem>
         </StaggerGroup>
@@ -4831,38 +5207,86 @@ function HistoryScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
           description="Lịch sử sẽ hiển thị tại đây sau khi bạn dùng vé tháng để đi xe."
         />
       ) : (
-        <StaggerGroup className="space-y-3 min-w-0">
-          {ctx.tripsHistory.map((h: any) => {
-            const tripId = String(h.tripId || h.id);
-            const routeId = h.routeId ? String(h.routeId) : undefined;
-            const isActive = supportAction?.tripId === tripId;
-
-            return (
-            <StaggerItem key={h.id}>
-              <HistoryRow
-                history={h}
-                routes={ctx.routes}
-                onFeedback={() => {
-                  setSupportAction({ type: "feedback", tripId, routeId });
-                }}
-                onLostItem={() => {
-                  setSupportAction({ type: "lost", tripId, routeId });
-                }}
+        <>
+          <div className="rounded-[24px] border border-[#14140f]/10 bg-white p-3 shadow-[0_10px_24px_rgba(20,20,15,0.05)] flex flex-col gap-2 sm:flex-row sm:items-center min-w-0">
+            <div className="relative flex-1 min-w-0">
+              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-on-surface-variant" />
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Tìm theo tuyến, trạm lên/xuống..."
+                className="w-full rounded-2xl bg-[#F8F6EF] py-2.5 pl-9 pr-3 text-sm font-medium text-on-surface placeholder:text-on-surface-variant focus:outline-none focus:ring-2 focus:ring-[#beff50] min-w-0"
               />
-              {isActive && supportAction.type === "feedback" && (
-                <div className="mt-3">
-                  <FeedbackScreen ctx={ctx} compact initialTripId={tripId} initialRouteId={routeId} onDone={() => setSupportAction(null)} />
+            </div>
+            <div className="flex items-center gap-1.5 overflow-x-auto rounded-2xl bg-[#F8F6EF] p-1 min-w-0">
+              <button
+                type="button"
+                onClick={() => setSelectedMonth("all")}
+                className={`inline-flex shrink-0 items-center gap-1 rounded-xl px-3 py-1.5 text-xs font-bold transition ${
+                  selectedMonth === "all"
+                    ? "bg-[#14140f] text-[#beff50]"
+                    : "text-on-surface-variant hover:text-on-surface"
+                }`}
+              >
+                <Calendar className="size-3.5" />
+                Tất cả
+              </button>
+              {monthOptions.map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setSelectedMonth(key)}
+                  className={`shrink-0 rounded-xl px-3 py-1.5 text-xs font-bold transition ${
+                    selectedMonth === key
+                      ? "bg-[#14140f] text-[#beff50]"
+                      : "text-on-surface-variant hover:text-on-surface"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Vertical timeline grouped by day */}
+          {groupedTrips.length === 0 ? (
+            <EmptyState
+              icon={<Search className="size-7" />}
+              title="Không tìm thấy chuyến"
+              description="Thử đổi từ khóa hoặc bộ lọc tháng."
+            />
+          ) : (
+            <div className="space-y-5 min-w-0">
+              {groupedTrips.map((group) => (
+                <div key={group.key} className="min-w-0 rounded-[22px] border border-[#14140f]/10 bg-white p-3">
+                  <div className="mb-3 flex items-center gap-2.5 min-w-0">
+                    <span className="size-2.5 shrink-0 rounded-full bg-[#BDFD4F] ring-4 ring-[#BDFD4F]/20" />
+                    <h3 className="truncate text-sm font-black uppercase tracking-wide text-[#14140f]">{group.label}</h3>
+                    <span className="rounded-full bg-[#F8F6EF] px-2 py-0.5 text-[10px] font-bold text-[#6B6B6B]">
+                      {group.items.length} chuyến
+                    </span>
+                  </div>
+                  <div className="relative ml-2 space-y-2.5 border-l-2 border-[#14140f]/10 pl-5 min-w-0">
+                    {group.items.map((h: any) => (
+                      <div key={h.travelHistoryId ?? h.tripId ?? h.id} className="relative min-w-0">
+                        <span className="absolute -left-[27px] top-6 size-3 rounded-full bg-[#BDFD4F] ring-4 ring-white" />
+                        <HistoryTimelineCard
+                          history={h}
+                          routes={ctx.routes}
+                          selected={String(h.travelHistoryId ?? h.tripId ?? h.id) === selectedHistoryId}
+                          onSelect={() => openTripDetail(h)}
+                          onFeedback={() => openTripDetail(h, "feedback")}
+                          onLostItem={() => openTripDetail(h, "lost")}
+                        />
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              )}
-              {isActive && supportAction.type === "lost" && (
-                <div className="mt-3">
-                  <LostItemsScreen ctx={ctx} compact initialTripId={tripId} onDone={() => setSupportAction(null)} />
-                </div>
-              )}
-            </StaggerItem>
-          );
-          })}
-        </StaggerGroup>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </PageTransition>
   );
@@ -4892,7 +5316,7 @@ function AIScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => v
 
   const analyze = async () => {
     if (!boarding || !destination) {
-      toast.error("Bạn hãy chọn đủ trạm lên và trạm xuống để AI lọc tuyến chính xác.");
+      toast.error("Chọn đủ trạm lên/xuống.");
       return;
     }
     if (boarding === destination) {
@@ -4961,7 +5385,7 @@ function AIScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => v
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="AI gợi ý tuyến"
-        description="Để AI đề xuất tuyến xe phù hợp nhất."
+        description="Gợi ý tuyến xe."
         icon={<Sparkles className="size-6 sm:size-7" />}
       />
 
@@ -4988,7 +5412,7 @@ function AIScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => v
               stagger={0.05}
             />
             <p className="text-sm font-medium opacity-80 max-w-xl">
-              Dựa trên giờ rảnh, điểm đến và sở thích — UniBus AI đề xuất 3 tuyến tối ưu.
+              Chọn thông tin, nhận gợi ý tuyến.
             </p>
           </div>
 
@@ -5084,7 +5508,7 @@ function AIScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => v
         <EmptyState
           icon={<Sparkles className="size-7" />}
           title="Sẵn sàng phân tích"
-          description="Nhập giờ rảnh, trạm lên, trạm xuống và sở thích bên trên, rồi nhấn 'Phân tích' để AI gợi ý 3 tuyến phù hợp nhất."
+          description="Nhập thông tin rồi nhấn Phân tích."
         />
       )}
 
@@ -5428,7 +5852,7 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
   const userInitial = (ctx.user.name || ctx.user.email || "M").trim().slice(0, 1).toUpperCase();
   const welcomeMessage = useMemo<AssistantMessage>(() => ({
       role: "bot",
-      text: `Xin chào ${displayName}! Mình là UniBus Copilot. Mình có thể tra cứu tuyến, giá vé, lịch xe, trợ giá và hướng dẫn mua vé SePay bằng dữ liệu thật của hệ thống.`,
+      text: `Xin chào ${displayName}! Mình là UniBus Copilot. Mình có thể tra cứu tuyến, giá vé, lịch xe, trợ giá và hướng dẫn mua vé SePay.`,
       time: new Date().toISOString(),
   }), [displayName]);
   const sessionKey = useMemo(
@@ -5663,7 +6087,7 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                     <Bot className="size-4" />
                     {isRealLlmResponse(m.mode) && (
                       <span
-                        aria-label="Phản hồi từ LLM thật"
+                        aria-label="Phản hồi từ UniBus Copilot"
                         className="absolute -right-0.5 -top-0.5 flex size-2.5"
                       >
                         <span className="absolute inline-flex size-full rounded-full bg-success/45 ai-model-online-ping" />
@@ -5823,6 +6247,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
     });
     return Array.from(byRoute.values());
   }, [registrations]);
+  const selectedRouteOption = selectableRegistrations.find((item) => String(item.routeId) === selectedRouteId) || selectedRegistration;
   const routeScopedDashboardQuote = dashboardQuote && String(dashboardQuote.routeId) === selectedRouteId ? dashboardQuote : null;
   const activeQuote = paymentQuote && String(paymentQuote.routeId) === selectedRouteId ? paymentQuote : routeScopedDashboardQuote;
   const singleFare = Number(paymentRouteDetail?.singleFare ?? selectedRoute?.singleFare ?? selectedRoute?.fare ?? 0);
@@ -5851,7 +6276,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
       : Array.isArray((selectedRoute as any)?.stops)
         ? (selectedRoute as any).stops
         : [];
-    return rawStops
+    const stops = rawStops
       .map((entry: any, index: number) => {
         const stopId = Number(entry?.stopId ?? entry?.id ?? entry);
         if (!Number.isFinite(stopId)) return null;
@@ -5862,6 +6287,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
       })
       .filter(Boolean)
       .sort((left: any, right: any) => left.order - right.order) as { id: string; stopId: number; name: string; order: number }[];
+    return Array.from(new Map(stops.map((stop) => [stop.id, stop])).values());
   }, [ctx.stops, paymentRouteDetail, selectedRoute]);
   const boardingStopOrder = paymentRouteStops.find((stop) => stop.id === singleBoardingStopId)?.order;
   const alightingStopOrder = paymentRouteStops.find((stop) => stop.id === singleAlightingStopId)?.order;
@@ -5873,8 +6299,8 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
   }, [paymentRouteStops]);
   const boardingOptions = paymentRouteStops.filter((stop) => alightingStopOrder == null || stop.order < alightingStopOrder);
   const alightingOptions = paymentRouteStops.filter((stop) => boardingStopOrder == null || stop.order > boardingStopOrder);
-  const selectedBoardingStopName = paymentRouteStops.find((stop) => stop.id === singleBoardingStopId)?.name || selectedRegistration?.boardingStopName || "—";
-  const selectedAlightingStopName = paymentRouteStops.find((stop) => stop.id === singleAlightingStopId)?.name || selectedRegistration?.alightingStopName || "—";
+  const selectedBoardingStopName = displayStopLabel(paymentRouteStops.find((stop) => stop.id === singleBoardingStopId)?.name || selectedRegistration?.boardingStopName, "—");
+  const selectedAlightingStopName = displayStopLabel(paymentRouteStops.find((stop) => stop.id === singleAlightingStopId)?.name || selectedRegistration?.alightingStopName, "—");
 
   const refreshPaymentData = useCallback(async () => {
     await ctx.reload();
@@ -6004,11 +6430,11 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
 
   const buy = useCallback(async (kind: "MONTHLY" | "SINGLE" = ticketKind) => {
     if (!selectedRouteId) {
-      toast.error("Hãy chọn tuyến cần mua vé.");
+      toast.error("Chọn tuyến cần mua vé.");
       return;
     }
     if (kind === "SINGLE" && !canBuySingle) {
-      toast.error("Hãy chọn tuyến đã đăng ký trước khi mua vé lượt.");
+      toast.error("Chọn tuyến đã đăng ký.");
       return;
     }
     setPurchasing(true);
@@ -6086,11 +6512,16 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Mua vé UniBus"
-        description="Thanh toán qua SePay bằng mã QR VietQR."
+        description="Quét mã VietQR qua SePay."
         icon={<CreditCard className="size-7" />}
       />
 
-      <div className={cn("grid grid-cols-1 gap-4 min-w-0", sepayOrder ? "lg:grid-cols-1" : "lg:grid-cols-[1fr_1.2fr]") }>
+      <div className={cn(
+        "min-w-0 gap-4",
+        sepayOrder
+          ? "grid grid-cols-1 justify-items-center"
+          : "grid grid-cols-1 lg:grid-cols-[minmax(0,0.92fr)_minmax(320px,0.68fr)]"
+      )}>
         {/* Order details */}
         {!sepayOrder && <ScrollReveal>
           <ExpressiveCard variant="elevated" className="p-6 h-full min-w-0 overflow-hidden">
@@ -6102,18 +6533,44 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
               <div className="space-y-4 text-sm">
                 {selectableRegistrations.length > 1 && (
                   <div>
-                    <Label className="text-xs font-bold">Chọn tuyến cần mua vé</Label>
+                    <Label className="text-xs font-bold text-[#6F6A60]">Chọn tuyến cần mua vé</Label>
                     <Select value={selectedRouteId} onValueChange={(value) => { setSelectedRouteId(value); setSepayOrder(null); setPaidStatus("idle"); setSecondsLeft(null); }}>
-                      <SelectTrigger className="mt-1.5 min-w-0 overflow-hidden [&>span]:truncate"><SelectValue placeholder="Chọn tuyến" /></SelectTrigger>
-                      <SelectContent>
-                        {selectableRegistrations.map((item) => (
-                          <SelectItem key={item.registrationId} value={String(item.routeId)} textValue={compactRouteLabel(item)}>
-                            <div className="min-w-0 max-w-[520px]">
-                              <p className="truncate font-medium">{compactRouteLabel(item)}</p>
-                              <p className="truncate text-xs text-[#7A756B]">{item.boardingStopName || "Trạm lên"} → {item.alightingStopName || "Trạm xuống"}</p>
+                      <SelectTrigger className="mt-2 h-auto min-h-[64px] rounded-[18px] border border-[#E1D8C8] bg-[#FFFEFA] px-4 py-3 text-left shadow-[0_10px_26px_rgba(20,20,15,0.06)] transition-colors hover:border-[#CFC4AF] focus:ring-2 focus:ring-[#beff50]/60 [&>span]:w-full [&>span]:min-w-0">
+                        {selectedRouteOption ? (
+                          <div className="flex min-w-0 items-start gap-3 pr-7">
+                            <span className="mt-1 size-2.5 shrink-0 rounded-full bg-[#beff50] ring-4 ring-[#14140f]" />
+                            <div className="min-w-0 flex-1 overflow-hidden">
+                              <p className="truncate text-sm font-bold leading-5 text-[#24251F]">{compactRouteLabel(selectedRouteOption)}</p>
+                              <p className="truncate text-xs leading-5 text-[#7A756B]">{displayStopLabel(selectedRouteOption.boardingStopName, "Trạm lên")} → {displayStopLabel(selectedRouteOption.alightingStopName, "Trạm xuống")}</p>
                             </div>
-                          </SelectItem>
-                        ))}
+                          </div>
+                        ) : (
+                          <SelectValue placeholder="Chọn tuyến" />
+                        )}
+                      </SelectTrigger>
+                      <SelectContent className="rounded-[22px] border border-[#E1D8C8] bg-[#FFFEFA] p-2 shadow-[0_18px_46px_rgba(20,20,15,0.14)]">
+                        {selectableRegistrations.map((item) => {
+                          const selected = String(item.routeId) === selectedRouteId;
+                          return (
+                            <SelectItem
+                              key={item.registrationId}
+                              value={String(item.routeId)}
+                              textValue={compactRouteLabel(item)}
+                              className={cn(
+                                "my-1 rounded-[18px] py-3 pl-4 pr-10 text-[#24251F] focus:bg-[#F5F0E6] data-[highlighted]:bg-[#F5F0E6] data-[state=checked]:bg-[#F1EBDD]",
+                                selected && "border border-[#D8CEB8] bg-[#F1EBDD]"
+                              )}
+                            >
+                              <div className="flex min-w-0 items-start gap-3">
+                                <span className={cn("mt-1 size-2.5 shrink-0 rounded-full", selected ? "bg-[#beff50] ring-4 ring-[#14140f]" : "bg-[#D8CEB8]")} />
+                                <div className="min-w-0 max-w-[520px]">
+                                  <p className="truncate text-sm font-bold leading-5 text-[#24251F]">{compactRouteLabel(item)}</p>
+                                  <p className="truncate text-xs leading-5 text-[#7A756B]">{displayStopLabel(item.boardingStopName, "Trạm lên")} → {displayStopLabel(item.alightingStopName, "Trạm xuống")}</p>
+                                </div>
+                              </div>
+                            </SelectItem>
+                          );
+                        })}
                       </SelectContent>
                     </Select>
                   </div>
@@ -6125,8 +6582,8 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                   </div>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {([
-                      { id: "SINGLE" as const, title: "Vé lượt / vé ngày", desc: "Đi một lượt theo tuyến đã đăng ký", amount: singleBasePrice },
-                      { id: "MONTHLY" as const, title: "Vé tháng", desc: "Hiệu lực theo kỳ vé cho tuyến này", amount: monthlyBasePrice },
+                      { id: "SINGLE" as const, title: "Vé lượt", desc: "Một lượt theo tuyến và điểm dự kiến", amount: singleBasePrice },
+                      { id: "MONTHLY" as const, title: "Vé tháng", desc: "Hiệu lực theo kỳ vé, không khóa theo điểm lên/xuống", amount: monthlyBasePrice },
                     ]).map((item) => {
                       const selected = ticketKind === item.id;
                       return (
@@ -6160,14 +6617,14 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                   <div className="space-y-3 rounded-[18px] border border-[#E7E0D2] bg-[#FFFEFA] p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="text-sm font-semibold text-[#24251F]">Chọn trạm cho vé lượt</p>
-                        <p className="mt-0.5 text-xs text-[#7A756B]">Áp dụng cho tuyến đã chọn. Giá vé không đổi theo trạm.</p>
+                        <p className="text-sm font-semibold text-[#24251F]">Chọn điểm dự kiến cho vé lượt</p>
+                        <p className="mt-0.5 text-xs text-[#7A756B]">Dùng để hiển thị hành trình và hỗ trợ phụ xe kiểm tra vé. Giá vé không đổi theo trạm.</p>
                       </div>
                     </div>
                     {hasSelectableRouteStops ? (
                       <div className="grid gap-3 sm:grid-cols-2">
                         <div>
-                          <Label className="text-xs font-bold">Trạm lên</Label>
+                          <Label className="text-xs font-bold">Điểm lên dự kiến</Label>
                           <Select
                             value={singleBoardingStopId}
                             onValueChange={(value) => {
@@ -6178,16 +6635,16 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                               }
                             }}
                           >
-                            <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn trạm lên" /></SelectTrigger>
+                            <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn điểm lên" /></SelectTrigger>
                             <SelectContent>
                               {boardingOptions.map((stop) => <SelectItem key={stop.id} value={stop.id}>{stop.name}</SelectItem>)}
                             </SelectContent>
                           </Select>
                         </div>
                         <div>
-                          <Label className="text-xs font-bold">Trạm xuống</Label>
+                          <Label className="text-xs font-bold">Điểm xuống dự kiến</Label>
                           <Select value={singleAlightingStopId} onValueChange={setSingleAlightingStopId}>
-                            <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn trạm xuống" /></SelectTrigger>
+                            <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn điểm xuống" /></SelectTrigger>
                             <SelectContent>
                               {alightingOptions.map((stop) => <SelectItem key={stop.id} value={stop.id}>{stop.name}</SelectItem>)}
                             </SelectContent>
@@ -6196,8 +6653,8 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                       </div>
                     ) : (
                       <div className="grid gap-2 sm:grid-cols-2">
-                        <Row label="Trạm lên" value={selectedBoardingStopName} icon={<MapPin className="size-4" />} />
-                        <Row label="Trạm xuống" value={selectedAlightingStopName} icon={<MapPin className="size-4" />} />
+                        <Row label="Điểm lên dự kiến" value={selectedBoardingStopName} icon={<MapPin className="size-4" />} />
+                        <Row label="Điểm xuống dự kiến" value={selectedAlightingStopName} icon={<MapPin className="size-4" />} />
                       </div>
                     )}
                   </div>
@@ -6245,7 +6702,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                         exit={{ opacity: 0, y: -6 }}
                         className="rounded-[16px] bg-[#F7F4EC] px-3 py-2 text-xs text-[#6F6A5F]"
                       >
-                        Chưa có khoản trợ giá áp dụng cho lựa chọn này.
+                        Chưa có trợ giá.
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -6312,7 +6769,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
               <EmptyState
                 icon={<TicketCheck className="size-7" />}
                 title="Chưa đăng ký tuyến"
-                description="Vui lòng đăng ký tuyến trước khi mua vé."
+                description="Cần đăng ký tuyến trước."
               />
             )}
           </ExpressiveCard>
@@ -6321,15 +6778,28 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
         {/* QR / status panel */}
         <ScrollReveal delay={0.1}>
           {!sepayOrder ? (
-            <ExpressiveCard variant="filled" className="p-6 h-full flex flex-col items-center justify-center text-center min-w-0">
-              <div className="size-16 rounded-3xl bg-primary-container flex items-center justify-center mb-4">
-                <QrCode className="size-8 text-on-primary-container" />
+            <ExpressiveCard variant="elevated" className="relative hidden h-full min-h-[360px] overflow-hidden rounded-[28px] border-[#14140f]/10 bg-[#14140f] p-6 text-[#F8F6EF] lg:block">
+              <div className="absolute -right-16 -top-16 size-44 rounded-full bg-[#BDFD4F]/25 blur-2xl" />
+              <div className="absolute -bottom-20 left-8 size-52 rounded-full bg-white/10 blur-3xl" />
+              <div className="relative flex h-full flex-col justify-between">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/80 ring-1 ring-white/10">
+                    <CreditCard className="size-3.5 text-[#BDFD4F]" />
+                    UniBus Pay
+                  </div>
+                  <span className="rounded-full bg-[#BDFD4F] px-3 py-1 text-xs font-black text-[#14140f]">SePay</span>
+                </div>
+                <div className="space-y-4">
+                  <div className="grid size-16 place-items-center rounded-[22px] bg-[#BDFD4F] text-[#14140f] shadow-[0_18px_42px_rgba(189,253,79,0.22)]">
+                    <QrCode className="size-8" />
+                  </div>
+                  <div>
+                    <p className="max-w-sm text-3xl font-semibold leading-tight tracking-[-0.04em]">Thanh toán vé bằng mã VietQR.</p>
+                    <p className="mt-3 max-w-xs text-sm leading-6 text-white/62">Chọn vé, xác nhận, quét mã.</p>
+                  </div>
+                </div>
+                <div />
               </div>
-              <p className="text-base font-bold">Sẵn sàng thanh toán</p>
-              <p className="text-sm text-on-surface-variant mt-1 max-w-xs">
-                Chọn loại vé bên trái rồi bấm Xác nhận để tạo mã thanh toán VietQR qua SePay.
-                Hỗ trợ mọi app ngân hàng: MBBank, Vietcombank, BIDV, TC Bank, v.v.
-              </p>
             </ExpressiveCard>
           ) : step === 3 ? (
             <motion.div
@@ -6337,7 +6807,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
               animate={{ opacity: 1, scale: 1 }}
               transition={{ type: "spring", stiffness: 240, damping: 22 }}
             >
-              <ExpressiveCard variant="elevated" className="p-8 h-full flex flex-col items-center justify-center text-center min-w-0"
+              <ExpressiveCard variant="elevated" className="p-8 h-full w-full max-w-[680px] flex flex-col items-center justify-center text-center min-w-0"
                 style={{ backgroundColor: "#beff50", color: "#14140f" }}
               >
                 <motion.div
@@ -6350,7 +6820,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                 </motion.div>
                 <h2 className="text-2xl font-black">Thanh toán thành công!</h2>
                 <p className="text-sm font-semibold opacity-80 mt-2">
-                  {ticketLabel} đã được kích hoạt. Bạn có thể xem vé trong mục “Vé của tôi”.
+                  {ticketLabel} đã kích hoạt. Xem trong “Vé của tôi”.
                 </p>
                 <div className="bg-[#14140f]/10 rounded-2xl p-4 mt-4 w-full max-w-xs">
                   <p className="text-xs font-bold opacity-70 uppercase">Mã giao dịch</p>
@@ -6361,7 +6831,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
               </ExpressiveCard>
             </motion.div>
           ) : (
-            <ExpressiveCard variant="elevated" className="p-6 h-full min-w-0 overflow-hidden">
+            <ExpressiveCard variant="elevated" className="p-6 h-full w-full max-w-[680px] min-w-0 overflow-hidden">
               {/* Header with countdown */}
               <div className="flex items-center justify-between mb-4 min-w-0">
                 <div className="min-w-0">
@@ -6453,7 +6923,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
               Thanh toán thành công
             </DialogTitle>
             <DialogDescription>
-              {ticketLabel} đã được kích hoạt. Hóa đơn và vé của bạn đã được cập nhật trong hệ thống.
+              {ticketLabel} đã được kích hoạt. Vé và hóa đơn đã cập nhật.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-2">
@@ -6589,29 +7059,31 @@ function InvoicesScreen({ ctx }: { ctx: Ctx }) {
 // =============================================================================
 // Screen 13: Feedback — submit + list
 // =============================================================================
-function FeedbackScreen({
-  ctx,
-  compact = false,
-  initialTripId,
-  initialRouteId,
-  onDone,
-}: {
-  ctx: Ctx;
-  compact?: boolean;
-  initialTripId?: string;
-  initialRouteId?: string;
-  onDone?: () => void;
-}) {
+function FeedbackScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean }) {
   const [rating, setRating] = useState(5);
   const [category, setCategory] = useState("service");
   const [content, setContent] = useState("");
-  const [tripId, setTripId] = useState<string>(initialTripId || "");
-  const [routeId, setRouteId] = useState<string>(initialRouteId || "");
+  const [tripId, setTripId] = useState<string>("");
+  const [routeId, setRouteId] = useState<string>("");
+  const [items, setItems] = useState<any[]>(ctx.feedback || []);
+  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
+  const loadFeedback = useCallback(async () => {
+    setLoading(true);
+    try {
+      const rows = await feedbackApi.mine();
+      setItems(rows.map(mapFeedback));
+    } catch {
+      setItems(ctx.feedback || []);
+    } finally {
+      setLoading(false);
+    }
+  }, [ctx.feedback]);
+
+  useEffect(() => { loadFeedback(); }, [loadFeedback]);
+
   useEffect(() => {
-    if (initialTripId) setTripId(initialTripId);
-    if (initialRouteId) setRouteId(initialRouteId);
     const pendingTripId = localStorage.getItem("unibus.supportTripId");
     const pendingRouteId = localStorage.getItem("unibus.supportRouteId");
     if (pendingTripId) {
@@ -6622,21 +7094,17 @@ function FeedbackScreen({
       setRouteId(pendingRouteId);
       localStorage.removeItem("unibus.supportRouteId");
     }
-  }, [initialRouteId, initialTripId]);
+  }, []);
 
   const submit = async () => {
     if (!content.trim()) {
       toast.error("Vui lòng nhập nội dung phản hồi");
       return;
     }
-    if (!tripId) {
-      toast.error("Vui lòng chọn chuyến đi cần hỗ trợ");
-      return;
-    }
     setSubmitting(true);
     try {
       await feedbackApi.create({
-        tripId: Number(tripId),
+        tripId: tripId ? Number(tripId) : undefined,
         routeId: routeId ? Number(routeId) : undefined,
         rating,
         category,
@@ -6647,8 +7115,7 @@ function FeedbackScreen({
       setContent("");
       setTripId("");
       setRouteId("");
-      ctx.reload();
-      onDone?.();
+      await loadFeedback();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Không thể gửi phản hồi");
     } finally {
@@ -6661,21 +7128,19 @@ function FeedbackScreen({
       {!compact && (
         <PageHeader
           title="Phản hồi"
-          description="Chia sẻ trải nghiệm của bạn để chúng tôi cải thiện dịch vụ."
+          description="Góp ý và phản hồi."
           icon={<Star className="size-7" />}
         />
       )}
 
-      <div className={cn("grid grid-cols-1 gap-4 min-w-0", !compact && "lg:grid-cols-2")}>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
         <ScrollReveal>
           <ExpressiveCard variant="elevated" className="p-5 min-w-0">
             <h3 className="text-base font-bold mb-4">Gửi phản hồi mới</h3>
             <div className="space-y-4">
               <div>
                 <Label className="text-xs font-bold">Đánh giá</Label>
-                <div className="mt-1.5">
-                  <M3StarRating value={rating} onChange={setRating} size="size-7" />
-                </div>
+                <div className="mt-1.5"><M3StarRating value={rating} onChange={setRating} size="size-7" /></div>
               </div>
               <div>
                 <Label className="text-xs font-bold">Danh mục</Label>
@@ -6690,47 +7155,35 @@ function FeedbackScreen({
                   </SelectContent>
                 </Select>
               </div>
-              {!compact && (
-                <>
-                  <div>
-                    <Label className="text-xs font-bold">Chuyến đi cần hỗ trợ</Label>
-                    <Select value={tripId} onValueChange={(value) => {
-                      setTripId(value);
-                      const selected = ctx.tripsHistory.find((h: any) => String(h.tripId || h.id) === value);
-                      if (selected?.routeId) setRouteId(String(selected.routeId));
-                    }}>
-                      <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn chuyến từ lịch sử" /></SelectTrigger>
-                      <SelectContent>
-                        {ctx.tripsHistory.map((h: any) => (
-                          <SelectItem key={h.tripId || h.id} value={String(h.tripId || h.id)}>
-                            {(h.routeName || "Tuyến xe")} · {formatDate(h.boardedAt || h.serviceDate)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label className="text-xs font-bold">Tuyến (tùy chọn)</Label>
-                    <Select value={routeId} onValueChange={setRouteId}>
-                      <SelectTrigger className="mt-1.5 min-w-0 overflow-hidden [&>span]:truncate"><SelectValue placeholder="Chọn tuyến" /></SelectTrigger>
-                      <SelectContent>
-                        {ctx.routes.map((r: any) => (
-                          <SelectItem key={r.id} value={r.id}>{r.code} — {r.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </>
-              )}
+              <div>
+                <Label className="text-xs font-bold">Chuyến đi liên quan (tùy chọn)</Label>
+                <Select value={tripId} onValueChange={(value) => {
+                  setTripId(value);
+                  const selected = ctx.tripsHistory.find((h: any) => String(h.tripId || h.id) === value);
+                  if (selected?.routeId) setRouteId(String(selected.routeId));
+                }}>
+                  <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn chuyến từ lịch sử" /></SelectTrigger>
+                  <SelectContent>
+                    {ctx.tripsHistory.map((h: any) => (
+                      <SelectItem key={h.tripId || h.id} value={String(h.tripId || h.id)}>
+                        {(h.routeName || "Tuyến xe")} · {formatDate(h.boardedAt || h.serviceDate)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs font-bold">Tuyến (tùy chọn)</Label>
+                <Select value={routeId} onValueChange={setRouteId}>
+                  <SelectTrigger className="mt-1.5 min-w-0 overflow-hidden [&>span]:truncate"><SelectValue placeholder="Chọn tuyến" /></SelectTrigger>
+                  <SelectContent>
+                    {ctx.routes.map((r: any) => <SelectItem key={r.id} value={r.id}>{r.code} — {r.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
               <div>
                 <Label className="text-xs font-bold">Nội dung</Label>
-                <Textarea
-                  className="mt-1.5"
-                  placeholder="Mô tả trải nghiệm của bạn..."
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  rows={4}
-                />
+                <Textarea className="mt-1.5" placeholder="Nhập góp ý của bạn..." value={content} onChange={(e) => setContent(e.target.value)} rows={4} />
               </div>
               <ExpressiveButton variant="filled" className="w-full" onClick={submit} disabled={submitting}>
                 {submitting ? <RefreshCw className="size-4 animate-spin" /> : <Send className="size-4" />}
@@ -6740,38 +7193,28 @@ function FeedbackScreen({
           </ExpressiveCard>
         </ScrollReveal>
 
-        {!compact && <ScrollReveal delay={0.1}>
-          <Section title={`Phản hồi đã gửi (${ctx.feedback.length})`}>
-            {ctx.feedback.length === 0 ? (
-              <EmptyState
-                icon={<Star className="size-7" />}
-                title="Chưa có phản hồi"
-                description="Các phản hồi bạn đã gửi sẽ hiển thị tại đây."
-              />
+        <ScrollReveal delay={0.1}>
+          <Section title={`Phản hồi đã gửi (${items.length})`} description="Trạng thái xử lý">
+            {loading ? (
+              <ExpressiveCard variant="filled" className="p-5 text-sm text-on-surface-variant">Đang tải phản hồi...</ExpressiveCard>
+            ) : items.length === 0 ? (
+              <EmptyState icon={<MessageSquare className="size-7" />} title="Chưa có phản hồi" description="Góp ý sẽ hiển thị tại đây." />
             ) : (
               <div className="space-y-3">
-                {ctx.feedback.map((f: any) => (
+                {items.map((f: any) => (
                   <ExpressiveCard key={f.id} variant="filled" className="p-4 min-w-0">
                     <div className="flex items-start justify-between gap-2 mb-2 min-w-0">
-                      <div className="min-w-0">
-                        <p className="text-sm font-bold truncate">{f.category || "Phản hồi"}</p>
-                        <p className="text-xs text-on-surface-variant">{formatDate(f.createdAt)}</p>
-                      </div>
-                      <M3StarRating value={f.rating} size="size-3" readOnly />
+                      <p className="text-sm font-bold line-clamp-2">{f.content}</p>
+                      <M3StatusPill label={f.status === "resolved" ? "Đã phản hồi" : f.status === "processing" ? "Đang xử lý" : "Đã gửi"} tone={f.status === "resolved" ? "success" : f.status === "processing" ? "warning" : "neutral"} />
                     </div>
-                    <p className="text-sm text-on-surface line-clamp-3">{f.content}</p>
-                    {f.response && (
-                      <div className="mt-2 p-2 rounded-lg bg-success-container/30 text-xs">
-                        <p className="font-bold text-success">Phản hồi từ nhà xe:</p>
-                        <p>{f.response}</p>
-                      </div>
-                    )}
+                    <p className="text-xs text-on-surface-variant">{f.routeName || f.routeCode || "UniBus"} · {formatDate(f.createdAt)}</p>
+                    {f.response && <p className="mt-2 rounded-xl bg-white px-3 py-2 text-xs text-on-surface">UniBus phản hồi: {f.response}</p>}
                   </ExpressiveCard>
                 ))}
               </div>
             )}
           </Section>
-        </ScrollReveal>}
+        </ScrollReveal>
       </div>
     </PageTransition>
   );
@@ -6780,20 +7223,26 @@ function FeedbackScreen({
 // =============================================================================
 // Screen 14: Lost Items — report + list
 // =============================================================================
-function LostItemsScreen({
-  ctx,
-  compact = false,
-  initialTripId,
-  onDone,
-}: {
-  ctx: Ctx;
-  compact?: boolean;
-  initialTripId?: string;
-  onDone?: () => void;
-}) {
+function LostItemsScreen({ ctx, compact = false }: { ctx: Ctx; compact?: boolean }) {
   const [description, setDescription] = useState("");
-  const [tripId, setTripId] = useState<string>(initialTripId || "");
+  const [tripId, setTripId] = useState<string>("");
+  const [items, setItems] = useState<any[]>(ctx.lostItems || []);
+  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+
+  const loadLostItems = useCallback(async () => {
+    setLoading(true);
+    try {
+      const rows = await experienceApi.studentLostItems();
+      setItems(rows.map(mapLostItem));
+    } catch {
+      setItems(ctx.lostItems || []);
+    } finally {
+      setLoading(false);
+    }
+  }, [ctx.lostItems]);
+
+  useEffect(() => { loadLostItems(); }, [loadLostItems]);
 
   const submit = async () => {
     if (!description.trim()) {
@@ -6802,15 +7251,11 @@ function LostItemsScreen({
     }
     setSubmitting(true);
     try {
-      await experienceApi.createStudentLostItem({
-        itemDescription: description.trim(),
-        tripId: tripId ? Number(tripId) : undefined,
-      });
+      await experienceApi.createStudentLostItem({ itemDescription: description.trim(), tripId: tripId ? Number(tripId) : undefined });
       toast.success("Đã báo mất vật dụng. Chúng tôi sẽ liên hệ khi tìm thấy.");
       setDescription("");
       setTripId("");
-      ctx.reload();
-      onDone?.();
+      await loadLostItems();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Không thể báo mất");
     } finally {
@@ -6819,53 +7264,36 @@ function LostItemsScreen({
   };
 
   useEffect(() => {
-    if (initialTripId) setTripId(initialTripId);
     const pendingTripId = localStorage.getItem("unibus.lostTripId");
     if (pendingTripId) {
       setTripId(pendingTripId);
       localStorage.removeItem("unibus.lostTripId");
     }
-  }, [initialTripId]);
+  }, []);
 
   return (
     <PageTransition className="space-y-6 min-w-0">
-      {!compact && (
-        <PageHeader
-          title="Đồ thất lạc"
-          description="Báo mất vật dụng và theo dõi trạng thái tìm kiếm."
-          icon={<PackageSearch className="size-7" />}
-        />
-      )}
+      {!compact && <PageHeader title="Đồ thất lạc" description="Báo mất và kết quả xử lý." icon={<PackageSearch className="size-7" />} />}
 
-      <div className={cn("grid grid-cols-1 gap-4 min-w-0", !compact && "lg:grid-cols-2")}>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
         <ScrollReveal>
           <ExpressiveCard variant="elevated" className="p-5 min-w-0">
             <h3 className="text-base font-bold mb-4">Báo mất vật dụng</h3>
             <div className="space-y-4">
-              {!compact && (
-                <div>
-                  <Label className="text-xs font-bold">Chuyến đi (tùy chọn)</Label>
-                  <Select value={tripId} onValueChange={setTripId}>
-                    <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn chuyến" /></SelectTrigger>
-                    <SelectContent>
-                      {ctx.tripsHistory.map((h: any) => (
-                        <SelectItem key={h.tripId || h.id} value={String(h.tripId || h.id)}>
-                          {(h.routeName || "Tuyến xe")} — {formatDate(h.boardedAt || h.serviceDate)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+              <div>
+                <Label className="text-xs font-bold">Chuyến đi (tùy chọn)</Label>
+                <Select value={tripId} onValueChange={setTripId}>
+                  <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn chuyến" /></SelectTrigger>
+                  <SelectContent>
+                    {ctx.tripsHistory.map((h: any) => (
+                      <SelectItem key={h.tripId || h.id} value={String(h.tripId || h.id)}>{(h.routeName || "Tuyến xe")} — {formatDate(h.boardedAt || h.serviceDate)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div>
                 <Label className="text-xs font-bold">Mô tả vật dụng</Label>
-                <Textarea
-                  className="mt-1.5"
-                  placeholder="VD: Balo đen, có laptop Dell, để quên ở ghế hàng ghế đầu..."
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  rows={4}
-                />
+                <Textarea className="mt-1.5" placeholder="VD: Balo đen, ví, ô dù, tai nghe..." value={description} onChange={(e) => setDescription(e.target.value)} rows={4} />
               </div>
               <ExpressiveButton variant="filled" className="w-full" onClick={submit} disabled={submitting}>
                 {submitting ? <RefreshCw className="size-4 animate-spin" /> : <PackageSearch className="size-4" />}
@@ -6875,39 +7303,28 @@ function LostItemsScreen({
           </ExpressiveCard>
         </ScrollReveal>
 
-        {!compact && <ScrollReveal delay={0.1}>
-          <Section title={`Đã báo (${ctx.lostItems.length})`}>
-            {ctx.lostItems.length === 0 ? (
-              <EmptyState
-                icon={<PackageSearch className="size-7" />}
-                title="Chưa báo mất"
-                description="Các báo mất sẽ hiển thị tại đây."
-              />
+        <ScrollReveal delay={0.1}>
+          <Section title={`Đã báo (${items.length})`} description="Trạng thái xử lý">
+            {loading ? (
+              <ExpressiveCard variant="filled" className="p-5 text-sm text-on-surface-variant">Đang tải báo mất...</ExpressiveCard>
+            ) : items.length === 0 ? (
+              <EmptyState icon={<PackageSearch className="size-7" />} title="Chưa báo mất" description="Báo mất sẽ hiển thị tại đây." />
             ) : (
               <div className="space-y-3">
-                {ctx.lostItems.map((l: any) => (
+                {items.map((l: any) => (
                   <ExpressiveCard key={l.id} variant="filled" className="p-4 min-w-0">
                     <div className="flex items-start justify-between gap-2 mb-2 min-w-0">
-                      <p className="text-sm font-bold truncate">{l.item}</p>
-                      <M3StatusPill
-                        label={l.status}
-                        tone={
-                          l.status === "returned" ? "success" :
-                          l.status === "found" ? "primary" :
-                          l.status === "closed" ? "neutral" : "warning"
-                        }
-                      />
+                      <p className="text-sm font-bold truncate">{l.item || "Vật dụng thất lạc"}</p>
+                      <M3StatusPill label={l.status === "returned" ? "Đã trả" : l.status === "found" ? "Đã tìm thấy" : l.status === "closed" ? "Đã đóng" : "Đã báo"} tone={l.status === "returned" ? "success" : l.status === "found" ? "primary" : l.status === "closed" ? "neutral" : "warning"} />
                     </div>
-                    <p className="text-xs text-on-surface-variant">{formatDate(l.createdAt)}</p>
-                    {l.description && l.description !== l.item && (
-                      <p className="text-xs mt-1 line-clamp-2">{l.description}</p>
-                    )}
+                    <p className="text-xs text-on-surface-variant">{l.routeCode || l.routeName || "Chưa xác định"} · {formatDate(l.createdAt)}</p>
+                    {l.description && l.description !== l.item && <p className="text-xs mt-1 line-clamp-2">{l.description}</p>}
                   </ExpressiveCard>
                 ))}
               </div>
             )}
           </Section>
-        </ScrollReveal>}
+        </ScrollReveal>
       </div>
     </PageTransition>
   );
@@ -6925,6 +7342,3 @@ function FallbackScreen({ activeId }: { activeId: string }) {
     />
   );
 }
-
-
-

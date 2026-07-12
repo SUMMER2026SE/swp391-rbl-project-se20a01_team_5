@@ -70,12 +70,12 @@ Flyway baselines that existing schema at version `1` and applies:
 - `V9__university_linkage_mvp.sql`: adds role `UNIVERSITY_ADMIN`, university domains/admins, student rosters, import batches/errors, audit trace fields, and the University Linkage MVP API schema.
 - `V10__align_university_linkage_schema.sql`: idempotently aligns databases that applied the early V9 university-admin/roster/domains draft with the final V9 schema contract.
 
-Demo data is intentionally separate from production migrations. The repository keeps one maintained stable demo set:
+Demo data is intentionally separate from production migrations. The repository keeps one maintained demo set:
 
-- `database/RunStableDemoData.ps1`: runner for `Audit`, `Seed`, and `Reset`.
-- `database/SeedStableDemoDataUntilAugust.sql`: creates the Duy Tân/BUSMAP demo scenario.
-- `database/ResetStableDemoScenario.sql`: resets only demo-owned rows.
-- `database/AuditStableDemoDataUntilAugust.sql`: validates demo accounts, routes, trips, tickets, SePay orders, and role data.
+- `database/RunDemoData.ps1`: runner for `Audit`, `Seed`, and `Reset`.
+- `database/SeedDemoDataUntilAugust.sql`: creates the Duy Tân/BUSMAP demo scenario.
+- `database/ResetDemoScenario.sql`: resets only demo-owned rows.
+- `database/AuditDemoDataUntilAugust.sql`: validates demo accounts, routes, trips, tickets, SePay orders, and role data.
 - `database/CompleteDemoSePayWebhook.ps1`: helper for SePay demo confirmation.
 
 For role-by-role rehearsal, use `docs/demo-practice-checklist.md`.

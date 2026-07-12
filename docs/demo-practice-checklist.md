@@ -7,14 +7,14 @@ This is the single maintained rehearsal guide for the UniBus demo. It replaces o
 Run from the repository root on Windows PowerShell.
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File database\RunStableDemoData.ps1 -Mode Audit
+powershell -NoProfile -ExecutionPolicy Bypass -File database\RunDemoData.ps1 -Mode Audit
 ```
 
 Use these only when the team intentionally changes live demo data:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File database\RunStableDemoData.ps1 -Mode Seed
-powershell -NoProfile -ExecutionPolicy Bypass -File database\RunStableDemoData.ps1 -Mode Reset
+powershell -NoProfile -ExecutionPolicy Bypass -File database\RunDemoData.ps1 -Mode Seed
+powershell -NoProfile -ExecutionPolicy Bypass -File database\RunDemoData.ps1 -Mode Reset
 ```
 
 Rules:
@@ -144,14 +144,14 @@ After simulated success:
 Before practice:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File database\RunStableDemoData.ps1 -Mode Audit
+powershell -NoProfile -ExecutionPolicy Bypass -File database\RunDemoData.ps1 -Mode Audit
 ```
 
 After practice, when the team wants to restore the prepared scenario:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File database\RunStableDemoData.ps1 -Mode Reset
-powershell -NoProfile -ExecutionPolicy Bypass -File database\RunStableDemoData.ps1 -Mode Audit
+powershell -NoProfile -ExecutionPolicy Bypass -File database\RunDemoData.ps1 -Mode Reset
+powershell -NoProfile -ExecutionPolicy Bypass -File database\RunDemoData.ps1 -Mode Audit
 ```
 
 If audit fails, fix data/script first. Do not hide failures with frontend mock data.

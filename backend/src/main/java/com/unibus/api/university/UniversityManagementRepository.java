@@ -194,6 +194,49 @@ public class UniversityManagementRepository {
         return rows.stream().findFirst();
     }
 
+    public Optional<DomainMatch> ensureActiveDomainMatch(String code, String universityName, String shortName, String domain) {
+        jdbcTemplate.update("""
+                INSERT INTO universities(code, name, short_name, status)
+                SELECT ?, ?, ?, 'ACTIVE'
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM universities WHERE code = ? OR name = ?
+                )
+                """, code, universityName, shortName, code, universityName);
+        jdbcTemplate.update("""
+                UPDATE universities
+                SET short_name = COALESCE(short_name, ?),
+                    status = 'ACTIVE',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE code = ? OR name = ?
+                """, shortName, code, universityName);
+        jdbcTemplate.update("""
+                UPDATE university_domains
+                SET university_id = (
+                        SELECT university_id
+                        FROM universities
+                        WHERE code = ? OR name = ?
+                        ORDER BY CASE WHEN code = ? THEN 0 ELSE 1 END
+                        LIMIT 1
+                    ),
+                    status = 'ACTIVE',
+                    verified_at = COALESCE(verified_at, CURRENT_TIMESTAMP),
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE LOWER(domain) = LOWER(?)
+                """, code, universityName, code, domain);
+        jdbcTemplate.update("""
+                INSERT INTO university_domains(university_id, domain, status, verified_at, updated_at)
+                SELECT university_id, ?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                FROM universities
+                WHERE code = ? OR name = ?
+                  AND NOT EXISTS (
+                      SELECT 1 FROM university_domains WHERE LOWER(domain) = LOWER(?)
+                  )
+                ORDER BY CASE WHEN code = ? THEN 0 ELSE 1 END
+                LIMIT 1
+                """, domain, code, universityName, domain, code);
+        return findActiveDomainMatch(domain);
+    }
+
     public Optional<RosterMatch> findActiveRosterByEmail(String email) {
         List<RosterMatch> rows = jdbcTemplate.query("""
                 SELECT r.roster_id, r.university_id, u.name AS university_name, r.email, r.student_code,
@@ -268,6 +311,39 @@ public class UniversityManagementRepository {
                     updated_at = CURRENT_TIMESTAMP
                 WHERE user_id = ?
                 """, roster.fullName(), userId);
+    }
+
+    public void upsertStudentFromDomain(Integer userId, String email, String fullName, DomainMatch domain) {
+        String studentCode = email.substring(0, email.indexOf('@')).trim();
+        if (studentCode.length() > 20) {
+            studentCode = studentCode.substring(0, 20);
+        }
+        List<String> existingStudentCodes = jdbcTemplate.queryForList("""
+                SELECT student_code
+                FROM students
+                WHERE user_id = ?
+                """, String.class, userId);
+        if (existingStudentCodes.isEmpty()) {
+            jdbcTemplate.update("""
+                    INSERT INTO students(student_code, user_id, university, university_id)
+                    VALUES (?, ?, ?, ?)
+                    """, studentCode, userId, domain.universityName(), domain.universityId());
+        } else {
+            jdbcTemplate.update("""
+                    UPDATE students
+                    SET student_code = ?,
+                        university = ?,
+                        university_id = ?
+                    WHERE user_id = ?
+                    """, studentCode, domain.universityName(), domain.universityId(), userId);
+        }
+        jdbcTemplate.update("""
+                UPDATE users
+                SET full_name = CASE WHEN full_name IS NULL OR full_name = email THEN ? ELSE full_name END,
+                    student_verification_status = 'VERIFIED',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = ?
+                """, fullName, userId);
     }
 
     public StudentUniversityView studentUniversity(Integer userId) {
@@ -363,6 +439,32 @@ public class UniversityManagementRepository {
                 INSERT INTO university_student_rosters(university_id, email, student_code, full_name, faculty, academic_year, status, imported_batch_id)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """, universityId, email, studentCode, fullName, faculty, academicYear, status, batchId);
+    }
+
+    public boolean rosterStudentCodeExistsForDifferentEmail(Integer universityId, String studentCode, String email) {
+        Boolean exists = jdbcTemplate.queryForObject("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM university_student_rosters
+                    WHERE university_id = ?
+                      AND LOWER(student_code) = LOWER(?)
+                      AND LOWER(email) <> LOWER(?)
+                )
+                """, Boolean.class, universityId, studentCode, email);
+        return Boolean.TRUE.equals(exists);
+    }
+
+    public boolean activeDomainBelongsToUniversity(Integer universityId, String domain) {
+        Boolean exists = jdbcTemplate.queryForObject("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM university_domains
+                    WHERE university_id = ?
+                      AND LOWER(domain) = LOWER(?)
+                      AND status = 'ACTIVE'
+                )
+                """, Boolean.class, universityId, domain);
+        return Boolean.TRUE.equals(exists);
     }
 
     public void addImportError(Long batchId, int rowNumber, String fieldName, String rawValue, String errorMessage) {
@@ -488,6 +590,43 @@ public class UniversityManagementRepository {
                 """ + where + """
                 ORDER BY u.name, r.route_name
                 """, (rs, rowNum) -> mapRouteUniversity(rs), params.toArray());
+    }
+
+    public boolean routeExists(Integer routeId) {
+        Boolean exists = jdbcTemplate.queryForObject("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM routes
+                    WHERE route_id = ?
+                )
+                """, Boolean.class, routeId);
+        return Boolean.TRUE.equals(exists);
+    }
+
+    public boolean campusBelongsToUniversity(Integer campusId, Integer universityId) {
+        Boolean exists = jdbcTemplate.queryForObject("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM campuses
+                    WHERE campus_id = ?
+                      AND university_id = ?
+                )
+                """, Boolean.class, campusId, universityId);
+        return Boolean.TRUE.equals(exists);
+    }
+
+    public boolean activeRouteUniversityExists(Integer routeId, Integer universityId) {
+        Boolean exists = jdbcTemplate.queryForObject("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM route_universities
+                    WHERE route_id = ?
+                      AND university_id = ?
+                      AND status = 'ACTIVE'
+                      AND (active_until IS NULL OR active_until >= CURRENT_DATE)
+                )
+                """, Boolean.class, routeId, universityId);
+        return Boolean.TRUE.equals(exists);
     }
 
     public RouteUniversityView createRouteUniversity(Integer routeId, Integer universityId, Integer campusId,

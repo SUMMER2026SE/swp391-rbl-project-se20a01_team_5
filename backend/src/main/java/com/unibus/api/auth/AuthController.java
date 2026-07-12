@@ -15,6 +15,7 @@ import com.unibus.api.auth.dto.AuthRequests.OtpRequest;
 import com.unibus.api.auth.dto.AuthRequests.RefreshRequest;
 import com.unibus.api.auth.dto.AuthRequests.RegisterRequest;
 import com.unibus.api.auth.dto.AuthRequests.ResetPasswordRequest;
+import com.unibus.api.auth.dto.AuthRequests.VerifyOtpRequest;
 import com.unibus.api.auth.dto.AuthResponses.RegisteredUser;
 import com.unibus.api.auth.dto.AuthResponses.TokenPair;
 import com.unibus.api.common.ApiResponse;
@@ -80,6 +81,12 @@ public class AuthController {
         authService.requestPasswordResetOtp(request.email());
         return ResponseEntity.accepted()
                 .body(ApiResponse.ok("If the email exists, an OTP has been issued", null));
+    }
+
+    @PostMapping("/forgot-password/verify")
+    ApiResponse<Void> verifyPasswordResetOtp(@Valid @RequestBody VerifyOtpRequest request) {
+        authService.verifyPasswordResetOtp(request.email(), request.otp());
+        return ApiResponse.ok("OTP verified", null);
     }
 
     @PostMapping("/forgot-password/reset")

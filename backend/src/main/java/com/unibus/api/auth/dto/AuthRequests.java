@@ -41,6 +41,11 @@ public final class AuthRequests {
             @Size(max = 200) String device) {
     }
 
+    public record VerifyOtpRequest(
+            @NotBlank @Email String email,
+            @NotBlank @Size(min = 6, max = 6) String otp) {
+    }
+
     public record ResetPasswordRequest(
             @NotBlank @Email String email,
             @NotBlank @Size(min = 6, max = 6) String otp,

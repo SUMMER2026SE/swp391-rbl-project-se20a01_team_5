@@ -11,6 +11,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -82,8 +83,7 @@ public class ExperienceRepository {
     public DriverDashboardView driverDashboard(Integer userId) {
         Integer driverId = driverIdForUser(userId).orElse(null);
         List<TripCard> trips = driverId == null ? List.of() : driverTrips(driverId, 12);
-        TripCard activeTrip = trips.stream().filter(t -> "RUNNING".equalsIgnoreCase(t.status())).findFirst()
-                .orElse(trips.stream().findFirst().orElse(null));
+        TripCard activeTrip = trips.stream().filter(t -> "RUNNING".equalsIgnoreCase(t.status())).findFirst().orElse(null);
         List<FeedbackCard> feedback = driverId == null ? List.of() : driverFeedback(driverId, 8);
         return new DriverDashboardView(
                 fullName(userId),
@@ -98,21 +98,21 @@ public class ExperienceRepository {
 
     public AssistantDashboardView assistantDashboard(Integer userId) {
         Integer conductorId = conductorIdForUser(userId).orElse(null);
-        List<TripCard> trips = conductorId == null ? List.of() : conductorTrips(conductorId, 12);
-        TripCard activeTrip = trips.stream().filter(t -> "RUNNING".equalsIgnoreCase(t.status())).findFirst()
-                .orElse(trips.stream().findFirst().orElse(null));
+        List<TripCard> todayTrips = conductorId == null ? List.of() : conductorTrips(conductorId, 12);
+        List<TripCard> historyTrips = conductorId == null ? List.of() : conductorTripHistory(conductorId, 20);
+        TripCard activeTrip = todayTrips.stream().filter(t -> "RUNNING".equalsIgnoreCase(t.status())).findFirst().orElse(null);
         List<TicketCard> tickets = activeTrip == null ? List.of() : ticketsForTrip(activeTrip.tripId(), 20);
         List<IncidentCard> incidents = conductorId == null ? List.of() : incidents(conductorId, 8);
         List<LostItemCard> lostItems = lostItemsForAssistant(userId, 8);
         return new AssistantDashboardView(
                 fullName(userId),
-                trips,
+                historyTrips,
                 activeTrip,
                 tickets,
                 incidents,
                 lostItems,
                 List.of(
-                        stat("Chuyến", trips.size(), "chuyến", "primary"),
+                        stat("Chuyến", todayTrips.size(), "chuyến", "primary"),
                         stat("Vé cần kiểm", tickets.size(), "vé", "secondary"),
                         stat("Sự cố", incidents.size(), "mục", "error")));
     }
@@ -137,6 +137,10 @@ public class ExperienceRepository {
     public AdminStatsView adminStats(int days) {
         LocalDate to = LocalDate.now();
         LocalDate from = to.minusDays(days - 1L);
+        return adminStats(from, to);
+    }
+
+    public AdminStatsView adminStats(LocalDate from, LocalDate to) {
         return new AdminStatsView(
                 List.of(
                         stat("Người dùng", count("users"), "tài khoản", "primary"),
@@ -144,7 +148,7 @@ public class ExperienceRepository {
                         stat("Trường đối tác", countWhere("universities", "status = 'ACTIVE'"), "trường", "tertiary"),
                         stat("Chờ xác thực", countWhere("student_verifications", "status = 'PENDING_REVIEW'"), "hồ sơ", "warning"),
                         stat("Tuyến", countWhere("routes", "status = 'ACTIVE'"), "tuyến", "tertiary"),
-                        stat("Doanh thu", revenue(), "VND", "success")),
+                        stat("Doanh thu", revenue(from, to), "VND", "success")),
                 routeMetrics(),
                 complaints(null, 8),
                 violations(null, 8),
@@ -252,7 +256,7 @@ public class ExperienceRepository {
                 LEFT JOIN trips t ON t.trip_id = li.trip_id
                 LEFT JOIN routes r ON r.route_id = t.route_id
                 WHERE li.assisted_by_user_id IS NULL OR li.assisted_by_user_id = ?
-                ORDER BY CASE li.status WHEN 'REPORTED' THEN 0 WHEN 'SEARCHING' THEN 1 ELSE 2 END,
+                ORDER BY CASE li.status WHEN 'REPORTED' THEN 0 WHEN 'SEARCHING' THEN 1 WHEN 'FOUND' THEN 2 ELSE 3 END,
                          li.reported_at DESC
                 LIMIT ?
                 """, (rs, rowNum) -> mapLostItem(rs), userId, limit);
@@ -264,10 +268,28 @@ public class ExperienceRepository {
                 SET status = ?, notes = ?, assisted_by_user_id = COALESCE(assisted_by_user_id, ?)
                 WHERE lost_item_report_id = ?
                 """, request.status(), request.notes(), userId, lostItemId);
+        notifyLostItemReporter(userId, lostItemId, request);
         return lostItemsForAssistant(userId, 50).stream()
                 .filter(item -> item.lostItemReportId().equals(lostItemId))
                 .findFirst()
                 .orElse(null);
+    }
+
+    private void notifyLostItemReporter(Integer senderUserId, Integer lostItemId, UpdateLostItemStatusRequest request) {
+        String title = switch (request.status().toUpperCase()) {
+            case "FOUND", "SEARCHING", "RESOLVED" -> "Đã tìm thấy đồ thất lạc";
+            case "RETURNED", "CLOSED" -> "Đã trả đồ thất lạc";
+            default -> "Đồ thất lạc đang được xử lý";
+        };
+        String detail = request.notes() == null || request.notes().isBlank()
+                ? "Vui lòng mở mục Đồ thất lạc để xem chi tiết."
+                : request.notes().trim();
+        jdbcTemplate.update("""
+                INSERT INTO notifications(recipient_user_id, sender_user_id, title, content, notification_type)
+                SELECT reported_by_user_id, ?, ?, ?, 'ALERT'
+                FROM lost_item_reports
+                WHERE lost_item_report_id = ?
+                """, senderUserId, title, detail, lostItemId);
     }
 
     public List<LostItemCard> coordinatorLostItems(int limit) {
@@ -278,7 +300,7 @@ public class ExperienceRepository {
                 JOIN users reporter ON reporter.user_id = li.reported_by_user_id
                 LEFT JOIN trips t ON t.trip_id = li.trip_id
                 LEFT JOIN routes r ON r.route_id = t.route_id
-                ORDER BY CASE li.status WHEN 'REPORTED' THEN 0 WHEN 'SEARCHING' THEN 1 ELSE 2 END,
+                ORDER BY CASE li.status WHEN 'REPORTED' THEN 0 WHEN 'SEARCHING' THEN 1 WHEN 'FOUND' THEN 2 ELSE 3 END,
                          li.reported_at DESC
                 LIMIT ?
                 """, (rs, rowNum) -> mapLostItem(rs), limit);
@@ -290,12 +312,12 @@ public class ExperienceRepository {
                 SET status = ?, notes = ?, assisted_by_user_id = COALESCE(assisted_by_user_id, ?)
                 WHERE lost_item_report_id = ?
                 """, request.status(), request.notes(), userId, lostItemId);
+        notifyLostItemReporter(userId, lostItemId, request);
         return coordinatorLostItems(100).stream()
                 .filter(item -> item.lostItemReportId().equals(lostItemId))
                 .findFirst()
                 .orElse(null);
     }
-
     public List<FeedbackCard> driverFeedback(Integer driverId, int limit) {
         return jdbcTemplate.query("""
                 SELECT f.feedback_id, submitter.full_name AS student_name, r.route_code, r.route_name,
@@ -528,6 +550,8 @@ public class ExperienceRepository {
         List<RouteCore> routeRows = jdbcTemplate.query("""
                 SELECT r.route_id, r.route_code, r.route_name, r.distance_km, r.estimated_minutes,
                        r.frequency_min, r.color_hex,
+                       first_stop.stop_name AS from_stop_name,
+                       last_stop.stop_name AS to_stop_name,
                        (SELECT amount FROM fares f WHERE f.route_id = r.route_id AND f.fare_type = 'SINGLE'
                         ORDER BY f.effective_from DESC, f.fare_id DESC LIMIT 1) AS single_fare,
                        (SELECT amount FROM fares f WHERE f.route_id = r.route_id AND f.fare_type = 'MONTHLY'
@@ -541,6 +565,22 @@ public class ExperienceRepository {
                              AND (?::integer IS NULL OR ru.university_id = ?)
                        ) AS university_linked
                 FROM routes r
+                LEFT JOIN LATERAL (
+                    SELECT s.stop_name
+                    FROM route_stops rs
+                    JOIN stops s ON s.stop_id = rs.stop_id
+                    WHERE rs.route_id = r.route_id
+                    ORDER BY rs.stop_order
+                    LIMIT 1
+                ) first_stop ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT s.stop_name
+                    FROM route_stops rs
+                    JOIN stops s ON s.stop_id = rs.stop_id
+                    WHERE rs.route_id = r.route_id
+                    ORDER BY rs.stop_order DESC
+                    LIMIT 1
+                ) last_stop ON TRUE
                 WHERE r.status = 'ACTIVE'
                 ORDER BY COALESCE(r.route_code, r.route_name)
                 """, (rs, rowNum) -> new RouteCore(
@@ -738,7 +778,7 @@ public class ExperienceRepository {
     private List<TripCard> driverTrips(Integer driverId, int limit) {
         return jdbcTemplate.query(tripSelect("""
                 WHERE t.driver_id = ?
-                  AND t.service_date BETWEEN CURRENT_DATE - INTERVAL '7 days' AND CURRENT_DATE + INTERVAL '7 days'
+                  AND t.service_date = CURRENT_DATE
                 ORDER BY t.service_date DESC, bs.departure_time NULLS LAST, t.trip_id DESC
                 LIMIT ?
                 """), (rs, rowNum) -> mapTrip(rs), driverId, limit);
@@ -747,8 +787,18 @@ public class ExperienceRepository {
     private List<TripCard> conductorTrips(Integer conductorId, int limit) {
         return jdbcTemplate.query(tripSelect("""
                 WHERE t.conductor_id = ?
-                  AND t.service_date BETWEEN CURRENT_DATE - INTERVAL '7 days' AND CURRENT_DATE + INTERVAL '7 days'
+                  AND t.service_date = CURRENT_DATE
                 ORDER BY t.service_date DESC, bs.departure_time NULLS LAST, t.trip_id DESC
+                LIMIT ?
+                """), (rs, rowNum) -> mapTrip(rs), conductorId, limit);
+    }
+
+    private List<TripCard> conductorTripHistory(Integer conductorId, int limit) {
+        return jdbcTemplate.query(tripSelect("""
+                WHERE t.conductor_id = ?
+                  AND t.service_date BETWEEN CURRENT_DATE - INTERVAL '7 days' AND CURRENT_DATE
+                  AND t.status IN ('COMPLETED', 'CANCELLED')
+                ORDER BY t.service_date DESC, bs.departure_time DESC NULLS LAST, t.trip_id DESC
                 LIMIT ?
                 """), (rs, rowNum) -> mapTrip(rs), conductorId, limit);
     }
@@ -794,14 +844,30 @@ public class ExperienceRepository {
 
     private List<RouteMetric> routeMetrics() {
         return jdbcTemplate.query("""
-                SELECT r.route_code, r.route_name, r.color_hex, COUNT(t.trip_id) AS trips,
-                       COALESCE(SUM(p.amount), 0) AS revenue
+                SELECT r.route_code, r.route_name, r.color_hex,
+                       COALESCE(t.trip_count, 0) AS trips,
+                       COALESCE(m.monthly_revenue, 0) + COALESCE(s.single_revenue, 0) AS revenue
                 FROM routes r
-                LEFT JOIN trips t ON t.route_id = r.route_id
-                LEFT JOIN monthly_passes mp ON mp.route_id = r.route_id
-                LEFT JOIN payments p ON p.monthly_pass_id = mp.monthly_pass_id AND p.status = 'PAID'
+                LEFT JOIN (
+                    SELECT route_id, COUNT(trip_id) AS trip_count
+                    FROM trips
+                    GROUP BY route_id
+                ) t ON t.route_id = r.route_id
+                LEFT JOIN (
+                    SELECT mp.route_id, COALESCE(SUM(p.amount), 0) AS monthly_revenue
+                    FROM monthly_passes mp
+                    JOIN payments p ON p.monthly_pass_id = mp.monthly_pass_id
+                    WHERE p.status = 'PAID'
+                    GROUP BY mp.route_id
+                ) m ON m.route_id = r.route_id
+                LEFT JOIN (
+                    SELECT st.route_id, COALESCE(SUM(p.amount), 0) AS single_revenue
+                    FROM single_trip_tickets st
+                    JOIN payments p ON p.single_trip_ticket_id = st.single_trip_ticket_id
+                    WHERE p.status = 'PAID'
+                    GROUP BY st.route_id
+                ) s ON s.route_id = r.route_id
                 WHERE r.status = 'ACTIVE'
-                GROUP BY r.route_id, r.route_code, r.route_name, r.color_hex
                 ORDER BY COALESCE(r.route_code, r.route_name)
                 """, (rs, rowNum) -> new RouteMetric(
                         rs.getString("route_code"),
@@ -1082,6 +1148,15 @@ public class ExperienceRepository {
                 BigDecimal.class);
     }
 
+    private BigDecimal revenue(LocalDate from, LocalDate to) {
+        return jdbcTemplate.queryForObject("""
+                SELECT COALESCE(SUM(amount), 0)
+                FROM payments
+                WHERE status = 'PAID'
+                  AND CAST(created_at AS date) BETWEEN ? AND ?
+                """, BigDecimal.class, from, to);
+    }
+
     private String defaultText(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value;
     }
@@ -1097,6 +1172,21 @@ public class ExperienceRepository {
 
     private OffsetDateTime toOffset(Timestamp timestamp) {
         return timestamp == null ? null : timestamp.toInstant().atOffset(ZoneOffset.UTC);
+    }
+
+    private record RouteCore(
+            Integer routeId,
+            String routeCode,
+            String routeName,
+            BigDecimal distanceKm,
+            Integer estimatedMinutes,
+            Integer frequencyMin,
+            BigDecimal singleFare,
+            BigDecimal monthlyFare,
+            String colorHex,
+            String firstTrip,
+            String lastTrip,
+            boolean universityLinked) {
     }
 
     // =========================================================================
@@ -1174,21 +1264,6 @@ public class ExperienceRepository {
                         toOffset(rs.getTimestamp("last_sent_at")),
                         rs.getInt("unread_count")),
                 userId, userId, userId, userId, userId);
-    }
-
-    private record RouteCore(
-            Integer routeId,
-            String routeCode,
-            String routeName,
-            BigDecimal distanceKm,
-            Integer estimatedMinutes,
-            Integer frequencyMin,
-            BigDecimal singleFare,
-            BigDecimal monthlyFare,
-            String colorHex,
-            String firstTrip,
-            String lastTrip,
-            boolean universityLinked) {
     }
 
     private record ProfileRow(String fullName, String verificationStatus, String studentCode, Integer universityId,

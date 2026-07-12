@@ -38,7 +38,7 @@ Runtime UI may render only:
 4. Empty state.
 5. Unavailable state for a screen whose backend is intentionally deferred.
 
-Do not add local sample records, local role switching, fake counts, fake success toasts, generated users, or frontend fixtures. Demo richness belongs in SQL seed files, especially `database/SeedStableDemoDataUntilAugust.sql`.
+Do not add local sample records, local role switching, fake counts, fake success toasts, generated users, or frontend fixtures. Demo richness belongs in SQL seed files, especially `database/SeedDemoDataUntilAugust.sql`.
 
 ## Role Composition Targets
 
