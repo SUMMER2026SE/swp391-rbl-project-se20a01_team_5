@@ -597,52 +597,42 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
       </div>
 
       <ScrollReveal>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 min-w-0">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 min-w-0">
           {[
             {
               label: "Sinh viên",
               value: (s?.activeRosterStudents || 0).toLocaleString("vi-VN"),
               icon: GraduationCap,
-              tone: "blue",
+              accent: "primary" as const,
             },
             {
               label: "Cơ sở",
               value: String(s?.activeCampuses || 0),
               icon: MapPin,
-              tone: "emerald",
+              accent: "success" as const,
             },
             {
               label: "Tuyến bus",
               value: String(s?.activeRoutes || 0),
               icon: FileBarChart,
-              tone: "violet",
+              accent: "secondary" as const,
             },
             {
               label: "Trợ giá",
               value: ctx.subsidyPolicies.some((p) => p.status === "ACTIVE") ? "Đang áp dụng" : "Chưa có",
               icon: ShieldCheck,
-              tone: "amber",
+              accent: "warning" as const,
             },
           ].map((item) => {
             const Icon = item.icon;
             return (
-              <div key={item.label} className="flex items-center gap-3 rounded-xl border border-outline-variant bg-surface p-4 min-w-0">
-                <div
-                  className={cn(
-                    "flex size-10 shrink-0 items-center justify-center rounded-lg",
-                    item.tone === "blue" && "bg-blue-50 text-blue-600",
-                    item.tone === "emerald" && "bg-emerald-50 text-emerald-600",
-                    item.tone === "violet" && "bg-violet-50 text-violet-600",
-                    item.tone === "amber" && "bg-amber-50 text-amber-600"
-                  )}
-                >
-                  <Icon className="size-4" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs text-on-surface-variant">{item.label}</p>
-                  <p className="text-sm font-semibold tabular-nums text-on-surface truncate">{item.value}</p>
-                </div>
-              </div>
+              <StatCard
+                key={item.label}
+                label={item.label}
+                value={item.value}
+                icon={<Icon className="size-6" />}
+                accent={item.accent}
+              />
             );
           })}
         </div>
@@ -653,21 +643,27 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
           {quickActions.map((action) => {
             const Icon = action.icon;
             return (
-              <motion.button
+              <motion.div
                 key={action.id}
-                onClick={() => onNavigate(action.id)}
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 whileHover={{ y: -2 }}
                 whileTap={{ scale: 0.98 }}
-                className="group flex min-h-[118px] flex-col justify-between rounded-xl border border-outline-variant bg-surface p-4 text-left transition-colors hover:bg-surface-container-low min-w-0"
               >
-                <Icon className="size-5 text-on-surface-variant transition-colors group-hover:text-on-surface" />
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold leading-tight text-on-surface">{action.label}</p>
-                  <p className="mt-1 text-xs leading-snug text-on-surface-variant">{action.description}</p>
-                </div>
-              </motion.button>
+                <ExpressiveCard
+                  variant="filled"
+                  interactive
+                  className="group min-h-[118px] text-left transition-colors min-w-0"
+                >
+                  <button type="button" onClick={() => onNavigate(action.id)} className="flex min-h-[118px] w-full flex-col justify-between p-4 text-left">
+                    <Icon className="size-5 text-on-surface-variant transition-colors group-hover:text-on-surface" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold leading-tight text-on-surface">{action.label}</p>
+                      <p className="mt-1 text-xs leading-snug text-on-surface-variant">{action.description}</p>
+                    </div>
+                  </button>
+                </ExpressiveCard>
+              </motion.div>
             );
           })}
         </div>
@@ -1372,19 +1368,19 @@ function ImportScreen({
 
             <ExpressiveCard variant="elevated" className="p-4 min-w-0">
               <div className="flex flex-wrap gap-2">
-                <div className="relative flex-1 min-w-[220px]">
+                <div className="relative w-full flex-1 min-w-0 sm:min-w-[220px]">
                   <Filter className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant" />
                   <Input className="pl-9" placeholder="Tìm MSSV, email, dòng lỗi..." value={previewSearch} onChange={(e) => setPreviewSearch(e.target.value)} />
                 </div>
                 <Select value={previewFilter} onValueChange={setPreviewFilter}>
-                  <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="w-full sm:w-44"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Tất cả dòng</SelectItem>
                     <SelectItem value="errors">Chỉ dòng lỗi</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={previewErrorCode} onValueChange={setPreviewErrorCode}>
-                  <SelectTrigger className="w-56"><SelectValue placeholder="Loại lỗi" /></SelectTrigger>
+                  <SelectTrigger className="w-full sm:w-56"><SelectValue placeholder="Loại lỗi" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Tất cả loại lỗi</SelectItem>
                     {previewErrorCodes.map((code) => (
@@ -1594,12 +1590,12 @@ function RosterScreen({
         </ExpressiveCard>
       )}
       <div className="flex flex-wrap gap-2 min-w-0">
-        <div className="relative flex-1 min-w-[200px]">
+        <div className="relative w-full flex-1 min-w-0 sm:min-w-[200px]">
           <Filter className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant" />
           <Input className="pl-9" placeholder="Tìm theo tên, email, mã SV..." value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-full sm:w-40"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Tất cả trạng thái</SelectItem>
             <SelectItem value="ACTIVE">Đang học</SelectItem>
@@ -1741,7 +1737,7 @@ function SubsidyScreen({ ctx }: { ctx: Ctx }) {
               <Label className="text-xs font-bold">Tên chính sách</Label>
               <Input className="mt-1.5" value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Trợ giá 50% vé tháng" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs font-bold">Loại trợ giá</Label>
                 <Select value={type} onValueChange={(v: SubsidyType) => setType(v)}>
@@ -1808,7 +1804,7 @@ function StatsScreen({ ctx }: { ctx: Ctx }) {
         icon={<FileBarChart className="size-7" />}
       />
       <ScrollReveal>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 min-w-0">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 min-w-0">
           {stats.map((stat, i) => (
             <StatCard
               key={i}
