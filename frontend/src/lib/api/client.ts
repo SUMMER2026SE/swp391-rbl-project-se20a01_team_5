@@ -516,6 +516,8 @@ export const transportApi = {
     apiFetch.post<JourneyOptionDTO[]>("/journeys/search", data),
   trackJourney: (journeyId: string) =>
     apiFetch.get<JourneyTrackingSnapshotDTO>(`/tracking/journeys/${encodeURIComponent(journeyId)}`),
+  trackTrip: (tripId: number | string) =>
+    apiFetch.get<JourneyTrackingSnapshotDTO>(`/tracking/trips/${encodeURIComponent(String(tripId))}`),
   trackRoute: (routeId: number | string, params?: { boardingStopId?: number | string; alightingStopId?: number | string }) =>
     apiFetch.get<JourneyTrackingSnapshotDTO>(`/tracking/routes/${encodeURIComponent(String(routeId))}`, {
       boardingStopId: params?.boardingStopId,
@@ -1384,6 +1386,8 @@ export const operationsApi = {
   driverTrips: (date?: string) => apiFetch.get<DriverTripView[]>("/driver/trips", { date }),
   driverContacts: () => apiFetch.get<DriverContactView[]>("/driver/contacts"),
   driverTripOverview: () => apiFetch.get<DriverTripOverviewDTO>("/driver/trips/overview"),
+  driverTripTracking: (tripId: number | string) =>
+    apiFetch.get<JourneyTrackingSnapshotDTO>(`/tracking/trips/${encodeURIComponent(String(tripId))}`),
   startTrip: (tripId: number) => apiFetch.post<DriverTripView>(`/driver/trips/${tripId}/start`),
   endTrip: (tripId: number) => apiFetch.post<DriverTripView>(`/driver/trips/${tripId}/end`),
   updateLocation: (tripId: number, data: { longitude: number; latitude: number; speedKmh?: number; occupancy?: number }) =>
@@ -1395,6 +1399,8 @@ export const operationsApi = {
   saveSchedules: (data: { serviceDate: string; shifts: any[] }) => apiFetch.post<ScheduleDashboard>("/operations/schedules", data),
   deleteSchedule: (scheduleId: number, date?: string) => apiFetch.delete<void>(`/operations/schedules/${scheduleId}`, date ? { date } : undefined),
   liveFleet: (date?: string) => apiFetch.get<LiveFleetVehicle[]>("/coordinator/fleet/live", { date }),
+  coordinatorTripTracking: (tripId: number | string) =>
+    apiFetch.get<JourneyTrackingSnapshotDTO>(`/coordinator/fleet/live/${encodeURIComponent(String(tripId))}/tracking`),
 };
 
 export interface RouteListItem {

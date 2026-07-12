@@ -6635,7 +6635,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                               }
                             }}
                           >
-                            <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn điểm lên" /></SelectTrigger>
+                            <SelectTrigger className="mt-1.5 min-h-11 h-auto py-2 text-left [&>span]:whitespace-normal [&>span]:text-xs [&>span]:leading-4"><SelectValue placeholder="Chọn điểm lên" /></SelectTrigger>
                             <SelectContent>
                               {boardingOptions.map((stop) => <SelectItem key={stop.id} value={stop.id}>{stop.name}</SelectItem>)}
                             </SelectContent>
@@ -6644,7 +6644,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                         <div>
                           <Label className="text-xs font-bold">Điểm xuống dự kiến</Label>
                           <Select value={singleAlightingStopId} onValueChange={setSingleAlightingStopId}>
-                            <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn điểm xuống" /></SelectTrigger>
+                            <SelectTrigger className="mt-1.5 min-h-11 h-auto py-2 text-left [&>span]:whitespace-normal [&>span]:text-xs [&>span]:leading-4"><SelectValue placeholder="Chọn điểm xuống" /></SelectTrigger>
                             <SelectContent>
                               {alightingOptions.map((stop) => <SelectItem key={stop.id} value={stop.id}>{stop.name}</SelectItem>)}
                             </SelectContent>

@@ -23,7 +23,6 @@ import {
   Calendar,
   PlayCircle,
   StopCircle,
-  Navigation,
   Route as RouteIcon,
   History,
   Phone,
@@ -231,8 +230,23 @@ function ErrorScreen({
 // =============================================================================
 // Helpers
 // =============================================================================
+const VIETNAM_TIME_ZONE = "Asia/Ho_Chi_Minh";
+
+function vietnamDateParts(date = new Date()) {
+  return Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: VIETNAM_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23",
+    }).formatToParts(date).map(({ type, value }) => [type, value]),
+  );
+}
+
+function vietnamToday(): string {
+  const parts = vietnamDateParts();
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
 function greetingByHour(): string {
-  const h = new Date().getHours();
+  const h = Number(vietnamDateParts().hour);
   if (h < 11) return "Chào buổi sáng";
   if (h < 14) return "Chào buổi trưa";
   if (h < 18) return "Chào buổi chiều";
@@ -246,13 +260,25 @@ function fmtTimer(sec: number): string {
   return [h, m, s].map((n) => String(n).padStart(2, "0")).join(":");
 }
 
-function useElapsed(active: boolean): number {
-  const [sec, setSec] = useState(0);
+function formatTripDuration(departedAt?: string | null, endedAt?: string | null): string {
+  if (!departedAt || !endedAt) return "—";
+  const seconds = Math.max(0, Math.floor((new Date(endedAt).getTime() - new Date(departedAt).getTime()) / 1000));
+  return Number.isFinite(seconds) ? fmtTimer(seconds) : "—";
+}
+
+function useElapsed(departedAt?: string | null): number {
+  const calculate = useCallback(() => {
+    if (!departedAt) return 0;
+    const startedAt = new Date(departedAt).getTime();
+    return Number.isFinite(startedAt) ? Math.max(0, Math.floor((Date.now() - startedAt) / 1000)) : 0;
+  }, [departedAt]);
+  const [sec, setSec] = useState(calculate);
   useEffect(() => {
-    if (!active) return;
-    const id = setInterval(() => setSec((s) => s + 1), 1000);
-    return () => clearInterval(id);
-  }, [active]);
+    setSec(calculate());
+    if (!departedAt) return;
+    const id = window.setInterval(() => setSec(calculate()), 1000);
+    return () => window.clearInterval(id);
+  }, [calculate, departedAt]);
   return sec;
 }
 
@@ -390,7 +416,7 @@ function driverPreviewPolylines(
           lat: numericValue(point.latitude) ?? 0,
           lng: numericValue(point.longitude) ?? 0,
         }))
-        .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng)),
+        .filter((point) => point.lat && point.lng),
     }))
     .filter((line) => line.points.length >= 2);
 }
@@ -431,7 +457,7 @@ function driverTrackingPolylines(
           lat: numericValue(point.latitude) ?? 0,
           lng: numericValue(point.longitude) ?? 0,
         }))
-        .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng)),
+        .filter((point) => point.lat && point.lng),
     }))
     .filter((line) => line.points.length >= 2);
 }
@@ -477,11 +503,11 @@ function currentStopIndexForVehicle(
   stops: Array<{ stopId?: number; stopOrder?: number }>,
   vehicle?: { nextStopId?: number } | null,
 ): number {
-  if (!stops.length || !vehicle?.nextStopId) return 0;
+  if (!stops.length || !vehicle?.nextStopId) return -1;
   const index = stops.findIndex(
     (stop) => Number(stop.stopId) === Number(vehicle.nextStopId),
   );
-  return index >= 0 ? index : 0;
+  return index >= 0 ? index : -1;
 }
 
 function syncedVehicleForTrip(
@@ -490,9 +516,8 @@ function syncedVehicleForTrip(
 ) {
   const vehicles = snapshot?.vehicles || [];
   return (
-    vehicles.find((vehicle) => vehicle.tripId === trip?.tripId) ||
+    vehicles.find((vehicle) => Number(vehicle.tripId) === Number(trip?.tripId)) ||
     vehicles.find((vehicle) => vehicle.vehicleId === `trip:${trip?.tripId}`) ||
-    vehicles[0] ||
     null
   );
 }
@@ -515,9 +540,27 @@ function driverTripKey(trip: DriverTripView): string {
 }
 
 
+function driverTripScheduledAt(trip: DriverTripView | null): number | null {
+  const serviceDate = trip?.serviceDate || (trip as DriverTripView & { date?: string })?.date;
+  const departureTime = trip?.departureTime || (trip as DriverTripView & { departTime?: string })?.departTime;
+  if (!serviceDate || !departureTime) return null;
+  const timestamp = new Date(`${serviceDate}T${departureTime}+07:00`).getTime();
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function isActiveDriverTrip(trip: DriverTripView | null): boolean {
+  return String(trip?.status || "").toUpperCase() === "RUNNING" && Boolean(trip?.departedAt) && !trip?.endedAt;
+}
+
+function driverTripScheduleLabel(trip: DriverTripView): string {
+  const serviceDate = trip.serviceDate || (trip as DriverTripView & { date?: string }).date;
+  const departureTime = trip.departureTime || (trip as DriverTripView & { departTime?: string }).departTime;
+  return `${formatDate(serviceDate)} · ${String(departureTime || "Chưa có giờ").slice(0, 5)}`;
+}
+
 function driverTripStatusRank(trip: DriverTripView): number {
   const status = String(trip.status || "").toUpperCase();
-  if (status === "RUNNING") return 0;
+  if (isActiveDriverTrip(trip)) return 0;
   if (status === "COMPLETED") return 3;
   if (status === "CANCELLED") return 4;
   return 1;
@@ -527,8 +570,35 @@ function sortDriverTrips(trips: DriverTripView[]): DriverTripView[] {
   return [...trips].sort((left, right) => {
     const rankDelta = driverTripStatusRank(left) - driverTripStatusRank(right);
     if (rankDelta) return rankDelta;
-    return String(left.departureTime || "").localeCompare(String(right.departureTime || ""));
+    return (driverTripScheduledAt(left) ?? Number.MAX_SAFE_INTEGER) - (driverTripScheduledAt(right) ?? Number.MAX_SAFE_INTEGER);
   });
+}
+
+function canStartDriverTrip(trip: DriverTripView | null): boolean {
+  if (!trip?.tripId || String(trip.status || "").toUpperCase() !== "NOT_STARTED") return false;
+  if (!trip.serviceDate || !trip.departureTime) return false;
+  const scheduledAt = new Date(`${trip.serviceDate}T${trip.departureTime}`);
+  if (!Number.isFinite(scheduledAt.getTime())) return false;
+  const differenceMinutes = (Date.now() - scheduledAt.getTime()) / 60_000;
+  return differenceMinutes >= -30 && differenceMinutes <= 60;
+}
+function driverTripStartLabel(trip: DriverTripView | null): string {
+  if (!trip?.tripId) return "CHƯA TẠO CHUYẾN";
+  if (String(trip.status || "").toUpperCase() !== "NOT_STARTED") return "CHƯA THỂ BẮT ĐẦU";
+  if (!trip.serviceDate || !trip.departureTime) return "THIẾU LỊCH KHỞI HÀNH";
+  const scheduledAt = new Date(`${trip.serviceDate}T${trip.departureTime}`);
+  if (!Number.isFinite(scheduledAt.getTime())) return "LỊCH KHỞI HÀNH KHÔNG HỢP LỆ";
+  const differenceMinutes = (Date.now() - scheduledAt.getTime()) / 60_000;
+  if (differenceMinutes < -30) return `CÓ THỂ BẮT ĐẦU LÚC ${trip.departureTime.slice(0, 5)}`;
+  if (differenceMinutes > 60) return "ĐÃ QUÁ GIỜ BẮT ĐẦU";
+  return "SẴN SÀNG BẮT ĐẦU";
+}
+function isDriverTripExpired(trip: DriverTripView, now: number): boolean {
+  const status = String(trip.status || "").toUpperCase();
+  if (["RUNNING", "COMPLETED", "CANCELLED"].includes(status)) return false;
+  if (!trip.serviceDate || !trip.departureTime) return false;
+  const scheduledAt = new Date(`${trip.serviceDate}T${trip.departureTime}`).getTime();
+  return Number.isFinite(scheduledAt) && now > scheduledAt + 60 * 60_000;
 }
 
 // =============================================================================
@@ -753,11 +823,14 @@ function DriverDashboard({
   onNavigate: (id: string) => void;
 }) {
   const firstName = (ctx.user.name || "bạn").split(" ").slice(-1)[0];
-  const activeTrip = ctx.activeTrip;
-  const upcomingTrips = ctx.trips
-    .filter((t: any) => String(t.status || "").toUpperCase() === "NOT_STARTED")
+  const [renderedAt] = useState(() => Date.now());
+  const activeTrip = ctx.trips.find((trip: any) => isActiveDriverTrip(trip)) ?? null;
+  const upcomingTrips = sortDriverTrips(ctx.trips
+    .filter((trip: any) => !isDriverTripExpired(trip, renderedAt) && !["RUNNING", "COMPLETED", "CANCELLED"].includes(String(trip.status || "").toUpperCase())))
     .slice(0, 3);
-  const statCards = ctx.stats.slice(0, 4);
+  const statCards = ctx.stats.slice(0, 4).map((stat) =>
+    activeTrip && stat.label === "Đang chạy" ? { ...stat, value: 1 } : stat,
+  );
 
   return (
     <PageTransition className="space-y-6 sm:space-y-8 min-w-0">
@@ -804,7 +877,7 @@ function DriverDashboard({
             initial={{ opacity: 0, y: 16, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ type: "spring", stiffness: 260, damping: 24 }}
-            className="relative overflow-hidden rounded-[32px] border border-[#DDEFD0] p-0 shadow-[0_16px_45px_rgba(20,20,15,0.06)]"
+            className="relative overflow-hidden rounded-[32px] border border-[#DDEFD0] p-5 sm:p-6 shadow-[0_16px_45px_rgba(20,20,15,0.06)]"
             style={{ backgroundColor: "#beff50", color: "#14140f" }}
           >
             <div className="absolute -top-12 -right-12 size-48 rounded-full bg-[#14140f]/8 blur-3xl pointer-events-none" />
@@ -825,9 +898,9 @@ function DriverDashboard({
               <h2 className="text-2xl sm:text-3xl font-bold leading-tight">
                 {activeTrip.routeName || "Chuyến xe"}
               </h2>
-              {activeTrip.stops && activeTrip.stops.length > 0 && (
-                <HorizontalTimeline stops={activeTrip.stops} currentIndex={0} />
-              )}
+              <p className="text-sm font-semibold text-[#14140f]/70">
+                Mở Chuyến hiện tại để xem bản đồ và vị trí xe theo thời gian thực.
+              </p>
               <div className="flex flex-wrap items-center gap-3 pt-2">
                 <ExpressiveButton
                   variant="filled"
@@ -869,25 +942,26 @@ function DriverDashboard({
       {statCards.length > 0 && (
         <ScrollReveal delay={0.1}>
           <Section title="Tổng quan hôm nay">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 min-w-0">
+            <div className="grid grid-cols-2 gap-3 min-w-0 lg:grid-cols-4">
               {statCards.map((s, i) => (
-                <StatCard
-                  key={i}
-                  label={s.label}
-                  value={
-                    <Counter
-                      to={typeof s.value === "number" ? s.value : 0}
-                      format={(n) =>
-                        typeof s.value === "string"
-                          ? s.value
-                          : Math.round(n).toLocaleString("vi-VN")
-                      }
-                    />
-                  }
-                  icon={<TrendingUp className="size-5" />}
-                  hint={s.unit}
-                  accent={(s.tone as any) || "primary"}
-                />
+                <div key={i} className={cn(statCards.length % 2 === 1 && i === statCards.length - 1 && "col-span-2 lg:col-span-1")}>
+                  <StatCard
+                    label={s.label}
+                    value={
+                      <Counter
+                        to={typeof s.value === "number" ? s.value : 0}
+                        format={(n) =>
+                          typeof s.value === "string"
+                            ? s.value
+                            : Math.round(n).toLocaleString("vi-VN")
+                        }
+                      />
+                    }
+                    icon={<TrendingUp className="size-5" />}
+                    hint={s.unit}
+                    accent={(s.tone as any) || "primary"}
+                  />
+                </div>
               ))}
             </div>
           </Section>
@@ -915,13 +989,13 @@ function DriverDashboard({
             />
           ) : (
             <div className="space-y-2">
-              {upcomingTrips.map((t: any) => {
+              {upcomingTrips.map((t: any, index: number) => {
                 const sp = tripStatusPill(t.status);
                 return (
                   <ExpressiveCard
-                    key={t.id}
+                    key={t.tripId ?? t.scheduleId ?? `${t.routeId ?? "route"}-${t.serviceDate ?? t.date ?? "date"}-${t.departureTime ?? t.departTime ?? index}`}
                     variant="elevated"
-                    className="p-4 min-w-0"
+                    className="min-w-0 rounded-[24px] border border-[#E8E2D5] bg-white p-4 shadow-[0_8px_24px_rgba(20,20,15,0.04)]"
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="size-10 shrink-0 rounded-xl bg-primary-container text-on-primary-container flex items-center justify-center">
@@ -952,12 +1026,12 @@ function DriverDashboard({
 // =============================================================================
 function DriverSchedule({ ctx }: { ctx: Ctx }) {
   const [filterDate, setFilterDate] = useState(
-    new Date().toISOString().slice(0, 10),
+    vietnamToday(),
   );
   const [trips, setTrips] = useState<DriverTripView[] | null>(null);
-  const [expandedTripKey, setExpandedTripKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [renderedAt] = useState(() => Date.now());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -976,11 +1050,17 @@ function DriverSchedule({ ctx }: { ctx: Ctx }) {
     load();
   }, [load]);
 
+  const sortedScheduleTrips = sortDriverTrips(trips ?? []).sort((left, right) => {
+    const expiredDelta = Number(isDriverTripExpired(left, renderedAt))
+      - Number(isDriverTripExpired(right, renderedAt));
+    return expiredDelta;
+  });
+
   return (
-    <PageTransition className="space-y-6 min-w-0">
+    <PageTransition className="space-y-6 sm:space-y-8 min-w-0">
       <PageHeader
         title="Lịch trình"
-        description="Lịch chạy của bạn theo ngày."
+        description="Phân công chuyến theo ngày."
         icon={<Calendar className="size-7" />}
         actions={
           <Input
@@ -1003,102 +1083,41 @@ function DriverSchedule({ ctx }: { ctx: Ctx }) {
         />
       ) : (
         <StaggerGroup className="space-y-3 min-w-0">
-          {sortDriverTrips(trips).map((trip) => {
-            const statusPill = tripStatusPill(trip.status);
-            const status = String(trip.status || "").toUpperCase();
-            const isRunning = status === "RUNNING";
-            const isDone = status === "COMPLETED";
-            const tripKey = driverTripKey(trip);
-            const isExpanded = expandedTripKey === tripKey;
+          {sortedScheduleTrips.map((trip, index) => {
+            const isExpired = isDriverTripExpired(trip, renderedAt);
+            const statusPill = isExpired
+              ? { label: "Đã quá giờ chạy", tone: "neutral" as const }
+              : tripStatusPill(trip.status);
             return (
-              <StaggerItem key={tripKey}>
-                <div className="relative flex gap-4">
-                  <div className="relative z-10 hidden w-16 shrink-0 pt-4 text-center sm:block">
-                    <div className={cn(
-                      "mx-auto mb-2 flex size-12 items-center justify-center rounded-2xl border-4 border-white shadow-sm",
-                      isRunning ? "bg-[#B8F5CC] text-[#14532d]" : isDone ? "bg-[#ECECEC] text-[#4B5563]" : "bg-[#FFF0CF] text-[#92400e]",
-                    )}>
-                      <Bus className="size-5" />
+              <StaggerItem key={driverTripKey(trip) || index}>
+                <ExpressiveCard
+                  variant="elevated"
+                  className={cn("p-4 min-w-0", isExpired && "bg-[#F3F4F3] text-[#6B6B6B]")}
+                >
+                  <div className="flex items-start justify-between gap-3 mb-3 min-w-0">
+                    <div className="min-w-0">
+                      <p className="font-bold truncate">{trip.routeName || `Tuyến ${trip.routeId}`}</p>
+                      <p className="text-xs text-on-surface-variant">
+                        {trip.departureTime || "—"}
+                      </p>
                     </div>
-                    <p className="text-xs font-black text-[#14140f]">{trip.departureTime || "--:--"}</p>
+                    <M3StatusPill label={statusPill.label} tone={statusPill.tone} />
                   </div>
-                  <ExpressiveCard
-                    variant="elevated"
-                    className={cn(
-                      "flex-1 overflow-hidden rounded-[28px] border bg-white p-0 shadow-[0_8px_26px_rgba(20,20,15,0.045)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(20,20,15,0.08)]",
-                      isRunning ? "border-[#B8F5CC]" : isDone ? "border-[#E6E2D8]" : "border-[#F1DFC0]",
-                    )}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setExpandedTripKey(isExpanded ? null : tripKey)}
-                      className="flex w-full items-center gap-4 p-4 text-left sm:p-5"
-                      aria-expanded={isExpanded}
-                    >
-                      <div className={cn(
-                        "flex size-11 shrink-0 items-center justify-center rounded-2xl sm:hidden",
-                        isRunning ? "bg-[#B8F5CC] text-[#14532d]" : isDone ? "bg-[#ECECEC] text-[#4B5563]" : "bg-[#FFF0CF] text-[#92400e]",
-                      )}>
-                        <Bus className="size-5" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2">
-                          <h3 className="min-w-0 truncate text-base font-black text-[#14140f] sm:text-lg">{trip.routeName}</h3>
-                          <M3StatusPill label={statusPill.label} tone={statusPill.tone} />
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#6B6B6B]">
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FAF8F2] px-3 py-1 sm:hidden">
-                            <Clock className="size-3.5" /> {trip.departureTime || formatDate(trip.serviceDate)}
-                          </span>
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FAF8F2] px-3 py-1">
-                            <MapPin className="size-3.5" /> {trip.stops?.length || 0} trạm
-                          </span>
-                          {trip.licensePlate && (
-                            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FAF8F2] px-3 py-1">
-                              <Bus className="size-3.5" /> {trip.licensePlate}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className={cn(
-                        "flex size-10 shrink-0 items-center justify-center rounded-full border border-[#E8E2D5] bg-[#FAF8F2] text-[#14140f] transition",
-                        isExpanded && "bg-[#14140f] text-[#BDFD4F]",
-                      )}>
-                        <ChevronRight className={cn("size-5 transition-transform", isExpanded && "rotate-90")} />
-                      </div>
-                    </button>
-                    <AnimatePresence initial={false}>
-                      {isExpanded && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: "auto", opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.18, ease: "easeOut" }}
-                          className="overflow-hidden"
-                        >
-                          <div className="grid gap-3 border-t border-[#EEE8DA] bg-[#FFFCF6] px-4 pb-4 pt-3 text-xs sm:grid-cols-2 sm:px-5 lg:grid-cols-4">
-                            <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">
-                              <p className="font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Biển số</p>
-                              <p className="mt-1 truncate font-black text-[#14140f]">{trip.licensePlate || "--"}</p>
-                            </div>
-                            <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">
-                              <p className="font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Phụ xe</p>
-                              <p className="mt-1 truncate font-black text-[#14140f]">{trip.conductorName || "--"}</p>
-                            </div>
-                            <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">
-                              <p className="font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Điện thoại</p>
-                              <p className="mt-1 truncate font-black text-[#14140f]">{trip.conductorPhone || "--"}</p>
-                            </div>
-                            <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">
-                              <p className="font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Số trạm</p>
-                              <p className="mt-1 font-black text-[#14140f]">{trip.stops?.length || 0}</p>
-                            </div>
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </ExpressiveCard>
-                </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                    <div>
+                      <p className="text-on-surface-variant">Tài xế</p>
+                      <p className="font-bold truncate">{ctx.user.name || "Chưa gán"}</p>
+                    </div>
+                    <div>
+                      <p className="text-on-surface-variant">Phụ xe</p>
+                      <p className="font-bold truncate">{trip.conductorName || "Chưa gán"}</p>
+                    </div>
+                    <div>
+                      <p className="text-on-surface-variant">Xe</p>
+                      <p className="font-bold truncate">{trip.licensePlate || "Chưa gán"}</p>
+                    </div>
+                  </div>
+                </ExpressiveCard>
               </StaggerItem>
             );
           })}
@@ -1119,6 +1138,7 @@ function DriverActiveTrip({
   onNavigate: (id: string) => void;
 }) {
   const [trips, setTrips] = useState<DriverTripView[] | null>(null);
+  const [renderedAt] = useState(() => Date.now());
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState<number | null>(null);
   const [ending, setEnding] = useState<number | null>(null);
@@ -1143,33 +1163,57 @@ function DriverActiveTrip({
     load();
   }, [load]);
 
-  const runningTrip =
-    trips?.find((trip) => trip.status?.toUpperCase() === "RUNNING") ?? null;
+  const runningTrip = trips?.find(isActiveDriverTrip) ?? null;
   const sortedTrips = useMemo(() => sortDriverTrips(trips ?? []), [trips]);
   const startableTrips = useMemo(() => {
     return sortedTrips.filter((trip) => {
       const status = trip.status?.toUpperCase();
-      return (
-        trip.tripId != null &&
-        status !== "RUNNING" && status !== "COMPLETED" && status !== "CANCELLED"
+      return trip.tripId != null && (
+        status !== "RUNNING" && status !== "COMPLETED" && status !== "CANCELLED" &&
+        !isDriverTripExpired(trip, renderedAt)
       );
     });
-  }, [sortedTrips]);
-  const nextTrip = runningTrip ?? startableTrips[0] ?? null;
-  const elapsed = useElapsed(!!runningTrip);
+  }, [renderedAt, sortedTrips]);
+  const nextTrip = runningTrip
+    ?? startableTrips.find((trip) => canStartDriverTrip(trip))
+    ?? startableTrips.find((trip) => {
+      if (!trip.serviceDate || !trip.departureTime) return false;
+      return (driverTripScheduledAt(trip) ?? 0) > renderedAt;
+    })
+    ?? startableTrips[0]
+    ?? null;
+  const elapsed = useElapsed(runningTrip?.departedAt);
   const activeVehicle = syncedVehicleForTrip(trackingSnapshot, runningTrip);
   const activeStops = stopsForSelectedDriverDirection(runningTrip);
   const activeCurrentIndex = currentStopIndexForVehicle(
     activeStops,
     activeVehicle,
   );
-  const activeRemainingStops = runningTrip
+  const activeRemainingStops = activeVehicle && activeCurrentIndex >= 0
     ? Math.max(0, activeStops.length - activeCurrentIndex - 1)
-    : 0;
+    : null;
   const activeAtLastStop =
-    !!runningTrip &&
+    !!activeVehicle &&
     activeStops.length > 0 &&
     activeCurrentIndex >= activeStops.length - 1;
+  const activeMapStops = driverTrackingStopsForMap(trackingSnapshot);
+  const activeMapPolylines = driverTrackingPolylines(trackingSnapshot);
+  const activeBusLat = numericValue(activeVehicle?.latitude);
+  const activeBusLng = numericValue(activeVehicle?.longitude);
+  const activeMapBuses = activeVehicle && activeBusLat != null && activeBusLng != null
+    ? [{
+        id: activeVehicle.vehicleId,
+        plate: activeVehicle.plateNumber || runningTrip?.licensePlate || "Xe đang chạy",
+        routeCode: activeVehicle.routeCode || trackingSnapshot?.routeCode || "BUS",
+        routeColor: activeMapPolylines[0]?.color || "#144fcc",
+        lat: activeBusLat,
+        lng: activeBusLng,
+        etaMinutes: activeVehicle.etaMinutes,
+        driverName: activeVehicle.driverName,
+      }]
+    : [];
+  const compactStopStart = activeCurrentIndex >= 0 ? Math.max(0, activeCurrentIndex - 1) : 0;
+  const compactStops = activeStops.slice(compactStopStart, compactStopStart + 5);
 
   useEffect(() => {
     if (!runningTrip?.routeId) {
@@ -1179,8 +1223,8 @@ function DriverActiveTrip({
     let cancelled = false;
     const refreshTracking = async () => {
       try {
-        const snapshot = await transportApi.trackRoute(
-          runningTrip.routeId,
+        const snapshot = await operationsApi.driverTripTracking(
+          runningTrip.tripId,
         );
         if (!cancelled) setTrackingSnapshot(snapshot);
       } catch {
@@ -1193,7 +1237,7 @@ function DriverActiveTrip({
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [runningTrip?.routeId]);
+  }, [runningTrip?.routeId, runningTrip?.tripId]);
 
   const startTrip = async (tripId: number) => {
     if (starting || ending) return;
@@ -1243,7 +1287,7 @@ function DriverActiveTrip({
     return (
       <PageTransition>
         <PageHeader
-          title="Chuyến đang chạy"
+        title="Chuyến hiện tại"
           icon={<PlayCircle className="size-7" />}
         />
         <EmptyState
@@ -1256,14 +1300,9 @@ function DriverActiveTrip({
   }
 
   return (
-    <PageTransition className="space-y-6 min-w-0">
+    <PageTransition className="space-y-6 sm:space-y-8 min-w-0">
       <PageHeader
-        title="Chuyến đang chạy"
-        description={
-          runningTrip
-            ? "Theo dõi và kết thúc chuyến đang chạy."
-            : "Chọn chuyến được phân công để bắt đầu."
-        }
+        title={runningTrip ? "Chuyến đang chạy" : "Chuyến sắp tới"}
         icon={<PlayCircle className="size-7" />}
       />
 
@@ -1273,116 +1312,127 @@ function DriverActiveTrip({
             initial={{ opacity: 0, y: 16, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ type: "spring", stiffness: 260, damping: 24 }}
-            className="relative overflow-hidden rounded-[32px] border border-[#DDEFD0] p-0 shadow-[0_16px_45px_rgba(20,20,15,0.06)]"
-            style={{
-              backgroundColor: runningTrip ? "#F1F8E8" : "#FAF8F2",
-              color: "#14140f",
-            }}
+            className="relative min-w-0"
           >
-            <div className="absolute -top-12 -right-12 size-48 rounded-full bg-[#beff50]/40 blur-3xl pointer-events-none" />
-            <div className={cn("h-1.5", runningTrip ? "bg-[#22c55e]" : "bg-[#F8C26A]")} />
-            <div className="relative grid gap-5 p-5 sm:p-6 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-start">
-              <div className="min-w-0">
+            <div className="grid gap-4">
+              <ExpressiveCard variant="elevated" className="min-w-0 p-4 sm:p-5">
               <div className="flex items-center gap-2 mb-3 flex-wrap">
-                <span className="inline-flex h-8 px-3 rounded-full bg-[#14140f] text-white text-xs font-black items-center gap-2">
+                <M3StatusPill
+                  label={activeAtLastStop ? "Đã đến điểm cuối" : runningTrip ? "Đang chạy" : driverTripStartLabel(nextTrip)}
+                  tone={runningTrip ? "success" : "warning"}
+                />
+                <span className="inline-flex h-7 px-3 rounded-full bg-surface-container text-xs font-bold items-center">
+                  {nextTrip.licensePlate || "Chưa gán xe"}
+                </span>
+                {runningTrip && (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-bold text-on-surface-variant">
                   {runningTrip ? (
                     <motion.span
-                      className="size-1.5 rounded-full bg-[#beff50]"
+                      className="size-1.5 rounded-full bg-primary"
                       animate={{ opacity: [1, 0.3, 1] }}
                       transition={{ duration: 1.4, repeat: Infinity }}
                     />
-                  ) : (
-                    <PlayCircle className="size-3.5" />
-                  )}
-                  {activeAtLastStop
-                    ? "ĐÃ ĐẾN ĐIỂM CUỐI"
-                    : runningTrip
-                      ? "ĐANG CHẠY"
-                      : "SẴN SÀNG BẮT ĐẦU"}
-                </span>
-                <span className="inline-flex h-7 px-3 rounded-full bg-[#14140f]/10 text-xs font-bold items-center">
-                  {nextTrip.licensePlate || "Chưa gán xe"}
-                </span>
+                  ) : null}
+                  Cập nhật trực tiếp
+                  </span>
+                )}
               </div>
 
-              <h2 className="text-2xl sm:text-3xl font-black mb-2 truncate text-[#14140f]">
+              <h2 className="mb-2 truncate text-xl font-bold sm:text-2xl">
                 {nextTrip.routeName}
               </h2>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5 text-sm">
                 <div>
-                  <p className="text-[#14140f]/70 font-bold text-xs uppercase">
+                  <p className="text-xs text-on-surface-variant">
                     Khởi hành
                   </p>
-                  <p className="font-black">
+                  <p className="font-bold">
                     {nextTrip.departureTime || formatDate(nextTrip.serviceDate)}
                   </p>
                 </div>
                 <div>
-                  <p className="text-[#14140f]/70 font-bold text-xs uppercase">
+                  <p className="text-xs text-on-surface-variant">
                     Phụ xe
                   </p>
-                  <p className="font-black truncate">
+                  <p className="font-bold truncate">
                     {nextTrip.conductorName || "Chưa gán"}
                   </p>
                 </div>
                 <div>
-                  <p className="text-[#14140f]/70 font-bold text-xs uppercase">
+                  <p className="text-xs text-on-surface-variant">
                     Thời gian chạy
                   </p>
-                  <p className="font-black tabular-nums">
+                  <p className="font-bold tabular-nums">
                     {runningTrip ? fmtTimer(elapsed) : "00:00:00"}
                   </p>
                 </div>
               </div>
 
-              {(runningTrip
-                ? activeStops
-                : stopsForSelectedDriverDirection(nextTrip)
-              ).length > 0 && (
-                <div className="rounded-[24px] border border-[#E8E2D5] bg-white/75 p-4 shadow-sm">
-                  <HorizontalTimeline
-                    stops={
-                      runningTrip
-                        ? activeStops
-                        : stopsForSelectedDriverDirection(nextTrip)
-                    }
-                    currentIndex={runningTrip ? activeCurrentIndex : undefined}
-                  />
-                  {runningTrip && activeVehicle && (
-                    <div className="grid gap-2 text-xs font-bold text-[#14140f]/75 sm:grid-cols-4">
-                      <span className="rounded-2xl bg-white/45 px-3 py-2">
-                        Trạm kế:{" "}
-                        {activeAtLastStop
-                          ? "Điểm cuối"
-                          : activeVehicle.nextStopName || "Đang xác định"}
-                      </span>
-                      <span className="rounded-2xl bg-white/45 px-3 py-2">
-                        ETA:{" "}
-                        {activeAtLastStop
-                          ? "Đã đến"
-                          : activeVehicle.etaMinutes != null
-                            ? `${activeVehicle.etaMinutes} phút`
-                            : "--"}
-                      </span>
-                      <span className="rounded-2xl bg-white/45 px-3 py-2">
-                        Còn lại: {activeRemainingStops} trạm
-                      </span>
-                      <span className="rounded-2xl bg-white/45 px-3 py-2">
-                        Tốc độ:{" "}
-                        {Math.round(numericValue(activeVehicle.speedKmh) || 0)}{" "}
-                        km/h
-                      </span>
+              {runningTrip ? (
+                <div className="space-y-4">
+                  <div id="driver-trip-map" className="h-[480px] scroll-mt-4 overflow-hidden rounded-xl border bg-surface-container-low">
+                    {activeMapStops.length >= 2 ? (
+                      <JourneyMap
+                        stops={activeMapStops}
+                        polylines={activeMapPolylines}
+                        buses={activeMapBuses}
+                        allowFallbackPolyline={false}
+                        nextStopIndex={activeCurrentIndex >= 0 ? activeCurrentIndex : undefined}
+                        routeColor={activeMapPolylines[0]?.color || "#144fcc"}
+                        className="h-full"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-sm font-semibold text-[#6B6B6B]">
+                        Chưa có dữ liệu bản đồ cho chuyến này.
+                      </div>
+                    )}
+                  </div>
+                  <div className="grid gap-2 text-xs sm:grid-cols-4">
+                    <span className="rounded-xl bg-surface-container-low px-3 py-2">
+                      Trạm kế: {activeVehicle?.nextStopName || "—"}
+                    </span>
+                    <span className="rounded-xl bg-surface-container-low px-3 py-2">
+                      ETA: {activeVehicle?.etaMinutes != null ? `${activeVehicle.etaMinutes} phút` : "—"}
+                    </span>
+                    <span className="rounded-xl bg-surface-container-low px-3 py-2">
+                      Còn lại: {activeRemainingStops != null ? `${activeRemainingStops} trạm` : "—"}
+                    </span>
+                    <span className="rounded-xl bg-surface-container-low px-3 py-2">
+                      Tốc độ: {activeVehicle?.speedKmh != null ? `${Math.round(numericValue(activeVehicle.speedKmh) || 0)} km/h` : "—"}
+                    </span>
+                  </div>
+                  {compactStops.length > 0 && (
+                    <div className="rounded-xl bg-surface-container-low p-4">
+                      <p className="mb-3 text-xs font-bold text-on-surface-variant">Các trạm gần nhất</p>
+                      <div className="space-y-2">
+                        {compactStops.map((stop, index) => {
+                          const realIndex = compactStopStart + index;
+                          const passed = activeCurrentIndex >= 0 && realIndex < activeCurrentIndex;
+                          const current = activeCurrentIndex >= 0 && realIndex === activeCurrentIndex;
+                          return (
+                            <div key={`${stop.stopId}-${stop.stopOrder ?? realIndex}`} className="flex items-center gap-3 rounded-xl bg-surface px-3 py-2">
+                              <span className={cn("size-2.5 rounded-full", current ? "bg-[#144fcc]" : passed ? "bg-[#9CA3AF]" : "bg-[#beff50]")} />
+                              <p className={cn("min-w-0 flex-1 truncate text-sm font-semibold", passed && "text-[#6B6B6B]")}>{stop.stopName}</p>
+                              <span className="text-xs font-bold text-[#6B6B6B]">{current ? "Sắp tới" : passed ? "Đã qua" : "Tiếp theo"}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
                 </div>
-              )}
-              </div>
+              ) : stopsForSelectedDriverDirection(nextTrip).length > 0 ? (
+                <div className="rounded-xl bg-surface-container-low p-4 text-sm text-on-surface-variant">
+                  Chuyến chưa bắt đầu. Bản đồ và vị trí xe sẽ xuất hiện sau khi tài xế bấm bắt đầu chuyến.
+                </div>
+              ) : null}
+              </ExpressiveCard>
 
-              <div className="flex flex-col gap-2 rounded-[24px] bg-white/80 p-4 shadow-sm lg:sticky lg:top-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
                 {runningTrip ? (
                   <ExpressiveButton
                     variant="filled"
-                    className="h-11 justify-center rounded-2xl bg-[#14140f] text-[#beff50]"
+                    className="h-11 justify-center rounded-full"
                     onClick={() => endTrip(runningTrip.tripId)}
                     disabled={ending === runningTrip.tripId}
                   >
@@ -1396,9 +1446,9 @@ function DriverActiveTrip({
                 ) : (
                   <ExpressiveButton
                     variant="filled"
-                    className="h-11 justify-center rounded-2xl bg-[#14140f] text-white"
+                    className="h-11 justify-center rounded-full"
                     onClick={() => startTrip(nextTrip.tripId)}
-                    disabled={starting === nextTrip.tripId}
+                    disabled={starting === nextTrip.tripId || !canStartDriverTrip(nextTrip)}
                   >
                     <PlayCircle className="size-4" />
                     Bắt đầu chuyến
@@ -1406,19 +1456,11 @@ function DriverActiveTrip({
                 )}
                 <ExpressiveButton
                   variant="outlined"
-                  className="h-11 justify-center rounded-2xl border-[#14140f] text-[#14140f]"
-                  onClick={() => {
-                    const routeTrip = runningTrip || nextTrip;
-                    if (routeTrip && typeof window !== "undefined")
-                      window.sessionStorage.setItem(
-                        DRIVER_ROUTE_SELECTED_TRIP_KEY,
-                        driverTripKey(routeTrip),
-                      );
-                    onNavigate("drv-route");
-                  }}
+                  className="h-11 justify-center rounded-full"
+                  onClick={() => onNavigate("drv-contact")}
                 >
-                  <Navigation className="size-4" />
-                  Xem lộ trình
+                  <Phone className="size-4" />
+                  Liên hệ điều phối
                 </ExpressiveButton>
               </div>
             </div>
@@ -1434,16 +1476,15 @@ function DriverActiveTrip({
 
       <Section title="Danh sách chuyến được phân công">
         <div className="space-y-4">
-          {sortedTrips.map((trip, index) => {
+          {sortedTrips.filter((trip) => {
+            const status = String(trip.status || "").toUpperCase();
+            return status !== "RUNNING" && status !== "COMPLETED" && status !== "CANCELLED"
+              && !isDriverTripExpired(trip, renderedAt)
+              && (!nextTrip || driverTripKey(trip) !== driverTripKey(nextTrip));
+          }).map((trip, index) => {
             const status = trip.status?.toUpperCase();
             const statusPill = tripStatusPill(trip.status);
-            const isRunning = status === "RUNNING";
-            const isDone = status === "COMPLETED";
-            const canStart =
-              trip.tripId != null &&
-              status !== "RUNNING" &&
-              status !== "COMPLETED" &&
-              status !== "CANCELLED";
+            const canStart = canStartDriverTrip(trip);
             return (
               <ExpressiveCard
                 key={
@@ -1451,58 +1492,36 @@ function DriverActiveTrip({
                   `${trip.scheduleId ?? trip.routeId}-${trip.serviceDate ?? "date"}-${trip.departureTime ?? index}`
                 }
                 variant="elevated"
-                className={cn(
-                  "overflow-hidden rounded-[28px] border bg-white p-0 shadow-[0_10px_30px_rgba(20,20,15,0.04)]",
-                  isRunning ? "border-[#B8F5CC]" : "border-[#E8E2D5]",
-                )}
+                className="min-w-0 p-4"
               >
-                <div className={cn("h-1.5", isRunning ? "bg-[#22c55e]" : isDone ? "bg-[#9CA3AF]" : "bg-[#F8C26A]")} />
-                <div className="grid gap-4 p-5 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-center">
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_160px] lg:items-center">
                   <div className="min-w-0">
                     <div className="mb-3 flex items-start justify-between gap-3">
-                      <div className="flex min-w-0 items-center gap-3">
-                        <div className={cn(
-                          "flex size-12 shrink-0 items-center justify-center rounded-2xl",
-                          isRunning ? "bg-[#B8F5CC] text-[#14532d]" : isDone ? "bg-[#ECECEC] text-[#4B5563]" : "bg-[#FFF0CF] text-[#92400e]",
-                        )}>
-                          <Bus className="size-5" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="truncate text-base font-black text-[#14140f]">{trip.routeName}</p>
-                          <p className="text-xs font-semibold text-[#6B6B6B]">
-                            {trip.departureTime || formatDate(trip.serviceDate)} - {trip.licensePlate || "Chưa gán xe"}
-                          </p>
-                        </div>
+                      <div className="min-w-0">
+                        <p className="truncate font-bold">{trip.routeName || `Tuyến ${trip.routeId}`}</p>
+                        <p className="text-xs text-on-surface-variant">
+                          {trip.departureTime || "—"} · {trip.licensePlate || "Chưa gán xe"}
+                        </p>
                       </div>
                       <M3StatusPill label={statusPill.label} tone={statusPill.tone} />
                     </div>
                     {trip.stops && trip.stops.length > 0 && (
-                      <div className="rounded-2xl bg-[#FAF8F2] p-3">
-                        <HorizontalTimeline
-                          stops={trip.stops}
-                          currentIndex={
-                            status === "RUNNING"
-                              ? currentStopIndexForVehicle(
-                                  trip.stops,
-                                  syncedVehicleForTrip(trackingSnapshot, trip),
-                                )
-                              : undefined
-                          }
-                        />
+                      <div className="rounded-xl bg-surface-container-low p-3">
+                        <HorizontalTimeline stops={trip.stops} />
                       </div>
                     )}
-                    <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
-                      <div className="rounded-2xl bg-[#FAF8F2] px-3 py-2"><span className="font-bold text-[#6B6B6B]">Phụ xe</span><p className="truncate font-black text-[#14140f]">{trip.conductorName || "--"}</p></div>
-                      <div className="rounded-2xl bg-[#FAF8F2] px-3 py-2"><span className="font-bold text-[#6B6B6B]">Điện thoại</span><p className="truncate font-black text-[#14140f]">{trip.conductorPhone || "--"}</p></div>
-                      <div className="rounded-2xl bg-[#FAF8F2] px-3 py-2"><span className="font-bold text-[#6B6B6B]">Số trạm</span><p className="font-black text-[#14140f]">{trip.stops?.length || 0}</p></div>
+                    <div className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-3">
+                      <div><p className="text-on-surface-variant">Phụ xe</p><p className="truncate font-bold">{trip.conductorName || "Chưa gán"}</p></div>
+                      <div><p className="text-on-surface-variant">Điện thoại</p><p className="truncate font-bold">{trip.conductorPhone || "—"}</p></div>
+                      <div><p className="text-on-surface-variant">Số trạm</p><p className="font-bold">{trip.stops?.length || 0}</p></div>
                     </div>
                   </div>
-                  <div className="flex flex-col gap-2">
+                  <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
                     {canStart && (
                       <ExpressiveButton
                         variant="filled"
                         size="sm"
-                        className="h-10 justify-center rounded-2xl bg-[#14140f] text-white"
+                        className="h-10 flex-1 justify-center rounded-full lg:flex-none"
                         onClick={() => startTrip(trip.tripId)}
                         disabled={starting === trip.tripId || !!runningTrip}
                       >
@@ -1558,7 +1577,7 @@ function DriverRoute() {
       const data = await operationsApi.driverTrips();
       setTrips(data);
       const runningTrips = data.filter(
-        (item) => item.status?.toUpperCase() === "RUNNING",
+        (item) => isActiveDriverTrip(item),
       );
       const storedRunningTrip = runningTrips.find(
         (item) => driverTripKey(item) === selectedTripKey,
@@ -1594,7 +1613,7 @@ function DriverRoute() {
         }
         try {
           setTrackingSnapshot(
-            await transportApi.trackRoute(selectedTrip.routeId),
+            await operationsApi.driverTripTracking(selectedTrip.tripId),
           );
         } catch {
           setTrackingSnapshot(null);
@@ -1611,7 +1630,7 @@ function DriverRoute() {
   }, [selectedTripKey]);
 
   const runningTrips = useMemo(
-    () => trips.filter((item) => item.status?.toUpperCase() === "RUNNING"),
+    () => trips.filter((item) => isActiveDriverTrip(item)),
     [trips],
   );
 
@@ -1624,18 +1643,19 @@ function DriverRoute() {
     let cancelled = false;
     const refreshTracking = async () => {
       try {
-        const snapshot = await transportApi.trackRoute(trip.routeId);
+        const snapshot = await operationsApi.driverTripTracking(trip.tripId);
         if (!cancelled) setTrackingSnapshot(snapshot);
       } catch {
         if (!cancelled) setTrackingSnapshot(null);
       }
     };
+    refreshTracking();
     const timer = window.setInterval(refreshTracking, 3000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [trip?.routeId]);
+  }, [trip?.routeId, trip?.tripId]);
 
   const mapStops = useMemo(() => {
     const trackingStops = driverTrackingStopsForMap(trackingSnapshot);
@@ -1702,7 +1722,7 @@ function DriverRoute() {
       : [];
 
   return (
-    <PageTransition className="space-y-6 min-w-0">
+    <PageTransition className="space-y-6 sm:space-y-8 min-w-0">
       <PageHeader
         title="Lộ trình chuyến"
         description="Chi tiết các trạm dừng trên tuyến."
@@ -2040,46 +2060,30 @@ function DriverHistory({ ctx }: { ctx: Ctx }) {
                   <ExpressiveCard
                     key={driverTripKey(trip) || `${trip.routeId}-${trip.serviceDate}-${index}`}
                     variant="elevated"
-                    className={cn(
-                      "overflow-hidden rounded-[28px] border bg-white p-0 shadow-[0_10px_30px_rgba(20,20,15,0.04)]",
-                      isCancelled ? "border-[#FFD6D6]" : "border-[#B8F5CC]",
-                    )}
+                    className={cn("min-w-0 p-4", isCancelled && "bg-error-container/20")}
                   >
-                    <div className={cn("h-1.5", isCancelled ? "bg-error" : "bg-[#22c55e]")} />
-                    <div className="space-y-4 p-5">
-                      <div className="flex min-w-0 items-start gap-4">
-                        <div className={cn(
-                          "flex size-12 shrink-0 items-center justify-center rounded-2xl",
-                          isCancelled ? "bg-error-container text-error" : "bg-[#B8F5CC] text-[#14532d]",
-                        )}>
-                          {isCancelled ? <XCircle className="size-5" /> : <CheckCircle2 className="size-5" />}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="mb-2 flex flex-wrap items-center gap-2">
-                            <p className="text-base font-black text-[#14140f]">{trip.routeName}</p>
-                            <M3StatusPill label={statusPill.label} tone={statusPill.tone} />
-                          </div>
-                          <p className="text-sm font-semibold text-[#6B6B6B]">
-                            {formatDate(trip.serviceDate)} · Giờ lịch: {trip.departureTime || "Chưa có giờ"}
+                    <div className="space-y-3">
+                      <div className="flex min-w-0 items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate font-bold">{trip.routeName}</p>
+                          <p className="text-xs text-on-surface-variant">
+                            {formatDate(trip.serviceDate)} · {trip.departureTime || "Chưa có giờ"}
                           </p>
                         </div>
+                        <M3StatusPill label={statusPill.label} tone={statusPill.tone} />
                       </div>
-                      <div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
-                        <div className="rounded-2xl bg-[#FAF8F2] px-4 py-3">
-                          <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Biển số</p>
-                          <p className="mt-1 break-words font-black text-[#14140f]">{trip.licensePlate || "--"}</p>
+                      <div className="grid grid-cols-1 gap-3 text-xs sm:grid-cols-3">
+                        <div>
+                          <p className="text-on-surface-variant">Bắt đầu thực tế</p>
+                          <p className="font-bold">{trip.departedAt ? formatDateTime(trip.departedAt) : "—"}</p>
                         </div>
-                        <div className="rounded-2xl bg-[#FAF8F2] px-4 py-3">
-                          <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Phụ xe</p>
-                          <p className="mt-1 break-words font-black text-[#14140f]">{trip.conductorName || "--"}</p>
+                        <div>
+                          <p className="text-on-surface-variant">Kết thúc thực tế</p>
+                          <p className="font-bold">{trip.endedAt ? formatDateTime(trip.endedAt) : "—"}</p>
                         </div>
-                        <div className="rounded-2xl bg-[#FAF8F2] px-4 py-3">
-                          <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Bắt đầu thực tế</p>
-                          <p className="mt-1 font-black text-[#14140f]">{trip.departedAt ? formatDateTime(trip.departedAt) : "--"}</p>
-                        </div>
-                        <div className="rounded-2xl bg-[#FAF8F2] px-4 py-3">
-                          <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Kết thúc thực tế</p>
-                          <p className="mt-1 font-black text-[#14140f]">{trip.endedAt ? formatDateTime(trip.endedAt) : "--"}</p>
+                        <div>
+                          <p className="text-on-surface-variant">Tổng thời gian</p>
+                          <p className="font-bold tabular-nums">{formatTripDuration(trip.departedAt, trip.endedAt)}</p>
                         </div>
                       </div>
                     </div>
@@ -2250,10 +2254,9 @@ function DriverContact() {
   }
 
   return (
-    <PageTransition className="space-y-6 min-w-0">
+    <PageTransition className="space-y-6 sm:space-y-8 min-w-0">
       <PageHeader
         title="Liên hệ điều phối"
-        description="Gửi tin nhắn hoặc báo cáo sự cố khẩn cấp (SOS)."
         icon={<Phone className="size-7" />}
       />
 

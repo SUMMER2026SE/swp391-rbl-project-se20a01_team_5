@@ -1,157 +1,265 @@
-# UniBus Demo Practice Checklist
+# Hướng dẫn chạy script và demo UniBus cho team
 
-This is the single maintained rehearsal guide for the UniBus demo. It replaces older scattered visual-test logs and seed notes.
+Đây là tài liệu thực hành chính của team. Dùng tài liệu này để chuẩn bị dữ liệu, tập demo liên role và khôi phục baseline sau khi test. Bộ test QA đầy đủ hơn nằm tại `docs/external-agent-full-qa-runbook.md`.
 
-## 1. Demo Data Control
+## 1. Nguyên tắc an toàn
 
-Run from the repository root on Windows PowerShell.
+- Chạy lệnh từ thư mục gốc repository bằng Windows PowerShell.
+- `database\RunDemoData.ps1` đọc kết nối từ `dbauth.txt` và thao tác trên **live RDS được cấu hình trong file đó**, không phải database local.
+- Trước khi chạy, luôn đọc dòng `Target database: ...` để chắc chắn đúng host/database.
+- `Audit` chỉ đọc dữ liệu. `Seed`, `Reset`, `All` có thay đổi dữ liệu live.
+- Không commit hoặc gửi công khai `dbauth.txt`, `SEPAY_WEBHOOK_API_KEY`, JWT secret hay AWS credentials.
+- Không dùng các script `*Stable*` cũ. Bộ script dưới đây là nguồn dữ liệu demo duy nhất.
+
+Yêu cầu máy có một trong hai lựa chọn:
+
+- Python + `psycopg2`; hoặc
+- PostgreSQL `psql` trong `PATH`.
+
+## 2. Lệnh quản lý dữ liệu demo
+
+### Audit — kiểm tra read-only
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File database\RunDemoData.ps1 -Mode Audit
 ```
 
-Use these only when the team intentionally changes live demo data:
+Dùng trước mỗi buổi demo. Lệnh không yêu cầu xác nhận và không sửa dữ liệu.
+
+### Seed — bổ sung/chuẩn hóa baseline
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File database\RunDemoData.ps1 -Mode Seed
+```
+
+Runner yêu cầu nhập chính xác:
+
+```text
+SEED DEMO
+```
+
+Seed dùng khi baseline thiếu tài khoản, vé, chuyến, phân công hoặc dữ liệu của DTU, UTE, VKU, FPT Đà Nẵng.
+
+### Reset — trả về kịch bản chuẩn
+
+```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File database\RunDemoData.ps1 -Mode Reset
 ```
 
-Rules:
-- `Audit` is safe and read-only.
-- `Seed` and `Reset` require typed confirmation in the runner.
-- Stable demo data targets `Trường Đại học Duy Tân` and real BUSMAP routes.
-- Do not run old seed scripts; they were removed to keep one source of truth.
+Runner yêu cầu nhập chính xác:
 
-## 2. Shared Demo Accounts
+```text
+RESET DEMO
+```
 
-Shared password: `Password123!`
+Reset dùng sau khi team đã thanh toán, quét vé, đổi trạng thái chuyến hoặc tạo dữ liệu test.
 
-| Role | Account | What to practice |
+### All — Seed rồi Audit
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File database\RunDemoData.ps1 -Mode All
+```
+
+`All` chạy `Seed` rồi `Audit`; **không chạy Reset**. Lệnh yêu cầu `SEED DEMO`.
+
+## 3. Tài khoản demo
+
+Mật khẩu chung: `Password123!`
+
+### Sinh viên
+
+| Kịch bản | Tài khoản | MSSV |
 | --- | --- | --- |
-| Student supported | `student.supported@unibus.local` | subsidized route, active monthly pass, QR, tracking |
-| Student full price | `student.fullprice@unibus.local` | public route, full-price purchase |
-| Student monthly | `student.monthly@unibus.local` | monthly pass scenario |
-| Student day ticket | `student.day@unibus.local` | single/day ticket scenario |
-| Student unpaid | `student.unpaid@unibus.local` | registered route without valid ticket |
-| Student history | `student.history@unibus.local` | history and invoice views |
-| University admin | `uniadmin.demo@unibus.local` | Duy Tân students, roster, policies, transactions |
-| Dispatcher | `dispatcher.demo@unibus.local` | schedules, assignments, live fleet |
-| Driver | `driver.demo@unibus.local` | today's trip, start/end trip, contacts |
-| Conductor | `conductor.demo@unibus.local` | assigned trip, scan QR, incident report |
-| System admin | `admin.demo@unibus.local` | universities, routes, staff, system overview |
+| DTU được trợ giá, có vé tháng | `student.supported@unibus.local` | `27211200001` |
+| DTU mua giá thường | `student.fullprice@unibus.local` | `27212100002` |
+| DTU có vé tháng | `student.monthly@unibus.local` | `27211200003` |
+| DTU có vé lượt | `student.day@unibus.local` | `27217100004` |
+| DTU đăng ký tuyến, chưa thanh toán | `student.unpaid@unibus.local` | `27212100005` |
+| DTU có lịch sử/hóa đơn | `student.history@unibus.local` | `27217200006` |
+| UTE vé tháng/vé lượt | `student.ute.monthly@unibus.local`, `student.ute.single@unibus.local` | `2411505001`, `2411505002` |
+| VKU vé tháng/vé lượt | `student.vku.monthly@unibus.local`, `student.vku.single@unibus.local` | `24ITB001`, `24ITB002` |
+| FPT vé tháng/vé lượt | `student.fpt.monthly@unibus.local`, `student.fpt.single@unibus.local` | `DE210001`, `DE210002` |
 
-Special real test student:
-- `khanhnv20a02@gmail.com`: use for a fresh Duy Tân student flow when needed.
+Có thể dùng `khanhnv20a02@gmail.com` cho flow sinh viên thật đã tồn tại; không dùng tài khoản này thay baseline khi cả team cùng tập.
 
-## 3. Student Flow
+### Nhân sự
 
-Practice with `student.supported@unibus.local` first.
+| Role | Tài khoản chính | Nội dung demo |
+| --- | --- | --- |
+| Admin trường DTU | `uniadmin.demo@unibus.local` | sinh viên, cơ sở, chính sách, giao dịch |
+| Admin trường UTE | `uniadmin.ute.demo@unibus.local` | dữ liệu UTE |
+| Admin trường VKU | `uniadmin.vku.demo@unibus.local` | dữ liệu VKU |
+| Admin trường FPT | `uniadmin.fpt.demo@unibus.local` | dữ liệu FPT |
+| Điều phối viên | `dispatcher.demo@unibus.local` | lịch, phân công, theo dõi đội xe |
+| Tài xế | `driver.demo@unibus.local` | chuyến được phân, bắt đầu/kết thúc |
+| Phụ xe | `conductor.demo@unibus.local` | chọn chuyến được phân, quét vé, sự cố |
+| Quản trị hệ thống | `admin.demo@unibus.local` | trường, tuyến, tài khoản nhân sự |
 
-Expected flow:
-1. Login.
-2. Dashboard shows Duy Tân student state.
-3. Open `Vé của tôi`.
-4. `Tuyến đã đăng ký` card shows:
-   - `Đã đăng ký`;
-   - `Đã có vé hợp lệ` for paid monthly route, or `Cần mua vé` for unpaid route;
-   - `Xem vé / QR` when monthly pass exists;
-   - `Theo dõi tuyến` always available.
-5. Open `Vé đã mua` and verify QR is visible.
-6. Open `Theo dõi tuyến` from the card.
-7. Verify route map, stops, selected stop, nearest-stop button, ETA section, and stop list.
-8. Go to payment only for an unpaid/full-price account.
-9. On payment, choose `Vé tháng` or `Vé lượt / vé ngày`, then confirm SePay QR.
+Baseline còn có các tài khoản ca sáng/chiều và tài xế/phụ xe theo tuyến. Chỉ dùng khi cần demo nhiều xe; chạy `Audit` để đối chiếu dữ liệu hiện có.
 
-Expected result:
-- Tracking is not blocked by unpaid status.
-- Payment amount must match the button/QR amount.
-- If SePay simulator is used, transfer content must include `DH<orderId>` and exact amount.
+## 4. Chuẩn bị trước buổi demo
 
-## 4. University Admin Flow
+1. Pull đúng branch/commit cần trình bày.
+2. Chạy `Audit`.
+3. Nếu audit fail hoặc thiếu baseline: chạy `Seed`, sau đó chạy lại `Audit`.
+4. Kiểm tra CloudFront/API đã deploy cùng phiên bản.
+5. Đăng nhập thử bốn role chính: Student, Dispatcher, Driver, Conductor.
+6. Không Reset ngay trước giờ demo nếu chưa thống nhất với cả team vì thao tác này đổi dữ liệu live đang dùng chung.
 
-Practice with `uniadmin.demo@unibus.local`.
+## 5. Kịch bản demo liên role 15–20 phút
 
-Expected checks:
-1. Dashboard is scoped to `Trường Đại học Duy Tân`.
-2. Student list is not empty.
-3. Campus/domain/roster screens load real backend data or clear empty states.
-4. Transactions/reconciliation show demo payment rows when demo data is seeded.
-5. Subsidy policy for the supported Duy Tân route is visible.
+### Bước 1 — Sinh viên
 
-## 5. Dispatcher Flow
+Dùng `student.supported@unibus.local`:
 
-Practice with `dispatcher.demo@unibus.local`.
+1. Mở dashboard, xác nhận trường Duy Tân và số liệu hiển thị ngay sau khi tải dữ liệu.
+2. Mở `Tìm tuyến xe` hoặc `Tìm đường`, xem tuyến/trạm và đăng ký tuyến nếu kịch bản yêu cầu.
+3. Mở `Vé của tôi`:
+   - tuyến có vé tháng hiện `Đã có vé hợp lệ`;
+   - tuyến chưa có vé hiện `Cần mua vé`;
+   - QR vé đã mua mở được.
+4. Mở `Theo dõi xe`, chọn xe/chuyến trên tuyến và xem vị trí hiện tại.
+5. Mở lịch sử chuyến, phản hồi hoặc báo mất đồ nếu cần minh họa.
 
-Expected checks:
-1. Schedules load for today's date.
-2. Assign bus, driver, and conductor if the scenario requires it.
-3. Live fleet should not look broken when there is no fresh vehicle location.
-4. After assignment, driver/conductor dashboards should reflect today's trip.
+Nghiệp vụ vé:
 
-## 6. Driver Flow
+- Vé tháng không yêu cầu chọn điểm lên/xuống.
+- Vé lượt yêu cầu điểm lên và điểm xuống hợp lệ trên cùng tuyến.
+- Điểm lên/xuống của vé lượt là metadata; giá vẫn theo tuyến, **không tính theo khoảng cách**.
+- Vé lượt hết hạn cuối ngày theo giờ Việt Nam và không còn hiển thị khi đã dùng/hết hạn.
+- Hệ thống hiện quét lúc lên xe; không có scan-out cho vé tháng hoặc vé lượt.
 
-Practice with `driver.demo@unibus.local`.
+### Bước 2 — Thanh toán SePay
 
-Expected checks:
-1. Dashboard shows today's assigned trip clearly.
-2. Trip card includes route code/name, time, bus plate, and status.
-3. Start/end trip actions work only for valid trip states.
-4. Contacts/help screens load without fake fallback data.
+Dùng tài khoản chưa thanh toán hoặc giá thường:
 
-## 7. Conductor Flow
+1. Chọn tuyến và loại vé.
+2. Với vé lượt, chọn điểm xuống nằm sau điểm lên.
+3. Kiểm tra `Giá vé`, `Trường hỗ trợ`, `Sinh viên trả` và tổng QR khớp nhau.
+4. Tạo order, ghi lại `orderId`, số tiền chính xác và nội dung `DH<orderId>`.
+5. Mô phỏng giao dịch tại `https://my.sepay.vn/testmode/transaction/simulate`.
+6. Sau thành công, kiểm tra:
+   - order chuyển paid;
+   - vé tháng/vé lượt đúng loại được tạo;
+   - màn hình hoàn tất xuất hiện;
+   - hóa đơn mới nhất nằm trên cùng;
+   - không hiện hóa đơn pending vô nghĩa.
 
-Practice with `conductor.demo@unibus.local`.
-
-Expected checks:
-1. Dashboard does not show a fake active trip when trip data is incomplete.
-2. Ticket scan screen shows empty state if no valid trip is selected.
-3. Scan a valid student monthly QR or single-ticket QR.
-4. Expired/invalid QR must fail with a clear reason.
-5. Incident report submits without DB enum errors.
-
-## 8. System Admin Flow
-
-Practice with `admin.demo@unibus.local`.
-
-Expected checks:
-1. University management can view Duy Tân.
-2. Route assignment to university is visible.
-3. Staff/account management shows natural demo names and roles.
-4. Do not create new operator or schema-level demo data.
-
-## 9. SePay Simulator
-
-Webhook URL for deployed CloudFront environment:
+Webhook môi trường CloudFront:
 
 ```text
 https://d8xawk4fn4vfd.cloudfront.net/api/v1/payments/sepay/webhook
 ```
 
-Simulator fields:
-- Content/description/code must contain `DH<orderId>`.
-- Amount must exactly match QR total.
-- Transfer type must be inbound.
-
-After simulated success:
-- order status should become paid;
-- ticket/pass should be created or activated;
-- frontend should move to completion state after polling;
-- invoice/payment should no longer appear pending.
-
-## 10. Before And After Practice
-
-Before practice:
+Nếu cần hoàn tất order qua helper local/API:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File database\RunDemoData.ps1 -Mode Audit
+$env:SEPAY_WEBHOOK_API_KEY = '<nhận riêng từ người quản lý môi trường>'
+powershell -NoProfile -ExecutionPolicy Bypass -File database\CompleteDemoSePayWebhook.ps1 -OrderId <ORDER_ID> -Amount <EXACT_AMOUNT> -BackendUrl 'https://d8xawk4fn4vfd.cloudfront.net'
 ```
 
-After practice, when the team wants to restore the prepared scenario:
+Không ghi API key vào lệnh đã commit, ảnh chụp hoặc tài liệu công khai.
+
+### Bước 3 — Điều phối viên
+
+Dùng `dispatcher.demo@unibus.local`:
+
+1. Xem lịch chạy theo ngày và trạng thái từng chuyến.
+2. Kiểm tra xe, tài xế và phụ xe được phân công đầy đủ.
+3. Chỉ chỉnh phân công khi kịch bản yêu cầu; sau đó xác nhận role Driver/Conductor nhận đúng chuyến.
+4. Mở `Theo dõi tất cả xe`.
+
+Kỳ vọng tracking:
+
+- Bản đồ chỉ hiển thị các chuyến thực sự đang chạy từ backend live fleet; không lấy tổng số xe đã phân công để giả thành xe đang chạy.
+- Driver, Dispatcher và Student đọc cùng snapshot tracking cho cùng `tripId`.
+- Vị trí mô phỏng được chia sẻ và xác định theo chuyến; không có bộ đếm giả chạy riêng ở frontend.
+- Nhiều xe trên cùng tuyến phải phân biệt theo xe/chuyến, không nhảy sang xe khác.
+
+### Bước 4 — Tài xế
+
+Dùng `driver.demo@unibus.local`:
+
+1. Kiểm tra dashboard và `Danh sách chuyến được phân công`.
+2. Mỗi card phải có tuyến, giờ, biển số, trạng thái và timeline trạm ngang.
+3. Chọn đúng chuyến rồi bắt đầu chuyến.
+4. Kiểm tra Điều phối viên thấy cùng xe/chuyến và vị trí được cập nhật.
+5. Kết thúc chuyến bằng thao tác tài xế.
+
+Quy tắc:
+
+- Chỉ được bắt đầu từ 30 phút trước đến 60 phút sau giờ xuất phát.
+- Một tài xế không thể có hai chuyến đang chạy cùng lúc.
+- Tracking chuyến hiện tại bám theo `tripId` được chọn.
+- Tới trạm cuối không tự động hoàn tất; tài xế phải nhấn kết thúc chuyến.
+
+### Bước 5 — Phụ xe
+
+Dùng `conductor.demo@unibus.local`:
+
+1. Chọn một chuyến được phân công hợp lệ, không chọn tùy ý mọi tuyến.
+2. Quét QR vé tháng và/hoặc vé lượt của sinh viên.
+3. Kiểm tra lịch sử vé quét theo chuyến.
+4. Thử QR hết hạn/không hợp lệ để thấy thông báo rõ ràng.
+5. Gửi báo cáo sự cố hoặc báo mất đồ nếu kịch bản yêu cầu.
+
+Quy tắc scan:
+
+- Backend quyết định cửa sổ scan theo giờ Việt Nam và lịch chuyến.
+- Vé lượt chỉ dùng thành công một lần trên toàn hệ thống (`UNUSED` → `USED`). Quét lại phải thất bại và không tạo trùng lịch sử.
+- Vé tháng có thể dùng cho các chuyến hợp lệ trong thời hạn. Hiện tại cùng một chuyến có thể nhận lại kết quả scan hợp lệ, nhưng travel history chỉ giữ một bản ghi.
+- Không demo scan xuống xe vì hệ thống chưa có nghiệp vụ scan-out.
+
+### Bước 6 — Admin trường và Admin hệ thống
+
+Admin trường:
+
+1. Đăng nhập đúng tài khoản trường cần trình bày.
+2. Kiểm tra dashboard chỉ có dữ liệu thuộc trường đó.
+3. Xem sinh viên, cơ sở/domain, chính sách trợ giá và giao dịch.
+4. Xử lý hồ sơ xác minh nếu kịch bản yêu cầu.
+
+Admin hệ thống:
+
+1. Xem danh sách trường và tuyến.
+2. Kiểm tra gán tuyến cho trường.
+3. Xem/tạo tài khoản nhân sự với đúng role.
+4. Không tạo thêm operator hoặc dữ liệu schema-level ngoài phạm vi demo.
+
+## 6. Sau khi tập demo
+
+Nếu buổi tập có thay đổi dữ liệu:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File database\RunDemoData.ps1 -Mode Reset
 powershell -NoProfile -ExecutionPolicy Bypass -File database\RunDemoData.ps1 -Mode Audit
 ```
 
-If audit fails, fix data/script first. Do not hide failures with frontend mock data.
+Chỉ kết thúc khi Audit pass. Nếu Audit fail, ghi lại lỗi và sửa dữ liệu/script; không che lỗi bằng mock frontend.
+
+## 7. Xử lý lỗi nhanh
+
+| Hiện tượng | Kiểm tra |
+| --- | --- |
+| Script báo thiếu auth | Có `dbauth.txt` ở root và đủ `endpoint`, `port`, `initialdb`, `username`, `password` |
+| Script không có runner | Cài `psycopg2` hoặc thêm `psql` vào `PATH` |
+| Seed/Reset không chạy | Nhập đúng `SEED DEMO` hoặc `RESET DEMO` |
+| Role không thấy dữ liệu | Chạy Audit; kiểm tra đúng account/trường và backend đang trỏ cùng RDS |
+| Driver không thấy chuyến | Kiểm tra ngày, phân công, lifecycle và tài khoản driver |
+| Dispatcher không thấy xe | Chuyến phải ở trạng thái đang chạy; xe đã phân công chưa đồng nghĩa đang chạy |
+| Conductor không quét được | Kiểm tra chuyến được phân, cửa sổ scan, loại vé, hạn vé và route |
+| Thanh toán thành công nhưng chưa có vé | Kiểm tra đúng `DH<orderId>`, amount, webhook response, order/payment/ticket |
+| CloudFront khác localhost | Xác nhận commit deploy, cache trình duyệt và backend API đang chạy đúng version |
+
+## 8. Checklist chốt trước khi trình bày
+
+- [ ] `Audit` pass.
+- [ ] CloudFront và backend cùng phiên bản.
+- [ ] Tài khoản demo đăng nhập được.
+- [ ] Student thấy tuyến, vé, QR và tracking.
+- [ ] SePay dùng đúng amount và `DH<orderId>`.
+- [ ] Driver thấy timeline chuyến và thao tác đúng cửa sổ giờ.
+- [ ] Dispatcher thấy cùng snapshot của chuyến đang chạy.
+- [ ] Conductor chỉ chọn chuyến được phân và quét đúng loại vé.
+- [ ] Admin trường thấy đúng dữ liệu trường.
+- [ ] Sau rehearsal đã Reset + Audit nếu có mutation.
