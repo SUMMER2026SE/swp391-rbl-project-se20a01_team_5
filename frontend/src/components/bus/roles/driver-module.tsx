@@ -828,7 +828,9 @@ function DriverDashboard({
   const upcomingTrips = sortDriverTrips(ctx.trips
     .filter((trip: any) => !isDriverTripExpired(trip, renderedAt) && !["RUNNING", "COMPLETED", "CANCELLED"].includes(String(trip.status || "").toUpperCase())))
     .slice(0, 3);
-  const statCards = ctx.stats.slice(0, 4);
+  const statCards = ctx.stats.slice(0, 4).map((stat) =>
+    activeTrip && stat.label === "Đang chạy" ? { ...stat, value: 1 } : stat,
+  );
 
   return (
     <PageTransition className="space-y-6 sm:space-y-8 min-w-0">
