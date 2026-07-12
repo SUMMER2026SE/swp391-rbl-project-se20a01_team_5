@@ -37,6 +37,19 @@ public class FeedbackRepository {
                 """, (rs, rowNum) -> mapView(rs), tripId, content, rating, userId);
     }
 
+    public boolean existsByUserIdAndTripId(Integer userId, Integer tripId) {
+        Boolean exists = jdbcTemplate.queryForObject("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM feedback f
+                    JOIN students s ON s.student_code = f.student_code
+                    WHERE s.user_id = ?
+                      AND f.trip_id = ?
+                )
+                """, Boolean.class, userId, tripId);
+        return Boolean.TRUE.equals(exists);
+    }
+
     public List<FeedbackView> findByUserId(Integer userId, int limit, int offset) {
         return jdbcTemplate.query("""
                 SELECT f.feedback_id, f.student_code, submitter.full_name AS student_name,

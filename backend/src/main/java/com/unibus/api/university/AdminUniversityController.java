@@ -26,6 +26,7 @@ import com.unibus.api.university.UniversityDtos.CreateUniversityAdminRequest;
 import com.unibus.api.university.UniversityDtos.CreateUniversityRequest;
 import com.unibus.api.university.UniversityDtos.DomainView;
 import com.unibus.api.university.UniversityDtos.PaymentTransactionView;
+import com.unibus.api.university.UniversityDtos.ReportExportAuditRequest;
 import com.unibus.api.university.UniversityDtos.RouteUniversityView;
 import com.unibus.api.university.UniversityDtos.SubsidyPolicyView;
 import com.unibus.api.university.UniversityDtos.UniversityAdminView;
@@ -151,5 +152,13 @@ public class AdminUniversityController {
             @RequestParam(required = false) Integer universityId,
             @RequestParam(required = false) String action) {
         return ApiResponse.ok("Audit logs retrieved", service.auditLogs(universityId, action));
+    }
+
+    @PostMapping("/audit-logs/report-export")
+    ApiResponse<Void> auditReportExport(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @RequestBody ReportExportAuditRequest request) {
+        service.auditReportExport(currentUser, request);
+        return ApiResponse.ok("Report export audited", null);
     }
 }

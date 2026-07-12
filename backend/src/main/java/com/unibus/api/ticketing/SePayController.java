@@ -1,5 +1,7 @@
 package com.unibus.api.ticketing;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Map;
 
 import org.springframework.http.HttpStatus;
@@ -30,13 +32,15 @@ public class SePayController {
     @PreAuthorize("hasRole('STUDENT')")
     public ApiResponse<Map<String, Object>> createOrder(
             @AuthenticationPrincipal CurrentUser currentUser,
-            @RequestBody Map<String, String> request) {
-        String ticketType = request.get("ticketType");
+            @RequestBody Map<String, Object> request) {
+        String ticketType = request.get("ticketType") == null ? null : String.valueOf(request.get("ticketType"));
         if (ticketType == null || ticketType.isBlank()) {
             ticketType = "monthly";
         }
-        Integer routeId = parseRouteId(request.get("routeId"));
-        Map<String, Object> orderDetails = sePayService.createOrder(currentUser, ticketType, routeId);
+        Integer routeId = parseInteger(request.get("routeId"), "routeId");
+        Integer boardingStopId = parseInteger(request.get("boardingStopId"), "boardingStopId");
+        Integer alightingStopId = parseInteger(request.get("alightingStopId"), "alightingStopId");
+        Map<String, Object> orderDetails = sePayService.createOrder(currentUser, ticketType, routeId, boardingStopId, alightingStopId);
         return ApiResponse.ok("Payment order created", orderDetails);
     }
 
@@ -51,7 +55,12 @@ public class SePayController {
 
     @PostMapping({"/api/v1/payments/sepay/webhook", "/sepay_webhook.php"})
     public ResponseEntity<Map<String, Object>> handleWebhook(
+            @RequestHeader(name = "Authorization", required = false) String authorization,
             @RequestBody Map<String, Object> payload) {
+        if (!validWebhookAuthorization(authorization)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("success", false, "message", "Invalid webhook API key"));
+        }
         try {
             Map<String, Object> result = sePayService.processWebhook(payload);
             boolean processed = Boolean.TRUE.equals(result.get("processed"));
@@ -65,14 +74,32 @@ public class SePayController {
         }
     }
 
-    private Integer parseRouteId(String raw) {
-        if (raw == null || raw.isBlank()) {
+    private boolean validWebhookAuthorization(String authorization) {
+        String prefix = "Apikey ";
+        if (authorization == null || !authorization.regionMatches(true, 0, prefix, 0, prefix.length())) {
+            return false;
+        }
+        String expected = sePayService.getWebhookApiKey();
+        String provided = authorization.substring(prefix.length()).trim();
+        return expected != null
+                && !expected.isBlank()
+                && MessageDigest.isEqual(
+                        expected.getBytes(StandardCharsets.UTF_8),
+                        provided.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private Integer parseInteger(Object rawValue, String fieldName) {
+        if (rawValue == null) {
+            return null;
+        }
+        String raw = String.valueOf(rawValue).trim();
+        if (raw.isBlank()) {
             return null;
         }
         try {
             return Integer.valueOf(raw);
         } catch (NumberFormatException exception) {
-            throw new com.unibus.api.common.ApiException(HttpStatus.BAD_REQUEST, "routeId must be a number");
+            throw new com.unibus.api.common.ApiException(HttpStatus.BAD_REQUEST, fieldName + " must be a number");
         }
     }
 }

@@ -267,6 +267,9 @@ export function mapFeedback(f: FeedbackView | ExperienceFeedbackCard): Feedback 
 }
 
 export function mapLostItem(l: ExperienceLostItemCard): LostItem {
+  const rawStatus = l.status?.toUpperCase();
+  const hasReturnNote = /trả|tra/i.test(l.notes || "");
+  const status = rawStatus === "FOUND" && hasReturnNote ? "returned" : rawStatus === "FOUND" || rawStatus === "SEARCHING" ? "found" : rawStatus === "NOT_FOUND" || rawStatus === "CLOSED" ? "closed" : "reported";
   return {
     id: String(l.lostItemReportId),
     studentName: l.reporterName || "Sinh viên",
@@ -274,7 +277,7 @@ export function mapLostItem(l: ExperienceLostItemCard): LostItem {
     tripDate: "",
     item: l.itemDescription,
     description: l.notes || l.itemDescription,
-    status: (l.status?.toLowerCase() as LostItem["status"]) || "reported",
+    status,
     createdAt: l.reportedAt || "",
   };
 }
@@ -515,6 +518,7 @@ export function useDriverPrototypeData() {
       trips: (trips.raw || []).map((t: DriverTripView) => ({
         id: String(t.tripId),
         routeId: String(t.routeId),
+        routeName: t.routeName,
         busId: String(t.busId ?? 0),
         driverId: "",
         assistantId: "",

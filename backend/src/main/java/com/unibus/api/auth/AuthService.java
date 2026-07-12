@@ -94,6 +94,8 @@ public class AuthService {
         user.setStudentVerificationStatus(StudentVerificationStatus.NOT_SUBMITTED);
         user.setCreatedAt(now);
         userRepository.save(user);
+        universityManagementService.applyDomainUniversityLink(user);
+        user = userRepository.findById(user.getId()).orElse(user);
 
         return new RegisteredUser(
                 user.getId(),
@@ -112,6 +114,10 @@ public class AuthService {
         }
         if (user.getPasswordHash() == null || !passwordEncoder.matches(request.password(), user.getPasswordHash())) {
             throw invalidCredentials();
+        }
+        if (user.getRole() == UserRole.STUDENT && user.getStudentVerificationStatus() != StudentVerificationStatus.VERIFIED) {
+            universityManagementService.applyDomainUniversityLink(user);
+            user = userRepository.findById(user.getId()).orElse(user);
         }
         return createSessionTokens(user, request.device(), ipAddress);
     }
@@ -183,6 +189,10 @@ public class AuthService {
     public void requestPasswordResetOtp(String email) {
         userRepository.findByEmailIgnoreCase(normalizeEmail(email))
                 .ifPresent(user -> otpService.issue(user.getEmail(), VerificationPurpose.RESET_PASSWORD));
+    }
+
+    public void verifyPasswordResetOtp(String email, String otp) {
+        otpService.validate(normalizeEmail(email), VerificationPurpose.RESET_PASSWORD, otp);
     }
 
     @Transactional

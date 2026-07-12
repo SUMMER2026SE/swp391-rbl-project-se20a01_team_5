@@ -33,6 +33,9 @@ public class FeedbackService {
         if (request.tripId() == null) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Feedback requires trip");
         }
+        if (feedbackRepository.existsByUserIdAndTripId(currentUser.userId(), request.tripId())) {
+            throw new ApiException(HttpStatus.CONFLICT, "Bạn đã đánh giá chuyến này");
+        }
         String category = normalizeCategory(request.category());
         return feedbackRepository.create(
                 currentUser.userId(),

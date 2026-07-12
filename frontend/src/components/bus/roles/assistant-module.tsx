@@ -213,8 +213,66 @@ function isRunningTrip(trip: any | null | undefined): boolean {
   return trip?.status === "running" || String(trip?.rawStatus || trip?.status || "").toUpperCase() === "RUNNING";
 }
 
+function ticketStatusLabel(status?: string): string {
+  switch (String(status || "").toUpperCase()) {
+    case "ACTIVE": return "Đang hiệu lực";
+    case "VALID": return "Hợp lệ";
+    case "UNUSED": return "Chưa sử dụng";
+    case "USED": return "Đã sử dụng";
+    case "EXPIRED": return "Hết hạn";
+    default: return status || "—";
+  }
+}
+
+function scanBlockReason(trip: any): string | null {
+  const tripId = trip?.tripId ?? trip?.id;
+  if (!tripId) return "Thiếu mã chuyến";
+  if (!trip?.routeId) return "Thiếu mã tuyến";
+  if (!trip?.routeName?.trim?.()) return "Thiếu tên tuyến";
+  const status = String(trip?.status || trip?.rawStatus || "").toUpperCase();
+  if (status === "COMPLETED") return "Chuyến đã hoàn thành";
+  if (status === "CANCELLED") return "Chuyến đã hủy";
+  if (status === "NOT_CREATED") return "Chuyến chưa được tạo";
+  return null;
+}
+
+function isTripInScanWindow(trip: any): boolean {
+  // ponytail: demo mode keeps scanning open for assigned, non-final trips; restore strict time window for production gatekeeping.
+  return scanBlockReason(trip) === null;
+}
 function tripLabel(trip: any): string {
   return trip?.routeName || `Tuyến #${trip?.routeId || trip?.id || "?"}`;
+}
+
+function tripStatusLabel(status?: string) {
+  switch (String(status || "").toUpperCase()) {
+    case "RUNNING": return "Đang chạy";
+    case "COMPLETED": return "Hoàn thành";
+    case "CANCELLED": return "Đã hủy";
+    case "NOT_STARTED": return "Chưa khởi hành";
+    case "NOT_CREATED": return "Chưa tạo chuyến";
+    default: return status || "—";
+  }
+}
+
+function tripStatusTone(status?: string): "neutral" | "primary" | "tertiary" | "success" | "warning" | "error" {
+  switch (String(status || "").toUpperCase()) {
+    case "RUNNING": return "primary";
+    case "COMPLETED": return "success";
+    case "CANCELLED": return "error";
+    case "NOT_STARTED": return "warning";
+    default: return "neutral";
+  }
+}
+
+function tripSortTime(trip: any): number {
+  const raw = `${trip?.serviceDate || trip?.date || ""}T${trip?.departureTime || trip?.departTime || "00:00:00"}`;
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function tripStableKey(trip: any, index: number): string {
+  return String(trip?.tripId ?? trip?.id ?? `${trip?.scheduleId ?? "schedule"}-${trip?.routeId ?? "route"}-${trip?.serviceDate ?? trip?.date ?? "date"}-${trip?.departureTime ?? trip?.departTime ?? index}`);
 }
 
 // =============================================================================
@@ -479,15 +537,28 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
   const [lastResult, setLastResult] = useState<TicketScanResult | null>(null);
   const [tickets, setTickets] = useState<ConductorTicketView[] | null>(null);
   const [loadingTickets, setLoadingTickets] = useState(false);
-  const validConductorTrips = useMemo(() => ctx.conductorTrips.filter((trip) => hasTripIdentity(trip)), [ctx.conductorTrips]);
+  const [scanAudit, setScanAudit] = useState<{ code: string; result: TicketScanResult; scannedAt: string }[]>([]);
+  const [ticketFilter, setTicketFilter] = useState<"ALL" | "SINGLE" | "MONTHLY" | "SCANNED" | "UNSCANNED">("ALL");
+  const lastScanRef = useRef<{ code: string; at: number } | null>(null);
+  const validConductorTrips = useMemo(() => ctx.conductorTrips.filter((trip) => isTripInScanWindow(trip)), [ctx.conductorTrips]);
   const hasConductorTrips = ctx.conductorTrips.length > 0;
-  const hasInvalidConductorTrips = hasConductorTrips && validConductorTrips.length !== ctx.conductorTrips.length;
+  const blockedConductorTrips = useMemo(() => ctx.conductorTrips.map((trip) => ({ trip, reason: scanBlockReason(trip) })).filter((item) => item.reason), [ctx.conductorTrips]);
+  const hasInvalidConductorTrips = blockedConductorTrips.length > 0;
+  const firstScanBlockReason = blockedConductorTrips[0]?.reason || null;
+  const preferredTrip = validConductorTrips.find((trip) => isRunningTrip(trip)) || validConductorTrips[0] || null;
+  const selectedTrip = validConductorTrips.find((trip) => Number(trip.tripId) === Number(tripId)) || preferredTrip;
 
   useEffect(() => {
-    if (!tripId && validConductorTrips.length > 0) {
-      setTripId(validConductorTrips[0].tripId);
+    if (validConductorTrips.length === 0) {
+      setTripId(null);
+      setTickets(null);
+      return;
     }
-  }, [validConductorTrips, tripId]);
+    const stillOpen = validConductorTrips.some((trip) => Number(trip.tripId) === Number(tripId));
+    if (!tripId || !stillOpen) {
+      setTripId(preferredTrip?.tripId ?? null);
+    }
+  }, [preferredTrip, tripId, validConductorTrips]);
 
   const loadTickets = useCallback(async () => {
     if (!tripId) return;
@@ -504,6 +575,26 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
 
   useEffect(() => { loadTickets(); }, [loadTickets]);
 
+  const ticketKindLabel = (kind?: string) => {
+    const normalized = String(kind || "").toUpperCase();
+    if (normalized === "SINGLE") return "Vé lượt";
+    if (normalized === "MONTHLY" || normalized === "JOURNEY_MONTHLY") return "Vé tháng";
+    return kind || "—";
+  };
+
+  const filteredTickets = useMemo(() => {
+    const rows = tickets || [];
+    return rows.filter((ticket) => {
+      const kind = String(ticket.ticketKind || "").toUpperCase();
+      const status = String(ticket.status || "").toUpperCase();
+      if (ticketFilter === "SINGLE") return kind === "SINGLE";
+      if (ticketFilter === "MONTHLY") return kind === "MONTHLY" || kind === "JOURNEY_MONTHLY";
+      if (ticketFilter === "SCANNED") return Boolean(ticket.lastScannedAt) || status === "USED";
+      if (ticketFilter === "UNSCANNED") return !ticket.lastScannedAt && status !== "USED";
+      return true;
+    });
+  }, [ticketFilter, tickets]);
+
   const scan = async (qrCode?: string) => {
     const code = qrCode ?? qrInput.trim();
     if (!code || !tripId) {
@@ -511,10 +602,18 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
       return;
     }
     if (scanning) return;
+    const now = Date.now();
+    const lastScan = lastScanRef.current;
+    if (lastScan?.code === code && now - lastScan.at < 2500) {
+      toast.warning("QR vừa được quét, vui lòng chờ vài giây");
+      return;
+    }
+    lastScanRef.current = { code, at: now };
     setScanning(true);
     try {
       const r = await operationsApi.scanTicket(tripId, code);
       setLastResult(r);
+      setScanAudit((items) => [{ code, result: r, scannedAt: new Date().toISOString() }, ...items].slice(0, 8));
       if (r.valid) toast.success(r.message || "Vé hợp lệ");
       else toast.error(r.message || "Vé không hợp lệ");
       setQrInput("");
@@ -530,31 +629,36 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Quét vé"
-        description="Chọn đúng chuyến rồi quét QR để kiểm tra vé theo route/trip hiện tại."
+        description="Quét QR theo chuyến được phân công."
         icon={<ScanLine className="size-7" />}
         actions={
-          <Select value={tripId ? String(tripId) : ""} onValueChange={(value) => setTripId(Number(value))} disabled={validConductorTrips.length === 0}>
-            <SelectTrigger className="w-full sm:w-64">
-              <SelectValue placeholder={hasConductorTrips ? "Chuyến thiếu dữ liệu" : "Chưa có chuyến"} />
-            </SelectTrigger>
-            <SelectContent>
-              {validConductorTrips.map((trip) => (
-                <SelectItem key={trip.tripId} value={String(trip.tripId)}>{tripLabel(trip)} — {formatDate(trip.serviceDate)}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          validConductorTrips.length > 1 ? (
+            <Select value={tripId ? String(tripId) : ""} onValueChange={(value) => setTripId(Number(value))}>
+              <SelectTrigger className="w-full sm:w-72">
+                <SelectValue placeholder="Chọn chuyến được phân công" />
+              </SelectTrigger>
+              <SelectContent>
+                {validConductorTrips.map((trip) => (
+                  <SelectItem key={trip.tripId} value={String(trip.tripId)}>{tripLabel(trip)} — {formatDate(trip.serviceDate)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : selectedTrip ? (
+            <div className="rounded-full border border-outline-variant bg-surface px-4 py-2 text-sm font-bold text-on-surface">
+              {tripLabel(selectedTrip)} · {selectedTrip.departureTime || formatDate(selectedTrip.serviceDate)}
+            </div>
+          ) : null
         }
       />
-
 
       {validConductorTrips.length === 0 ? (
         <ExpressiveCard variant="elevated" className="p-6 text-center min-w-0 border border-outline-variant">
           <ScanLine className="size-10 mx-auto text-on-surface-variant" />
-          <p className="mt-3 text-base font-bold">{hasConductorTrips ? "Chuyến hôm nay thiếu dữ liệu" : "Hôm nay chưa có chuyến để quét"}</p>
+          <p className="mt-3 text-base font-bold">{hasInvalidConductorTrips ? "Chuyến chưa thể quét" : "Không có chuyến được phân công"}</p>
           <p className="mt-1.5 text-sm text-on-surface-variant">
-            {hasConductorTrips
-              ? "Chuyến cần có mã chuyến, tuyến và tên tuyến trước khi phụ xe quét vé."
-              : "Khi điều phối viên phân công chuyến hôm nay, màn quét vé sẽ mở lại."}
+            {hasInvalidConductorTrips
+              ? `Lý do: ${firstScanBlockReason || "chuyến không hợp lệ"}. Chuyến cần có đủ mã chuyến, mã tuyến, tên tuyến và chưa hoàn thành/hủy.`
+              : "Phụ xe cần có chuyến được phân công trước khi quét vé."}
           </p>
         </ExpressiveCard>
       ) : hasInvalidConductorTrips ? (
@@ -562,8 +666,10 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
           <div className="flex items-start gap-3">
             <AlertTriangle className="size-5 shrink-0 text-warning" />
             <div>
-              <p className="text-sm font-bold">Một số chuyến bị thiếu dữ liệu</p>
-              <p className="mt-1 text-xs text-on-surface-variant">Chỉ các chuyến có đủ mã chuyến, tuyến và tên tuyến mới được phép quét.</p>
+              <p className="text-sm font-bold">Một số chuyến chưa thể quét</p>
+              <p className="mt-1 text-xs text-on-surface-variant">
+                {blockedConductorTrips.slice(0, 3).map(({ trip, reason }) => `${tripLabel(trip)}: ${reason}`).join("; ")}
+              </p>
             </div>
           </div>
         </ExpressiveCard>
@@ -587,7 +693,7 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
                 className="w-full h-14 bg-[#beff50] text-[#14140f] hover:bg-[#a6e639]"
                 onClick={() => {
                   if (!tripId || validConductorTrips.length === 0) {
-                    toast.error(hasConductorTrips ? "Chuyến hôm nay thiếu dữ liệu, chưa thể quét" : "Hôm nay chưa có chuyến để quét");
+                    toast.error(hasConductorTrips ? "Chuyến hôm nay thiếu dữ liệu, chưa thể quét" : "Không có chuyến đang mở quét");
                     return;
                   }
                   setScannerOpen(true);
@@ -642,7 +748,7 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
                     </div>
                     <div>
                       <p className="text-on-surface-variant">Loại vé</p>
-                      <p className="font-bold truncate">{lastResult.ticket?.ticketKind || "—"}</p>
+                      <p className="font-bold truncate">{ticketKindLabel(lastResult.ticket?.ticketKind)}</p>
                     </div>
                     <div>
                       <p className="text-on-surface-variant">Tuyến hợp lệ</p>
@@ -650,7 +756,7 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
                     </div>
                     <div>
                       <p className="text-on-surface-variant">Trạng thái vé</p>
-                      <p className="font-bold truncate">{lastResult.ticket?.status || "—"}</p>
+                      <p className="font-bold truncate">{ticketStatusLabel(lastResult.ticket?.status)}</p>
                     </div>
                     <div>
                       <p className="text-on-surface-variant">Hiệu lực từ</p>
@@ -660,6 +766,18 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
                       <p className="text-on-surface-variant">Hết hạn</p>
                       <p className="font-bold truncate">{formatDate(lastResult.ticket?.expiresAt)}</p>
                     </div>
+                    {lastResult.ticket?.ticketKind === "SINGLE" && (
+                      <>
+                        <div>
+                          <p className="text-on-surface-variant">Điểm lên dự kiến</p>
+                          <p className="font-bold truncate">{lastResult.ticket?.boardingStopName || "—"}</p>
+                        </div>
+                        <div>
+                          <p className="text-on-surface-variant">Điểm xuống dự kiến</p>
+                          <p className="font-bold truncate">{lastResult.ticket?.alightingStopName || "—"}</p>
+                        </div>
+                      </>
+                    )}
                     <div className="col-span-2">
                       <p className="text-on-surface-variant">Mã lịch sử chuyến</p>
                       <p className="font-bold truncate">{lastResult.travelHistoryId ?? "—"}</p>
@@ -681,6 +799,30 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
         </ScrollReveal>
       </div>
 
+      {scanAudit.length > 0 && (
+        <Section title={`Lịch sử quét gần đây (${scanAudit.length})`}>
+          <div className="space-y-2">
+            {scanAudit.map((item, index) => (
+              <ExpressiveCard key={`${item.scannedAt}-${index}`} variant="elevated" className="p-3 min-w-0">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={cn("size-10 shrink-0 rounded-xl flex items-center justify-center", item.result.valid ? "bg-success-container text-success" : "bg-error-container text-error")}>
+                    {item.result.valid ? <CheckCircle2 className="size-5" /> : <XCircle className="size-5" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold truncate">{item.result.ticket?.studentName || item.result.ticket?.studentCode || item.code}</p>
+                    <p className="text-xs text-on-surface-variant truncate">{item.result.message || (item.result.valid ? "Vé hợp lệ" : "Vé không hợp lệ")}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-[10px] text-on-surface-variant">{formatDateTime(item.scannedAt)}</p>
+                    <M3StatusPill label={item.result.valid ? "Vé hợp lệ" : "Từ chối"} tone={item.result.valid ? "success" : "error"} />
+                  </div>
+                </div>
+              </ExpressiveCard>
+            ))}
+          </div>
+        </Section>
+      )}
+
       <QrScannerModal
         open={scannerOpen}
         onOpenChange={setScannerOpen}
@@ -688,18 +830,45 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
         isLoading={scanning}
       />
 
-      <Section title={`Vé đã quét chuyến này (${tickets?.length || 0})`}>
+      <Section title={`Vé hợp lệ trên chuyến (${filteredTickets.length}/${tickets?.length || 0})`}>
+        <div className="mb-3 flex flex-wrap gap-2">
+          {[
+            ["ALL", "Tất cả"],
+            ["SINGLE", "Vé lượt"],
+            ["MONTHLY", "Vé tháng"],
+            ["SCANNED", "Đã quét"],
+            ["UNSCANNED", "Chưa quét"],
+          ].map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setTicketFilter(value as typeof ticketFilter)}
+              className={cn(
+                "h-8 rounded-full border px-3 text-xs font-bold transition",
+                ticketFilter === value ? "border-[#14140f] bg-[#14140f] text-[#BDFD4F]" : "border-outline-variant bg-surface text-on-surface-variant hover:text-on-surface",
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         {loadingTickets ? (
           <LoadingScreen label="Đang tải danh sách vé..." />
         ) : !tickets || tickets.length === 0 ? (
           <EmptyState
             icon={<TicketCheck className="size-7" />}
             title="Chưa có vé nào"
-            description="Danh sách vé đã quét sẽ hiển thị tại đây."
+            description="Chuyến này chưa có vé hợp lệ."
           />
         ) : (
           <div className="space-y-2">
-            {tickets.map((t) => (
+            {filteredTickets.length === 0 ? (
+              <EmptyState
+                icon={<TicketCheck className="size-7" />}
+                title="Không có vé phù hợp"
+                description="Thử đổi bộ lọc để xem vé khác."
+              />
+            ) : filteredTickets.map((t) => (
               <ExpressiveCard key={t.ticketId} variant="elevated" className="p-3 min-w-0">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="size-10 shrink-0 rounded-xl bg-success-container text-success flex items-center justify-center">
@@ -711,7 +880,7 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
                   </div>
                   <div className="text-right shrink-0">
                     <p className="text-[10px] text-on-surface-variant">{formatDateTime(t.lastScannedAt)}</p>
-                    <M3StatusPill label={t.status} tone={t.status === "VALID" || t.status === "ACTIVE" ? "success" : "warning"} />
+                    <M3StatusPill label={ticketStatusLabel(t.status)} tone={t.status === "VALID" || t.status === "ACTIVE" ? "success" : "warning"} />
                   </div>
                 </div>
               </ExpressiveCard>
@@ -756,7 +925,7 @@ function AssistantMonthly({ ctx }: { ctx: Ctx }) {
                       Hiệu lực: {formatDate(t.validFrom)} → {formatDate(t.expiresAt)}
                     </p>
                   </div>
-                  <M3StatusPill label={t.status} tone={t.status === "ACTIVE" || t.status === "VALID" ? "success" : "warning"} />
+                  <M3StatusPill label={ticketStatusLabel(t.status)} tone={t.status === "ACTIVE" || t.status === "VALID" ? "success" : "warning"} />
                 </div>
               </ExpressiveCard>
             </StaggerItem>
@@ -884,10 +1053,11 @@ function AssistantIncident({ ctx }: { ctx: Ctx }) {
   const [type, setType] = useState("OTHER");
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const reportableTrips = useMemo(() => ctx.conductorTrips.filter((trip) => hasTripIdentity(trip)), [ctx.conductorTrips]);
 
   useEffect(() => {
-    if (!tripId && ctx.conductorTrips.length > 0) setTripId(ctx.conductorTrips[0].tripId);
-  }, [ctx.conductorTrips, tripId]);
+    if (!tripId && reportableTrips.length > 0) setTripId(reportableTrips[0].tripId);
+  }, [reportableTrips, tripId]);
 
   const submit = async () => {
     if (!tripId || !description.trim()) {
@@ -924,8 +1094,8 @@ function AssistantIncident({ ctx }: { ctx: Ctx }) {
                 <Select value={tripId ? String(tripId) : ""} onValueChange={(v) => setTripId(Number(v))}>
                   <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn chuyến" /></SelectTrigger>
                   <SelectContent>
-                    {ctx.conductorTrips.map((t) => (
-                      <SelectItem key={t.tripId} value={String(t.tripId)}>{t.routeName}</SelectItem>
+                    {reportableTrips.map((t, index) => (
+                      <SelectItem key={tripStableKey(t, index)} value={String(t.tripId)}>{t.routeName}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -997,6 +1167,7 @@ function AssistantContact({ ctx }: { ctx: Ctx }) {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
 
   const loadContact = useCallback(async () => {
     try {
@@ -1035,10 +1206,21 @@ function AssistantContact({ ctx }: { ctx: Ctx }) {
     }
   };
 
-  const messages = contact?.messages ?? [];
+  const messages = useMemo(() => {
+    return [...(contact?.messages ?? [])].sort((left, right) => {
+      const leftTime = left.sentAt ? new Date(left.sentAt).getTime() : 0;
+      const rightTime = right.sentAt ? new Date(right.sentAt).getTime() : 0;
+      if (leftTime !== rightTime) return leftTime - rightTime;
+      return left.messageId - right.messageId;
+    });
+  }, [contact?.messages]);
   const contacts = contact?.contacts?.length ? contact.contacts : [];
   const dispatcher = contacts.find((c) => c.role === "DISPATCHER");
   const driver = contacts.find((c) => c.role === "DRIVER");
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ block: "end" });
+  }, [messages.length]);
 
   return (
     <PageTransition className="space-y-6 min-w-0">
@@ -1094,50 +1276,92 @@ function AssistantContact({ ctx }: { ctx: Ctx }) {
         </ScrollReveal>
 
         <ScrollReveal delay={0.1}>
-          <ExpressiveCard variant="elevated" className="flex flex-col h-[460px] min-w-0">
-            <div className="p-4 border-b-2 border-outline-variant">
-              <h3 className="font-bold flex items-center gap-2">
-                <MessageSquare className="size-4" />
-                Chat nội bộ
-              </h3>
+          <ExpressiveCard
+            variant="elevated"
+            className="flex h-[560px] flex-col overflow-hidden rounded-[32px] border border-[#E8E2D5] bg-white p-0 shadow-[0_16px_45px_rgba(20,20,15,0.06)] min-w-0"
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-[#E8E2D5] bg-gradient-to-r from-[#FAF8F2] to-white p-4 sm:p-5 shrink-0">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="relative flex size-12 shrink-0 items-center justify-center rounded-2xl bg-[#144fcc] text-white shadow-[0_10px_24px_rgba(20,79,204,0.18)]">
+                  <MessageSquare className="size-5" />
+                  <span className="absolute -right-0.5 -bottom-0.5 size-3.5 rounded-full border-2 border-white bg-[#22c55e]" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="truncate text-base font-black text-[#14140f]">{dispatcher?.name || "Điều phối viên"}</h3>
+                  <p className="truncate text-xs font-semibold text-[#6B6B6B]">Chat nội bộ · Đang trực</p>
+                </div>
+              </div>
+              {dispatcher?.phoneNumber && (
+                <a
+                  href={`tel:${dispatcher.phoneNumber}`}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-[#beff50] px-3.5 py-2 text-xs font-black text-[#14140f] shadow-sm transition hover:brightness-95"
+                >
+                  <Phone className="size-3.5" /> {dispatcher.phoneNumber}
+                </a>
+              )}
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-2 min-w-0">
-              {loading && <p className="text-sm text-on-surface-variant text-center mt-8">Đang tải tin nhắn...</p>}
+            <div className="flex-1 overflow-y-auto bg-[#FAF8F2] p-4 sm:p-5 space-y-4 scrollbar-soft min-w-0">
+              {loading && <p className="text-sm text-[#6B6B6B] text-center mt-8">Đang tải tin nhắn...</p>}
               {!loading && messages.length === 0 && (
-                <p className="text-sm text-on-surface-variant text-center mt-8">Gửi tin nhắn khi cần hỗ trợ.</p>
+                <div className="mt-12 flex flex-col items-center justify-center text-center text-[#6B6B6B]">
+                  <div className="mb-3 flex size-14 items-center justify-center rounded-2xl bg-white shadow-sm">
+                    <MessageSquare className="size-6 text-[#144fcc]" />
+                  </div>
+                  <p className="text-sm font-black text-[#14140f]">Chưa có tin nhắn</p>
+                  <p className="mt-1 max-w-xs text-xs font-medium">Gửi tin nhắn cho điều phối viên khi cần hỗ trợ.</p>
+                </div>
               )}
               {messages.map((m) => {
                 const isMe = m.senderName !== dispatcher?.name && m.senderName !== driver?.name;
+                const sentTime = m.sentAt
+                  ? new Date(m.sentAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
+                  : "";
                 return (
                   <motion.div
                     key={m.messageId}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className={cn("flex max-w-[85%]", isMe && "ml-auto justify-end")}
+                    className={cn("flex w-full", isMe ? "justify-end" : "justify-start")}
                   >
-                    <div className={cn("px-3 py-2 rounded-2xl text-sm min-w-0", isMe ? "bg-primary text-on-primary" : "bg-surface-container-high")}>
-                      <p className="text-[10px] opacity-70 mb-1 truncate">{m.senderName}</p>
-                      <p className="break-words">{m.content}</p>
+                    <div className={cn("max-w-[82%] space-y-1", isMe && "text-right")}>
+                      <div
+                        className={cn(
+                          "rounded-[22px] px-4 py-3 text-sm shadow-sm",
+                          isMe
+                            ? "rounded-tr-md bg-[#beff50] text-[#14140f] font-semibold"
+                            : "rounded-tl-md bg-white text-[#14140f] border border-[#E8E2D5]",
+                        )}
+                      >
+                        <p className="break-words leading-relaxed">{m.content}</p>
+                      </div>
+                      <p className="px-1 text-[11px] font-semibold text-[#6B6B6B]">
+                        {isMe ? "Bạn" : m.senderName || dispatcher?.name || "Điều phối viên"}
+                        {sentTime ? ` · ${sentTime}` : ""}
+                      </p>
                     </div>
                   </motion.div>
                 );
               })}
+              <div ref={chatEndRef} />
             </div>
-            <div className="p-3 border-t-2 border-outline-variant flex gap-2 min-w-0">
-              <Input
-                placeholder="Nhập tin nhắn..."
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && send()}
-                disabled={sending}
-                className="flex-1 min-w-0"
-              />
-              <ExpressiveButton variant="filled" size="icon" onClick={send} disabled={sending || !message.trim()}>
-                {sending ? <RefreshCw className="size-4 animate-spin" /> : <Send className="size-4" />}
-              </ExpressiveButton>
+            <div className="border-t border-[#E8E2D5] bg-white p-3 sm:p-4 shrink-0">
+              <div className="flex items-center gap-2 rounded-full border border-[#E8E2D5] bg-[#FAF8F2] p-1.5 shadow-inner">
+                <Input
+                  placeholder="Nhập tin nhắn..."
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && send()}
+                  disabled={sending}
+                  className="h-11 flex-1 rounded-full border-0 bg-transparent px-4 text-sm shadow-none focus-visible:ring-0 min-w-0"
+                />
+                <ExpressiveButton variant="filled" size="icon" onClick={send} disabled={sending || !message.trim()} className="shrink-0 rounded-full bg-[#144fcc] text-white hover:bg-[#0f3ea3]">
+                  {sending ? <RefreshCw className="size-4 animate-spin" /> : <Send className="size-4" />}
+                </ExpressiveButton>
+              </div>
             </div>
           </ExpressiveCard>
         </ScrollReveal>
+
       </div>
     </PageTransition>
   );
@@ -1147,43 +1371,75 @@ function AssistantContact({ ctx }: { ctx: Ctx }) {
 // Screen 7: History
 // =============================================================================
 function AssistantHistory({ ctx }: { ctx: Ctx }) {
-  const completed = ctx.trips.filter((t: any) => t.status === "completed");
+  const trips = useMemo(() => {
+    const uniqueTrips = new Map<string, any>();
+    ctx.trips
+      .filter((trip) => ["COMPLETED", "CANCELLED"].includes(String(trip.status || "").toUpperCase()))
+      .forEach((trip) => uniqueTrips.set(
+        [trip.serviceDate || trip.date, trip.routeId, trip.departureTime || trip.departTime].join("-"),
+        trip
+      ));
+    return [...uniqueTrips.values()].sort((a, b) => tripSortTime(b) - tripSortTime(a));
+  }, [ctx.trips]);
+  const completedCount = trips.filter((trip) => String(trip.status || "").toUpperCase() === "COMPLETED").length;
+
   return (
-    <PageTransition className="space-y-6 min-w-0">
-      <PageHeader
-        title="Lịch sử chuyến"
-        description={`${completed.length} chuyến đã hoàn thành`}
-        icon={<History className="size-7" />}
-      />
-      {completed.length === 0 ? (
+    <PageTransition className="space-y-5 min-w-0">
+      <div className="flex items-center justify-between gap-4 min-w-0">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="size-11 shrink-0 rounded-2xl bg-primary text-on-primary flex items-center justify-center">
+            <History className="size-5" />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-3xl font-black tracking-tight text-on-surface">Lịch sử chuyến</h1>
+            <p className="text-sm text-on-surface-variant">{trips.length} chuyến · {completedCount} hoàn thành</p>
+          </div>
+        </div>
+      </div>
+      {trips.length === 0 ? (
         <EmptyState
           icon={<History className="size-7" />}
-          title="Chưa có chuyến hoàn thành"
-          description="Lịch sử các chuyến sẽ hiển thị tại đây."
+          title="Chưa có lịch sử"
+          description="Chuyến đã chạy sẽ hiện tại đây."
         />
       ) : (
-        <StaggerGroup className="space-y-3 min-w-0">
-          {completed.map((t: any) => (
-            <StaggerItem key={t.id}>
-              <ExpressiveCard variant="elevated" className="p-4 min-w-0">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="size-10 shrink-0 rounded-xl bg-success-container text-success flex items-center justify-center">
-                    <CheckCircle2 className="size-5" />
+        <StaggerGroup className="relative max-w-5xl space-y-2.5 min-w-0 before:absolute before:left-[1.15rem] before:top-5 before:bottom-5 before:w-px before:bg-outline-variant">
+          {trips.map((trip: any, index) => {
+            const status = String(trip.status || "").toUpperCase();
+            const isCompleted = status === "COMPLETED";
+            const isRunning = status === "RUNNING";
+            return (
+              <StaggerItem key={tripStableKey(trip, index)}>
+                <ExpressiveCard variant="outlined" className="relative ml-10 px-4 py-3 min-w-0 bg-surface border-outline-variant shadow-none">
+                  <div className={cn(
+                    "absolute -left-[1.9rem] top-3 size-8 rounded-full border-[3px] border-surface flex items-center justify-center",
+                    isCompleted ? "bg-success text-on-primary" : isRunning ? "bg-primary text-on-primary" : "bg-surface-container-high text-on-surface-variant"
+                  )}>
+                    {isCompleted ? <CheckCircle2 className="size-4" /> : isRunning ? <Bus className="size-4" /> : <Clock className="size-4" />}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold truncate">{t.routeName}</p>
-                    <p className="text-xs text-on-surface-variant">{formatDate(t.date)} • {t.departTime}</p>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 min-w-0">
+                    <div className="min-w-0 space-y-1">
+                      <p className="text-base font-extrabold tracking-[-0.01em] text-on-surface truncate">{tripLabel(trip)}</p>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-on-surface-variant">
+                        <span>{formatDate(trip.serviceDate || trip.date)}</span>
+                        <span>{trip.departureTime || trip.departTime || "Chưa có giờ"}</span>
+                        {(trip.licensePlate || trip.busPlate) && <span>Xe {trip.licensePlate || trip.busPlate}</span>}
+                      </div>
+                      {(trip.licensePlate || trip.busPlate) && (
+                        <p className="sr-only">Xe {trip.licensePlate || trip.busPlate}</p>
+                      )}
+                    </div>
+                    <M3StatusPill label={tripStatusLabel(trip.status)} tone={tripStatusTone(trip.status)} />
                   </div>
-                </div>
-              </ExpressiveCard>
-            </StaggerItem>
-          ))}
+                </ExpressiveCard>
+              </StaggerItem>
+            );
+          })}
         </StaggerGroup>
       )}
     </PageTransition>
   );
 }
-
 // =============================================================================
 function FallbackScreen({ activeId }: { activeId: string }) {
   return (

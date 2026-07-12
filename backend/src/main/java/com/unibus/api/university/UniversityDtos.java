@@ -288,6 +288,12 @@ public final class UniversityDtos {
             @Pattern(regexp = "ACTIVE|INACTIVE|SUSPENDED") String status) {
     }
 
+    public record ReportExportAuditRequest(
+            LocalDate from,
+            LocalDate to,
+            @Size(max = 30) String format) {
+    }
+
     public record CreateSubsidyPolicyRequest(
             @NotNull Integer universityId,
             Integer campusId,
