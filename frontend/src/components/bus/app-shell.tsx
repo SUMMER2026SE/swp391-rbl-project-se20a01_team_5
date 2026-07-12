@@ -73,6 +73,7 @@ export function AppShell({
     : "uniadm-profile";
 
   const isFirstNav = nav.length > 0 && activeId === nav[0].id;
+  const showStudentBack = role === "student" && activeId !== "stu-dashboard";
   const verificationStatus = profile?.studentVerificationStatus || "NOT_SUBMITTED";
   const verificationMenu = verificationStatus === "VERIFIED"
     ? { label: "Trường của tôi", icon: School }
@@ -85,6 +86,8 @@ export function AppShell({
       ? { id: "stu-university", label: verificationMenu.label, icon: VerificationMenuIcon, group: "Tổng quan" }
       : nav[0]);
   const isStudentFindPage = role === "student" && activeId === "stu-find";
+  const isAdminConsole = role === "admin";
+  const sidebarWidth = isAdminConsole ? 260 : 288;
   const sidebarVisible = !sidebarCollapsed || sidebarPreviewOpen;
   const showSidebarHoverEdge = isStudentFindPage && sidebarCollapsed && !sidebarPreviewOpen;
   const [scrolled, setScrolled] = useState(false);
@@ -105,6 +108,12 @@ export function AppShell({
       mounted = false;
     };
   }, [activeId]);
+
+  const goStudentBack = () => {
+    const event = new Event("unibus:student-back", { cancelable: true });
+    window.dispatchEvent(event);
+    if (!event.defaultPrevented) goTo("stu-dashboard");
+  };
 
   useEffect(() => {
     if (isStudentFindPage) {
@@ -157,25 +166,37 @@ export function AppShell({
 
   const SidebarContent = (
     <div className="flex h-full flex-col bg-surface-container-low">
-      <div className="px-5 pt-6 pb-4">
+      <div className={cn("px-5 pt-6 pb-4", isAdminConsole && "px-4 py-3 border-b border-outline-variant/60")}>
         <button
           type="button"
           onClick={() => goTo(nav[0].id)}
           className="flex items-center gap-3 text-left"
         >
-          <Image src="/logo.png" alt="UniBus Logo" width={64} height={64} loading="eager" className="h-12 w-auto shrink-0 object-contain" />
+          <Image
+            src="/logo.png"
+            alt="UniBus Logo"
+            width={64}
+            height={64}
+            loading="eager"
+            className={cn("h-12 w-auto shrink-0 object-contain", isAdminConsole && "h-9")}
+          />
           <div className="min-w-0">
-            <p className="text-xl font-bold tracking-tight text-on-surface">UniBus</p>
+            <p className={cn("text-xl font-bold tracking-tight text-on-surface", isAdminConsole && "text-base")}>
+              {isAdminConsole ? "UniBus Admin" : "UniBus"}
+            </p>
             <p className="truncate text-[11px] text-on-surface-variant">{ROLE_LABELS[role]}</p>
           </div>
         </button>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-3 pb-4 scrollbar-soft">
-        <div className="space-y-5">
+      <nav className={cn("flex-1 overflow-y-auto px-3 pb-4 scrollbar-soft", isAdminConsole && "px-2 py-3")}>
+        <div className={cn("space-y-5", isAdminConsole && "space-y-3")}>
           {groups.map(([group, items]) => (
             <div key={group}>
-              <p className="px-4 mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant/70">
+              <p className={cn(
+                "px-4 mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant/70",
+                isAdminConsole && "px-3 mb-1 text-[10px]"
+              )}>
                 {group}
               </p>
               <div className="space-y-0.5">
@@ -187,22 +208,25 @@ export function AppShell({
                       key={item.id}
                       onClick={() => goTo(item.id)}
                       className={cn(
-                        "group relative flex min-h-11 w-full min-w-0 items-center gap-3 rounded-2xl px-4 py-2.5 text-sm font-medium transition-colors",
-                        active ? "text-[#beff50]" : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
+                        "group relative flex min-h-11 w-full min-w-0 items-center gap-3 px-4 py-2.5 text-sm font-medium transition-colors",
+                        isAdminConsole ? "min-h-9 rounded-md px-3 py-2 text-[13px]" : "rounded-2xl",
+                        active
+                          ? isAdminConsole ? "text-on-primary" : "text-[#beff50]"
+                          : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
                       )}
                     >
                       {active && (
                         <motion.div
                           layoutId={`nav-pill-${role}`}
-                          className="absolute inset-0 rounded-2xl bg-[#14140f]"
+                          className={cn("absolute inset-0 bg-primary", isAdminConsole ? "rounded-md" : "rounded-2xl bg-[#14140f]")}
                           transition={{ type: "spring", stiffness: 400, damping: 32 }}
                         />
                       )}
-                      <item.icon className={cn("relative size-5 shrink-0", active ? "text-[#beff50]" : "text-on-surface-variant group-hover:text-on-surface")} />
+                      <item.icon className={cn("relative size-5 shrink-0", isAdminConsole && "size-4", active ? isAdminConsole ? "text-on-primary" : "text-[#beff50]" : "text-on-surface-variant group-hover:text-on-surface")} />
                       <span className="relative min-w-0 flex-1 truncate text-left">{item.label}</span>
                       {badge && (
                         <span className={cn("relative inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[10px] font-bold",
-                          active ? "bg-[#beff50] text-[#14140f]" : "bg-[#dc2626] text-white")}>
+                          active ? isAdminConsole ? "bg-on-primary text-primary" : "bg-[#beff50] text-[#14140f]" : "bg-[#dc2626] text-white")}>
                           {badge}
                         </span>
                       )}
@@ -220,7 +244,7 @@ export function AppShell({
   return (
     <div className="flex min-h-screen w-full flex-col overflow-x-hidden bg-background" data-role-theme={role}>
       <motion.aside
-        animate={{ width: sidebarVisible ? 288 : 0 }}
+        animate={{ width: sidebarVisible ? sidebarWidth : 0 }}
         transition={{ type: "spring", stiffness: 400, damping: 32 }}
         onMouseEnter={() => {
           if (previewCloseTimerRef.current) clearTimeout(previewCloseTimerRef.current);
@@ -236,7 +260,7 @@ export function AppShell({
           isStudentFindPage && sidebarCollapsed ? "top-16 h-[calc(100dvh-4rem)] rounded-tr-[24px]" : "top-0 h-screen",
           sidebarVisible ? "pointer-events-auto" : "pointer-events-none",
         )}
-        style={{ width: 288 }}
+        style={{ width: sidebarWidth }}
       >
         {SidebarContent}
       </motion.aside>
@@ -265,7 +289,7 @@ export function AppShell({
       <div
         className={cn(
           "flex min-h-screen min-w-0 flex-1 flex-col transition-[margin] duration-300",
-          sidebarCollapsed ? "lg:ml-0" : "lg:ml-72",
+          sidebarCollapsed ? "lg:ml-0" : isAdminConsole ? "lg:ml-[260px]" : "lg:ml-72",
         )}
       >
         <motion.header
@@ -282,7 +306,7 @@ export function AppShell({
           {!isFirstNav ? (
             <button
               className="state-layer flex size-10 shrink-0 items-center justify-center rounded-full text-on-surface lg:hidden"
-              onClick={() => goTo(nav[0].id)}
+              onClick={showStudentBack ? goStudentBack : () => goTo(nav[0].id)}
               aria-label="Quay lại"
             >
               <ArrowLeft className="size-5" />
@@ -316,23 +340,41 @@ export function AppShell({
             <span className="truncate font-semibold text-on-surface">{currentNav?.label}</span>
           </div>
 
+          {showStudentBack ? (
+            <button
+              type="button"
+              onClick={goStudentBack}
+              className="state-layer hidden h-9 shrink-0 items-center gap-1.5 rounded-full border border-outline-variant/50 px-3 text-xs font-semibold text-on-surface-variant transition-colors hover:border-outline hover:text-on-surface sm:inline-flex"
+              aria-label="Quay lại"
+            >
+              <ArrowLeft className="size-3.5" />
+              Quay lại
+            </button>
+          ) : null}
+
           <div className="flex min-w-0 flex-1 sm:hidden">
             <span className="truncate text-base font-semibold text-on-surface">{currentNav?.label}</span>
           </div>
 
           <div className="flex-1" />
 
-          <button
+          <motion.button
             className="relative flex size-10 shrink-0 items-center justify-center rounded-xl text-[#111111] transition-colors hover:text-[#2C2C27] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#beff50] focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+            whileHover={{ scale: 1.04, backgroundColor: "rgba(190,255,80,0.16)" }}
+            whileTap={{ scale: 0.94, backgroundColor: "rgba(190,255,80,0.32)" }}
+            transition={{ type: "spring", stiffness: 520, damping: 28 }}
             onClick={() => goTo(notificationsNavId)}
             aria-label={unread && unread > 0 ? `Thông báo, ${unread} chưa đọc` : "Thông báo"}
             title={unread && unread > 0 ? `${unread} thông báo chưa đọc` : "Thông báo"}
           >
-            <Bell className="size-5 stroke-[2.4]" />
+            <Bell className="size-5 rotate-0 stroke-[2.4]" style={{ transform: "rotate(0deg)" }} />
             {unread != null && unread > 0 ? (
-              <span className="absolute right-2 top-2 size-2.5 rounded-full bg-[#E21B3C] ring-2 ring-surface" aria-hidden="true" />
+              <span
+                className="absolute right-2 top-2 size-2.5 rounded-full bg-[#E21B3C] ring-2 ring-surface"
+                aria-hidden="true"
+              />
             ) : null}
-          </button>
+          </motion.button>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -383,7 +425,7 @@ export function AppShell({
           </DropdownMenu>
         </motion.header>
 
-        <main className="flex-1 p-3 sm:p-6 lg:p-8">
+        <main className={cn("flex-1 p-3 sm:p-6 lg:p-8", isAdminConsole && "mx-auto w-full max-w-[1280px] lg:p-6")}>
           <AnimatePresence mode="wait">
             <PageTransition
               key={activeId}

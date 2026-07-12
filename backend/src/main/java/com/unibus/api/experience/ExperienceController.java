@@ -4,7 +4,9 @@ import static com.unibus.api.experience.ExperienceDtos.*;
 
 import java.util.List;
 import java.util.Map;
+import java.time.LocalDate;
 
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -148,8 +150,11 @@ public class ExperienceController {
 
     @GetMapping("/admin/stats")
     @PreAuthorize("hasRole('ADMIN')")
-    ApiResponse<AdminStatsView> adminStats(@RequestParam(defaultValue = "7") int days) {
-        return ApiResponse.ok("Admin stats retrieved", service.adminStats(days));
+    ApiResponse<AdminStatsView> adminStats(
+            @RequestParam(defaultValue = "7") int days,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return ApiResponse.ok("Admin stats retrieved", service.adminStats(days, from, to));
     }
 
     @GetMapping("/admin/fares")

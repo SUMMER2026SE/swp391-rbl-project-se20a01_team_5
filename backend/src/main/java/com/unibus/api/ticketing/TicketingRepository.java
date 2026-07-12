@@ -53,7 +53,7 @@ public class TicketingRepository {
                 LEFT JOIN stops als ON als.stop_id = rr.alighting_stop_id
                 WHERE rr.student_code = ?
                   AND rr.status = 'APPROVED'
-                  AND (? IS NULL OR rr.route_id = ?)
+                  AND (CAST(? AS integer) IS NULL OR rr.route_id = ?)
                 ORDER BY rr.approved_at DESC NULLS LAST, rr.registered_at DESC
                 LIMIT 1
                 """, (rs, rowNum) -> new ApprovedRegistration(
@@ -116,24 +116,15 @@ public class TicketingRepository {
         jdbcTemplate.update(connection -> {
             PreparedStatement statement = connection.prepareStatement("""
                 INSERT INTO single_trip_tickets(student_code, route_id, boarding_stop_id, alighting_stop_id,
-                                                 fare_amount, original_fare_amount, subsidy_amount, final_fare_amount,
-                                                 subsidy_policy_id, qr_code, status, purchased_at, expires_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'UNUSED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '24 hours')
+                                                 fare_amount, qr_code, status, purchased_at, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?, 'UNUSED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '24 hours')
                 """, new String[] { "single_trip_ticket_id" });
             statement.setString(1, studentCode);
             statement.setInt(2, routeId);
             statement.setObject(3, boardingStopId);
             statement.setObject(4, alightingStopId);
             statement.setBigDecimal(5, finalAmount);
-            statement.setBigDecimal(6, originalAmount);
-            statement.setBigDecimal(7, subsidyAmount);
-            statement.setBigDecimal(8, finalAmount);
-            if (subsidyPolicyId == null) {
-                statement.setNull(9, java.sql.Types.INTEGER);
-            } else {
-                statement.setInt(9, subsidyPolicyId);
-            }
-            statement.setString(10, qrCode);
+            statement.setString(6, qrCode);
             return statement;
         }, keyHolder);
         return generatedId(keyHolder, "single trip ticket");
@@ -158,9 +149,9 @@ public class TicketingRepository {
         jdbcTemplate.update("""
                 INSERT INTO invoices(payment_id, student_code, description, amount, original_amount, subsidy_amount, final_amount)
                 SELECT p.payment_id, p.student_code, 'Single trip ticket payment', p.amount,
-                       COALESCE(stt.original_fare_amount, stt.fare_amount),
-                       COALESCE(stt.subsidy_amount, 0),
-                       COALESCE(stt.final_fare_amount, stt.fare_amount)
+                       stt.fare_amount,
+                       0,
+                       stt.fare_amount
                 FROM payments p
                 JOIN single_trip_tickets stt ON stt.single_trip_ticket_id = p.single_trip_ticket_id
                 WHERE p.payment_id = ?
@@ -213,7 +204,10 @@ public class TicketingRepository {
                 SELECT stt.single_trip_ticket_id, stt.student_code, stt.route_id, r.route_name,
                        stt.boarding_stop_id, bs.stop_name AS boarding_stop_name,
                        stt.alighting_stop_id, als.stop_name AS alighting_stop_name,
-                       stt.fare_amount, stt.original_fare_amount, stt.subsidy_amount, stt.final_fare_amount,
+                       stt.fare_amount,
+                       stt.fare_amount AS original_fare_amount,
+                       0 AS subsidy_amount,
+                       stt.fare_amount AS final_fare_amount,
                        stt.qr_code, stt.status, stt.purchased_at, stt.expires_at
                 FROM single_trip_tickets stt
                 JOIN routes r ON r.route_id = stt.route_id
@@ -310,80 +304,6 @@ public class TicketingRepository {
         return findPayment(paymentId).orElseThrow();
     }
 
-    public PaymentView createPendingVnpayPayment(String studentCode, BigDecimal amount, String transactionCode) {
-        KeyHolder keyHolder = new GeneratedKeyHolder();
-        jdbcTemplate.update(connection -> {
-            PreparedStatement statement = connection.prepareStatement("""
-                INSERT INTO payments(student_code, amount, method, status, transaction_code, notes)
-                VALUES (?, ?, 'E_WALLET', 'PENDING', ?, 'VNPay payment request')
-                """, new String[] { "payment_id" });
-            statement.setString(1, studentCode);
-            statement.setBigDecimal(2, amount);
-            statement.setString(3, transactionCode);
-            return statement;
-        }, keyHolder);
-        return findPayment(generatedId(keyHolder, "payment")).orElseThrow();
-    }
-
-    public Optional<PaymentView> findPaymentForStudent(Integer paymentId, String studentCode) {
-        List<PaymentView> rows = jdbcTemplate.query(paymentQuery("WHERE p.payment_id = ? AND p.student_code = ?"),
-                (rs, rowNum) -> mapPayment(rs), paymentId, studentCode);
-        return rows.stream().findFirst();
-    }
-
-    public Optional<PaymentView> findPaymentByTransactionCode(String transactionCode) {
-        List<PaymentView> rows = jdbcTemplate.query(paymentQuery("WHERE p.transaction_code = ?"),
-                (rs, rowNum) -> mapPayment(rs), transactionCode);
-        return rows.stream().findFirst();
-    }
-
-    public PaymentView markPaymentPaid(Integer paymentId) {
-        jdbcTemplate.update("""
-                UPDATE payments
-                SET status = 'PAID'
-                WHERE payment_id = ?
-                  AND status <> 'PAID'
-                """, paymentId);
-        createInvoiceIfMissing(paymentId);
-        return findPayment(paymentId).orElseThrow();
-    }
-
-    public PaymentView markPaymentFailed(Integer paymentId) {
-        jdbcTemplate.update("""
-                UPDATE payments
-                SET status = 'FAILED'
-                WHERE payment_id = ?
-                  AND status = 'PENDING'
-                """, paymentId);
-        return findPayment(paymentId).orElseThrow();
-    }
-
-    private void createInvoiceIfMissing(Integer paymentId) {
-        jdbcTemplate.update("""
-                INSERT INTO invoices(payment_id, student_code, description, amount, original_amount, subsidy_amount, final_amount)
-                SELECT p.payment_id,
-                       p.student_code,
-                       CASE
-                           WHEN p.monthly_pass_id IS NOT NULL THEN 'Monthly bus pass payment'
-                           WHEN p.single_trip_ticket_id IS NOT NULL THEN 'Single trip ticket payment'
-                           ELSE 'VNPay payment'
-                       END,
-                       p.amount,
-                       COALESCE(mp.original_fare_amount, stt.original_fare_amount, p.amount),
-                       COALESCE(mp.subsidy_amount, stt.subsidy_amount, 0),
-                       COALESCE(mp.final_fare_amount, stt.final_fare_amount, p.amount)
-                FROM payments p
-                LEFT JOIN monthly_passes mp ON mp.monthly_pass_id = p.monthly_pass_id
-                LEFT JOIN single_trip_tickets stt ON stt.single_trip_ticket_id = p.single_trip_ticket_id
-                WHERE p.payment_id = ?
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM invoices i
-                      WHERE i.payment_id = p.payment_id
-                  )
-                """, paymentId);
-    }
-
     public Integer createJourneyOrder(String studentCode, String originLabel, String destinationLabel,
             BigDecimal totalAmount, BigDecimal subsidyAmount, BigDecimal finalAmount) {
         String qrCode = "UB-JOURNEY-" + UUID.randomUUID();
@@ -466,6 +386,80 @@ public class TicketingRepository {
                         rs.getBigDecimal("final_amount")), journeyOrderId);
     }
 
+    public PaymentView createPendingVnpayPayment(String studentCode, BigDecimal amount, String transactionCode) {
+        KeyHolder keyHolder = new GeneratedKeyHolder();
+        jdbcTemplate.update(connection -> {
+            PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO payments(student_code, amount, method, status, transaction_code, notes)
+                VALUES (?, ?, 'E_WALLET', 'PENDING', ?, 'VNPay payment request')
+                """, new String[] { "payment_id" });
+            statement.setString(1, studentCode);
+            statement.setBigDecimal(2, amount);
+            statement.setString(3, transactionCode);
+            return statement;
+        }, keyHolder);
+        return findPayment(generatedId(keyHolder, "payment")).orElseThrow();
+    }
+
+    public Optional<PaymentView> findPaymentForStudent(Integer paymentId, String studentCode) {
+        List<PaymentView> rows = jdbcTemplate.query(paymentQuery("WHERE p.payment_id = ? AND p.student_code = ?"),
+                (rs, rowNum) -> mapPayment(rs), paymentId, studentCode);
+        return rows.stream().findFirst();
+    }
+
+    public Optional<PaymentView> findPaymentByTransactionCode(String transactionCode) {
+        List<PaymentView> rows = jdbcTemplate.query(paymentQuery("WHERE p.transaction_code = ?"),
+                (rs, rowNum) -> mapPayment(rs), transactionCode);
+        return rows.stream().findFirst();
+    }
+
+    public PaymentView markPaymentPaid(Integer paymentId) {
+        jdbcTemplate.update("""
+                UPDATE payments
+                SET status = 'PAID'
+                WHERE payment_id = ?
+                  AND status <> 'PAID'
+                """, paymentId);
+        createInvoiceIfMissing(paymentId);
+        return findPayment(paymentId).orElseThrow();
+    }
+
+    public PaymentView markPaymentFailed(Integer paymentId) {
+        jdbcTemplate.update("""
+                UPDATE payments
+                SET status = 'FAILED'
+                WHERE payment_id = ?
+                  AND status = 'PENDING'
+                """, paymentId);
+        return findPayment(paymentId).orElseThrow();
+    }
+
+    private void createInvoiceIfMissing(Integer paymentId) {
+        jdbcTemplate.update("""
+                INSERT INTO invoices(payment_id, student_code, description, amount, original_amount, subsidy_amount, final_amount)
+                SELECT p.payment_id,
+                       p.student_code,
+                       CASE
+                           WHEN p.monthly_pass_id IS NOT NULL THEN 'Monthly bus pass payment'
+                           WHEN p.single_trip_ticket_id IS NOT NULL THEN 'Single trip ticket payment'
+                           ELSE 'VNPay payment'
+                       END,
+                       p.amount,
+                       COALESCE(mp.original_fare_amount, stt.fare_amount, p.amount),
+                       COALESCE(mp.subsidy_amount, 0),
+                       COALESCE(mp.final_fare_amount, stt.fare_amount, p.amount)
+                FROM payments p
+                LEFT JOIN monthly_passes mp ON mp.monthly_pass_id = p.monthly_pass_id
+                LEFT JOIN single_trip_tickets stt ON stt.single_trip_ticket_id = p.single_trip_ticket_id
+                WHERE p.payment_id = ?
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM invoices i
+                      WHERE i.payment_id = p.payment_id
+                  )
+                """, paymentId);
+    }
+
     private Integer generatedId(KeyHolder keyHolder, String entityName) {
         Number key = keyHolder.getKey();
         if (key == null) {
@@ -493,13 +487,14 @@ public class TicketingRepository {
                            COALESCE(i.original_amount, p.amount) AS original_amount,
                            COALESCE(i.subsidy_amount, 0) AS subsidy_amount,
                            COALESCE(i.final_amount, p.amount) AS final_amount,
-                           p.transaction_code,
+                           COALESCE('DH' || tx.matched_order_id, p.transaction_code) AS transaction_code,
                            i.invoice_id,
                            i.issued_at AS invoice_issued_at,
                            p.created_at,
                            1 AS sort_group
                     FROM payments p
                     LEFT JOIN invoices i ON i.payment_id = p.payment_id
+                    LEFT JOIN tb_transactions tx ON tx.reference_number = p.transaction_code
                     WHERE p.student_code = ?
                     UNION ALL
                     SELECT -o.id::integer AS payment_id,

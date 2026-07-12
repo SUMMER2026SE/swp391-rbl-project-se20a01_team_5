@@ -278,6 +278,246 @@
   --m3-sidebar-foreground: oklch(0.22 0.005 95);
 }
 
+/* ========================================================================
+   ADMIN CONSOLE THEME — dense, neutral, table-first surfaces
+   Keeps backend-integrated screens, but makes admin feel like an operations
+   console instead of the expressive student experience.
+   ======================================================================== */
+[data-role-theme="admin"] {
+  --m3-background: oklch(0.985 0.001 240);
+  --m3-surface: oklch(0.985 0.001 240);
+  --m3-surface-dim: oklch(0.94 0.002 240);
+  --m3-surface-bright: oklch(1 0 0);
+  --m3-surface-container-lowest: oklch(1 0 0);
+  --m3-surface-container-low: oklch(1 0 0);
+  --m3-surface-container: oklch(0.965 0.002 240);
+  --m3-surface-container-high: oklch(0.955 0.002 240);
+  --m3-surface-container-highest: oklch(0.935 0.003 240);
+  --m3-on-surface: oklch(0.18 0.005 240);
+  --m3-on-surface-variant: oklch(0.48 0.008 240);
+  --m3-surface-variant: oklch(0.94 0.003 240);
+
+  --m3-primary: oklch(0.21 0.01 240);
+  --m3-on-primary: oklch(0.985 0 0);
+  --m3-primary-container: oklch(0.21 0.01 240);
+  --m3-on-primary-container: oklch(0.985 0 0);
+  --m3-secondary: oklch(0.45 0.01 240);
+  --m3-on-secondary: oklch(0.985 0 0);
+  --m3-secondary-container: oklch(0.965 0.002 240);
+  --m3-on-secondary-container: oklch(0.21 0.01 240);
+  --m3-tertiary: oklch(0.62 0.13 155);
+  --m3-on-tertiary: oklch(0.985 0 0);
+  --m3-tertiary-container: oklch(0.93 0.03 155);
+  --m3-on-tertiary-container: oklch(0.26 0.05 155);
+
+  --m3-error: oklch(0.58 0.22 25);
+  --m3-on-error: oklch(1 0 0);
+  --m3-error-container: oklch(0.96 0.025 25);
+  --m3-on-error-container: oklch(0.45 0.16 25);
+  --m3-success: oklch(0.62 0.13 155);
+  --m3-success-container: oklch(0.94 0.035 155);
+  --m3-warning: oklch(0.72 0.16 70);
+  --m3-warning-container: oklch(0.96 0.05 75);
+
+  --m3-outline: oklch(0.70 0.004 240);
+  --m3-outline-variant: oklch(0.90 0.003 240);
+  --radius: 0.75rem;
+}
+
+[data-role-theme="admin"] .glass-m3 {
+  background: color-mix(in oklch, var(--m3-surface-container-lowest) 92%, transparent);
+  box-shadow: none;
+}
+
+[data-role-theme="admin"] .rounded-2xl {
+  border-radius: 0.75rem;
+}
+
+[data-role-theme="admin"] .rounded-xl {
+  border-radius: 0.625rem;
+}
+
+[data-role-theme="admin"] .elev-1,
+[data-role-theme="admin"] .elev-2,
+[data-role-theme="admin"] .elev-3 {
+  box-shadow: none;
+}
+
+[data-role-theme="admin"] table {
+  font-size: 0.875rem;
+}
+
+/* UniAdmin GLM-style skin: scoped to university admin screens only. */
+[data-role-theme="university_admin"] > aside {
+  border-color: oklch(0.90 0 0);
+  background: oklch(0.995 0 0);
+}
+
+[data-role-theme="university_admin"] > aside nav p {
+  color: oklch(0.48 0 0);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+}
+
+[data-role-theme="university_admin"] > aside nav button {
+  min-height: 2.4rem;
+  border-radius: 0.625rem;
+}
+
+.uniadmin-glm {
+  --uniadmin-card: #ffffff;
+  --uniadmin-border: #e5e7eb;
+  --uniadmin-muted: #6b7280;
+  --uniadmin-foreground: #111827;
+  --uniadmin-soft: #f9fafb;
+  color: var(--uniadmin-foreground);
+}
+
+.uniadmin-glm h1,
+.uniadmin-glm h2,
+.uniadmin-glm h3 {
+  letter-spacing: 0;
+}
+
+.uniadmin-glm .text-on-surface {
+  color: var(--uniadmin-foreground) !important;
+}
+
+.uniadmin-glm .text-on-surface-variant {
+  color: var(--uniadmin-muted) !important;
+}
+
+.uniadmin-glm .bg-surface,
+.uniadmin-glm .bg-surface-container-lowest,
+.uniadmin-glm .bg-surface-container-low,
+.uniadmin-glm .bg-surface-container,
+.uniadmin-glm .bg-surface-container-high,
+.uniadmin-glm .bg-surface-container-highest {
+  background-color: var(--uniadmin-card) !important;
+}
+
+.uniadmin-glm .elev-1,
+.uniadmin-glm .elev-2,
+.uniadmin-glm .elev-3 {
+  box-shadow: none !important;
+}
+
+.uniadmin-glm .rounded-2xl,
+.uniadmin-glm .rounded-\[2rem\] {
+  border-radius: 0.875rem !important;
+}
+
+.uniadmin-glm .rounded-xl {
+  border-radius: 0.75rem !important;
+}
+
+.uniadmin-glm .border-2 {
+  border-width: 1px !important;
+}
+
+.uniadmin-glm .border-outline-variant,
+.uniadmin-glm .border-outline {
+  border-color: var(--uniadmin-border) !important;
+}
+
+.uniadmin-glm table {
+  width: 100%;
+  font-size: 0.875rem;
+}
+
+.uniadmin-glm thead tr {
+  background: var(--uniadmin-soft);
+}
+
+.uniadmin-glm th {
+  height: 2.75rem;
+  color: #374151;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.uniadmin-glm td {
+  border-color: var(--uniadmin-border);
+}
+
+.uniadmin-glm tbody tr {
+  transition: background-color 0.15s ease;
+}
+
+.uniadmin-glm tbody tr:hover {
+  background: #f9fafb;
+}
+
+.uniadmin-glm input,
+.uniadmin-glm textarea,
+.uniadmin-glm button[role="combobox"] {
+  border-color: var(--uniadmin-border) !important;
+  border-radius: 0.625rem !important;
+  background-color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+.uniadmin-glm input:focus,
+.uniadmin-glm textarea:focus,
+.uniadmin-glm button[role="combobox"]:focus {
+  border-color: #111827 !important;
+  box-shadow: 0 0 0 3px rgb(17 24 39 / 0.08) !important;
+}
+
+.uniadmin-glm [data-slot="badge"],
+.uniadmin-glm .rounded-full {
+  box-shadow: none !important;
+}
+
+.uniadmin-glm .text-primary {
+  color: #2563eb !important;
+}
+
+.uniadmin-glm .text-success {
+  color: #059669 !important;
+}
+
+.uniadmin-glm .bg-primary {
+  background-color: #111827 !important;
+}
+
+.uniadmin-glm .text-on-primary {
+  color: #ffffff !important;
+}
+
+.uniadmin-glm .bg-primary-container,
+.uniadmin-glm .bg-secondary-container,
+.uniadmin-glm .bg-tertiary-container {
+  background-color: #f3f4f6 !important;
+}
+
+.uniadmin-glm .text-on-primary-container,
+.uniadmin-glm .text-on-secondary-container,
+.uniadmin-glm .text-on-tertiary-container {
+  color: #374151 !important;
+}
+
+.uniadmin-glm .elev-1[style],
+.uniadmin-glm .elev-2[style],
+.uniadmin-glm .elev-3[style] {
+  background: #ffffff !important;
+  color: #111827 !important;
+  border: 1px solid var(--uniadmin-border);
+}
+
+.uniadmin-glm .elev-1[style] > [style],
+.uniadmin-glm .elev-2[style] > [style],
+.uniadmin-glm .elev-3[style] > [style] {
+  background: #f3f4f6 !important;
+  color: #4b5563 !important;
+}
+
+.uniadmin-glm .elev-1[style] .text-white,
+.uniadmin-glm .elev-2[style] .text-white,
+.uniadmin-glm .elev-3[style] .text-white {
+  color: #111827 !important;
+}
+
 /* Aurora bg uses the new primary-container (auto via var) — no override needed */
 /* Playful accent utilities — perk multicolor (coral/sky/pink/purple) for chips/badges */
 [data-role-theme="student"] .perk-coral { background-color: oklch(0.78 0.14 45); color: oklch(0.25 0.04 45); }

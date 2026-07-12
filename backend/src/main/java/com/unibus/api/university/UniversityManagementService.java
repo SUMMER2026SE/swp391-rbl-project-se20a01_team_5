@@ -6,8 +6,11 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 
 import org.apache.poi.ss.usermodel.DataFormatter;
 import org.apache.poi.ss.usermodel.Row;
@@ -38,7 +41,7 @@ import com.unibus.api.university.UniversityDtos.DomainView;
 import com.unibus.api.university.UniversityDtos.ImportBatchView;
 import com.unibus.api.university.UniversityDtos.PaymentTransactionView;
 import com.unibus.api.university.UniversityDtos.ReconciliationView;
-import com.unibus.api.university.UniversityDtos.PaymentTransactionView;
+import com.unibus.api.university.UniversityDtos.ReportExportAuditRequest;
 import com.unibus.api.university.UniversityDtos.RosterStudentView;
 import com.unibus.api.university.UniversityDtos.RouteUniversityView;
 import com.unibus.api.university.UniversityDtos.StudentUniversityView;
@@ -53,6 +56,17 @@ import com.unibus.api.user.model.UserRole;
 
 @Service
 public class UniversityManagementService {
+
+    private static final Map<String, KnownUniversityDomain> KNOWN_UNIVERSITY_DOMAINS = Map.ofEntries(
+            Map.entry("duytan.edu.vn", new KnownUniversityDomain("DTU", "Trường Đại học Duy Tân", "DTU")),
+            Map.entry("dtu.edu.vn", new KnownUniversityDomain("DTU", "Trường Đại học Duy Tân", "DTU")),
+            Map.entry("dut.udn.vn", new KnownUniversityDomain("DUT", "Trường Đại học Bách khoa - Đại học Đà Nẵng", "DUT")),
+            Map.entry("ute.udn.vn", new KnownUniversityDomain("UTE", "Trường Đại học Sư phạm Kỹ thuật - Đại học Đà Nẵng", "UTE")),
+            Map.entry("ued.udn.vn", new KnownUniversityDomain("UED", "Trường Đại học Sư phạm - Đại học Đà Nẵng", "UED")),
+            Map.entry("vku.udn.vn", new KnownUniversityDomain("VKU", "Trường Đại học Công nghệ Thông tin và Truyền thông Việt - Hàn", "VKU")),
+            Map.entry("due.udn.vn", new KnownUniversityDomain("DUE", "Trường Đại học Kinh tế - Đại học Đà Nẵng", "DUE")),
+            Map.entry("ufl.udn.vn", new KnownUniversityDomain("UFLS", "Trường Đại học Ngoại ngữ - Đại học Đà Nẵng", "UFLS")),
+            Map.entry("udn.vn", new KnownUniversityDomain("UDN", "Đại học Đà Nẵng", "UDN")));
 
     private final UniversityManagementRepository repository;
     private final PasswordEncoder passwordEncoder;
@@ -173,6 +187,13 @@ public class UniversityManagementService {
     @Transactional
     public RouteUniversityView createRouteUniversity(CurrentUser actor, CreateRouteUniversityRequest request) {
         requireUniversity(request.universityId());
+        requireRoute(request.routeId());
+        if (request.campusId() != null && !repository.campusBelongsToUniversity(request.campusId(), request.universityId())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Campus does not belong to university");
+        }
+        if (repository.activeRouteUniversityExists(request.routeId(), request.universityId())) {
+            throw new ApiException(HttpStatus.CONFLICT, "Route is already assigned to this university");
+        }
         RouteUniversityView created = repository.createRouteUniversity(
                 request.routeId(),
                 request.universityId(),
@@ -225,6 +246,7 @@ public class UniversityManagementService {
         String fileName = file.getOriginalFilename() == null ? "roster" : file.getOriginalFilename();
         Long batchId = repository.createImportBatch(universityId, fileName, actor.userId());
         List<RosterRow> rows = readRosterRows(file);
+        Set<String> seenStudentCodes = new HashSet<>();
         int success = 0;
         int errors = 0;
         for (RosterRow row : rows) {
@@ -234,10 +256,29 @@ public class UniversityManagementService {
                 errors++;
                 continue;
             }
+            String studentCode = normalizeStudentCode(row.studentCode());
+            String studentCodeKey = studentCode.toUpperCase(Locale.ROOT);
+            if (!seenStudentCodes.add(studentCodeKey)) {
+                repository.addImportError(batchId, row.rowNumber(), "studentCode", row.studentCode(), "MSSV is duplicated in this import file");
+                errors++;
+                continue;
+            }
+            String email = normalizeEmail(row.email());
+            String domain = emailDomain(email);
+            if (domain == null || !repository.activeDomainBelongsToUniversity(universityId, domain)) {
+                repository.addImportError(batchId, row.rowNumber(), "email", row.email(), "Email domain does not belong to this university");
+                errors++;
+                continue;
+            }
+            if (repository.rosterStudentCodeExistsForDifferentEmail(universityId, studentCode, email)) {
+                repository.addImportError(batchId, row.rowNumber(), "studentCode", row.studentCode(), "MSSV already exists for another student in this university");
+                errors++;
+                continue;
+            }
             repository.upsertRoster(
                     universityId,
-                    normalizeEmail(row.email()),
-                    row.studentCode().trim(),
+                    email,
+                    studentCode,
                     row.fullName().trim(),
                     blankToNull(row.faculty()),
                     parseAcademicYear(row.academicYear()),
@@ -309,27 +350,74 @@ public class UniversityManagementService {
         return repository.findAuditLogs(universityId, action);
     }
 
+    @Transactional
+    public void auditReportExport(CurrentUser actor, ReportExportAuditRequest request) {
+        String from = request == null || request.from() == null ? "không xác định" : request.from().toString();
+        String to = request == null || request.to() == null ? "không xác định" : request.to().toString();
+        String format = request == null || request.format() == null || request.format().isBlank()
+                ? "CSV"
+                : request.format().trim().toUpperCase(Locale.ROOT);
+        audit(actor, null, "ADMIN_REPORT_EXPORT", "admin_reports", null, "SUCCESS",
+                "Xuất báo cáo " + format + " từ " + from + " đến " + to);
+    }
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void applyGoogleUniversityLink(User user) {
         if (user.getRole() != UserRole.STUDENT) {
             return;
         }
         String email = normalizeEmail(user.getEmail());
-        repository.findActiveRosterByEmail(email).ifPresent(roster -> {
+        var roster = repository.findActiveRosterByEmail(email).orElse(null);
+        if (roster != null) {
             if (repository.studentCodeBelongsToOtherUser(roster.studentCode(), user.getId())) {
                 return;
             }
             repository.upsertStudentFromRoster(user.getId(), roster);
             repository.matchRosterToUser(roster.rosterId(), user.getId());
-            repository.audit(user.getId(), roster.universityId(), "GOOGLE_ROSTER_AUTO_LINK", "students",
-                    roster.studentCode(), "SUCCESS", null, email);
-        });
+            return;
+        }
+        applyDomainUniversityLink(user);
+    }
+
+    @Transactional
+    public void applyDomainUniversityLink(User user) {
+        if (user.getRole() != UserRole.STUDENT) {
+            return;
+        }
+        String email = normalizeEmail(user.getEmail());
+        String domain = emailDomain(email);
+        int at = email == null ? -1 : email.indexOf('@');
+        if (domain == null || at <= 0) {
+            return;
+        }
+        String studentCode = email.substring(0, at);
+        if (studentCode.length() > 20) {
+            studentCode = studentCode.substring(0, 20);
+        }
+        DomainMatch match = resolveDomainMatch(domain);
+        if (match == null || repository.studentCodeBelongsToOtherUser(studentCode, user.getId())) {
+            return;
+        }
+        repository.upsertStudentFromDomain(user.getId(), email, user.getFullName(), match);
+        repository.audit(user.getId(), match.universityId(), "DOMAIN_AUTO_LINK", "students",
+                studentCode, "SUCCESS", null, email);
     }
 
     @Transactional(readOnly = true)
     public DomainMatch googleDomainHint(String email) {
         String domain = emailDomain(email);
-        return domain == null ? null : repository.findActiveDomainMatch(domain).orElse(null);
+        return domain == null ? null : resolveDomainMatch(domain);
+    }
+
+    private DomainMatch resolveDomainMatch(String domain) {
+        DomainMatch existing = repository.findActiveDomainMatch(domain).orElse(null);
+        if (existing != null) {
+            return existing;
+        }
+        KnownUniversityDomain known = KNOWN_UNIVERSITY_DOMAINS.get(domain);
+        return known == null
+                ? null
+                : repository.ensureActiveDomainMatch(known.code(), known.name(), known.shortName(), domain).orElse(null);
     }
 
     @Transactional(readOnly = true)
@@ -378,6 +466,12 @@ public class UniversityManagementService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "University not found"));
     }
 
+    private void requireRoute(Integer routeId) {
+        if (!repository.routeExists(routeId)) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Route not found");
+        }
+    }
+
     private void requireSameUniversity(Integer expectedUniversityId, Integer actualUniversityId) {
         if (!expectedUniversityId.equals(actualUniversityId)) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Resource is outside the university scope");
@@ -409,10 +503,14 @@ public class UniversityManagementService {
             int rowNumber = 0;
             while ((line = reader.readLine()) != null) {
                 rowNumber++;
-                if (rowNumber == 1 && line.toLowerCase(Locale.ROOT).contains("email")) {
+                String normalizedLine = stripBom(line).trim();
+                if (normalizedLine.isEmpty() || normalizedLine.startsWith("#") || normalizedLine.startsWith("\"#")) {
                     continue;
                 }
-                String[] columns = line.split(",", -1);
+                if (rowNumber == 1 && normalizedLine.toLowerCase(Locale.ROOT).contains("email")) {
+                    continue;
+                }
+                List<String> columns = parseCsvLine(line);
                 rows.add(new RosterRow(
                         rowNumber,
                         column(columns, 0),
@@ -433,7 +531,10 @@ public class UniversityManagementService {
             Sheet sheet = workbook.getSheetAt(0);
             for (Row row : sheet) {
                 int rowNumber = row.getRowNum() + 1;
-                String first = formatter.formatCellValue(row.getCell(0));
+                String first = stripBom(formatter.formatCellValue(row.getCell(0))).trim();
+                if (first.isEmpty() || first.startsWith("#")) {
+                    continue;
+                }
                 if (rowNumber == 1 && first.toLowerCase(Locale.ROOT).contains("email")) {
                     continue;
                 }
@@ -484,8 +585,32 @@ public class UniversityManagementService {
         return blank(value) ? null : Integer.parseInt(value.trim());
     }
 
-    private String column(String[] columns, int index) {
-        return index >= columns.length ? null : columns[index];
+    private List<String> parseCsvLine(String line) {
+        List<String> values = new ArrayList<>();
+        StringBuilder cell = new StringBuilder();
+        boolean quoted = false;
+        for (int index = 0; index < line.length(); index++) {
+            char current = line.charAt(index);
+            if (current == '"') {
+                if (quoted && index + 1 < line.length() && line.charAt(index + 1) == '"') {
+                    cell.append('"');
+                    index++;
+                } else {
+                    quoted = !quoted;
+                }
+            } else if (current == ',' && !quoted) {
+                values.add(cell.toString());
+                cell.setLength(0);
+            } else {
+                cell.append(current);
+            }
+        }
+        values.add(cell.toString());
+        return values;
+    }
+
+    private String column(List<String> columns, int index) {
+        return index >= columns.size() ? null : columns.get(index);
     }
 
     private String normalizeCode(String value) {
@@ -494,6 +619,14 @@ public class UniversityManagementService {
 
     private String normalizeEmail(String value) {
         return blank(value) ? null : value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String stripBom(String value) {
+        return value == null ? null : value.replace("\uFEFF", "");
+    }
+
+    private String normalizeStudentCode(String value) {
+        return value == null ? null : value.trim();
     }
 
     private String normalizeDomain(String value) {
@@ -517,6 +650,9 @@ public class UniversityManagementService {
 
     private boolean blank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private record KnownUniversityDomain(String code, String name, String shortName) {
     }
 
     private record RosterRow(int rowNumber, String email, String studentCode, String fullName, String faculty,

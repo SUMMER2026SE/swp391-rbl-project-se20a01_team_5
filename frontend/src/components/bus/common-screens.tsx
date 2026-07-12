@@ -205,18 +205,18 @@ export function NotificationsScreen() {
 
   return (
     <div>
-      <PageHeader title="Thông báo" description="Thông báo thật từ hệ thống UniBus." icon={<Bell className="size-7" />} />
+      <PageHeader title="Thông báo" description="Cập nhật mới từ UniBus." icon={<Bell className="size-7" />} />
       {resource.loading && <LoadingPanel />}
       {resource.error && <ErrorPanel message={resource.error} onRetry={resource.reload} />}
       {!resource.loading && !resource.error && (
-        <DataList emptyTitle="Chưa có thông báo" emptyDescription="Backend chưa trả về thông báo nào cho tài khoản này.">
+        <DataList emptyTitle="Chưa có thông báo" emptyDescription="Bạn chưa có cập nhật mới.">
           {(resource.data || []).map((item) => (
             <ExpressiveCard key={item.notificationId} variant="elevated" className="p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="font-bold text-on-surface">{item.title}</h3>
-                    <StatusPill status={item.read ? "READ" : "UNREAD"} />
+                    {!item.read && <StatusPill status="CHƯA ĐỌC" />}
                   </div>
                   <p className="mt-1 text-sm text-on-surface-variant">{item.content}</p>
                   <p className="mt-2 text-xs text-on-surface-variant">{formatDateTime(item.createdAt)} · {item.senderName || "UniBus"}</p>
@@ -243,7 +243,7 @@ export function MyUniversityScreen() {
 
   return (
     <div>
-      <PageHeader title="Trường của tôi" description="Thông tin trường lấy từ hồ sơ sinh viên và catalog backend." icon={<School className="size-7" />} />
+      <PageHeader title="Trường của tôi" description="Thông tin trường và trạng thái xác minh." icon={<School className="size-7" />} />
       <div className="grid gap-4 lg:grid-cols-[1fr_420px]">
         <AsyncBlock resource={profile}>
           {(data) => (
@@ -259,13 +259,13 @@ export function MyUniversityScreen() {
           )}
         </AsyncBlock>
 
-        <Section title="Catalog Đà Nẵng" description="Danh sách trường backend cho phép chọn khi xác minh.">
+        <Section title="Danh sách trường" description="Các trường đang hỗ trợ tại Đà Nẵng.">
           {catalog.loading && <LoadingPanel />}
           {catalog.error && <ErrorPanel message={catalog.error} onRetry={catalog.reload} />}
           {!catalog.loading && !catalog.error && (
             <ExpressiveCard variant="elevated" className="max-h-[420px] overflow-auto p-4">
               {(catalog.data || []).length === 0 ? (
-                <EmptyState icon={<School className="size-7" />} title="Catalog rỗng" description="Backend chưa trả về danh sách trường." />
+                <EmptyState icon={<School className="size-7" />} title="Chưa có trường" description="Danh sách trường sẽ được cập nhật sau." />
               ) : (
                 <ul className="space-y-2">
                   {(catalog.data || []).map((name) => (
@@ -306,7 +306,7 @@ export function SettingsScreen() {
 
   return (
     <div>
-      <PageHeader title="Cài đặt" description="Thiết lập tài khoản có endpoint backend thật." icon={<KeyRound className="size-7" />} />
+      <PageHeader title="Cài đặt" description="Bảo mật và thông tin tài khoản." icon={<KeyRound className="size-7" />} />
       <ExpressiveCard variant="elevated" className="max-w-2xl space-y-4 p-5">
         <Field label="Mật khẩu hiện tại">
           <Input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
@@ -329,10 +329,10 @@ export function SettingsScreen() {
 export function SupportScreen() {
   return (
     <div>
-      <PageHeader title="Yêu cầu hỗ trợ" description="MVP hiện dùng luồng phản hồi thật thay cho ticket hỗ trợ riêng." icon={<LifeBuoy className="size-7" />} />
+      <PageHeader title="Yêu cầu hỗ trợ" description="Gửi phản hồi để UniBus hỗ trợ bạn." icon={<LifeBuoy className="size-7" />} />
       <UnavailablePanel
-        title="Chưa có API ticket hỗ trợ riêng"
-        description="Vui lòng dùng màn Phản hồi & đánh giá để gửi nội dung đến điều phối. Khi backend có support-ticket endpoint, màn này sẽ được bật lại."
+        title="Dùng phản hồi"
+        description="Vui lòng gửi nội dung qua mục Phản hồi & đánh giá."
       />
     </div>
   );

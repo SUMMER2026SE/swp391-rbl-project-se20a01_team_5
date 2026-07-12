@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -454,6 +455,7 @@ public class OperationsService {
         }
         if (!ticket.routeId().equals(trip.routeId())) {
             return new TicketScanResult(false, "Vé không hợp lệ cho chuyến này. Tuyến đúng của vé: " + (ticket.routeName() == null ? "--" : ticket.routeName()), ticket, null);
+
         }
         if (ticket.validFrom() != null && ticket.validFrom().toLocalDate().isAfter(trip.serviceDate())) {
             return new TicketScanResult(false, "Vé chưa tới ngày hiệu lực.", ticket, null);
@@ -478,6 +480,7 @@ public class OperationsService {
             Integer conductorStaffId) {
         if (!ticket.routeId().equals(trip.routeId())) {
             return new TicketScanResult(false, "Vé không hợp lệ cho chuyến này. Tuyến đúng của Vé: " + (ticket.routeName() == null ? "--" : ticket.routeName()), ticket, null);
+
         }
         if ("USED".equals(ticket.status())) {
             return new TicketScanResult(false, "Vé lượt đã được sử dụng", ticket, null);

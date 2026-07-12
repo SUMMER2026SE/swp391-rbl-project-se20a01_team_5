@@ -100,7 +100,18 @@ public class ExperienceService {
     public LostItemCard updateAssistantLostItem(CurrentUser currentUser, Integer lostItemId,
             UpdateLostItemStatusRequest request) {
         requireConductor(currentUser);
-        return repository.updateLostItem(currentUser.userId(), lostItemId, request);
+        return repository.updateLostItem(currentUser.userId(), lostItemId, normalizeLostItemStatus(request));
+    }
+
+    private UpdateLostItemStatusRequest normalizeLostItemStatus(UpdateLostItemStatusRequest request) {
+        String status = switch (request.status().trim().toUpperCase()) {
+            case "FOUND", "SEARCHING" -> "FOUND";
+            case "RETURNED", "CLOSED" -> "FOUND";
+            case "NOT_FOUND" -> "NOT_FOUND";
+            case "REPORTED" -> "REPORTED";
+            default -> throw new ApiException(HttpStatus.BAD_REQUEST, "Trạng thái đồ thất lạc không hợp lệ");
+        };
+        return new UpdateLostItemStatusRequest(status, request.notes());
     }
 
     @Transactional(readOnly = true)
@@ -110,7 +121,7 @@ public class ExperienceService {
 
     @Transactional
     public LostItemCard coordinatorUpdateLostItem(CurrentUser currentUser, Integer lostItemId, UpdateLostItemStatusRequest request) {
-        return repository.coordinatorUpdateLostItem(currentUser.userId(), lostItemId, request);
+        return repository.coordinatorUpdateLostItem(currentUser.userId(), lostItemId, normalizeLostItemStatus(request));
     }
 
     public CoordinatorDashboardView coordinatorDashboard() {
@@ -134,6 +145,22 @@ public class ExperienceService {
 
     @Transactional(readOnly = true)
     public AdminStatsView adminStats(int days) {
+        return adminStats(days, null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public AdminStatsView adminStats(int days, LocalDate from, LocalDate to) {
+        if (from != null || to != null) {
+            LocalDate effectiveTo = to == null ? LocalDate.now() : to;
+            LocalDate effectiveFrom = from == null ? effectiveTo.minusDays(Math.max(1, Math.min(days, 90)) - 1L) : from;
+            if (effectiveFrom.isAfter(effectiveTo)) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid report date range");
+            }
+            if (effectiveFrom.plusDays(366).isBefore(effectiveTo)) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Report date range is too large");
+            }
+            return repository.adminStats(effectiveFrom, effectiveTo);
+        }
         return repository.adminStats(Math.max(1, Math.min(days, 90)));
     }
 

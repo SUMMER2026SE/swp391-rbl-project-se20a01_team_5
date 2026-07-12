@@ -10,6 +10,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -1017,11 +1018,16 @@ public class OperationsRepository {
         jdbcTemplate.update("DELETE FROM bus_schedules WHERE schedule_id = ?", scheduleId);
     }
 
-    public record TripRouteInfo(Integer tripId, Integer routeId, LocalDate serviceDate,
-            LocalTime departureTime, OffsetDateTime departedAt, OffsetDateTime endedAt, String status) {
-        LocalDateTime scheduledStart() {
-            if (serviceDate == null || departureTime == null) return null;
-            return LocalDateTime.of(serviceDate, departureTime);
+    public record TripRouteInfo(
+            Integer tripId,
+            Integer routeId,
+            LocalDate serviceDate,
+            LocalTime departureTime,
+            OffsetDateTime departedAt,
+            OffsetDateTime endedAt,
+            String status) {
+        public LocalDateTime scheduledStart() {
+            return serviceDate == null || departureTime == null ? null : LocalDateTime.of(serviceDate, departureTime);
         }
     }
 

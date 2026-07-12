@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Optional;
@@ -57,7 +58,7 @@ class OperationsServiceTests {
         ConductorTicketView ticket = monthlyTicket(ROUTE_A, "Campus Gate", "Dormitory");
         ConductorTicketView refreshed = monthlyTicket(ROUTE_A, "Updated Stop", "Dormitory");
         when(operationsRepository.tripRouteInfo(TRIP_ID))
-                .thenReturn(Optional.of(new TripRouteInfo(TRIP_ID, ROUTE_A, LocalDate.now(ZoneOffset.UTC), null, null, null, "RUNNING")));
+                .thenReturn(Optional.of(openTrip(ROUTE_A)));
         when(operationsRepository.findMonthlyTicketByQr("QR-A"))
                 .thenReturn(Optional.of(ticket), Optional.of(refreshed));
         when(operationsRepository.ensureTravelHistoryForScan("SE001", TRIP_ID, CONDUCTOR_ID, ROUTE_A))
@@ -76,14 +77,46 @@ class OperationsServiceTests {
     void monthlyPassScanRejectsDifferentRoute() {
         ConductorTicketView ticket = monthlyTicket(ROUTE_A, "Campus Gate", "Dormitory");
         when(operationsRepository.tripRouteInfo(TRIP_ID))
-                .thenReturn(Optional.of(new TripRouteInfo(TRIP_ID, ROUTE_B, LocalDate.now(ZoneOffset.UTC), null, null, null, "RUNNING")));
+                .thenReturn(Optional.of(openTrip(ROUTE_B)));
         when(operationsRepository.findMonthlyTicketByQr("QR-A")).thenReturn(Optional.of(ticket));
 
         TicketScanResult result = operationsService.scanTicket(conductor, new TicketScanRequest(TRIP_ID, "QR-A"));
 
         assertThat(result.valid()).isFalse();
         assertThat(result.message()).contains("Route 501");
+
         verify(operationsRepository, never()).markMonthlyPassScanned(11);
+        verify(operationsRepository, never()).ensureTravelHistoryForScan(anyString(), any(), any(), any());
+    }
+
+    @Test
+    void demoModeAllowsTicketLookupBeforeTripWindow() {
+        when(operationsRepository.tripRouteInfo(TRIP_ID))
+                .thenReturn(Optional.of(new TripRouteInfo(TRIP_ID, ROUTE_A, LocalDate.now().plusDays(1), LocalTime.NOON, null, null, "NOT_STARTED")));
+
+        TicketScanResult result = operationsService.scanTicket(conductor, new TicketScanRequest(TRIP_ID, "QR-A"));
+
+        assertThat(result.valid()).isFalse();
+        assertThat(result.message()).isEqualTo("Không tìm thấy vé với mã QR này.");
+        verify(operationsRepository).findMonthlyTicketByQr("QR-A");
+        verify(operationsRepository).findSingleTicketByQr("QR-A");
+    }
+
+    @Test
+    void singleTicketScanDoesNotCreateHistoryWhenAtomicUseFails() {
+        ConductorTicketView ticket = singleTicket("UNUSED");
+        ConductorTicketView usedTicket = singleTicket("USED");
+        when(operationsRepository.tripRouteInfo(TRIP_ID))
+                .thenReturn(Optional.of(openTrip(ROUTE_A)));
+        when(operationsRepository.findMonthlyTicketByQr("QR-S")).thenReturn(Optional.empty());
+        when(operationsRepository.findJourneyMonthlyTicketByQr("QR-S", ROUTE_A)).thenReturn(Optional.empty());
+        when(operationsRepository.findSingleTicketByQr("QR-S")).thenReturn(Optional.of(ticket), Optional.of(usedTicket));
+        when(operationsRepository.markSingleTicketUsed(22, TRIP_ID, CONDUCTOR_ID)).thenReturn(0);
+
+        TicketScanResult result = operationsService.scanTicket(conductor, new TicketScanRequest(TRIP_ID, "QR-S"));
+
+        assertThat(result.valid()).isFalse();
+        assertThat(result.message()).isEqualTo("Vé lượt đã được sử dụng");
         verify(operationsRepository, never()).ensureTravelHistoryForScan(anyString(), any(), any(), any());
     }
 
@@ -102,6 +135,35 @@ class OperationsServiceTests {
                 "ACTIVE",
                 now.minusDays(1),
                 now.plusDays(15),
+                null);
+    }
+
+    private TripRouteInfo openTrip(Integer routeId) {
+        return new TripRouteInfo(
+                TRIP_ID,
+                routeId,
+                LocalDate.now(ZoneOffset.UTC),
+                null,
+                OffsetDateTime.now(ZoneOffset.UTC).minusMinutes(5),
+                null,
+                "RUNNING");
+    }
+
+    private ConductorTicketView singleTicket(String status) {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        return new ConductorTicketView(
+                "SINGLE",
+                22,
+                "QR-S",
+                "SE001",
+                "Verified Student",
+                ROUTE_A,
+                "Route " + ROUTE_A,
+                "Campus Gate",
+                "Dormitory",
+                status,
+                now.minusHours(1),
+                now.plusHours(2),
                 null);
     }
 }

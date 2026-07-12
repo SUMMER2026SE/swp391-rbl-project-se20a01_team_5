@@ -196,25 +196,28 @@ export function Counter({
   duration = 1.6,
   format = (n) => Math.round(n).toLocaleString("vi-VN"),
   className,
+  start = "view",
 }: {
   to: number;
   from?: number;
   duration?: number;
   format?: (n: number) => string;
   className?: string;
+  start?: "view" | "mount";
 }) {
   const ref = React.useRef<HTMLSpanElement>(null);
   const inView = useInView(ref, { once: true, margin: "-20% 0px" });
+  const shouldStart = start === "mount" || inView;
   const [val, setVal] = React.useState(from);
   React.useEffect(() => {
-    if (!inView) return;
+    if (!shouldStart) return;
     const controls = animate(from, to, {
       duration,
       ease: [0.05, 0.7, 0.1, 1],
       onUpdate: (v) => setVal(v),
     });
     return () => controls.stop();
-  }, [inView, from, to, duration]);
+  }, [shouldStart, from, to, duration]);
   // Reserve width based on FINAL value's formatted string so the layout
   // doesn't shift as the number grows from "0" to "126.000".
   const finalStr = format(to);
