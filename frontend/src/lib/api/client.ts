@@ -1399,6 +1399,8 @@ export const operationsApi = {
   saveSchedules: (data: { serviceDate: string; shifts: any[] }) => apiFetch.post<ScheduleDashboard>("/operations/schedules", data),
   deleteSchedule: (scheduleId: number, date?: string) => apiFetch.delete<void>(`/operations/schedules/${scheduleId}`, date ? { date } : undefined),
   liveFleet: (date?: string) => apiFetch.get<LiveFleetVehicle[]>("/coordinator/fleet/live", { date }),
+  coordinatorTripTracking: (tripId: number | string) =>
+    apiFetch.get<JourneyTrackingSnapshotDTO>(`/coordinator/fleet/live/${encodeURIComponent(String(tripId))}/tracking`),
 };
 
 export interface RouteListItem {
