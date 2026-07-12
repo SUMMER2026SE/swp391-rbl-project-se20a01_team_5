@@ -265,6 +265,28 @@ dong ho tinh tu departedAt, map nam trong Chuyen hien tai va lich su khong tai s
 
 ---
 
+# Changelog: Đồng bộ lại UI vận hành tài xế
+
+## Tóm tắt
+- Đưa các màn vận hành tài xế về cùng ngôn ngữ giao diện list/card của hệ thống.
+- Giữ nguyên nghiệp vụ chuyến, tracking, bản đồ, timeline và dữ liệu hiện có.
+
+## Thay đổi
+- `Chuyến hiện tại`: dùng card hệ thống, status pill, typography và nút dạng pill chuẩn.
+- Quick stats, bản đồ và danh sách trạm dùng surface token chung, giảm màu hard-code và trang trí dư thừa.
+- `Danh sách chuyến được phân công`: khôi phục timeline ngang UX gốc; card dạng list giống `Lịch trình`.
+- Thông tin phụ xe, điện thoại và số trạm chuyển về grid gọn, responsive 2/3 cột.
+- `Lịch sử`: chuyển card lớn có icon trang trí thành list card gọn, giữ đầy đủ giờ bắt đầu, kết thúc và tổng thời gian.
+- Giữ nguyên UI `Liên hệ điều phối` vì đây là màn nghiệp vụ riêng đã được thiết kế trước đó.
+
+## Kiểm tra
+- Backend: `mvn -B -ntp clean test` — 73 tests đạt.
+- Frontend: `npm ci`, `npm run lint`, `npm run build` đạt.
+- File thay đổi và `AGENTS.md` hợp lệ UTF-8, không có mojibake hoặc dấu `?` bất thường.
+- `git diff --check` đạt.
+
+---
+
 # Changelog: Can bang card chuyen dang chay tren dashboard tai xe
 
 ## Thay doi
