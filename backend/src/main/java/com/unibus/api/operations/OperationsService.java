@@ -317,7 +317,22 @@ public class OperationsService {
     public DriverTripView startTrip(CurrentUser currentUser, Integer tripId) {
         Integer driverStaffId = requireDriverStaffId(currentUser);
         requireOwnedTrip(tripId, driverStaffId);
-        operationsRepository.startTrip(tripId);
+        TripRouteInfo trip = operationsRepository.tripRouteInfo(tripId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy chuyến"));
+        if (!"NOT_STARTED".equals(trip.status())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Chỉ chuyến chưa bắt đầu mới có thể khởi hành");
+        }
+        LocalDateTime scheduledStart = trip.scheduledStart();
+        LocalDateTime now = LocalDateTime.now(BUSINESS_ZONE);
+        if (scheduledStart == null || now.isBefore(scheduledStart.minusMinutes(30)) || now.isAfter(scheduledStart.plusMinutes(60))) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Chỉ có thể bắt đầu chuyến từ 30 phút trước đến 60 phút sau giờ chạy");
+        }
+        if (operationsRepository.hasOtherRunningTrip(driverStaffId, tripId)) {
+            throw new ApiException(HttpStatus.CONFLICT, "Tài xế đang có một chuyến khác chưa kết thúc");
+        }
+        if (operationsRepository.startTrip(tripId) != 1) {
+            throw new ApiException(HttpStatus.CONFLICT, "Trạng thái chuyến đã thay đổi, vui lòng tải lại");
+        }
         return findTripAfterChange(driverStaffId, tripId);
     }
 
@@ -325,8 +340,21 @@ public class OperationsService {
     public DriverTripView endTrip(CurrentUser currentUser, Integer tripId) {
         Integer driverStaffId = requireDriverStaffId(currentUser);
         requireOwnedTrip(tripId, driverStaffId);
-        operationsRepository.endTrip(tripId);
+        if (operationsRepository.endTrip(tripId) != 1) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Chỉ chuyến đang chạy mới có thể kết thúc");
+        }
         return findTripAfterChange(driverStaffId, tripId);
+    }
+
+    @Transactional(readOnly = true)
+    public DriverTripView getDriverTripForTracking(CurrentUser currentUser, Integer tripId) {
+        Integer driverStaffId = requireDriverStaffId(currentUser);
+        requireOwnedTrip(tripId, driverStaffId);
+        DriverTripView trip = operationsRepository.findDriverTrip(tripId, driverStaffId);
+        if (trip == null) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy chuyến");
+        }
+        return trip;
     }
 
     @Transactional

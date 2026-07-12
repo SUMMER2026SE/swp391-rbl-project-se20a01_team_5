@@ -4,6 +4,7 @@
 -- Login password for created demo accounts: Password123!
 
 BEGIN;
+SET LOCAL TIME ZONE 'Asia/Ho_Chi_Minh';
 
 DO $$
 DECLARE
@@ -417,11 +418,11 @@ BEGIN
     FROM generate_series(1, 7) AS weekday_number;
 
     INSERT INTO bus_schedules (route_id, bus_id, driver_id, conductor_id, weekday_number, departure_time, end_time, status, assigned_by_user_id, assigned_at)
-    SELECT v_route_full_id, v_bus_id, v_driver_id, v_conductor_id, weekday_number, TIME '17:30', TIME '18:30', 'ACTIVE', v_admin_user_id, CURRENT_TIMESTAMP
+    SELECT v_route_full_id, v_bus_id, v_driver_id, v_conductor_id, weekday_number, (CURRENT_TIME + INTERVAL '10 minutes')::time, (CURRENT_TIME + INTERVAL '70 minutes')::time, 'ACTIVE', v_admin_user_id, CURRENT_TIMESTAMP
     FROM generate_series(1, 7) AS weekday_number;
 
     SELECT schedule_id INTO v_schedule_supported_id FROM bus_schedules WHERE route_id = v_route_supported_id AND assigned_by_user_id = v_admin_user_id AND departure_time = TIME '07:30' ORDER BY schedule_id DESC LIMIT 1;
-    SELECT schedule_id INTO v_schedule_full_id FROM bus_schedules WHERE route_id = v_route_full_id AND assigned_by_user_id = v_admin_user_id AND departure_time = TIME '17:30' ORDER BY schedule_id DESC LIMIT 1;
+    SELECT schedule_id INTO v_schedule_full_id FROM bus_schedules WHERE route_id = v_route_full_id AND assigned_by_user_id = v_admin_user_id ORDER BY schedule_id DESC LIMIT 1;
 
     INSERT INTO trips (schedule_id, route_id, bus_id, driver_id, conductor_id, service_date, departed_at, ended_at, status, notes)
     SELECT v_schedule_supported_id, v_route_supported_id, v_bus_id, v_driver_id, v_conductor_id, d::date,
@@ -435,7 +436,7 @@ BEGIN
     INSERT INTO trips (schedule_id, route_id, bus_id, driver_id, conductor_id, service_date, departed_at, ended_at, status, notes)
     SELECT v_schedule_full_id, v_route_full_id, v_bus_id, v_driver_id, v_conductor_id, d::date,
            NULL, NULL,
-           CASE WHEN d::date = CURRENT_DATE THEN 'RUNNING' ELSE 'NOT_STARTED' END,
+           'NOT_STARTED',
            'STABLE_DEMO full-price afternoon trip'
     FROM generate_series(CURRENT_DATE, v_end_date, INTERVAL '1 day') AS d
     WHERE CURRENT_DATE <= v_end_date;

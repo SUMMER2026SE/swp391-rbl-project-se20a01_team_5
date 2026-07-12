@@ -222,7 +222,7 @@ public class OperationsRepository {
                   AND t.service_date BETWEEN ? AND ?
                   AND t.status IN ('COMPLETED', 'CANCELLED')
                 ORDER BY t.service_date DESC, COALESCE(t.ended_at, t.departed_at) DESC NULLS LAST, bs.departure_time DESC NULLS LAST, t.trip_id DESC
-                """, (rs, rowNum) -> mapDriverTrip(rs),
+                """, (rs, rowNum) -> mapDriverTripWithoutStops(rs),
                 driverId, fromDate, toDate);
     }
 
@@ -717,23 +717,37 @@ public class OperationsRepository {
         return id == null ? 0 : id;
     }
 
-    public void startTrip(Integer tripId) {
-        jdbcTemplate.update("""
+    public boolean hasOtherRunningTrip(Integer driverId, Integer tripId) {
+        Boolean exists = jdbcTemplate.queryForObject("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM trips
+                    WHERE driver_id = ?
+                      AND status = 'RUNNING'
+                      AND trip_id <> ?
+                )
+                """, Boolean.class, driverId, tripId);
+        return Boolean.TRUE.equals(exists);
+    }
+
+    public int startTrip(Integer tripId) {
+        return jdbcTemplate.update("""
                 UPDATE trips
                 SET status = 'RUNNING',
-                    departed_at = COALESCE(departed_at, CURRENT_TIMESTAMP)
+                    departed_at = CURRENT_TIMESTAMP,
+                    ended_at = NULL
                 WHERE trip_id = ?
-                  AND status IN ('NOT_STARTED', 'RUNNING')
+                  AND status = 'NOT_STARTED'
                 """, tripId);
     }
 
-    public void endTrip(Integer tripId) {
-        jdbcTemplate.update("""
+    public int endTrip(Integer tripId) {
+        return jdbcTemplate.update("""
                 UPDATE trips
                 SET status = 'COMPLETED',
-                    ended_at = COALESCE(ended_at, CURRENT_TIMESTAMP)
+                    ended_at = CURRENT_TIMESTAMP
                 WHERE trip_id = ?
-                  AND status IN ('RUNNING', 'NOT_STARTED', 'COMPLETED')
+                  AND status = 'RUNNING'
                 """, tripId);
     }
 
@@ -834,6 +848,25 @@ public class OperationsRepository {
                 departure,
                 departure == null ? "" : departure.toString(),
                 rs.getString("status"));
+    }
+
+
+    private DriverTripView mapDriverTripWithoutStops(ResultSet rs) throws SQLException {
+        return new DriverTripView(
+                (Integer) rs.getObject("schedule_id"),
+                (Integer) rs.getObject("trip_id"),
+                rs.getInt("route_id"),
+                rs.getString("route_name"),
+                (Integer) rs.getObject("bus_id"),
+                rs.getString("license_plate"),
+                rs.getString("conductor_name"),
+                rs.getString("conductor_phone"),
+                rs.getObject("service_date", LocalDate.class),
+                toLocalTime(rs.getTime("departure_time")),
+                toOffsetDateTime(rs.getTimestamp("departed_at")),
+                toOffsetDateTime(rs.getTimestamp("ended_at")),
+                rs.getString("status"),
+                List.of());
     }
 
     private DriverTripView mapDriverTrip(ResultSet rs) throws SQLException {

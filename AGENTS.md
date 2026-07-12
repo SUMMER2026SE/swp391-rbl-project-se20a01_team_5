@@ -187,3 +187,52 @@ boi lech gio chay, thieu gio khoi hanh trong du lieu seed, hoac cua so 30 phut t
 - Chuyen thieu `tripId`, `routeId` hoac `routeName`: UI hien ly do cu the.
 - Chuyen `COMPLETED`, `CANCELLED`, `NOT_CREATED`: backend tu choi quet.
 - Khong con text mojibake/dau hoi trong cac chuoi vua sua.
+
+---
+
+# Changelog: Hop nhat luong van hanh tai xe
+
+## Tom tat
+Sua driver flow theo trip thuc te: chuyen chi RUNNING sau khi tai xe bam bat dau, tracking bam theo tripId,
+dong ho tinh tu departedAt, map nam trong Chuyen hien tai va lich su khong tai stops khong can thiet.
+
+## Backend
+- startTrip chi chap nhan NOT_STARTED, trong khoang 30 phut truoc den 60 phut sau gio lich.
+- Chan tai xe bat dau chuyen moi neu dang co chuyen RUNNING.
+- endTrip chi chap nhan RUNNING; khong con ket thuc NOT_STARTED/COMPLETED.
+- Them tracking endpoint theo tripId va xac minh chuyen thuoc tai xe.
+- History mapper khong goi findTripStopsBySchedule cho tung dong, loai N+1 query.
+
+## Frontend driver
+- Dong ho tinh tu departedAt, khong reset khi component remount.
+- Khong fallback vehicles[0]; khong co xe dung trip thi hien dau gach ngang.
+- Chuyen hien tai co map, xe dung trip, quick stats va 5 tram gan nhat.
+- Loai chuyen RUNNING khoi danh sach phan cong ben duoi.
+- Bo timeline ngang dai tren dashboard/chuyen hien tai.
+- Bo menu Tuyen duoc phan, Thong bao, Ho so ca nhan; notification/profile van truy cap tu top bar.
+- Rut gon lich su con ngay/tuyen/gio bat dau/gio ket thuc/tong thoi gian/trang thai.
+
+## Demo data
+- Khong seed san trip RUNNING.
+- Chuyen demo gan nhat duoc dat 10 phut sau thoi diem reset de co the bam bat dau khi demo.
+- SQL reset co dinh timezone Asia/Ho_Chi_Minh.
+
+## Kiem tra
+- Backend full tests.
+- Frontend eslint driver/nav/client.
+- Frontend tsc --noEmit.
+
+---
+
+# Changelog: Sua lich khoi hanh trip baseline tai xe
+
+## Tom tat
+- Gan cac trip `DEMO_DATA:BASELINE` co `schedule_id = NULL` vao `bus_schedules` theo slot gio demo.
+- Slot 1/2/3/4 tuong ung 06:30/09:00/14:00/17:30.
+- Man Chuyen hien tai uu tien chuyen co the bat dau, sau do den chuyen sap toi; khong uu tien chuyen da qua gio.
+- Nhan trang thai phan anh dung dieu kien: thieu lich, chua den gio, san sang hoac da qua gio.
+
+## Kiem tra
+- Trip 7211 da co schedule 763 va gio 17:30.
+- UI hien `CO THE BAT DAU LUC 17:30`; nut khoa dung vi chua vao cua so 30 phut.
+- ESLint va TypeScript chay qua.

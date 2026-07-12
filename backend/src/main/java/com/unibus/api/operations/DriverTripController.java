@@ -62,9 +62,12 @@ public class DriverTripController {
         return ApiResponse.ok("Trip ended", operationsService.endTrip(currentUser, tripId));
     }
 
-    @GetMapping("/routes/{routeId}/tracking")
-    ApiResponse<JourneyTrackingSnapshot> trackRoute(@PathVariable Integer routeId) {
-        return ApiResponse.ok("Driver route tracking retrieved", journeyTrackingService.routeSnapshot(routeId, null, null));
+    @GetMapping("/{tripId}/tracking")
+    ApiResponse<JourneyTrackingSnapshot> trackTrip(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @PathVariable Integer tripId) {
+        DriverTripView trip = operationsService.getDriverTripForTracking(currentUser, tripId);
+        return ApiResponse.ok("Driver trip tracking retrieved", journeyTrackingService.routeSnapshot(trip.routeId(), null, null));
     }
 
     @PostMapping("/{tripId}/location")
