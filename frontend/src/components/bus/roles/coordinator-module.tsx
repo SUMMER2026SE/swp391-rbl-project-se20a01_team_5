@@ -242,13 +242,22 @@ export function CoordinatorChatOverlay() {
 export function CoordinatorAlertsScreen() {
   const feedback = useApi(() => coordinatorFeedbackApi.all(), undefined, []);
   const lostItems = useApi(() => coordinatorLostItemApi.all(), undefined, []);
+  const notifications = useApi(() => notificationApi.mine(), undefined, []);
   const feedbackItems = ((feedback.raw || []) as any[]);
   const sosItems = feedbackItems.filter(isSosFeedback);
   const feedbackOnly = feedbackItems.filter((item) => !isSosFeedback(item));
+  const historicalAlerts = ((notifications.raw || []) as any[])
+    .filter((item) => !isPrivateMessageNotification(item))
+    .map((item) => ({
+      ...item,
+      _type: isSosFeedback(item) ? "sos" as const : isLostItemNotification(item) ? "lost" as const : "feedback" as const,
+    }))
+    .filter((item) => item._type === "sos" || item._type === "lost" || isFeedbackNotification(item));
   const alertItems = [
     ...sosItems.map((item) => ({ ...item, _type: "sos" as const })),
     ...feedbackOnly.map((item) => ({ ...item, _type: "feedback" as const })),
     ...((lostItems.raw || []) as any[]).map((item) => ({ ...item, _type: "lost" as const })),
+    ...historicalAlerts,
   ].sort((left, right) => Date.parse(right.createdAt || right.reportedAt || "") - Date.parse(left.createdAt || left.reportedAt || ""));
 
   return (
@@ -258,16 +267,16 @@ export function CoordinatorAlertsScreen() {
         description="Hiển thị SOS, phản hồi và mất đồ. Tin nhắn riêng nằm trong pop up chat."
         icon={<AlertTriangle className="size-7" />}
         actions={
-          <ExpressiveButton variant="outlined" size="sm" onClick={() => { feedback.reload(); lostItems.reload(); }}>
-            <RefreshCw className={cn("size-4", (feedback.loading || lostItems.loading) && "animate-spin")} />
+          <ExpressiveButton variant="outlined" size="sm" onClick={() => { feedback.reload(); lostItems.reload(); notifications.reload(); }}>
+            <RefreshCw className={cn("size-4", (feedback.loading || lostItems.loading || notifications.loading) && "animate-spin")} />
             Làm mới
           </ExpressiveButton>
         }
       />
-      {feedback.loading || lostItems.loading ? (
+      {feedback.loading || lostItems.loading || notifications.loading ? (
         <LoadingScreen label="Đang tải thông báo..." />
-      ) : feedback.error || lostItems.error ? (
-        <ErrorScreen message={feedback.error || lostItems.error || "Không tải được thông báo"} onRetry={() => { feedback.reload(); lostItems.reload(); }} />
+      ) : feedback.error || lostItems.error || notifications.error ? (
+        <ErrorScreen message={feedback.error || lostItems.error || notifications.error || "Không tải được thông báo"} onRetry={() => { feedback.reload(); lostItems.reload(); notifications.reload(); }} />
       ) : alertItems.length === 0 ? (
         <EmptyState icon={<Bell className="size-7" />} title="Không có thông báo" description="Tin nhắn riêng được gom vào biểu tượng chat ở góc màn hình." />
       ) : (
@@ -288,7 +297,7 @@ export function CoordinatorAlertsScreen() {
                   <M3StatusPill label={isResolved ? "Đã xử lý" : isSos ? "Khẩn cấp" : "Cần xử lý"} tone={isResolved ? "success" : isSos ? "error" : "warning"} />
                   <span className="text-xs text-on-surface-variant">{formatDateTime(item.createdAt || item.reportedAt)}</span>
                 </div>
-                <p className="font-bold text-on-surface truncate">{item.studentName || item.reporterName || item.itemName || (isLost ? "Báo mất đồ" : "Sinh viên gửi phản hồi")}</p>
+                <p className="font-bold text-on-surface truncate">{item.studentName || item.reporterName || item.senderName || item.itemName || (isLost ? "Báo mất đồ" : "Sinh viên gửi phản hồi")}</p>
                 <p className="mt-2 whitespace-pre-wrap break-words text-sm text-on-surface">{item.content || item.description || item.notes || "Không có nội dung"}</p>
               </ExpressiveCard>
             </StaggerItem>
@@ -2099,25 +2108,40 @@ function ByUniversityScreen({ onNavigate }: { onNavigate: (id: string) => void }
     [selectedUniversityId]
   );
 
-  useEffect(() => {
-    if (!selectedUniversityId && metrics.raw?.length) {
-      setSelectedUniversityId(metrics.raw[0].universityId);
-    }
-  }, [metrics.raw, selectedUniversityId]);
+  const visibleUniversities = useMemo(() => {
+    const priorityUniversityIds = [1, 2, 103, 3, 4];
+    const universityMetrics = metrics.raw || [];
+    return [...universityMetrics]
+      .sort((left, right) => {
+        const leftPriority = priorityUniversityIds.indexOf(left.universityId);
+        const rightPriority = priorityUniversityIds.indexOf(right.universityId);
+        const leftRank = leftPriority === -1 ? priorityUniversityIds.length : leftPriority;
+        const rightRank = rightPriority === -1 ? priorityUniversityIds.length : rightPriority;
+        if (leftRank !== rightRank) return leftRank - rightRank;
+        return (right.tripsToday + right.routeCount + right.studentCount) - (left.tripsToday + left.routeCount + left.studentCount);
+      })
+      .slice(0, 5);
+  }, [metrics.raw]);
 
-  const selectedUniversity = metrics.raw?.find((u) => u.universityId === selectedUniversityId) || metrics.raw?.[0] || null;
+  useEffect(() => {
+    if (!selectedUniversityId && visibleUniversities.length) {
+      setSelectedUniversityId(visibleUniversities[0].universityId);
+    }
+  }, [selectedUniversityId, visibleUniversities]);
+
+  const selectedUniversity = visibleUniversities.find((u) => u.universityId === selectedUniversityId) || visibleUniversities[0] || null;
   const routes = routeMetrics.raw || [];
-  const totalRegistered = routes.reduce((sum, r) => sum + r.registeredStudents, 0);
-  const totalPasses = routes.reduce((sum, r) => sum + r.activeMonthlyPasses, 0);
   const totalRunning = routes.reduce((sum, r) => sum + r.runningTrips, 0);
 
   const routeStatus = (route: CoordinatorUniversityRouteMetric) => {
     const demand = Math.max(route.activeMonthlyPasses, route.registeredStudents);
-    if (demand > 0 && route.tripsToday === 0) return { label: "Thiếu chuyến", tone: "error" as const };
+    if (route.tripsToday === 0) return { label: "Cần tạo chuyến", tone: "error" as const };
     if (route.tripsToday > 0 && route.runningTrips === 0) return { label: "Chưa chạy", tone: "warning" as const };
     if (demand > route.tripsToday * 40) return { label: "Có nguy cơ quá tải", tone: "warning" as const };
+    if (!route.assignedDrivers || !route.assignedConductors) return { label: "Thiếu nhân sự", tone: "warning" as const };
     return { label: "Ổn định", tone: "success" as const };
   };
+  const routesNeedingAction = routes.filter((route) => routeStatus(route).tone !== "success").length;
 
   return (
     <PageTransition className="space-y-6 min-w-0">
@@ -2131,9 +2155,9 @@ function ByUniversityScreen({ onNavigate }: { onNavigate: (id: string) => void }
               value={selectedUniversityId ? String(selectedUniversityId) : ""}
               onValueChange={(value) => setSelectedUniversityId(Number(value))}
             >
-              <SelectTrigger className="w-full sm:w-72"><SelectValue placeholder="Chọn trường" /></SelectTrigger>
+              <SelectTrigger className="w-full sm:w-80"><SelectValue placeholder="Chọn trường cần điều phối" /></SelectTrigger>
               <SelectContent>
-                {(metrics.raw || []).map((u) => (
+                {visibleUniversities.map((u) => (
                   <SelectItem key={u.universityId} value={String(u.universityId)}>
                     {u.shortName || u.universityName}
                   </SelectItem>
@@ -2173,9 +2197,9 @@ function ByUniversityScreen({ onNavigate }: { onNavigate: (id: string) => void }
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 min-w-0">
                   {[
                     { label: "Tuyến", value: routes.length || selectedUniversity.routeCount, icon: RouteIcon },
-                    { label: "Vé tháng", value: totalPasses, icon: Badge },
-                    { label: "Đăng ký", value: totalRegistered, icon: Users },
+                    { label: "Sinh viên", value: selectedUniversity.studentCount, icon: Users },
                     { label: "Đang chạy", value: totalRunning, icon: Navigation },
+                    { label: "Cần xử lý", value: routesNeedingAction, icon: AlertTriangle },
                   ].map((metric) => (
                     <div key={metric.label} className="rounded-xl bg-surface-container-high px-3 py-2 min-w-0">
                       <metric.icon className="size-4 text-on-surface-variant" />
@@ -2267,6 +2291,16 @@ function isPrivateMessageNotification(item: any) {
   return text.includes("tin nhắn") || text.includes("message") || text.includes("chat");
 }
 
+function isLostItemNotification(item: any) {
+  const text = `${item.title || ""} ${item.content || item.body || ""}`.toLowerCase();
+  return text.includes("[lost_item]") || text.includes("mất đồ") || text.includes("lost item");
+}
+
+function isFeedbackNotification(item: any) {
+  const text = `${item.title || ""} ${item.content || item.body || ""}`.toLowerCase();
+  return text.includes("phản hồi") || text.includes("feedback");
+}
+
 ﻿// =============================================================================
 // Screen 9: Hỗ trợ và phản hồi (Feedback / Lost Items / SOS)
 // =============================================================================
@@ -2283,11 +2317,44 @@ function FeedbackScreen({ ctx, initialTab }: { ctx: Ctx; initialTab?: string }) 
 
   const feedbackResource = useApi(() => coordinatorFeedbackApi.all(), (items) => items.map(mapFeedback), []);
   const lostItemResource = useApi(() => coordinatorLostItemApi.all(), undefined, []);
+  const notificationResource = useApi(() => notificationApi.mine(), undefined, []);
   const feedbackItems = feedbackResource.data || ctx.feedback;
-  const lostItems: ExperienceLostItemCard[] = lostItemResource.data || [];
+  const historicalItems = ((notificationResource.raw || []) as any[])
+    .filter((item) => !isPrivateMessageNotification(item))
+    .map((item) => ({
+      ...item,
+      _history: true,
+      _type: isSosFeedback(item) ? 'sos' : isLostItemNotification(item) ? 'lost' : 'feedback',
+      status: 'resolved',
+      id: 'notification-' + item.notificationId,
+      studentName: item.senderName || 'Hệ thống',
+      reporterName: item.senderName || 'Hệ thống',
+      content: item.content || item.body || '',
+      createdAt: item.createdAt,
+      category: 'Lịch sử hệ thống',
+    }))
+    .filter((item) => item._type !== 'feedback' || isFeedbackNotification(item));
+  const historicalLostItems = historicalItems
+    .filter((item) => item._type === 'lost')
+    .map((item) => ({
+      lostItemReportId: -Number(item.notificationId),
+      reporterName: item.senderName || 'Hệ thống',
+      itemDescription: item.content,
+      status: 'CLOSED',
+      reportedAt: item.createdAt,
+      notes: 'Lịch sử hệ thống',
+      _history: true,
+    })) as ExperienceLostItemCard[];
+  const lostItems: ExperienceLostItemCard[] = [...(lostItemResource.data || []), ...historicalLostItems];
 
-  const feedbackOnly = feedbackItems.filter((f: any) => !isSosFeedback(f));
-  const sosOnly = feedbackItems.filter(isSosFeedback);
+  const feedbackOnly = [
+    ...feedbackItems.filter((f: any) => !isSosFeedback(f)),
+    ...historicalItems.filter((item) => item._type === 'feedback'),
+  ];
+  const sosOnly = [
+    ...feedbackItems.filter(isSosFeedback),
+    ...historicalItems.filter((item) => item._type === 'sos'),
+  ];
 
   const applyStatusFilter = (items: any[]) =>
     items
@@ -2352,8 +2419,8 @@ function FeedbackScreen({ ctx, initialTab }: { ctx: Ctx; initialTab?: string }) 
     }
   };
 
-  const reloadAll = () => { feedbackResource.reload(); lostItemResource.reload(); };
-  const loading = (feedbackResource.loading && !feedbackResource.data) || (lostItemResource.loading && !lostItemResource.data);
+  const reloadAll = () => { feedbackResource.reload(); lostItemResource.reload(); notificationResource.reload(); };
+  const loading = (feedbackResource.loading && !feedbackResource.data) || (lostItemResource.loading && !lostItemResource.data) || (notificationResource.loading && !notificationResource.raw);
 
   return (
     <PageTransition className="space-y-6 min-w-0">
@@ -2829,8 +2896,9 @@ function FallbackScreen({ activeId }: { activeId: string }) {
 function FloatingChatButton({ onClick, open, unreadCount }: { onClick: () => void; open: boolean; unreadCount: number }) {
   return (
     <button
-      onClick={onClick}
-      className="fixed bottom-20 right-4 z-[2600] flex size-14 items-center justify-center rounded-full bg-[#14140f] text-[#beff50] shadow-xl transition-all duration-200 hover:scale-105 active:scale-95 sm:bottom-6 sm:right-6"
+      type="button"
+      onClick={(event) => { event.stopPropagation(); onClick(); }}
+      className="fixed bottom-20 right-4 z-[2600] flex size-14 touch-manipulation items-center justify-center rounded-full bg-[#14140f] text-[#beff50] shadow-xl transition-all duration-200 hover:scale-105 active:scale-95 sm:bottom-6 sm:right-6"
       aria-label={open ? "Đóng chat nội bộ" : "Mở chat nội bộ"}
     >
       {open ? <X className="size-6" /> : <MessageSquare className="size-6" />}
@@ -2853,7 +2921,7 @@ function InternalChatPanel({ open, onOpenChange, onUnreadCountChange }: Internal
   const [threads, setThreads] = useState<ContactThreadCard[]>([]);
   const [activeThread, setActiveThread] = useState<ContactThreadCard | null>(null);
   const [messages, setMessages] = useState<InternalMessageCard[]>([]);
-  const [loadingThreads, setLoadingThreads] = useState(false);
+  const [loadingThreads, setLoadingThreads] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [messageText, setMessageText] = useState("");
   const [sending, setSending] = useState(false);
@@ -2876,12 +2944,16 @@ function InternalChatPanel({ open, onOpenChange, onUnreadCountChange }: Internal
       if (fetchingThreadsRef.current) return;
       fetchingThreadsRef.current = true;
       try {
-        const data = await messagingApi.getThreads();
+        const [data, notifications] = await Promise.all([
+          messagingApi.getThreads(),
+          notificationApi.mine(),
+        ]);
         setThreads(data);
         const driverConductorUnread = data
           .filter((t) => ["DRIVER", "CONDUCTOR"].includes(t.peerRole?.toUpperCase()))
           .reduce((sum, t) => sum + t.unreadCount, 0);
-        onUnreadCountChange(driverConductorUnread);
+        const notificationUnread = notifications.filter((item) => !item.read && isPrivateMessageNotification(item)).length;
+        onUnreadCountChange(Math.max(driverConductorUnread, notificationUnread));
       } catch (error) {
         console.error("Failed to fetch message threads:", error);
       } finally {
@@ -2889,18 +2961,15 @@ function InternalChatPanel({ open, onOpenChange, onUnreadCountChange }: Internal
       }
     };
 
-    if (open) {
-      if (threads.length === 0) setLoadingThreads(true);
-      fetchThreads().finally(() => {
-        setLoadingThreads(false);
-      });
-      
-      const interval = setInterval(() => {
-        if (!document.hidden) void fetchThreads();
-      }, 4000);
-      return () => clearInterval(interval);
-    }
-  }, [open, onUnreadCountChange, threads.length]);
+    void fetchThreads().finally(() => {
+      setLoadingThreads(false);
+    });
+
+    const interval = setInterval(() => {
+      if (!document.hidden) void fetchThreads();
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [onUnreadCountChange]);
 
   // Poll conversation messages when a thread is active
   useEffect(() => {
@@ -2922,8 +2991,12 @@ function InternalChatPanel({ open, onOpenChange, onUnreadCountChange }: Internal
       }
     };
 
-    // Mark as read immediately
     messagingApi.markAsRead(activeThread.peerUserId).catch(() => {});
+    notificationApi.mine()
+      .then((items) => items.filter((item) => !item.read && isPrivateMessageNotification(item) && item.senderName === activeThread.peerName))
+      .then((items) => Promise.all(items.map((item) => notificationApi.markRead(item.notificationId))))
+      .then((items) => items.forEach(() => window.dispatchEvent(new Event("notification-read"))))
+      .catch(() => {});
 
     if (messages.length === 0) setLoadingMessages(true);
     fetchConversation().finally(() => {
