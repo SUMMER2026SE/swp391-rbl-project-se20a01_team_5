@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.BatchPreparedStatementSetter;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
@@ -380,6 +381,40 @@ public class UniversityManagementRepository {
     }
 
     public List<RosterStudentView> findRoster(Integer universityId, String keyword, String status) {
+        return findRoster(universityId, keyword, status, null);
+    }
+
+    public List<RosterStudentView> findRoster(Integer universityId, String keyword, String status, Long importBatchId) {
+        String like = blank(keyword) ? null : "%" + keyword.trim().toLowerCase() + "%";
+        String normalizedStatus = blank(status) || "all".equalsIgnoreCase(status) ? null : status.trim().toUpperCase();
+        List<Object> params = new ArrayList<>();
+        params.add(universityId);
+        StringBuilder where = new StringBuilder("WHERE university_id = ?\n");
+        if (like != null) {
+            where.append("AND (LOWER(email) LIKE ? OR LOWER(student_code) LIKE ? OR LOWER(full_name) LIKE ?)\n");
+            params.add(like);
+            params.add(like);
+            params.add(like);
+        }
+        if (normalizedStatus != null) {
+            where.append("AND status = ?\n");
+            params.add(normalizedStatus);
+        }
+        if (importBatchId != null) {
+            where.append("AND imported_batch_id = ?\n");
+            params.add(importBatchId);
+        }
+        return jdbcTemplate.query("""
+                SELECT roster_id, university_id, email, student_code, full_name, faculty, academic_year,
+                       status, matched_user_id, created_at, updated_at
+                FROM university_student_rosters
+                """ + where + """
+                ORDER BY updated_at DESC NULLS LAST, created_at DESC, roster_id DESC
+                LIMIT 200
+                """, (rs, rowNum) -> mapRoster(rs), params.toArray());
+    }
+
+    public List<RosterStudentView> findRosterForExport(Integer universityId, String keyword, String status) {
         String like = blank(keyword) ? null : "%" + keyword.trim().toLowerCase() + "%";
         String normalizedStatus = blank(status) || "all".equalsIgnoreCase(status) ? null : status.trim().toUpperCase();
         List<Object> params = new ArrayList<>();
@@ -401,8 +436,18 @@ public class UniversityManagementRepository {
                 FROM university_student_rosters
                 """ + where + """
                 ORDER BY updated_at DESC NULLS LAST, created_at DESC, roster_id DESC
-                LIMIT 200
                 """, (rs, rowNum) -> mapRoster(rs), params.toArray());
+    }
+
+    public List<String> findRosterFaculties(Integer universityId) {
+        return jdbcTemplate.query("""
+                SELECT DISTINCT faculty
+                FROM university_student_rosters
+                WHERE university_id = ?
+                  AND faculty IS NOT NULL
+                  AND TRIM(faculty) <> ''
+                ORDER BY faculty
+                """, (rs, rowNum) -> rs.getString("faculty"), universityId);
     }
 
     public Long createImportBatch(Integer universityId, String fileName, Integer importedByUserId) {
@@ -441,6 +486,38 @@ public class UniversityManagementRepository {
                 """, universityId, email, studentCode, fullName, faculty, academicYear, status, batchId);
     }
 
+    public void insertRosterBatch(List<RosterInsertRow> rows) {
+        if (rows.isEmpty()) {
+            return;
+        }
+        jdbcTemplate.batchUpdate("""
+                INSERT INTO university_student_rosters(university_id, email, student_code, full_name, faculty, academic_year, status, imported_batch_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, new BatchPreparedStatementSetter() {
+                    @Override
+                    public void setValues(PreparedStatement ps, int i) throws SQLException {
+                        RosterInsertRow row = rows.get(i);
+                        ps.setInt(1, row.universityId());
+                        ps.setString(2, row.email());
+                        ps.setString(3, row.studentCode());
+                        ps.setString(4, row.fullName());
+                        ps.setString(5, row.faculty());
+                        if (row.academicYear() == null) {
+                            ps.setObject(6, null);
+                        } else {
+                            ps.setInt(6, row.academicYear());
+                        }
+                        ps.setString(7, row.status());
+                        ps.setLong(8, row.batchId());
+                    }
+
+                    @Override
+                    public int getBatchSize() {
+                        return rows.size();
+                    }
+                });
+    }
+
     public boolean rosterStudentCodeExistsForDifferentEmail(Integer universityId, String studentCode, String email) {
         Boolean exists = jdbcTemplate.queryForObject("""
                 SELECT EXISTS (
@@ -452,6 +529,30 @@ public class UniversityManagementRepository {
                 )
                 """, Boolean.class, universityId, studentCode, email);
         return Boolean.TRUE.equals(exists);
+    }
+
+    public Optional<RosterStudentView> findRosterByStudentCode(Integer universityId, String studentCode) {
+        List<RosterStudentView> rows = jdbcTemplate.query("""
+                SELECT roster_id, university_id, email, student_code, full_name, faculty, academic_year,
+                       status, matched_user_id, created_at, updated_at
+                FROM university_student_rosters
+                WHERE university_id = ?
+                  AND LOWER(student_code) = LOWER(?)
+                LIMIT 1
+                """, (rs, rowNum) -> mapRoster(rs), universityId, studentCode);
+        return rows.stream().findFirst();
+    }
+
+    public Optional<RosterStudentView> findRosterByEmail(Integer universityId, String email) {
+        List<RosterStudentView> rows = jdbcTemplate.query("""
+                SELECT roster_id, university_id, email, student_code, full_name, faculty, academic_year,
+                       status, matched_user_id, created_at, updated_at
+                FROM university_student_rosters
+                WHERE university_id = ?
+                  AND LOWER(email) = LOWER(?)
+                LIMIT 1
+                """, (rs, rowNum) -> mapRoster(rs), universityId, email);
+        return rows.stream().findFirst();
     }
 
     public boolean activeDomainBelongsToUniversity(Integer universityId, String domain) {
@@ -486,21 +587,23 @@ public class UniversityManagementRepository {
 
     public Optional<ImportBatchView> findImportBatch(Long batchId) {
         List<ImportBatchView> rows = jdbcTemplate.query("""
-                SELECT import_batch_id, university_id, file_name, total_rows, success_rows, error_rows,
-                       status, created_at, completed_at
-                FROM university_import_batches
-                WHERE import_batch_id = ?
+                SELECT b.import_batch_id, b.university_id, b.file_name, b.total_rows, b.success_rows, b.error_rows,
+                       b.status, b.imported_by_user_id, u.full_name AS imported_by_name, b.created_at, b.completed_at
+                FROM university_import_batches b
+                LEFT JOIN users u ON u.user_id = b.imported_by_user_id
+                WHERE b.import_batch_id = ?
                 """, (rs, rowNum) -> mapImportBatch(rs, findImportErrors(batchId)), batchId);
         return rows.stream().findFirst();
     }
 
     public List<ImportBatchView> findImportBatches(Integer universityId) {
         return jdbcTemplate.query("""
-                SELECT import_batch_id, university_id, file_name, total_rows, success_rows, error_rows,
-                       status, created_at, completed_at
-                FROM university_import_batches
-                WHERE university_id = ?
-                ORDER BY created_at DESC, import_batch_id DESC
+                SELECT b.import_batch_id, b.university_id, b.file_name, b.total_rows, b.success_rows, b.error_rows,
+                       b.status, b.imported_by_user_id, u.full_name AS imported_by_name, b.created_at, b.completed_at
+                FROM university_import_batches b
+                LEFT JOIN users u ON u.user_id = b.imported_by_user_id
+                WHERE b.university_id = ?
+                ORDER BY b.created_at DESC, b.import_batch_id DESC
                 LIMIT 50
                 """, (rs, rowNum) -> mapImportBatch(rs, List.of()), universityId);
     }
@@ -1093,6 +1196,10 @@ public class UniversityManagementRepository {
                 rs.getInt("success_rows"),
                 rs.getInt("error_rows"),
                 rs.getString("status"),
+                (Integer) rs.getObject("imported_by_user_id"),
+                rs.getString("imported_by_name"),
+                "ADD_NEW_ONLY",
+                rs.getInt("error_rows"),
                 toOffset(rs.getTimestamp("created_at")),
                 toOffset(rs.getTimestamp("completed_at")),
                 errors);
@@ -1215,5 +1322,16 @@ public class UniversityManagementRepository {
             String faculty,
             Integer academicYear,
             String status) {
+    }
+
+    public record RosterInsertRow(
+            Integer universityId,
+            String email,
+            String studentCode,
+            String fullName,
+            String faculty,
+            Integer academicYear,
+            String status,
+            Long batchId) {
     }
 }

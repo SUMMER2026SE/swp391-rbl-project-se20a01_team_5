@@ -84,6 +84,10 @@ public final class UniversityDtos {
             int successRows,
             int errorRows,
             String status,
+            Integer importedByUserId,
+            String importedByName,
+            String mode,
+            int skippedRows,
             OffsetDateTime createdAt,
             OffsetDateTime completedAt,
             List<ImportErrorView> errors) {
@@ -96,6 +100,73 @@ public final class UniversityDtos {
             String fieldName,
             String rawValue,
             String errorMessage) {
+    }
+
+    public record RosterImportPreviewView(
+            String previewToken,
+            String fileName,
+            long fileSize,
+            int totalRows,
+            int validRows,
+            int errorRows,
+            int duplicateRows,
+            int createRows,
+            int existingRows,
+            int skippedRows,
+            OffsetDateTime expiresAt,
+            List<RosterImportPreviewRowView> previewRows,
+            List<RosterImportPreviewErrorView> errors,
+            List<RosterImportPreviewErrorView> structuralErrors) {
+    }
+
+    public record RosterImportPreviewRowView(
+            int rowNumber,
+            String studentCode,
+            String fullName,
+            String email,
+            String faculty,
+            Integer academicYear,
+            String status,
+            boolean valid,
+            boolean existing,
+            boolean duplicateInFile,
+            String action) {
+    }
+
+    public record RosterImportPreviewErrorView(
+            int rowNumber,
+            String field,
+            String value,
+            String code,
+            String message,
+            String suggestion) {
+    }
+
+    public record RosterImportConfirmRequest(
+            @NotBlank String previewToken,
+            String mode) {
+    }
+
+    public record RosterImportCommitRequest(
+            @NotBlank String previewToken,
+            String mode,
+            String idempotencyKey) {
+    }
+
+    public record RosterImportConfirmView(
+            String previewToken,
+            String mode,
+            int totalRows,
+            int createRows,
+            int updateRows,
+            int skippedExistingRows,
+            int errorRows,
+            int skippedRows,
+            int importableRows,
+            boolean canConfirm,
+            String confirmLabel,
+            List<String> warnings,
+            List<RosterImportPreviewRowView> affectedRows) {
     }
 
     public record RouteUniversityView(

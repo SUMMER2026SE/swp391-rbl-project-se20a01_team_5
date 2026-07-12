@@ -126,6 +126,8 @@ import {
   type CampusView,
   type DomainView,
   type ImportBatchView,
+  type RosterImportConfirmView,
+  type RosterImportPreviewView,
   type RosterStudentView,
   type SubsidyPolicyView,
   type UniversityStatsView,
@@ -134,11 +136,55 @@ import {
   type UniversityAdminView,
   type ExperienceDashboardStat,
   type SubsidyType,
+  type BlobDownload,
 } from "@/lib/api/client";
 
 type UniversityAdminModuleProps = {
   activeId: string;
   onNavigate: (id: string) => void;
+};
+
+const downloadFile = (download: BlobDownload, fallbackFileName: string, allowedContentTypes: string[]) => {
+  const contentType = download.contentType.toLowerCase();
+  const validType = allowedContentTypes.some((type) => contentType.includes(type));
+  if (!validType || contentType.includes("application/json")) {
+    throw new Error("Invalid file response");
+  }
+  if (download.blob.size <= 0) {
+    throw new Error("Empty file response");
+  }
+  const url = URL.createObjectURL(download.blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = download.fileName || fallbackFileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+};
+
+const downloadLocalCsv = (csv: string, fileName: string) => {
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+};
+
+const formatBytes = (bytes: number) => {
+  if (!bytes) return "0 B";
+  const units = ["B", "KB", "MB"];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex++;
+  }
+  return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
 };
 
 const paymentFinalAmount = (payment: PaymentTransactionView) => {
@@ -382,6 +428,7 @@ const paymentJourneyLabel = (payment: PaymentTransactionView) =>
 
 export function UniversityAdminModule({ activeId, onNavigate }: UniversityAdminModuleProps) {
   const proto = useUniversityAdminPrototypeData();
+  const [rosterImportBatchId, setRosterImportBatchId] = useState<number | undefined>();
 
   if (proto.error) return <ErrorScreen message={proto.error} onRetry={proto.reload} />;
   if (proto.loading || !proto.data) return <LoadingScreen label="Đang tải dữ liệu admin trường..." />;
@@ -428,10 +475,21 @@ export function UniversityAdminModule({ activeId, onNavigate }: UniversityAdminM
       screen = <DomainsScreen ctx={ctx} />;
       break;
     case "uniadm-import":
-      screen = <ImportScreen ctx={ctx} />;
+      screen = <ImportScreen
+        ctx={ctx}
+        onNavigate={onNavigate}
+        onViewImportedStudents={(batchId) => {
+          setRosterImportBatchId(batchId);
+          onNavigate("uniadm-roster");
+        }}
+      />;
       break;
     case "uniadm-roster":
-      screen = <RosterScreen ctx={ctx} />;
+      screen = <RosterScreen
+        ctx={ctx}
+        importBatchId={rosterImportBatchId}
+        onClearImportBatch={() => setRosterImportBatchId(undefined)}
+      />;
       break;
     case "uniadm-subsidy":
       screen = <SubsidyScreen ctx={ctx} />;
@@ -958,31 +1016,86 @@ function DomainsScreen({ ctx }: { ctx: Ctx }) {
 // =============================================================================
 // Screen 4: Import roster (CSV/XLSX)
 // =============================================================================
-function ImportScreen({ ctx }: { ctx: Ctx }) {
+function ImportScreen({
+  ctx,
+  onNavigate,
+  onViewImportedStudents,
+}: {
+  ctx: Ctx;
+  onNavigate: (id: string) => void;
+  onViewImportedStudents: (batchId: number) => void;
+}) {
   const importBatchesResource = useUniAdminImportBatches();
   const importBatches = importBatchesResource.raw || ctx.importBatches;
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
+  const [exportingRoster, setExportingRoster] = useState(false);
+  const [preview, setPreview] = useState<RosterImportPreviewView | null>(null);
+  const [confirmation, setConfirmation] = useState<RosterImportConfirmView | null>(null);
+  const [confirmingImport, setConfirmingImport] = useState(false);
+  const [previewFilter, setPreviewFilter] = useState("all");
+  const [previewErrorCode, setPreviewErrorCode] = useState("all");
+  const [previewSearch, setPreviewSearch] = useState("");
   const [latestBatch, setLatestBatch] = useState<ImportBatchView | null>(null);
 
-  const downloadTemplate = useCallback(() => {
-    const rows = [
-      ["email", "studentCode", "fullName", "faculty", "academicYear", "status"],
-      ["nguyenvana@duytan.edu.vn", "DTU202032312", "Nguyen Van A", "Cong nghe thong tin", "2024", "ACTIVE"],
-      ["tranthib@duytan.edu.vn", "DTU202045678", "Tran Thi B", "Kinh te", "2024", "INACTIVE"],
-      ["# Ghi chu: MSSV bat buoc, khong trung MSSV trong cung file, email nen thuoc domain truong, khong doi ten header, MSSV co so 0 dau nen nhap dang text."],
-    ];
+  const downloadCsvFallback = useCallback(() => {
+    const rows = [["email", "studentCode", "fullName", "faculty", "academicYear", "status"]];
     const escapeCell = (value: string) => `"${value.replaceAll('"', '""')}"`;
     const csv = `\uFEFF${rows.map((row) => row.map(escapeCell).join(",")).join("\r\n")}`;
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = "uniadmin-roster-template.csv";
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
+    downloadLocalCsv(csv, "uniadmin-roster-template.csv");
+  }, []);
+
+  const downloadTemplate = useCallback(async () => {
+    setDownloadingTemplate(true);
+    try {
+      const file = await universityApi.rosterTemplate();
+      downloadFile(file, "uniadmin-roster-template.xlsx", [
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      ]);
+      toast.success("Đã tải template nhập sinh viên.");
+    } catch (error) {
+      console.error("Failed to download roster template", error);
+      downloadCsvFallback();
+      toast.warning("Không thể tải template XLSX. Hệ thống đã tải template CSV thay thế.");
+    } finally {
+      setDownloadingTemplate(false);
+    }
+  }, [downloadCsvFallback]);
+
+  const exportRoster = useCallback(async () => {
+    setExportingRoster(true);
+    try {
+      const file = await universityApi.rosterExportCsv();
+      downloadFile(file, "danh-sach-sinh-vien.csv", ["text/csv"]);
+      toast.success("Đã xuất danh sách sinh viên.");
+    } catch (error) {
+      console.error("Failed to export roster", error);
+      toast.error("Không thể tải file. Vui lòng thử lại.");
+    } finally {
+      setExportingRoster(false);
+    }
+  }, []);
+
+  const downloadImportReport = useCallback(async (batchId: number) => {
+    try {
+      const file = await universityApi.importBatchReport(batchId);
+      downloadFile(file, `bao-cao-import-sinh-vien_${batchId}.csv`, ["text/csv"]);
+      toast.success("Đã tải báo cáo kết quả import.");
+    } catch (error) {
+      console.error("Failed to download import report", error);
+      toast.error(error instanceof Error ? error.message : "Không thể tải báo cáo import");
+    }
+  }, []);
+
+  const importAnotherFile = useCallback(() => {
+    setPreview(null);
+    setConfirmation(null);
+    setLatestBatch(null);
+    setPreviewFilter("all");
+    setPreviewErrorCode("all");
+    setPreviewSearch("");
+    fileRef.current?.click();
   }, []);
 
   const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -990,24 +1103,83 @@ function ImportScreen({ ctx }: { ctx: Ctx }) {
     if (!f) return;
     setUploading(true);
     setLatestBatch(null);
+    setPreview(null);
+    setConfirmation(null);
     try {
-      const batch = await universityApi.importRoster(f);
-      setLatestBatch(batch);
-      if (batch.errorRows > 0) {
-        toast.warning(`Đã nhập ${batch.successRows}/${batch.totalRows} dòng, ${batch.errorRows} dòng lỗi`);
-      } else {
-        toast.success(`Đã nhập ${batch.successRows}/${batch.totalRows} dòng`);
+      const result = await universityApi.previewRosterImport(f);
+      setPreview(result);
+      try {
+        const plan = await universityApi.confirmRosterImport({ previewToken: result.previewToken, mode: "ADD_NEW_ONLY" });
+        setConfirmation(plan);
+      } catch (confirmError) {
+        console.error("Failed to calculate roster import confirmation", confirmError);
+        toast.warning("Đã kiểm tra file nhưng chưa tính được bước xác nhận import.");
       }
-      importBatchesResource.reload();
-      ctx.reload();
+      if (result.errorRows > 0 || result.structuralErrors.length > 0) {
+        toast.warning(`Đã kiểm tra ${result.totalRows} dòng, có ${result.errorRows + result.structuralErrors.length} lỗi cần sửa`);
+      } else {
+        toast.success(`Dữ liệu hợp lệ: ${result.validRows}/${result.totalRows} dòng`);
+      }
     } catch (err) {
       const detail = err instanceof ApiError && err.details ? String(err.details) : null;
-      toast.error(detail || (err instanceof Error ? err.message : "Không thể nhập danh sách sinh viên"));
+      toast.error(detail || (err instanceof Error ? err.message : "Không thể kiểm tra file import"));
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
     }
   };
+
+  const previewToken = preview?.previewToken;
+
+  const confirmImportPlan = async () => {
+    if (!previewToken) return;
+    setConfirmingImport(true);
+    try {
+      if (!confirmation?.canConfirm) {
+        const plan = await universityApi.confirmRosterImport({ previewToken, mode: "ADD_NEW_ONLY" });
+        setConfirmation(plan);
+        if (!plan.canConfirm) {
+          toast.error("Không thể xác nhận vì không có sinh viên mới hợp lệ để import.");
+          return;
+        }
+      }
+      const batch = await universityApi.commitRosterImport({
+        previewToken,
+        mode: "ADD_NEW_ONLY",
+        idempotencyKey: previewToken,
+      });
+      setLatestBatch(batch);
+      importBatchesResource.reload();
+      ctx.reload();
+      if (batch.successRows <= 0) {
+        toast.warning("Không có sinh viên mới được import. Các dòng hợp lệ có thể đã tồn tại.");
+        return;
+      }
+      toast.success(`Đã import ${batch.successRows} sinh viên mới.`);
+    } catch (error) {
+      const detail = error instanceof ApiError && error.details ? String(error.details) : null;
+      toast.error(detail || (error instanceof Error ? error.message : "Không thể thực hiện import"));
+    } finally {
+      setConfirmingImport(false);
+    }
+  };
+
+  const allPreviewErrors = [...(preview?.structuralErrors || []), ...(preview?.errors || [])];
+  const previewErrorCodes = Array.from(new Set(allPreviewErrors.map((error) => error.code))).sort();
+  const visiblePreviewErrors = allPreviewErrors.filter((error) => {
+    if (previewErrorCode !== "all" && error.code !== previewErrorCode) return false;
+    if (!previewSearch.trim()) return true;
+    const needle = previewSearch.trim().toLowerCase();
+    return `${error.rowNumber} ${error.field || ""} ${error.value || ""} ${error.code} ${error.message}`
+      .toLowerCase()
+      .includes(needle);
+  });
+  const visiblePreviewRows = (preview?.previewRows || []).filter((row) => {
+    if (previewFilter === "errors" && row.valid) return false;
+    if (!previewSearch.trim()) return true;
+    const needle = previewSearch.trim().toLowerCase();
+    return `${row.studentCode || ""} ${row.email || ""} ${row.fullName || ""}`.toLowerCase().includes(needle);
+  });
 
   return (
     <PageTransition className="space-y-6 min-w-0">
@@ -1016,10 +1188,16 @@ function ImportScreen({ ctx }: { ctx: Ctx }) {
         description="Tải lên file CSV/XLSX danh sách sinh viên."
         icon={<Upload className="size-7" />}
         actions={
-          <ExpressiveButton variant="tonal" onClick={downloadTemplate}>
-            <Download className="size-4" />
-            Tải template mẫu
-          </ExpressiveButton>
+          <div className="flex flex-wrap gap-2">
+            <ExpressiveButton variant="tonal" onClick={downloadTemplate} disabled={downloadingTemplate}>
+              {downloadingTemplate ? <RefreshCw className="size-4 animate-spin" /> : <Download className="size-4" />}
+              Tải template nhập
+            </ExpressiveButton>
+            <ExpressiveButton variant="tonal" onClick={exportRoster} disabled={exportingRoster}>
+              {exportingRoster ? <RefreshCw className="size-4 animate-spin" /> : <Download className="size-4" />}
+              Xuất danh sách sinh viên
+            </ExpressiveButton>
+          </div>
         }
       />
       <ScrollReveal>
@@ -1027,7 +1205,7 @@ function ImportScreen({ ctx }: { ctx: Ctx }) {
           <input
             ref={fileRef}
             type="file"
-            accept=".csv,.xlsx,.xls"
+            accept=".csv,.xlsx"
             onChange={onFile}
             className="hidden"
           />
@@ -1047,9 +1225,240 @@ function ImportScreen({ ctx }: { ctx: Ctx }) {
             <p className="text-xs text-on-surface-variant mt-2">
               Cột bắt buộc: email, studentCode, fullName. Trạng thái hợp lệ: ACTIVE, INACTIVE, GRADUATED, SUSPENDED.
             </p>
+            <div className="mt-4 rounded-xl border border-outline-variant bg-surface-container-low p-3 text-left text-xs text-on-surface-variant">
+              <p className="font-bold text-on-surface">Quy tắc nhập dữ liệu</p>
+              <ul className="mt-2 list-disc space-y-1 pl-4">
+                <li>Không đổi tên header và không thêm dòng ghi chú vào file import.</li>
+                <li>MSSV là bắt buộc, không trùng trong cùng file, nên định dạng Text để giữ số 0 đầu.</li>
+                <li>Email phải thuộc domain đang hoạt động của trường.</li>
+                <li>academicYear là năm nhập học dạng 4 chữ số, ví dụ 2024.</li>
+                <li>Nếu bỏ trống status, hệ thống mặc định là ACTIVE.</li>
+              </ul>
+            </div>
           </motion.div>
         </ExpressiveCard>
       </ScrollReveal>
+
+      {latestBatch && (
+        <Section title="Kết quả import">
+          <ExpressiveCard variant="elevated" className="p-5 min-w-0">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <M3StatusPill
+                    label={importStatusLabel(latestBatch.status)}
+                    tone={latestBatch.status === "COMPLETED" ? "success" : latestBatch.status === "FAILED" ? "error" : "warning"}
+                  />
+                  <span className="text-xs font-mono text-on-surface-variant">Batch #{latestBatch.importBatchId}</span>
+                </div>
+                <h3 className="mt-2 text-xl font-black truncate">{latestBatch.fileName}</h3>
+                <p className="mt-1 text-sm text-on-surface-variant">
+                  Người thực hiện: {latestBatch.importedByName || ctx.user.name || "Không xác định"} ·
+                  Hoàn tất: {latestBatch.completedAt ? formatDateTime(latestBatch.completedAt) : "Đang xử lý"}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <ExpressiveButton variant="tonal" onClick={() => onViewImportedStudents(latestBatch.importBatchId)}>
+                  <Users className="size-4" />
+                  Xem sinh viên vừa import
+                </ExpressiveButton>
+                <ExpressiveButton variant="tonal" onClick={() => downloadImportReport(latestBatch.importBatchId)}>
+                  <Download className="size-4" />
+                  Tải báo cáo kết quả
+                </ExpressiveButton>
+                <ExpressiveButton variant="tonal" onClick={importAnotherFile}>
+                  <Upload className="size-4" />
+                  Import file khác
+                </ExpressiveButton>
+                <ExpressiveButton variant="text" onClick={() => onNavigate("uniadm-roster")}>
+                  Quay về danh sách sinh viên
+                </ExpressiveButton>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              {[
+                ["Tổng số dòng", latestBatch.totalRows],
+                ["Tạo mới thành công", latestBatch.successRows],
+                ["Cập nhật thành công", 0],
+                ["Bỏ qua / lỗi", latestBatch.errorRows],
+                ["Chế độ", latestBatch.mode || "ADD_NEW_ONLY"],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-xl border border-outline-variant bg-surface-container-low p-3">
+                  <p className="text-xs text-on-surface-variant">{label}</p>
+                  <p className="mt-1 text-xl font-black">{value}</p>
+                </div>
+              ))}
+            </div>
+          </ExpressiveCard>
+        </Section>
+      )}
+
+      {preview && (
+        <Section title="Kết quả kiểm tra dữ liệu">
+          <div className="space-y-4">
+            <ExpressiveCard variant="elevated" className="p-5 min-w-0">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-bold truncate">{preview.fileName}</p>
+                  <p className="text-xs text-on-surface-variant">
+                    {formatBytes(preview.fileSize)} · Token hết hạn: {preview.expiresAt ? formatDateTime(preview.expiresAt) : "Không xác định"}
+                  </p>
+                </div>
+                <ExpressiveButton variant="tonal" onClick={() => fileRef.current?.click()} disabled={uploading}>
+                  {uploading ? <RefreshCw className="size-4 animate-spin" /> : <Upload className="size-4" />}
+                  Kiểm tra lại
+                </ExpressiveButton>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {[
+                  ["Tổng số dòng", preview.totalRows],
+                  ["Hợp lệ", preview.validRows],
+                  ["Có lỗi", preview.errorRows + preview.structuralErrors.length],
+                  ["Trùng trong file", preview.duplicateRows],
+                  ["Tạo mới", preview.createRows],
+                  ["Đã tồn tại", preview.existingRows],
+                  ["Bị bỏ qua", preview.skippedRows],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-xl border border-outline-variant bg-surface-container-low p-3">
+                    <p className="text-xs text-on-surface-variant">{label}</p>
+                    <p className="mt-1 text-xl font-black">{value}</p>
+                  </div>
+                ))}
+              </div>
+            </ExpressiveCard>
+
+            {confirmation && (
+              <ExpressiveCard variant="elevated" className="p-5 min-w-0">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold uppercase tracking-wide text-on-surface-variant">Chế độ xử lý</p>
+                    <h3 className="mt-1 text-xl font-black">ADD_NEW_ONLY</h3>
+                    <p className="mt-1 text-sm text-on-surface-variant">
+                      Chỉ tạo sinh viên mới. Sinh viên có MSSV đã tồn tại sẽ bị bỏ qua, không cập nhật dữ liệu cũ.
+                    </p>
+                  </div>
+                  <ExpressiveButton
+                    variant="filled"
+                    onClick={confirmImportPlan}
+                    disabled={confirmingImport || !confirmation.canConfirm}
+                  >
+                    {confirmingImport ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+                    {confirmation.confirmLabel}
+                  </ExpressiveButton>
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                  {[
+                    ["Tổng số dòng", confirmation.totalRows],
+                    ["Tạo mới", confirmation.createRows],
+                    ["Cập nhật", confirmation.updateRows],
+                    ["Bỏ qua do tồn tại", confirmation.skippedExistingRows],
+                    ["Dòng lỗi", confirmation.errorRows],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-xl border border-outline-variant bg-surface-container-low p-3">
+                      <p className="text-xs text-on-surface-variant">{label}</p>
+                      <p className="mt-1 text-xl font-black">{value}</p>
+                    </div>
+                  ))}
+                </div>
+                {confirmation.warnings.length > 0 && (
+                  <div className="mt-4 rounded-xl border border-warning/25 bg-warning/10 p-3 text-xs text-on-surface-variant">
+                    {confirmation.warnings.map((warning) => (
+                      <p key={warning}>{warning}</p>
+                    ))}
+                  </div>
+                )}
+              </ExpressiveCard>
+            )}
+
+            <ExpressiveCard variant="elevated" className="p-4 min-w-0">
+              <div className="flex flex-wrap gap-2">
+                <div className="relative flex-1 min-w-[220px]">
+                  <Filter className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant" />
+                  <Input className="pl-9" placeholder="Tìm MSSV, email, dòng lỗi..." value={previewSearch} onChange={(e) => setPreviewSearch(e.target.value)} />
+                </div>
+                <Select value={previewFilter} onValueChange={setPreviewFilter}>
+                  <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tất cả dòng</SelectItem>
+                    <SelectItem value="errors">Chỉ dòng lỗi</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={previewErrorCode} onValueChange={setPreviewErrorCode}>
+                  <SelectTrigger className="w-56"><SelectValue placeholder="Loại lỗi" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tất cả loại lỗi</SelectItem>
+                    {previewErrorCodes.map((code) => (
+                      <SelectItem key={code} value={code}>{code}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </ExpressiveCard>
+
+            {visiblePreviewErrors.length > 0 && (
+              <ExpressiveCard variant="elevated" className="overflow-hidden min-w-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Dòng</TableHead>
+                      <TableHead>Cột</TableHead>
+                      <TableHead>Giá trị</TableHead>
+                      <TableHead>Nguyên nhân</TableHead>
+                      <TableHead>Gợi ý sửa</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {visiblePreviewErrors.slice(0, 50).map((error, index) => (
+                      <TableRow key={`${error.rowNumber}-${error.code}-${index}`}>
+                        <TableCell className="font-mono">{error.rowNumber || "-"}</TableCell>
+                        <TableCell className="font-bold">{error.field || "-"}</TableCell>
+                        <TableCell className="max-w-[180px] truncate text-xs">{error.value || "-"}</TableCell>
+                        <TableCell>
+                          <p className="font-bold text-error">{error.code}</p>
+                          <p className="text-xs text-on-surface-variant">{error.message}</p>
+                        </TableCell>
+                        <TableCell className="text-xs text-on-surface-variant">{error.suggestion || "-"}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </ExpressiveCard>
+            )}
+
+            <ExpressiveCard variant="elevated" className="overflow-hidden min-w-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Dòng</TableHead>
+                    <TableHead>MSSV</TableHead>
+                    <TableHead>Họ tên</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Trạng thái</TableHead>
+                    <TableHead>Kết quả</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {visiblePreviewRows.map((row) => (
+                    <TableRow key={row.rowNumber}>
+                      <TableCell className="font-mono">{row.rowNumber}</TableCell>
+                      <TableCell className="font-mono font-bold">{row.studentCode || "-"}</TableCell>
+                      <TableCell className="font-bold">{row.fullName || "-"}</TableCell>
+                      <TableCell className="text-xs">{row.email || "-"}</TableCell>
+                      <TableCell>{row.status || "ACTIVE"}</TableCell>
+                      <TableCell>
+                        <M3StatusPill
+                          label={row.action === "CREATE" ? "Tạo mới" : row.action === "SKIP_EXISTING" ? "Bỏ qua do tồn tại" : "Có lỗi"}
+                          tone={row.action === "CREATE" ? "success" : row.action === "SKIP_EXISTING" ? "warning" : "error"}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </ExpressiveCard>
+          </div>
+        </Section>
+      )}
 
       <Section title={`Lịch sử nhập (${importBatches.length})`}>
         {importBatchesResource.loading ? (
@@ -1116,11 +1525,24 @@ function ImportScreen({ ctx }: { ctx: Ctx }) {
 // =============================================================================
 // Screen 5: Roster
 // =============================================================================
-function RosterScreen({ ctx }: { ctx: Ctx }) {
+function RosterScreen({
+  ctx,
+  importBatchId,
+  onClearImportBatch,
+}: {
+  ctx: Ctx;
+  importBatchId?: number;
+  onClearImportBatch: () => void;
+}) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const rosterResource = useUniAdminRoster({ keyword: search || undefined, status: statusFilter === "all" ? undefined : statusFilter });
-  const roster = rosterResource.raw || ctx.roster;
+  const [exportingRoster, setExportingRoster] = useState(false);
+  const rosterResource = useUniAdminRoster({
+    keyword: search || undefined,
+    status: statusFilter === "all" ? undefined : statusFilter,
+    importBatchId,
+  });
+  const roster = rosterResource.raw || (importBatchId ? [] : ctx.roster);
 
   const filtered = roster.filter((r) => {
     if (statusFilter !== "all" && r.status !== statusFilter) return false;
@@ -1128,13 +1550,49 @@ function RosterScreen({ ctx }: { ctx: Ctx }) {
     return true;
   });
 
+  const exportRoster = useCallback(async () => {
+    setExportingRoster(true);
+    try {
+      const file = await universityApi.rosterExportCsv({
+        keyword: search || undefined,
+        status: statusFilter === "all" ? undefined : statusFilter,
+      });
+      downloadFile(file, "danh-sach-sinh-vien.csv", ["text/csv"]);
+      toast.success("Đã xuất danh sách sinh viên.");
+    } catch (error) {
+      console.error("Failed to export roster", error);
+      toast.error("Không thể tải file. Vui lòng thử lại.");
+    } finally {
+      setExportingRoster(false);
+    }
+  }, [search, statusFilter]);
+
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Danh sách sinh viên"
-        description={`${roster.length} sinh viên`}
+        description={importBatchId ? `${roster.length} sinh viên vừa import từ batch #${importBatchId}` : `${roster.length} sinh viên`}
         icon={<Users className="size-7" />}
+        actions={
+          <ExpressiveButton variant="tonal" onClick={exportRoster} disabled={exportingRoster}>
+            {exportingRoster ? <RefreshCw className="size-4 animate-spin" /> : <Download className="size-4" />}
+            Xuất danh sách sinh viên
+          </ExpressiveButton>
+        }
       />
+      {importBatchId && (
+        <ExpressiveCard variant="elevated" className="p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="font-bold">Đang xem sinh viên vừa import</p>
+              <p className="text-xs text-on-surface-variant">Bộ lọc backend: imported_batch_id = {importBatchId}</p>
+            </div>
+            <ExpressiveButton variant="tonal" onClick={onClearImportBatch}>
+              Bỏ lọc batch
+            </ExpressiveButton>
+          </div>
+        </ExpressiveCard>
+      )}
       <div className="flex flex-wrap gap-2 min-w-0">
         <div className="relative flex-1 min-w-[200px]">
           <Filter className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant" />

@@ -533,7 +533,7 @@ public class TicketingRepository {
 
     private String ticketQuery(String whereClause) {
         return """
-                SELECT mp.monthly_pass_id AS ticket_id, 'MONTHLY' AS ticket_type, mp.route_id, r.route_name,
+                SELECT mp.monthly_pass_id AS ticket_id, 'MONTHLY' AS ticket_type, mp.route_id, r.route_code, r.route_name,
                        bs.stop_name AS boarding_stop_name, als.stop_name AS alighting_stop_name,
                        mp.effective_month, mp.effective_year, mp.valid_from, mp.expires_on AS expires_at,
                        mp.fare_amount,
@@ -583,6 +583,7 @@ public class TicketingRepository {
                 rs.getInt("ticket_id"),
                 rs.getString("ticket_type"),
                 rs.getInt("route_id"),
+                rs.getString("route_code"),
                 rs.getString("route_name"),
                 rs.getString("boarding_stop_name"),
                 rs.getString("alighting_stop_name"),

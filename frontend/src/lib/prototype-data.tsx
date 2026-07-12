@@ -859,8 +859,8 @@ export function useUniAdminCampuses() {
 export function useUniAdminDomains() {
   return useApi(() => universityApi.domains(), undefined, []);
 }
-export function useUniAdminRoster(params?: { keyword?: string; status?: string }) {
-  return useApi(() => universityApi.roster(params), undefined, [params?.keyword, params?.status]);
+export function useUniAdminRoster(params?: { keyword?: string; status?: string; importBatchId?: number }) {
+  return useApi(() => universityApi.roster(params), undefined, [params?.keyword, params?.status, params?.importBatchId]);
 }
 export function useUniAdminImportBatches() {
   return useApi(() => universityApi.importBatches(), undefined, []);

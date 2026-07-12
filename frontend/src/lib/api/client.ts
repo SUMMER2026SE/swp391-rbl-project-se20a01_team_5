@@ -9,6 +9,12 @@ const STUDENT_VERIFICATION_STATUS_KEY = "student_verification_status";
 
 type QueryValue = string | number | boolean | null | undefined;
 
+export type BlobDownload = {
+  blob: Blob;
+  contentType: string;
+  fileName?: string;
+};
+
 export type BackendRole =
   | "STUDENT"
   | "DRIVER"
@@ -127,7 +133,23 @@ async function request<T>(path: string, options: RequestInit = {}, retry = true)
   return (payload?.data ?? payload) as T;
 }
 
-async function requestBlob(path: string, retry = true): Promise<Blob> {
+function fileNameFromContentDisposition(value: string | null) {
+  if (!value) return undefined;
+  const utf8Match = value.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]);
+    } catch {
+      return utf8Match[1];
+    }
+  }
+  const quotedMatch = value.match(/filename="([^"]+)"/i);
+  if (quotedMatch?.[1]) return quotedMatch[1];
+  const plainMatch = value.match(/filename=([^;]+)/i);
+  return plainMatch?.[1]?.trim();
+}
+
+async function requestDownload(path: string, retry = true): Promise<BlobDownload> {
   const token = getAccessToken();
   const res = await fetch(`${API_BASE}${path}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -135,7 +157,7 @@ async function requestBlob(path: string, retry = true): Promise<Blob> {
 
   if (res.status === 401 && retry) {
     const ok = await tryRefresh();
-    if (ok) return requestBlob(path, false);
+    if (ok) return requestDownload(path, false);
     clearTokens();
   }
 
@@ -147,7 +169,17 @@ async function requestBlob(path: string, retry = true): Promise<Blob> {
       payload?.data
     );
   }
-  return res.blob();
+  const blob = await res.blob();
+  return {
+    blob,
+    contentType: res.headers.get("Content-Type") || blob.type || "",
+    fileName: fileNameFromContentDisposition(res.headers.get("Content-Disposition")),
+  };
+}
+
+async function requestBlob(path: string, retry = true): Promise<Blob> {
+  const download = await requestDownload(path, retry);
+  return download.blob;
 }
 
 let refreshPromise: Promise<boolean> | null = null;
@@ -185,6 +217,7 @@ export const apiFetch = {
     request<T>(path, { method: "DELETE", body: body === undefined ? undefined : JSON.stringify(body) }),
   form: <T>(path: string, formData: FormData) => request<T>(path, { method: "POST", body: formData }),
   blob: (path: string) => requestBlob(path),
+  download: (path: string) => requestDownload(path),
 };
 
 export interface TokenPair {
@@ -1587,9 +1620,69 @@ export interface ImportBatchView {
   successRows: number;
   errorRows: number;
   status: string;
+  importedByUserId?: number;
+  importedByName?: string;
+  mode?: string;
+  skippedRows?: number;
   createdAt?: string;
   completedAt?: string;
   errors?: ImportErrorView[];
+}
+
+export interface RosterImportPreviewErrorView {
+  rowNumber: number;
+  field?: string;
+  value?: string;
+  code: string;
+  message: string;
+  suggestion?: string;
+}
+
+export interface RosterImportPreviewRowView {
+  rowNumber: number;
+  studentCode?: string;
+  fullName?: string;
+  email?: string;
+  faculty?: string;
+  academicYear?: number;
+  status?: string;
+  valid: boolean;
+  existing: boolean;
+  duplicateInFile: boolean;
+  action?: "CREATE" | "SKIP_EXISTING" | "BLOCKED" | string;
+}
+
+export interface RosterImportPreviewView {
+  previewToken: string;
+  fileName: string;
+  fileSize: number;
+  totalRows: number;
+  validRows: number;
+  errorRows: number;
+  duplicateRows: number;
+  createRows: number;
+  existingRows: number;
+  skippedRows: number;
+  expiresAt?: string;
+  previewRows: RosterImportPreviewRowView[];
+  errors: RosterImportPreviewErrorView[];
+  structuralErrors: RosterImportPreviewErrorView[];
+}
+
+export interface RosterImportConfirmView {
+  previewToken: string;
+  mode: "ADD_NEW_ONLY" | string;
+  totalRows: number;
+  createRows: number;
+  updateRows: number;
+  skippedExistingRows: number;
+  errorRows: number;
+  skippedRows: number;
+  importableRows: number;
+  canConfirm: boolean;
+  confirmLabel: string;
+  warnings: string[];
+  affectedRows: RosterImportPreviewRowView[];
 }
 
 export interface RouteUniversityView {
@@ -1767,13 +1860,27 @@ export const universityApi = {
     apiFetch.post<CampusView>("/university-admin/campuses", data),
   domains: () => apiFetch.get<DomainView[]>("/university-admin/domains"),
   createDomain: (data: { domain: string; status?: string }) => apiFetch.post<DomainView>("/university-admin/domains", data),
-  roster: (params?: { keyword?: string; status?: string }) => apiFetch.get<RosterStudentView[]>("/university-admin/roster", params),
+  roster: (params?: { keyword?: string; status?: string; importBatchId?: number }) => apiFetch.get<RosterStudentView[]>("/university-admin/roster", params),
+  rosterTemplate: () => apiFetch.download("/university-admin/roster/template"),
+  rosterExportCsv: (params?: { keyword?: string; status?: string }) =>
+    apiFetch.download(`/university-admin/roster/export${buildQuery({ ...params, format: "csv" })}`),
+  previewRosterImport: (file: File) => {
+    const form = new FormData();
+    form.set("file", file);
+    return apiFetch.form<RosterImportPreviewView>("/university-admin/roster/import/preview", form);
+  },
+  confirmRosterImport: (data: { previewToken: string; mode?: "ADD_NEW_ONLY" }) =>
+    apiFetch.post<RosterImportConfirmView>("/university-admin/roster/import/confirm", data),
+  commitRosterImport: (data: { previewToken: string; mode?: "ADD_NEW_ONLY"; idempotencyKey?: string }) =>
+    apiFetch.post<ImportBatchView>("/university-admin/roster/import/commit", data),
   importRoster: (file: File) => {
     const form = new FormData();
     form.set("file", file);
     return apiFetch.form<ImportBatchView>("/university-admin/roster/import", form);
   },
   importBatches: () => apiFetch.get<ImportBatchView[]>("/university-admin/roster/import"),
+  importBatch: (importBatchId: number) => apiFetch.get<ImportBatchView>(`/university-admin/roster/import/${importBatchId}`),
+  importBatchReport: (importBatchId: number) => apiFetch.download(`/university-admin/roster/import/${importBatchId}/report`),
   subsidyPolicies: () => apiFetch.get<SubsidyPolicyView[]>("/university-admin/subsidy-policies"),
   createSubsidyPolicy: (data: { campusId?: number; policyName: string; subsidyType: SubsidyType; value: number; maxAmount?: number; activeFrom?: string; activeUntil?: string; status?: string }) =>
     apiFetch.post<SubsidyPolicyView>("/university-admin/subsidy-policies", data),

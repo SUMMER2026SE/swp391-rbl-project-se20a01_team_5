@@ -948,3 +948,141 @@ Mo ta PR goi y:
 - Cleanup text mock/debug/technical khong phu hop demo.
 - Ket noi cac man lien quan voi API that.
 - Bo sung test/build verification.
+
+---
+
+## 21. UniAdmin student import finalization
+
+Ngay cap nhat: 2026-07-12
+
+### 21.1. Pham vi
+
+Hoan thien flow import sinh vien cho role `university_admin`, chi tac dong cac file UniAdmin/import roster va mot fix compile lien quan ticketing.
+
+Khong thay doi nghiep vu Admin he thong, student, driver, assistant, coordinator.
+
+### 21.2. Backend da thay doi
+
+- Them preview import roster:
+  - `POST /api/v1/university-admin/roster/import/preview`
+  - `GET /api/v1/university-admin/roster/import/preview/{previewToken}`
+- Them buoc confirm import:
+  - `POST /api/v1/university-admin/roster/import/confirm`
+- Them buoc commit import that:
+  - `POST /api/v1/university-admin/roster/import/commit`
+- Them xem batch/detail/report:
+  - `GET /api/v1/university-admin/roster/import/{importBatchId}`
+  - `GET /api/v1/university-admin/roster/import/{importBatchId}/report`
+- Them filter DSSV theo batch:
+  - `GET /api/v1/university-admin/roster?importBatchId=...`
+- Export roster:
+  - `GET /api/v1/university-admin/roster/export?format=csv`
+  - CSV co UTF-8 BOM, giu MSSV dang text, escape CSV.
+- Template import:
+  - XLSX 3 sheet: import, huong dan, danh muc.
+  - CSV fallback chi co header, khong co du lieu demo.
+
+### 21.3. Nghiep vu import sau sua
+
+- Import danh sach sinh vien khong bat buoc sinh vien da co tai khoan web.
+- Import ghi vao `university_student_rosters`.
+- `matchedUserId` co the null, sinh vien se duoc lien ket sau khi tao/dang nhap bang email truong.
+- Mode mac dinh va dang ho tro: `ADD_NEW_ONLY`.
+- `ADD_NEW_ONLY` chi tao sinh vien moi.
+- MSSV da ton tai bi bo qua, khong update/upsert ngam.
+- Email trung voi MSSV khac bi bao loi.
+- Preview token gan voi user + university scope + thoi han.
+- Commit khong nhan lai danh sach sinh vien tu frontend.
+- Double submit cung preview token tra lai batch da xu ly, khong tao trung.
+
+### 21.4. Parser/validation
+
+- Ho tro CSV UTF-8 co BOM/khong BOM va XLSX.
+- Giu tieng Viet va so 0 dau MSSV.
+- Normalize email lowercase, trim khoang trang.
+- Bat loi header thieu/trung/sai.
+- Bat loi formula/unsafe value.
+- Bat duplicate MSSV/email trong file.
+- Validate domain email active cua truong theo exact domain.
+- Validate status: `ACTIVE`, `INACTIVE`, `GRADUATED`, `SUSPENDED`.
+- Validate academicYear dang 4 chu so.
+
+### 21.5. Frontend da thay doi
+
+- Man `Import danh sach SV` co:
+  - tai template nhap;
+  - xuat danh sach sinh vien hien co;
+  - upload CSV/XLSX;
+  - preview thong ke;
+  - bang loi tung dong;
+  - confirm mode `ADD_NEW_ONLY`;
+  - commit import;
+  - ket qua import;
+  - xem sinh vien vua import;
+  - tai bao cao import.
+- Man `Danh sach sinh vien` ho tro filter theo `importBatchId` tu backend de xem dung sinh vien vua import.
+- API client them cac ham:
+  - `previewRosterImport`
+  - `confirmRosterImport`
+  - `commitRosterImport`
+  - `importBatch`
+  - `importBatchReport`
+  - `roster({ importBatchId })`
+
+### 21.6. Bao cao tai lieu da them
+
+- `docs/student-import-audit.md`
+  - Audit flow import sinh vien hien trang.
+- `docs/student-import-final-report.md`
+  - Bao cao nghiem thu cuoi, API, data model, test, known limitations, checklist thu cong, rollback.
+
+### 21.7. Bug da fix trong qua trinh ra soat
+
+- Fix compile `UniversityManagementRepository`:
+  - `importBatchId` bi dat nham trong `findRosterForExport`.
+  - Da chuyen filter `imported_batch_id` ve dung ham `findRoster(..., importBatchId)`.
+- Fix compile `TicketingRepository`:
+  - `TicketView` record co them `routeCode` nhung mapper thieu tham so.
+  - Da select `r.route_code` va map `rs.getString("route_code")`.
+- Fix export roster bi loi:
+  - `exportRosterCsv` la transaction read-only nhung goi `audit(...)` ghi DB.
+  - Da bo audit khoi export CSV de endpoint chi doc du lieu va tra file.
+
+### 21.8. File code chinh da sua
+
+- `backend/src/main/java/com/unibus/api/university/UniversityAdminController.java`
+- `backend/src/main/java/com/unibus/api/university/UniversityDtos.java`
+- `backend/src/main/java/com/unibus/api/university/UniversityManagementRepository.java`
+- `backend/src/main/java/com/unibus/api/university/UniversityManagementService.java`
+- `backend/src/test/java/com/unibus/api/university/UniversityManagementServiceTests.java`
+- `backend/src/main/java/com/unibus/api/ticketing/TicketingRepository.java`
+- `frontend/src/components/bus/roles/university-admin-module.tsx`
+- `frontend/src/lib/api/client.ts`
+- `frontend/src/lib/prototype-data.tsx`
+
+### 21.9. Test da chay
+
+Frontend:
+
+```powershell
+cd frontend
+npm run lint
+npm run build
+```
+
+Ket qua:
+
+- `npm run lint`: pass, con 3 warning cu ngoai UniAdmin.
+- `npm run build`: pass.
+
+Backend:
+
+- Chua chay duoc trong terminal hien tai vi may khong co Maven va repo khong co `mvnw.cmd`.
+- Da fix cac loi compile backend do IDE bao: `importBatchId` sai scope va `TicketView` constructor mismatch.
+
+### 21.10. Known limitations
+
+- Preview token dang luu in-memory, backend restart thi admin can upload/preview lai.
+- `UPDATE_EXISTING` chua bat vi chua co permission/whitelist field update ro rang.
+- Roster model hien chua co campus field va faculty dang la text, nen chua validate campus/faculty catalog that.
+- Backend test can chay lai tren moi truong co Maven truoc khi merge main.
