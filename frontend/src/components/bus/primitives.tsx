@@ -90,7 +90,9 @@ export function StatCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <p className="text-[11px] font-medium opacity-70 uppercase tracking-wide truncate">{label}</p>
-          <p className="text-2xl sm:text-3xl font-bold mt-1 tabular-nums">{value}</p>
+          <p className="mt-1 max-w-full break-words text-xl font-bold leading-tight tabular-nums sm:text-2xl 2xl:text-3xl [overflow-wrap:anywhere]">
+            {value}
+          </p>
           {hint && (
             <p
               className={cn(
