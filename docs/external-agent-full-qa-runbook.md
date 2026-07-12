@@ -1,6 +1,8 @@
-# UniBus External Agent Full-Role QA Runbook
+﻿# UniBus External Agent Full-Role QA Runbook
 
 Tài liệu này giao cho ChatGPT Agent/QA Agent bên ngoài kiểm thử UniBus như người dùng thật. Agent ưu tiên thao tác qua CloudFront; terminal, API và live RDS chỉ dùng cho preflight, xác minh và cleanup.
+
+> Team nội bộ tập kịch bản theo `docs/demo-practice-checklist.md`. File này dành cho QA đầy đủ, không thay thế runbook demo ngắn của team.
 
 ## 1. Gói file cung cấp cho Agent
 
