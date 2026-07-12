@@ -23,7 +23,6 @@ import {
   Calendar,
   PlayCircle,
   StopCircle,
-  Navigation,
   Route as RouteIcon,
   History,
   Phone,
@@ -1322,7 +1321,7 @@ function DriverActiveTrip({
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
-        title="Chuyến đang chạy"
+        title={runningTrip ? "Chuyến đang chạy" : "Chuyến sắp tới"}
         icon={<PlayCircle className="size-7" />}
       />
 
@@ -1396,7 +1395,7 @@ function DriverActiveTrip({
 
               {runningTrip ? (
                 <div className="space-y-4">
-                  <div className="h-[480px] overflow-hidden rounded-[24px] border border-[#E8E2D5] bg-[#F8F6EF] shadow-sm">
+                  <div id="driver-trip-map" className="h-[480px] scroll-mt-4 overflow-hidden rounded-[24px] border border-[#E8E2D5] bg-[#F8F6EF] shadow-sm">
                     {activeMapStops.length >= 2 ? (
                       <JourneyMap
                         stops={activeMapStops}
@@ -1505,7 +1504,8 @@ function DriverActiveTrip({
           {sortedTrips.filter((trip) => {
             const status = String(trip.status || "").toUpperCase();
             return status !== "RUNNING" && status !== "COMPLETED" && status !== "CANCELLED"
-              && !isDriverTripExpired(trip, renderedAt);
+              && !isDriverTripExpired(trip, renderedAt)
+              && (!nextTrip || driverTripKey(trip) !== driverTripKey(nextTrip));
           }).map((trip, index) => {
             const status = trip.status?.toUpperCase();
             const statusPill = tripStatusPill(trip.status);

@@ -236,3 +236,29 @@ dong ho tinh tu departedAt, map nam trong Chuyen hien tai va lich su khong tai s
 - Trip 7211 da co schedule 763 va gio 17:30.
 - UI hien `CO THE BAT DAU LUC 17:30`; nut khoa dung vi chua vao cua so 30 phut.
 - ESLint va TypeScript chay qua.
+
+---
+
+# Changelog: Loc chuyen tai xe qua gio va don lich su demo
+
+## Tom tat
+- Driver overview bo cac trip/schedule chua chay da qua 60 phut sau gio khoi hanh.
+- Schedule template bi lo trong ngay se chuyen sang lan chay tuan tiep theo thay vi hien tren dashboard.
+- Driver dashboard chi dem cac trip hom nay con lien quan: running, completed/cancelled, thieu gio hoac chua qua cua so bat dau.
+- Chuan hoa trip demo 7141 ve NOT_STARTED va xoa ended_at sai.
+- Chuan hoa trip 2875 ve thoi luong 90 phut.
+
+## Kiem tra DB
+- Khong con trip COMPLETED thieu departed_at trong hai dong muc tieu.
+- Khong con trip tai xe demo dai hon 6 gio.
+- Chuyen 06:30/07:30/09:00 qua gio khong con nam trong dashboard/overview sap toi.
+
+---
+
+# Changelog: Lam gon man chuyen hien tai cua tai xe
+
+## Thay doi
+- Tieu de hien `Chuyen sap toi` khi chua bat dau, `Chuyen dang chay` khi trip da RUNNING.
+- Chuyen dang hien trong card chinh bi loai khoi danh sach phan cong ben duoi.
+- Truoc khi bat dau, nut phu mo `Lien he dieu phoi`.
+- Nut phu luon mo `Lien he dieu phoi`; tracking da nam truc tiep trong man chuyen hien tai.

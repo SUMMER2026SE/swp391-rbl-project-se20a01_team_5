@@ -779,6 +779,11 @@ public class ExperienceRepository {
         return jdbcTemplate.query(tripSelect("""
                 WHERE t.driver_id = ?
                   AND t.service_date = CURRENT_DATE
+                  AND (
+                      t.status IN ('RUNNING', 'COMPLETED', 'CANCELLED')
+                      OR bs.departure_time IS NULL
+                      OR CURRENT_TIMESTAMP <= t.service_date + bs.departure_time + INTERVAL '60 minutes'
+                  )
                 ORDER BY t.service_date DESC, bs.departure_time NULLS LAST, t.trip_id DESC
                 LIMIT ?
                 """), (rs, rowNum) -> mapTrip(rs), driverId, limit);

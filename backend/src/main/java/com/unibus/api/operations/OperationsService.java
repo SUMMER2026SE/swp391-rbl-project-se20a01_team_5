@@ -179,7 +179,9 @@ public class OperationsService {
         }
 
         LocalDate serviceDate = nextDateForWeekday(today, template.weekdayNumber());
-        while (!serviceDate.isAfter(horizon) && hasActualTrip(actualTrips, template.scheduleId(), serviceDate)) {
+        while (!serviceDate.isAfter(horizon)
+                && (hasActualTrip(actualTrips, template.scheduleId(), serviceDate)
+                || scheduleWindowExpired(serviceDate, template.departureTime()))) {
             serviceDate = serviceDate.plusWeeks(1);
         }
         if (serviceDate.isAfter(horizon)) {
@@ -387,7 +389,18 @@ public class OperationsService {
         if ("COMPLETED".equals(trip.status()) || "CANCELLED".equals(trip.status())) {
             return false;
         }
-        return !trip.serviceDate().isBefore(today);
+        if (trip.serviceDate().isBefore(today)) {
+            return false;
+        }
+        return !scheduleWindowExpired(trip.serviceDate(), trip.departureTime());
+    }
+
+    private boolean scheduleWindowExpired(LocalDate serviceDate, LocalTime departureTime) {
+        if (serviceDate == null || departureTime == null) {
+            return false;
+        }
+        LocalDateTime scheduledStart = LocalDateTime.of(serviceDate, departureTime);
+        return LocalDateTime.now(BUSINESS_ZONE).isAfter(scheduledStart.plusMinutes(60));
     }
 
     private int tripStatusPriority(DriverTripView trip) {
