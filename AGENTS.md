@@ -291,3 +291,25 @@ dong ho tinh tu departedAt, map nam trong Chuyen hien tai va lich su khong tai s
 - `Chuyen hien tai` dung tracking surface trang nhu student: thong tin chuyen, map, quick stats va action bar tach ro.
 - `Lich su` dung row record phang nhu dispatcher: route/status va ba cot bat dau, ket thuc, thoi luong.
 - Van giu logic moi: chuyen qua gio mau xam/xep cuoi, tracking theo trip va fallback dau gach ngang.
+
+
+---
+
+# Changelog: Đồng bộ giả lập xe theo chuyến đang chạy
+
+## Tóm tắt
+- Thêm `VehicleSimulationService` làm engine mô phỏng duy nhất cho student, dispatcher và driver.
+- Xe mô phỏng chỉ tồn tại khi trip có trạng thái `RUNNING`.
+- Vị trí, tốc độ, trạm kế và ETA được tính deterministic từ `tripId`, `departedAt` và lộ trình.
+
+## Thay đổi
+- Driver tracking lấy snapshot theo đúng `tripId`, không còn lấy xe mới nhất cùng tuyến.
+- Student route/journey tracking bỏ ưu tiên vị trí GPS cũ; dùng cùng engine của driver.
+- Dispatcher thêm endpoint tracking theo trip và poll mỗi 2 giây; bỏ fallback dựng xe trên polyline ở frontend.
+- Xe đến cuối tuyến đứng tại đích với tốc độ 0, không chạy vòng lại.
+- Chuẩn hóa chuyến chạy qua nửa đêm: nếu giờ kết thúc nhỏ hơn giờ bắt đầu thì cộng sang ngày kế tiếp.
+- Loại các trip RUNNING của tài khoản driver bị khóa (fleet simulator cũ) khỏi student/dispatcher tracking.
+- Dispatcher fleet vẫn giữ trip RUNNING từ ngày trước nếu chuyến chưa kết thúc.
+- Hướng mô phỏng luôn lấy theo trip/driver; boarding/alighting của student không được đảo chiều xe.
+- Fleet dashboard dispatcher dùng cùng snapshot mô phỏng nên tốc độ, tọa độ và marker không còn lấy GPS rỗng.
+- Thêm test xác nhận cùng trip/thời điểm cho cùng snapshot và xe dừng ở đích.

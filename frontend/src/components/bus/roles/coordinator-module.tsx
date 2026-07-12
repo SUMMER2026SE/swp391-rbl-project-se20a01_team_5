@@ -148,6 +148,7 @@ import {
   type ContactThreadCard,
   type InternalMessageCard,
   type RouteMapPreviewDTO,
+  type JourneyTrackingSnapshotDTO,
 } from "@/lib/api/client";
 import type { BusStop } from "@/lib/types";
 
@@ -683,8 +684,7 @@ function LiveMapScreen({ ctx }: { ctx: Ctx }) {
   const [vehicleLocations, setVehicleLocations] = useState<Record<string, string>>({});
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const liveVehicles = useMemo(() => (fleet.raw || ctx.raw.dashboard.raw?.liveFleet || []) as LiveFleetVehicle[], [ctx.raw.dashboard.raw?.liveFleet, fleet.raw]);
-  const vehicles = useMemo(() => (liveVehicles.length ? liveVehicles : mockLiveFleet(ctx.routes))
-    .filter(isRunningVehicle), [ctx.routes, liveVehicles]);
+  const vehicles = useMemo(() => liveVehicles.filter(isRunningVehicle), [liveVehicles]);
   const toggleSelectedVehicle = useCallback((vehicleId: string) => {
     setSelectedVehicleId((current) => current === vehicleId ? null : vehicleId);
   }, []);
@@ -827,12 +827,24 @@ function LiveFleetMap({
   const [previews, setPreviews] = useState<Record<number, RouteMapPreviewDTO>>({});
   const [roadPreviews, setRoadPreviews] = useState<Record<number, RouteMapPreviewDTO>>({});
   const [fallbackRouteIds, setFallbackRouteIds] = useState<number[]>([]);
-  const [tick, setTick] = useState(0);
+  const [trackingByTrip, setTrackingByTrip] = useState<Record<string, JourneyTrackingSnapshotDTO>>({});
 
   useEffect(() => {
-    const timer = setInterval(() => setTick((t) => t + 1), 2000);
-    return () => clearInterval(timer);
-  }, []);
+    let cancelled = false;
+    const loadTracking = async () => {
+      const running = vehicles.filter((vehicle) => vehicle.tripId != null);
+      const results = await Promise.allSettled(running.map((vehicle) => operationsApi.coordinatorTripTracking(vehicle.tripId)));
+      if (cancelled) return;
+      const next: Record<string, JourneyTrackingSnapshotDTO> = {};
+      results.forEach((result, index) => {
+        if (result.status === "fulfilled") next[String(running[index].tripId)] = result.value;
+      });
+      setTrackingByTrip(next);
+    };
+    void loadTracking();
+    const timer = window.setInterval(loadTracking, 2000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [vehicles]);
 
   useEffect(() => {
     let cancelled = false;
@@ -895,28 +907,26 @@ function LiveFleetMap({
   const displayPreviews = useMemo(() => ({ ...previews, ...roadPreviews }), [previews, roadPreviews]);
 
   const buses = useMemo<JourneyBus[]>(() => {
-    const _t = tick;
     return vehicles.map((vehicle, index) => {
-      const preview = displayPreviews[vehicle.routeId] || Object.values(displayPreviews).find((item) =>
-        item.stops?.some((stop) => stop.latitude && stop.longitude)
-      );
-      const actualLat = numberValue(vehicle.latitude);
-      const actualLng = numberValue(vehicle.longitude);
-      const point = actualLat && actualLng ? { lat: actualLat, lng: actualLng } : pointOnPreview(preview, index);
-      if (!point) return null;
+      const snapshot = trackingByTrip[String(vehicle.tripId)];
+      const tracked = snapshot?.vehicles?.find((item) => Number(item.tripId) === Number(vehicle.tripId));
+      const preview = displayPreviews[vehicle.routeId];
+      const lat = numberValue(tracked?.latitude);
+      const lng = numberValue(tracked?.longitude);
+      if (!lat || !lng) return null;
       return {
         id: String(vehicle.tripId),
-        plate: vehicle.licensePlate || `Xe ${index + 1}`,
-        routeCode: preview?.routeCode || `R${preview?.routeId || vehicle.routeId}`,
+        plate: tracked?.plateNumber || vehicle.licensePlate || `Xe ${index + 1}`,
+        routeCode: preview?.routeCode || `R${vehicle.routeId}`,
         routeColor: preview?.colorHex || "#BDFD4F",
-        lat: point.lat,
-        lng: point.lng,
-        occupancy: vehicle.occupancy,
-        capacity: 45,
-        driverName: vehicle.driverName,
+        lat,
+        lng,
+        occupancy: tracked?.occupancy ?? vehicle.occupancy,
+        capacity: tracked?.capacity ?? 45,
+        driverName: tracked?.driverName || vehicle.driverName,
       } satisfies JourneyBus;
     }).filter(Boolean) as JourneyBus[];
-  }, [displayPreviews, vehicles, tick]);
+  }, [displayPreviews, trackingByTrip, vehicles]);
 
   const selectedRouteLines = useMemo(
     () => selectedVehicleRoutePolylines(selectedVehicleId, vehicles, displayPreviews, buses),

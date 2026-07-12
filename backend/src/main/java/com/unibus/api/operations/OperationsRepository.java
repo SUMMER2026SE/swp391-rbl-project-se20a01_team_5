@@ -814,8 +814,9 @@ public class OperationsRepository {
                     ORDER BY updated_at DESC
                     LIMIT 1
                 ) vl ON TRUE
-                WHERE t.service_date = ?
+                WHERE (t.service_date = ? OR t.status = 'RUNNING')
                   AND t.status IN ('NOT_STARTED', 'RUNNING', 'COMPLETED')
+                  AND (t.status <> 'RUNNING' OR du.status = 'ACTIVE')
                 ORDER BY
                     CASE t.status WHEN 'RUNNING' THEN 0 WHEN 'NOT_STARTED' THEN 1 ELSE 2 END,
                     bs.departure_time NULLS LAST,

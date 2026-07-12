@@ -33,10 +33,13 @@ public class JourneyTrackingService {
 
     private final JourneyPlannerService journeyPlannerService;
     private final JdbcTemplate jdbcTemplate;
+    private final VehicleSimulationService vehicleSimulationService;
 
-    public JourneyTrackingService(JourneyPlannerService journeyPlannerService, JdbcTemplate jdbcTemplate) {
+    public JourneyTrackingService(JourneyPlannerService journeyPlannerService, JdbcTemplate jdbcTemplate,
+            VehicleSimulationService vehicleSimulationService) {
         this.journeyPlannerService = journeyPlannerService;
         this.jdbcTemplate = jdbcTemplate;
+        this.vehicleSimulationService = vehicleSimulationService;
     }
 
     @Transactional(readOnly = true)
@@ -81,19 +84,34 @@ public class JourneyTrackingService {
     }
 
     @Transactional(readOnly = true)
+    public JourneyTrackingSnapshot tripSnapshot(Integer tripId) {
+        ActiveTrip trip = activeTripById(tripId).orElseThrow(() -> new com.unibus.api.common.ApiException(
+                org.springframework.http.HttpStatus.NOT_FOUND, "Running trip not found"));
+        RouteInfo route = routeInfo(trip.routeId());
+        List<RouteStopPoint> stops = vehicleStops(trip.routeId(), route, routeStops(trip.routeId(), null, null), null, null);
+        List<Coordinate> shape = routeShape(trip.routeId(), stops);
+        VehicleSnapshot vehicle = scheduledRouteVehicle(route, shape, stops, trip, OffsetDateTime.now(VIETNAM_ZONE));
+        List<MapPolyline> polylines = shape.size() >= 2
+                ? List.of(new MapPolyline("trip-" + tripId, "BUS", route.colorHex(), shape)) : List.of();
+        List<TrackingStop> trackingStops = stops.stream().map(stop -> new TrackingStop(
+                stop.stopId(), stop.stopName(), stop.address(), stop.latitude(), stop.longitude(), stop.stopOrder(), false, false)).toList();
+        return new JourneyTrackingSnapshot("trip-" + tripId, OffsetDateTime.now(VIETNAM_ZONE), List.of(vehicle), List.of(), polylines,
+                route.routeId(), route.routeCode(), route.routeName(), null, null, trackingStops, true);
+    }
+
+    @Transactional(readOnly = true)
     public JourneyTrackingSnapshot routeSnapshot(Integer routeId, Integer boardingStopId, Integer alightingStopId) {
         OffsetDateTime now = OffsetDateTime.now(VIETNAM_ZONE);
         RouteInfo route = routeInfo(routeId);
         List<RouteStopPoint> stops = routeStops(routeId, boardingStopId, alightingStopId);
-        List<RouteStopPoint> vehicleStops = vehicleStops(routeId, route, stops, boardingStopId, alightingStopId);
+        List<RouteStopPoint> vehicleStops = primaryDirectionStops(route, routeStops(routeId, null, null));
         List<Coordinate> shape = routeShape(routeId, vehicleStops);
         List<MapPolyline> polylines = shape.size() >= 2
                 ? List.of(new MapPolyline("route-" + routeId, "BUS", route.colorHex(), shape))
                 : List.of();
 
-        Optional<VehicleSnapshot> vehicle = latestVehicle(routeId, route, shape, vehicleStops, now)
-                .filter(item -> item.latitude() != null && item.longitude() != null)
-                .or(() -> activeTrip(routeId, now).map(trip -> scheduledRouteVehicle(route, shape, vehicleStops, trip, now)));
+        Optional<VehicleSnapshot> vehicle = activeTrip(routeId, now)
+                .map(trip -> scheduledRouteVehicle(route, shape, vehicleStops, trip, now));
         List<VehicleSnapshot> vehicles = vehicle.map(List::of).orElseGet(List::of);
 
         List<StopEta> stopEtas = new ArrayList<>();
@@ -170,33 +188,15 @@ public class JourneyTrackingService {
         return normalized;
     }
 
-private VehicleSnapshot scheduledRouteVehicle(RouteInfo route, List<Coordinate> shape, List<RouteStopPoint> stops, ActiveTrip trip, OffsetDateTime now) {
-        double progress = progressForTrip(trip, now);
-        Coordinate position = interpolate(shape, progress);
-        RouteStopPoint nextStop = nextStopForProgress(stops, progress);
-        int seed = Math.abs((trip.tripId() == null ? 0 : trip.tripId()) * 31
-                + (int) (trip.startsAt() == null ? 0 : trip.startsAt().toEpochSecond() % 100000));
-        int distanceMeters = position == null || nextStop == null ? 0 : distanceMeters(position, nextStop);
-        double segmentPosition = stops.size() <= 1 ? 0 : progress * (stops.size() - 1);
-        double segmentRatio = segmentPosition - Math.floor(segmentPosition);
-        double speedKmh = simulatedSpeedKmh(seed, segmentRatio, distanceMeters, now);
-        return new VehicleSnapshot(
-                "trip:" + trip.tripId(),
-                trip.plateNumber() == null ? route.plateNumber() : trip.plateNumber(),
-                route.routeId(),
-                route.routeCode(),
-                position == null ? null : position.latitude(),
-                position == null ? null : position.longitude(),
-                BigDecimal.valueOf(speedKmh).setScale(1, RoundingMode.HALF_UP),
-                null,
-                45,
-                nextStop == null ? null : nextStop.stopId(),
-                nextStop == null ? null : nextStop.stopName(),
-                nextStop == null ? null : etaMinutes(distanceMeters, speedKmh),
-                distanceMeters,
-                trip.tripId(),
-                trip.driverName(),
-                true);
+    private VehicleSnapshot scheduledRouteVehicle(RouteInfo route, List<Coordinate> shape, List<RouteStopPoint> stops,
+            ActiveTrip trip, OffsetDateTime now) {
+        return vehicleSimulationService.simulate(
+                new VehicleSimulationService.TripSimulation(trip.tripId(), trip.plateNumber(), trip.driverName(), trip.startsAt(), trip.endsAt()),
+                new VehicleSimulationService.RouteSimulation(route.routeId(), route.routeCode()),
+                shape,
+                stops.stream().map(stop -> new VehicleSimulationService.SimulationStop(
+                        stop.stopId(), stop.stopName(), stop.latitude(), stop.longitude())).toList(),
+                now);
     }
 
     private Optional<VehicleSnapshot> latestVehicle(Integer routeId, RouteInfo route, List<Coordinate> shape, List<RouteStopPoint> stops, OffsetDateTime now) {
@@ -277,31 +277,48 @@ private double simulatedSpeedKmh(int seed, double segmentRatio, int distanceMete
         return (int) Math.round(6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
     }
 
-    private Optional<ActiveTrip> activeTrip(Integer routeId, OffsetDateTime now) {
+    private Optional<ActiveTrip> activeTripById(Integer tripId) {
         return jdbcTemplate.query("""
-                SELECT t.trip_id, b.license_plate, du.full_name AS driver_name,
-                       t.service_date, COALESCE(t.departed_at::time, bs.departure_time) AS departure_time,
-                       COALESCE(bs.end_time, bs.departure_time + INTERVAL '90 minutes') AS end_time
+                SELECT t.trip_id, t.route_id, b.license_plate, du.full_name AS driver_name,
+                       COALESCE(t.departed_at, t.service_date + bs.departure_time) AS started_at,
+                       COALESCE(t.ended_at, t.service_date + COALESCE(bs.end_time, bs.departure_time + INTERVAL '90 minutes')) AS ends_at
                 FROM trips t
                 JOIN bus_schedules bs ON bs.schedule_id = t.schedule_id
                 JOIN buses b ON b.bus_id = t.bus_id
                 JOIN drivers d ON d.driver_id = t.driver_id
                 JOIN users du ON du.user_id = d.user_id
-                WHERE t.route_id = ?
-                  AND t.status = 'RUNNING'
+                WHERE t.trip_id = ? AND t.status = 'RUNNING' AND du.status = 'ACTIVE'
+                """, (rs, rowNum) -> new ActiveTrip(rs.getInt("trip_id"), rs.getInt("route_id"), rs.getString("license_plate"),
+                        rs.getString("driver_name"), toVietnamOffset(rs.getTimestamp("started_at")), normalizedTripEnd(rs.getTimestamp("started_at"), rs.getTimestamp("ends_at"))), tripId)
+                .stream().findFirst();
+    }
+
+    private OffsetDateTime toVietnamOffset(java.sql.Timestamp value) {
+        return value.toInstant().atZone(VIETNAM_ZONE).toOffsetDateTime();
+    }
+
+    private OffsetDateTime normalizedTripEnd(java.sql.Timestamp startValue, java.sql.Timestamp endValue) {
+        OffsetDateTime start = toVietnamOffset(startValue);
+        OffsetDateTime end = toVietnamOffset(endValue);
+        return end.isAfter(start) ? end : end.plusDays(1);
+    }
+
+    private Optional<ActiveTrip> activeTrip(Integer routeId, OffsetDateTime now) {
+        return jdbcTemplate.query("""
+                SELECT t.trip_id, t.route_id, b.license_plate, du.full_name AS driver_name,
+                       COALESCE(t.departed_at, t.service_date + bs.departure_time) AS started_at,
+                       COALESCE(t.ended_at, t.service_date + COALESCE(bs.end_time, bs.departure_time + INTERVAL '90 minutes')) AS ends_at
+                FROM trips t
+                JOIN bus_schedules bs ON bs.schedule_id = t.schedule_id
+                JOIN buses b ON b.bus_id = t.bus_id
+                JOIN drivers d ON d.driver_id = t.driver_id
+                JOIN users du ON du.user_id = d.user_id
+                WHERE t.route_id = ? AND t.status = 'RUNNING' AND du.status = 'ACTIVE'
                 ORDER BY t.departed_at DESC NULLS LAST, bs.departure_time DESC
                 LIMIT 1
-                """, (rs, rowNum) -> {
-            LocalDate serviceDate = rs.getDate("service_date").toLocalDate();
-            LocalTime departureTime = rs.getTime("departure_time").toLocalTime();
-            LocalTime endTime = rs.getTime("end_time").toLocalTime();
-            OffsetDateTime start = serviceDate.atTime(departureTime).atZone(VIETNAM_ZONE).toOffsetDateTime();
-            OffsetDateTime end = serviceDate.atTime(endTime).atZone(VIETNAM_ZONE).toOffsetDateTime();
-            if (!end.isAfter(start)) {
-                end = end.plusDays(1);
-            }
-            return new ActiveTrip(rs.getInt("trip_id"), rs.getString("license_plate"), rs.getString("driver_name"), start, end);
-        }, routeId).stream().findFirst();
+                """, (rs, rowNum) -> new ActiveTrip(rs.getInt("trip_id"), rs.getInt("route_id"), rs.getString("license_plate"),
+                        rs.getString("driver_name"), toVietnamOffset(rs.getTimestamp("started_at")), normalizedTripEnd(rs.getTimestamp("started_at"), rs.getTimestamp("ends_at"))), routeId)
+                .stream().findFirst();
     }
 
     private double progressForTrip(ActiveTrip trip, OffsetDateTime now) {
@@ -474,7 +491,7 @@ private double simulatedSpeedKmh(int seed, double segmentRatio, int distanceMete
         return left + (right - left) * ratio;
     }
 
-    private record ActiveTrip(Integer tripId, String plateNumber, String driverName, OffsetDateTime startsAt, OffsetDateTime endsAt) {}
+    private record ActiveTrip(Integer tripId, Integer routeId, String plateNumber, String driverName, OffsetDateTime startsAt, OffsetDateTime endsAt) {}
 
     private record RoutePathRow(Integer stopOrder, String pathPoints, BigDecimal latitude, BigDecimal longitude) {}
 
