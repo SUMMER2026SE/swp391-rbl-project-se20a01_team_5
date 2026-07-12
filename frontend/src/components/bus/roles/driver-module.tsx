@@ -906,25 +906,26 @@ function DriverDashboard({
       {statCards.length > 0 && (
         <ScrollReveal delay={0.1}>
           <Section title="Tổng quan hôm nay">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 min-w-0">
+            <div className="grid grid-cols-2 gap-3 min-w-0 lg:grid-cols-4">
               {statCards.map((s, i) => (
-                <StatCard
-                  key={i}
-                  label={s.label}
-                  value={
-                    <Counter
-                      to={typeof s.value === "number" ? s.value : 0}
-                      format={(n) =>
-                        typeof s.value === "string"
-                          ? s.value
-                          : Math.round(n).toLocaleString("vi-VN")
-                      }
-                    />
-                  }
-                  icon={<TrendingUp className="size-5" />}
-                  hint={s.unit}
-                  accent={(s.tone as any) || "primary"}
-                />
+                <div key={i} className={cn(statCards.length % 2 === 1 && i === statCards.length - 1 && "col-span-2 lg:col-span-1")}>
+                  <StatCard
+                    label={s.label}
+                    value={
+                      <Counter
+                        to={typeof s.value === "number" ? s.value : 0}
+                        format={(n) =>
+                          typeof s.value === "string"
+                            ? s.value
+                            : Math.round(n).toLocaleString("vi-VN")
+                        }
+                      />
+                    }
+                    icon={<TrendingUp className="size-5" />}
+                    hint={s.unit}
+                    accent={(s.tone as any) || "primary"}
+                  />
+                </div>
               ))}
             </div>
           </Section>
@@ -958,7 +959,7 @@ function DriverDashboard({
                   <ExpressiveCard
                     key={t.tripId ?? t.scheduleId ?? `${t.routeId ?? "route"}-${t.serviceDate ?? t.date ?? "date"}-${t.departureTime ?? t.departTime ?? index}`}
                     variant="elevated"
-                    className="p-4 min-w-0"
+                    className="min-w-0 rounded-[24px] border border-[#E8E2D5] bg-white p-4 shadow-[0_8px_24px_rgba(20,20,15,0.04)]"
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="size-10 shrink-0 rounded-xl bg-primary-container text-on-primary-container flex items-center justify-center">
@@ -992,9 +993,9 @@ function DriverSchedule({ ctx }: { ctx: Ctx }) {
     new Date().toISOString().slice(0, 10),
   );
   const [trips, setTrips] = useState<DriverTripView[] | null>(null);
-  const [expandedTripKey, setExpandedTripKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [renderedAt] = useState(() => Date.now());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1013,11 +1014,17 @@ function DriverSchedule({ ctx }: { ctx: Ctx }) {
     load();
   }, [load]);
 
+  const sortedScheduleTrips = sortDriverTrips(trips ?? []).sort((left, right) => {
+    const expiredDelta = Number(isDriverTripExpired(left, renderedAt))
+      - Number(isDriverTripExpired(right, renderedAt));
+    return expiredDelta;
+  });
+
   return (
-    <PageTransition className="space-y-6 min-w-0">
+    <PageTransition className="space-y-6 sm:space-y-8 min-w-0">
       <PageHeader
         title="Lịch trình"
-        description="Lịch chạy của bạn theo ngày."
+        description="Phân công chuyến theo ngày."
         icon={<Calendar className="size-7" />}
         actions={
           <Input
@@ -1040,102 +1047,41 @@ function DriverSchedule({ ctx }: { ctx: Ctx }) {
         />
       ) : (
         <StaggerGroup className="space-y-3 min-w-0">
-          {sortDriverTrips(trips).map((trip) => {
-            const statusPill = tripStatusPill(trip.status);
-            const status = String(trip.status || "").toUpperCase();
-            const isRunning = status === "RUNNING";
-            const isDone = status === "COMPLETED";
-            const tripKey = driverTripKey(trip);
-            const isExpanded = expandedTripKey === tripKey;
+          {sortedScheduleTrips.map((trip, index) => {
+            const isExpired = isDriverTripExpired(trip, renderedAt);
+            const statusPill = isExpired
+              ? { label: "Đã quá giờ chạy", tone: "neutral" as const }
+              : tripStatusPill(trip.status);
             return (
-              <StaggerItem key={tripKey}>
-                <div className="relative flex gap-4">
-                  <div className="relative z-10 hidden w-16 shrink-0 pt-4 text-center sm:block">
-                    <div className={cn(
-                      "mx-auto mb-2 flex size-12 items-center justify-center rounded-2xl border-4 border-white shadow-sm",
-                      isRunning ? "bg-[#B8F5CC] text-[#14532d]" : isDone ? "bg-[#ECECEC] text-[#4B5563]" : "bg-[#FFF0CF] text-[#92400e]",
-                    )}>
-                      <Bus className="size-5" />
+              <StaggerItem key={driverTripKey(trip) || index}>
+                <ExpressiveCard
+                  variant="elevated"
+                  className={cn("p-4 min-w-0", isExpired && "bg-[#F3F4F3] text-[#6B6B6B]")}
+                >
+                  <div className="flex items-start justify-between gap-3 mb-3 min-w-0">
+                    <div className="min-w-0">
+                      <p className="font-bold truncate">{trip.routeName || `Tuyến ${trip.routeId}`}</p>
+                      <p className="text-xs text-on-surface-variant">
+                        {trip.departureTime || "—"}
+                      </p>
                     </div>
-                    <p className="text-xs font-black text-[#14140f]">{trip.departureTime || "--:--"}</p>
+                    <M3StatusPill label={statusPill.label} tone={statusPill.tone} />
                   </div>
-                  <ExpressiveCard
-                    variant="elevated"
-                    className={cn(
-                      "flex-1 overflow-hidden rounded-[28px] border bg-white p-0 shadow-[0_8px_26px_rgba(20,20,15,0.045)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(20,20,15,0.08)]",
-                      isRunning ? "border-[#B8F5CC]" : isDone ? "border-[#E6E2D8]" : "border-[#F1DFC0]",
-                    )}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setExpandedTripKey(isExpanded ? null : tripKey)}
-                      className="flex w-full items-center gap-4 p-4 text-left sm:p-5"
-                      aria-expanded={isExpanded}
-                    >
-                      <div className={cn(
-                        "flex size-11 shrink-0 items-center justify-center rounded-2xl sm:hidden",
-                        isRunning ? "bg-[#B8F5CC] text-[#14532d]" : isDone ? "bg-[#ECECEC] text-[#4B5563]" : "bg-[#FFF0CF] text-[#92400e]",
-                      )}>
-                        <Bus className="size-5" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2">
-                          <h3 className="min-w-0 truncate text-base font-black text-[#14140f] sm:text-lg">{trip.routeName}</h3>
-                          <M3StatusPill label={statusPill.label} tone={statusPill.tone} />
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#6B6B6B]">
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FAF8F2] px-3 py-1 sm:hidden">
-                            <Clock className="size-3.5" /> {trip.departureTime || formatDate(trip.serviceDate)}
-                          </span>
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FAF8F2] px-3 py-1">
-                            <MapPin className="size-3.5" /> {trip.stops?.length || 0} trạm
-                          </span>
-                          {trip.licensePlate && (
-                            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FAF8F2] px-3 py-1">
-                              <Bus className="size-3.5" /> {trip.licensePlate}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className={cn(
-                        "flex size-10 shrink-0 items-center justify-center rounded-full border border-[#E8E2D5] bg-[#FAF8F2] text-[#14140f] transition",
-                        isExpanded && "bg-[#14140f] text-[#BDFD4F]",
-                      )}>
-                        <ChevronRight className={cn("size-5 transition-transform", isExpanded && "rotate-90")} />
-                      </div>
-                    </button>
-                    <AnimatePresence initial={false}>
-                      {isExpanded && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: "auto", opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.18, ease: "easeOut" }}
-                          className="overflow-hidden"
-                        >
-                          <div className="grid gap-3 border-t border-[#EEE8DA] bg-[#FFFCF6] px-4 pb-4 pt-3 text-xs sm:grid-cols-2 sm:px-5 lg:grid-cols-4">
-                            <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">
-                              <p className="font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Biển số</p>
-                              <p className="mt-1 truncate font-black text-[#14140f]">{trip.licensePlate || "--"}</p>
-                            </div>
-                            <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">
-                              <p className="font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Phụ xe</p>
-                              <p className="mt-1 truncate font-black text-[#14140f]">{trip.conductorName || "--"}</p>
-                            </div>
-                            <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">
-                              <p className="font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Điện thoại</p>
-                              <p className="mt-1 truncate font-black text-[#14140f]">{trip.conductorPhone || "--"}</p>
-                            </div>
-                            <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">
-                              <p className="font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Số trạm</p>
-                              <p className="mt-1 font-black text-[#14140f]">{trip.stops?.length || 0}</p>
-                            </div>
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </ExpressiveCard>
-                </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                    <div>
+                      <p className="text-on-surface-variant">Tài xế</p>
+                      <p className="font-bold truncate">{ctx.user.name || "Chưa gán"}</p>
+                    </div>
+                    <div>
+                      <p className="text-on-surface-variant">Phụ xe</p>
+                      <p className="font-bold truncate">{trip.conductorName || "Chưa gán"}</p>
+                    </div>
+                    <div>
+                      <p className="text-on-surface-variant">Xe</p>
+                      <p className="font-bold truncate">{trip.licensePlate || "Chưa gán"}</p>
+                    </div>
+                  </div>
+                </ExpressiveCard>
               </StaggerItem>
             );
           })}
@@ -1319,7 +1265,7 @@ function DriverActiveTrip({
   }
 
   return (
-    <PageTransition className="space-y-6 min-w-0">
+    <PageTransition className="space-y-6 sm:space-y-8 min-w-0">
       <PageHeader
         title={runningTrip ? "Chuyến đang chạy" : "Chuyến sắp tới"}
         icon={<PlayCircle className="size-7" />}
@@ -1331,16 +1277,10 @@ function DriverActiveTrip({
             initial={{ opacity: 0, y: 16, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ type: "spring", stiffness: 260, damping: 24 }}
-            className="relative overflow-hidden rounded-[32px] border border-[#DDEFD0] p-0 shadow-[0_16px_45px_rgba(20,20,15,0.06)]"
-            style={{
-              backgroundColor: runningTrip ? "#F1F8E8" : "#FAF8F2",
-              color: "#14140f",
-            }}
+            className="relative min-w-0"
           >
-            <div className="absolute -top-12 -right-12 size-48 rounded-full bg-[#beff50]/40 blur-3xl pointer-events-none" />
-            <div className={cn("h-1.5", runningTrip ? "bg-[#22c55e]" : "bg-[#F8C26A]")} />
-            <div className="relative grid gap-5 p-5 sm:p-6 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-start">
-              <div className="min-w-0">
+            <div className="grid gap-4">
+              <div className="min-w-0 rounded-[28px] border border-[#E8E2D5] bg-white p-4 shadow-[0_8px_24px_rgba(20,20,15,0.04)] sm:p-5">
               <div className="flex items-center gap-2 mb-3 flex-wrap">
                 <span className="inline-flex h-8 px-3 rounded-full bg-[#14140f] text-white text-xs font-black items-center gap-2">
                   {runningTrip ? (
@@ -1414,7 +1354,7 @@ function DriverActiveTrip({
                   </div>
                   <div className="grid gap-2 text-xs font-bold text-[#14140f]/75 sm:grid-cols-4">
                     <span className="rounded-2xl bg-white/60 px-3 py-2">
-                      Trạm kế: {activeVehicle?.nextStopName || "?"}
+                      Trạm kế: {activeVehicle?.nextStopName || "—"}
                     </span>
                     <span className="rounded-2xl bg-white/60 px-3 py-2">
                       ETA: {activeVehicle?.etaMinutes != null ? `${activeVehicle.etaMinutes} phút` : "—"}
@@ -1453,7 +1393,7 @@ function DriverActiveTrip({
               ) : null}
               </div>
 
-              <div className="flex flex-col gap-2 rounded-[24px] bg-white/80 p-4 shadow-sm lg:sticky lg:top-4">
+              <div className="flex flex-col gap-2 rounded-[24px] border border-[#E8E2D5] bg-white p-3 shadow-[0_8px_24px_rgba(20,20,15,0.04)] sm:flex-row sm:justify-end">
                 {runningTrip ? (
                   <ExpressiveButton
                     variant="filled"
@@ -1756,7 +1696,7 @@ function DriverRoute() {
       : [];
 
   return (
-    <PageTransition className="space-y-6 min-w-0">
+    <PageTransition className="space-y-6 sm:space-y-8 min-w-0">
       <PageHeader
         title="Lộ trình chuyến"
         description="Chi tiết các trạm dừng trên tuyến."
@@ -2095,16 +2035,15 @@ function DriverHistory({ ctx }: { ctx: Ctx }) {
                     key={driverTripKey(trip) || `${trip.routeId}-${trip.serviceDate}-${index}`}
                     variant="elevated"
                     className={cn(
-                      "overflow-hidden rounded-[22px] border bg-white p-0 shadow-[0_8px_24px_rgba(20,20,15,0.04)]",
-                      isCancelled ? "border-[#FFD6D6]" : "border-[#B8F5CC]",
+                      "rounded-[24px] border bg-white p-4 shadow-[0_8px_24px_rgba(20,20,15,0.04)] sm:p-5",
+                      isCancelled ? "border-[#FFD6D6]" : "border-[#E8E2D5]",
                     )}
                   >
-                    <div className={cn("h-1.5", isCancelled ? "bg-error" : "bg-[#22c55e]")} />
-                    <div className="space-y-3 p-4">
+                    <div className="space-y-3">
                       <div className="flex min-w-0 items-start gap-4">
                         <div className={cn(
-                          "flex size-12 shrink-0 items-center justify-center rounded-2xl",
-                          isCancelled ? "bg-error-container text-error" : "bg-[#B8F5CC] text-[#14532d]",
+                          "flex size-11 shrink-0 items-center justify-center rounded-2xl",
+                          isCancelled ? "bg-error-container text-error" : "bg-[#EAF8EF] text-[#166534]",
                         )}>
                           {isCancelled ? <XCircle className="size-5" /> : <CheckCircle2 className="size-5" />}
                         </div>
@@ -2118,16 +2057,16 @@ function DriverHistory({ ctx }: { ctx: Ctx }) {
                           </p>
                         </div>
                       </div>
-                      <div className="grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-3">
-                        <div className="rounded-2xl bg-[#FAF8F2] px-4 py-3">
+                      <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-3">
+                        <div>
                           <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Bắt đầu thực tế</p>
                           <p className="mt-1 font-black text-[#14140f]">{trip.departedAt ? formatDateTime(trip.departedAt) : "—"}</p>
                         </div>
-                        <div className="rounded-2xl bg-[#FAF8F2] px-4 py-3">
+                        <div>
                           <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Kết thúc thực tế</p>
                           <p className="mt-1 font-black text-[#14140f]">{trip.endedAt ? formatDateTime(trip.endedAt) : "—"}</p>
                         </div>
-                        <div className="rounded-2xl bg-[#FAF8F2] px-4 py-3">
+                        <div>
                           <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#6B6B6B]">Tổng thời gian</p>
                           <p className="mt-1 font-black tabular-nums text-[#14140f]">{formatTripDuration(trip.departedAt, trip.endedAt)}</p>
                         </div>
@@ -2300,7 +2239,7 @@ function DriverContact() {
   }
 
   return (
-    <PageTransition className="space-y-6 min-w-0">
+    <PageTransition className="space-y-6 sm:space-y-8 min-w-0">
       <PageHeader
         title="Liên hệ điều phối"
         icon={<Phone className="size-7" />}

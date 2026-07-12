@@ -270,3 +270,24 @@ dong ho tinh tu departedAt, map nam trong Chuyen hien tai va lich su khong tai s
 ## Thay doi
 - Khoi phuc padding responsive cho card chuyen dang chay trong `Lich hom nay`.
 - Giu nguyen mau lime, badge, CTA va bo cuc hien tai; chi sua spacing bi sat vien.
+
+---
+
+# Changelog: Hien thi chuyen qua gio trong lich tai xe
+
+## Thay doi
+- Chuyen chua bat dau qua 60 phut sau gio lich hien trang thai `Da qua gio chay`.
+- Card qua gio dung tone xam va duoc xep xuong cuoi danh sach lich trinh.
+- Chi thay doi hien thi frontend; khong sua status trong DB.
+
+---
+
+# Changelog: Khoi phuc visual pattern cu cua UI tai xe
+
+## Thay doi
+- Xay lai `Lich chay xe` bang truc tiep visual structure cua `CoordinatorScheduleScreen`.
+- Moi chuyen la mot row card phang: ten tuyen/gio, status pill, tai xe, phu xe va bien so.
+- Khong dung grid, timeline, icon xe, metadata chip hoac panel mo rong.
+- `Chuyen hien tai` dung tracking surface trang nhu student: thong tin chuyen, map, quick stats va action bar tach ro.
+- `Lich su` dung row record phang nhu dispatcher: route/status va ba cot bat dau, ket thuc, thoi luong.
+- Van giu logic moi: chuyen qua gio mau xam/xep cuoi, tracking theo trip va fallback dau gach ngang.
