@@ -222,7 +222,7 @@ public class OperationsRepository {
                   AND t.service_date BETWEEN ? AND ?
                   AND t.status IN ('COMPLETED', 'CANCELLED')
                 ORDER BY t.service_date DESC, COALESCE(t.ended_at, t.departed_at) DESC NULLS LAST, bs.departure_time DESC NULLS LAST, t.trip_id DESC
-                """, (rs, rowNum) -> mapDriverTrip(rs),
+                """, (rs, rowNum) -> mapDriverTrip(rs, false),
                 driverId, fromDate, toDate);
     }
 
@@ -241,7 +241,7 @@ public class OperationsRepository {
                   AND (t.service_date BETWEEN ? AND ? OR t.status = 'RUNNING')
                   AND t.status NOT IN ('COMPLETED', 'CANCELLED')
                 ORDER BY t.service_date, bs.departure_time NULLS LAST, t.trip_id
-                """, (rs, rowNum) -> mapDriverTrip(rs),
+                """, (rs, rowNum) -> mapDriverTrip(rs, false),
                 driverId, fromDate, toDate);
     }
 
@@ -342,6 +342,28 @@ public class OperationsRepository {
                 )
                 """, Boolean.class, tripId, driverId);
         return Boolean.TRUE.equals(owns);
+    }
+
+    public boolean hasOtherRunningTrip(Integer driverId, Integer tripId) {
+        Boolean exists = jdbcTemplate.queryForObject("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM trips
+                    WHERE driver_id = ?
+                      AND status = 'RUNNING'
+                      AND trip_id <> ?
+                )
+                """, Boolean.class, driverId, tripId);
+        return Boolean.TRUE.equals(exists);
+    }
+
+    public void lockDriverForTripStart(Integer driverId) {
+        jdbcTemplate.queryForObject("""
+                SELECT driver_id
+                FROM drivers
+                WHERE driver_id = ?
+                FOR UPDATE
+                """, Integer.class, driverId);
     }
 
     public boolean conductorOwnsTrip(Integer tripId, Integer conductorId) {
@@ -717,23 +739,26 @@ public class OperationsRepository {
         return id == null ? 0 : id;
     }
 
-    public void startTrip(Integer tripId) {
-        jdbcTemplate.update("""
+    public int startTrip(Integer tripId) {
+        return jdbcTemplate.update("""
                 UPDATE trips
                 SET status = 'RUNNING',
-                    departed_at = COALESCE(departed_at, CURRENT_TIMESTAMP)
+                    departed_at = CURRENT_TIMESTAMP,
+                    ended_at = NULL
                 WHERE trip_id = ?
-                  AND status IN ('NOT_STARTED', 'RUNNING')
+                  AND status = 'NOT_STARTED'
                 """, tripId);
     }
 
-    public void endTrip(Integer tripId) {
-        jdbcTemplate.update("""
+    public int endTrip(Integer tripId) {
+        return jdbcTemplate.update("""
                 UPDATE trips
                 SET status = 'COMPLETED',
-                    ended_at = COALESCE(ended_at, CURRENT_TIMESTAMP)
+                    ended_at = CURRENT_TIMESTAMP
                 WHERE trip_id = ?
-                  AND status IN ('RUNNING', 'NOT_STARTED', 'COMPLETED')
+                  AND status = 'RUNNING'
+                  AND departed_at IS NOT NULL
+                  AND ended_at IS NULL
                 """, tripId);
     }
 
@@ -837,6 +862,10 @@ public class OperationsRepository {
     }
 
     private DriverTripView mapDriverTrip(ResultSet rs) throws SQLException {
+        return mapDriverTrip(rs, true);
+    }
+
+    private DriverTripView mapDriverTrip(ResultSet rs, boolean includeStops) throws SQLException {
         Integer scheduleId = (Integer) rs.getObject("schedule_id");
         return new DriverTripView(
                 scheduleId,
@@ -852,7 +881,7 @@ public class OperationsRepository {
                 toOffsetDateTime(rs.getTimestamp("departed_at")),
                 toOffsetDateTime(rs.getTimestamp("ended_at")),
                 rs.getString("status"),
-                findTripStopsBySchedule(scheduleId));
+                includeStops ? findTripStopsBySchedule(scheduleId) : List.of());
     }
 
     private DriverScheduleTemplate mapDriverScheduleTemplate(ResultSet rs) throws SQLException {
@@ -867,7 +896,7 @@ public class OperationsRepository {
                 rs.getString("conductor_phone"),
                 rs.getInt("weekday_number"),
                 toLocalTime(rs.getTime("departure_time")),
-                findTripStopsBySchedule(scheduleId));
+                List.of());
     }
 
     private ConductorTripView mapConductorTrip(ResultSet rs) throws SQLException {

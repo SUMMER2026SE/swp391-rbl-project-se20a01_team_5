@@ -319,6 +319,36 @@ interface Ctx {
   reload: () => void;
 }
 
+const COORDINATOR_STATUS_LABELS: Record<string, string> = {
+  ACTIVE: "Đang hoạt động",
+  INACTIVE: "Ngừng hoạt động",
+  RUNNING: "Đang chạy",
+  NOT_STARTED: "Chưa khởi hành",
+  COMPLETED: "Đã hoàn thành",
+  CANCELLED: "Đã hủy",
+  READY: "Sẵn sàng",
+  MAINTENANCE: "Bảo trì",
+  SCHEDULED: "Đã lên lịch",
+  OPEN: "Chưa phân công",
+};
+
+function coordinatorStatusLabel(status?: string | null) {
+  const normalized = String(status || "").trim().toUpperCase();
+  return COORDINATOR_STATUS_LABELS[normalized] || status || "Chưa xác định";
+}
+
+function cleanRouteDescription(description?: string | null) {
+  return String(description || "")
+    .split("|")
+    .map((part) => part.trim())
+    .filter((part) => part && !/^(source|operationtime)\s*=/i.test(part))
+    .join(" • ");
+}
+
+function hasDisplaySpeed(vehicle: LiveFleetVehicle) {
+  return Number.isFinite(Number(vehicle.speedKmh)) && Number(vehicle.speedKmh) > 0;
+}
+
 function LoadingScreen({ label = "Đang tải..." }: { label?: string }) {
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center">
@@ -349,10 +379,11 @@ function ErrorScreen({ message, onRetry }: { message: string; onRetry?: () => vo
 // Screen 1: Dashboard
 // =============================================================================
 function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
-  const runningFleet = ctx.fleet.filter((v: any) => v.status === "RUNNING");
+  const runningFleet = ctx.fleet.filter((vehicle: any) => String(vehicle.status).toUpperCase() === "RUNNING");
+  const runningBusCount = new Set(runningFleet.map((vehicle: any) => vehicle.busId).filter(Boolean)).size;
+  const runningDriverCount = new Set(runningFleet.map((vehicle: any) => vehicle.driverName).filter(Boolean)).size;
   const todayShifts = useMemo(() => ctx.schedule?.shifts || [], [ctx.schedule?.shifts]);
   const assignedShifts = useMemo(() => todayShifts.filter((shift: any) => shift.busId && shift.driverStaffId && shift.conductorStaffId), [todayShifts]);
-  const pendingFeedback = ctx.feedback.filter((f: any) => f.status !== "resolved").length;
 
   // Trips per route — derive from today's schedule first, then live fleet.
   const tripsPerRoute = useMemo(() => {
@@ -375,7 +406,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
   }, [ctx.fleet, ctx.routes, todayShifts]);
 
   const quickActions = [
-    { id: "crd-live-map", label: "Bản đồ trực tiếp", icon: Navigation, accent: "primary" as const },
+    { id: "crd-live-map", label: "Theo dõi tất cả xe", icon: Navigation, accent: "primary" as const },
     { id: "crd-schedule", label: "Lịch trình", icon: Calendar, accent: "tertiary" as const },
     { id: "crd-assign-driver", label: "Phân công chuyến", icon: UserCog, accent: "secondary" as const },
     { id: "crd-feedback", label: "Phản hồi", icon: Star, accent: "primary" as const },
@@ -482,10 +513,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
           className="text-4xl sm:text-5xl font-bold tracking-tight text-on-surface text-balance leading-[1.05]"
           stagger={0.06}
         />
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between min-w-0">
-          <p className="text-base text-on-surface-variant text-pretty">
-            Trung tâm điều hành hoạt động xe bus sinh viên · Đà Nẵng
-          </p>
+        <div className="flex justify-end min-w-0">
           <ExpressiveButton
             variant="tonal"
             size="sm"
@@ -505,7 +533,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
               animate={{ opacity: [1, 0.3, 1] }}
               transition={{ duration: 1.4, repeat: Infinity }}
             />
-            {runningFleet.length} xe đang chạy
+            {runningBusCount} xe đang vận hành
           </span>
         </div>
       </div>
@@ -545,37 +573,37 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
         <StaggerItem>
           <StatCard
             label="Xe đang chạy"
-            value={<Counter to={runningFleet.length} format={(n) => `${Math.round(n)}/${ctx.fleet.length}`} />}
+            value={<Counter to={runningBusCount || runningFleet.length} />}
             icon={<BusIcon className="size-5" />}
-            hint={`${ctx.fleet.length} xe tổng`}
+            hint="Đang hoạt động"
             trend="up"
             accent="primary"
           />
         </StaggerItem>
         <StaggerItem>
           <StatCard
-            label="Ca hôm nay"
+            label="Chuyến hôm nay"
             value={<Counter to={todayShifts.length} />}
             icon={<RouteIcon className="size-5" />}
-            hint="Theo lịch điều phối"
+            hint={`${assignedShifts.length} chuyến đủ phân công`}
             accent="tertiary"
           />
         </StaggerItem>
         <StaggerItem>
           <StatCard
-            label="Đã phân công"
-            value={<Counter to={assignedShifts.length} />}
-            icon={<UserCog className="size-5" />}
-            hint={`${todayShifts.length} ca hôm nay`}
+            label="Chuyến đang chạy"
+            value={<Counter to={runningFleet.length} />}
+            icon={<Navigation className="size-5" />}
+            hint="Theo trạng thái chuyến"
             accent="secondary"
           />
         </StaggerItem>
         <StaggerItem>
           <StatCard
-            label="Phản hồi chờ xử lý"
-            value={<Counter to={pendingFeedback} />}
-            icon={<MessageSquare className="size-5" />}
-            hint="Cần xử lý trong 24h"
+            label="Tài xế đang chạy"
+            value={<Counter to={runningDriverCount} />}
+            icon={<UserCog className="size-5" />}
+            hint="Theo phân công hiện tại"
             accent="error"
           />
         </StaggerItem>
@@ -586,7 +614,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
         {/* Live bus status */}
         <ScrollReveal className="lg:col-span-2 min-w-0">
           <Section
-            title="Fleet trực tiếp"
+            title="Theo dõi tất cả xe"
             actions={<button onClick={() => onNavigate("crd-live-map")} className="text-xs font-bold text-primary">Xem bản đồ</button>}
           >
             {runningFleet.length === 0 ? (
@@ -610,7 +638,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
                         </p>
                       </div>
                       <div className="text-right shrink-0">
-                        <p className="text-xs font-bold text-primary">{v.speedKmh || 0} km/h</p>
+                        {hasDisplaySpeed(v) && <p className="text-xs font-bold text-primary">{Math.round(Number(v.speedKmh))} km/h</p>}
                         {v.occupancy != null && (
                           <p className="text-[10px] text-on-surface-variant">{v.occupancy} khách</p>
                         )}
@@ -673,11 +701,21 @@ function LiveMapScreen({ ctx }: { ctx: Ctx }) {
   const fleet = useApi(() => operationsApi.liveFleet(), undefined, []);
   const [vehicleLocations, setVehicleLocations] = useState<Record<string, string>>({});
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+  const fleetReloadRef = useRef(fleet.reload);
   const liveVehicles = useMemo(() => (fleet.raw || ctx.raw.dashboard.raw?.liveFleet || []) as LiveFleetVehicle[], [ctx.raw.dashboard.raw?.liveFleet, fleet.raw]);
-  const vehicles = useMemo(() => (liveVehicles.length ? liveVehicles : mockLiveFleet(ctx.routes))
-    .filter(isRunningVehicle), [ctx.routes, liveVehicles]);
+  const vehicles = useMemo(() => (liveVehicles.length ? liveVehicles : scheduleFleetFallback(ctx.schedule))
+    .filter(isRunningVehicle), [ctx.schedule, liveVehicles]);
   const toggleSelectedVehicle = useCallback((vehicleId: string) => {
     setSelectedVehicleId((current) => current === vehicleId ? null : vehicleId);
+  }, []);
+
+  useEffect(() => {
+    fleetReloadRef.current = fleet.reload;
+  }, [fleet.reload]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => fleetReloadRef.current(), 5000);
+    return () => window.clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -689,8 +727,8 @@ function LiveMapScreen({ ctx }: { ctx: Ctx }) {
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
-        title="Bản đồ trực tiếp"
-        description="Vị trí xe theo thời gian thực."
+        title="Theo dõi tất cả xe"
+        description=""
         icon={<Navigation className="size-7" />}
         actions={
           <ExpressiveButton variant="outlined" size="sm" onClick={fleet.reload}>
@@ -729,17 +767,16 @@ function LiveMapScreen({ ctx }: { ctx: Ctx }) {
                       selectedVehicleId === String(v.tripId) && "border-primary bg-primary/5",
                     )}
                   >
-                    <div className="flex items-center justify-between gap-2 mb-1 min-w-0">
-                      <p className="font-bold text-sm truncate">{v.routeName}</p>
-                      <M3StatusPill label="RUNNING" tone="success" />
+                    <div className="flex items-center gap-2 mb-1 min-w-0">
+                      <p className="min-w-0 flex-1 font-bold text-sm truncate">{v.routeName}</p>
+                      <M3StatusPill label="Đang chạy" tone="success" className="shrink-0 whitespace-nowrap" />
                     </div>
                     <p className="text-xs text-on-surface-variant truncate">
                       {v.licensePlate || "—"} • {v.driverName || "—"}
                     </p>
-                    <div className="mt-2 space-y-1 text-xs text-on-surface-variant">
-                      <span className="flex items-center gap-1 text-on-surface"><Gauge className="size-3" /> {v.speedKmh || 28} km/h</span>
-                      <span className="flex items-start gap-1"><MapPin className="size-3 mt-0.5 shrink-0" /> <span className="line-clamp-2">{vehicleLocations[String(v.tripId)] || vehicleLocationLabel(v, ctx.routes, ctx.stops, index)}</span></span>
-                      {v.occupancy != null && <span className="flex items-center gap-1"><Users className="size-3" /> {v.occupancy}</span>}
+                    <div className="mt-2 flex items-center gap-3 text-xs text-on-surface-variant">
+                      <span className="flex min-w-0 flex-1 items-center gap-1"><MapPin className="size-3 shrink-0" /><span className="truncate">{vehicleLocations[String(v.tripId)] || vehicleLocationLabel(v, ctx.routes, ctx.stops, index)}</span></span>
+                      {hasDisplaySpeed(v) && <span className="flex shrink-0 items-center gap-1 text-on-surface"><Gauge className="size-3" />{Math.round(Number(v.speedKmh))} km/h</span>}
                     </div>
                   </button>
                 ))
@@ -752,25 +789,23 @@ function LiveMapScreen({ ctx }: { ctx: Ctx }) {
   );
 }
 
-function mockLiveFleet(routes: any[]): LiveFleetVehicle[] {
-  const sourceRoutes = routes.length
-    ? routes.slice(0, 5)
-    : [
-        { routeId: 1, routeName: "UniBus 01: Bách khoa - Trung tâm" },
-        { routeId: 2, routeName: "UniBus 02: Sư phạm - Hòa Khánh" },
-        { routeId: 3, routeName: "UniBus 03: Kinh tế - Sơn Trà" },
-      ];
-  return sourceRoutes.map((route, index) => ({
-    tripId: 9000 + index,
-    routeId: Number(route.routeId || route.id),
-    routeName: route.routeName || route.name || route.code || `Tuyến ${index + 1}`,
-    licensePlate: `MOCK-${String(index + 1).padStart(2, "0")}`,
-    driverName: ["Nguyễn Minh Tài", "Trần Quốc Bảo", "Lê Hoàng Nam", "Phạm Anh Khoa", "Đỗ Gia Huy"][index],
-    departureTime: `${String(6 + index).padStart(2, "0")}:00`,
-    status: "RUNNING",
-    speedKmh: 24 + index * 3,
-    occupancy: 12 + index * 4,
-  })).filter((vehicle) => Number.isFinite(vehicle.routeId) && vehicle.routeId > 0);
+function scheduleFleetFallback(schedule: ScheduleDashboard | null): LiveFleetVehicle[] {
+  return (schedule?.shifts || [])
+    .filter((shift) => String(shift.status || "").toUpperCase() === "RUNNING")
+    .filter((shift) => shift.tripId && shift.routeId && shift.busId && shift.driverStaffId)
+    .slice(0, 5)
+    .map((shift) => ({
+      tripId: Number(shift.tripId),
+      routeId: Number(shift.routeId),
+      routeName: shift.routeName || `Tuyến ${shift.routeId}`,
+      busId: Number(shift.busId),
+      licensePlate: shift.licensePlate,
+      driverName: shift.driverName,
+      conductorName: shift.conductorName,
+      serviceDate: schedule?.serviceDate,
+      departureTime: shift.departureTime || shift.time,
+      status: "RUNNING",
+    }));
 }
 
 function isRunningVehicle(vehicle: LiveFleetVehicle) {
@@ -788,7 +823,7 @@ function vehicleLocationLabel(vehicle: LiveFleetVehicle, routes: any[], stops: B
     .filter(Boolean) as BusStop[];
   const nearest = point ? nearestStop(point, routeStops.length ? routeStops : stops) : routeStops[0];
   if (!nearest) return route?.name || vehicle.routeName || "Đang cập nhật vị trí";
-  return `Mô phỏng trên tuyến • gần ${nearest.name}`;
+  return `Gần ${nearest.name}`;
 }
 
 function nearestStop(point: { lat: number; lng: number }, stops: BusStop[]) {
@@ -893,7 +928,7 @@ function LiveFleetMap({
       );
       const actualLat = numberValue(vehicle.latitude);
       const actualLng = numberValue(vehicle.longitude);
-      const point = actualLat && actualLng ? { lat: actualLat, lng: actualLng } : pointOnPreview(preview, index);
+      const point = actualLat && actualLng ? { lat: actualLat, lng: actualLng } : pointOnPreview(preview, index, vehicle);
       if (!point) return null;
       return {
         id: String(vehicle.tripId),
@@ -924,8 +959,7 @@ function LiveFleetMap({
     const locations = Object.fromEntries(buses.map((bus) => {
       const vehicle = vehicles.find((item) => String(item.tripId) === bus.id);
       const preview = vehicle ? displayPreviews[vehicle.routeId] : undefined;
-      const hasGps = !!(vehicle && numberValue(vehicle.latitude) && numberValue(vehicle.longitude));
-      return [bus.id, busLocationLabel(bus, preview, !hasGps)];
+      return [bus.id, busLocationLabel(bus, preview)];
     }));
     onVehicleLocationsChange((current) => shallowEqualRecord(current, locations) ? current : locations);
   }, [buses, onVehicleLocationsChange, displayPreviews, vehicles]);
@@ -946,7 +980,7 @@ function LiveFleetMap({
         allowFallbackPolyline={false}
       />
       <div className="absolute bottom-3 left-3 z-[500] rounded-full bg-[#14140f]/90 px-3 py-1.5 text-xs font-bold text-[#BDFD4F]">
-        {buses.length || vehicles.length} xe • Dữ liệu mô phỏng khi xe chưa gửi GPS
+        {buses.length || vehicles.length} xe đang vận hành
       </div>
     </div>
   );
@@ -1089,13 +1123,13 @@ function mapFitPolylines(previews: Record<number, RouteMapPreviewDTO>, buses: Jo
   return [{ id: "fleet-fit", dashed: true, color: "transparent", points }];
 }
 
-function busLocationLabel(bus: JourneyBus, preview?: RouteMapPreviewDTO, simulated = false) {
+function busLocationLabel(bus: JourneyBus, preview?: RouteMapPreviewDTO) {
   const stops = (preview?.stops || [])
     .map((stop) => ({
       id: String(stop.stopId),
       name: stop.stopName,
       code: String(stop.stopId),
-      address: stop.address || "",
+      address: "",
       lat: numberValue(stop.latitude),
       lng: numberValue(stop.longitude),
       routes: [String(preview?.routeId || "")],
@@ -1103,9 +1137,7 @@ function busLocationLabel(bus: JourneyBus, preview?: RouteMapPreviewDTO, simulat
     }))
     .filter((stop) => validCoordinate(stop));
   const nearest = nearestStop({ lat: bus.lat, lng: bus.lng }, stops);
-  if (!nearest) return simulated ? "Mô phỏng trên tuyến" : "Đang cập nhật vị trí";
-  const location = `gần ${nearest.name}${nearest.address ? `, ${nearest.address}` : ""}`;
-  return simulated ? `Mô phỏng trên tuyến • ${location}` : `Gần ${nearest.name}${nearest.address ? `, ${nearest.address}` : ""}`;
+  return nearest ? `Gần ${nearest.name}` : "Đang cập nhật vị trí";
 }
 
 function buildLocalRoutePreview(routeId: number, routes: any[], stops: BusStop[]): RouteMapPreviewDTO | null {
@@ -1139,7 +1171,7 @@ function buildLocalRoutePreview(routeId: number, routes: any[], stops: BusStop[]
   };
 }
 
-function pointOnPreview(preview: RouteMapPreviewDTO | undefined, index: number) {
+function pointOnPreview(preview: RouteMapPreviewDTO | undefined, index: number, vehicle?: LiveFleetVehicle) {
   const points = (preview?.polylines || [])
     .flatMap((line) => line.points || [])
     .map((point) => ({ lat: numberValue(point.latitude), lng: numberValue(point.longitude) }))
@@ -1151,8 +1183,14 @@ function pointOnPreview(preview: RouteMapPreviewDTO | undefined, index: number) 
   const cycleMinutes = 55 + Math.abs(routeId % 25);
   const cycleSeconds = cycleMinutes * 60;
   const secondOfDay = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
-  const offsetSeconds = (Math.abs(routeId) * 60) + index * Math.max(480, Math.floor(cycleSeconds / 3));
-  const progress = ((secondOfDay + offsetSeconds) % cycleSeconds) / cycleSeconds;
+  const departureParts = String(vehicle?.departureTime || "").split(":").map(Number);
+  const departureSecond = departureParts.length >= 2 && departureParts.every(Number.isFinite)
+    ? departureParts[0] * 3600 + departureParts[1] * 60 + (departureParts[2] || 0)
+    : null;
+  const offsetSeconds = departureSecond == null
+    ? (Math.abs(routeId) * 60) + index * Math.max(480, Math.floor(cycleSeconds / 3))
+    : Math.max(0, secondOfDay - departureSecond);
+  const progress = (offsetSeconds % cycleSeconds) / cycleSeconds;
 
   const segments = points.slice(1).map((point, pointIndex) => {
     const previous = points[pointIndex];
@@ -1229,8 +1267,8 @@ function ScheduleScreen({ ctx }: { ctx: Ctx }) {
                     </p>
                   </div>
                   <M3StatusPill
-                    label={s.status || (s.scheduleId ? "SCHEDULED" : "OPEN")}
-                    tone={s.scheduleId ? "primary" : "warning"}
+                    label={coordinatorStatusLabel(s.status || (s.scheduleId ? "SCHEDULED" : "OPEN"))}
+                    tone={String(s.status || "").toUpperCase() === "COMPLETED" ? "success" : s.scheduleId ? "primary" : "warning"}
                   />
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
@@ -1338,7 +1376,7 @@ function AssignStaffScreen({ ctx }: { ctx: Ctx }) {
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Phân công chuyến xe"
-        description="Gán xe, tài xế và phụ xe cho từng chuyến."
+        description=""
         icon={<BusIcon className="size-7" />}
         actions={<DateField value={date} onChange={setDate} />}
       />
@@ -1388,7 +1426,7 @@ function AssignStaffScreen({ ctx }: { ctx: Ctx }) {
                         <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn tài xế" /></SelectTrigger>
                         <SelectContent>
                           {dashboard.drivers.map((drv) => (
-                            <SelectItem key={drv.staffId} value={String(drv.staffId)}>{drv.fullName} ({drv.status})</SelectItem>
+                            <SelectItem key={drv.staffId} value={String(drv.staffId)}>{drv.fullName} ({coordinatorStatusLabel(drv.status)})</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -1403,7 +1441,7 @@ function AssignStaffScreen({ ctx }: { ctx: Ctx }) {
                         <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn phụ xe" /></SelectTrigger>
                         <SelectContent>
                           {dashboard.conductors.map((c) => (
-                            <SelectItem key={c.staffId} value={String(c.staffId)}>{c.fullName} ({c.status})</SelectItem>
+                            <SelectItem key={c.staffId} value={String(c.staffId)}>{c.fullName} ({coordinatorStatusLabel(c.status)})</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -1590,7 +1628,7 @@ function NewShiftCard({
             <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn tài xế" /></SelectTrigger>
             <SelectContent>
               {dashboard.drivers.map((driver) => (
-                <SelectItem key={driver.staffId} value={String(driver.staffId)}>{driver.fullName} ({driver.status})</SelectItem>
+                <SelectItem key={driver.staffId} value={String(driver.staffId)}>{driver.fullName} ({coordinatorStatusLabel(driver.status)})</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -1601,7 +1639,7 @@ function NewShiftCard({
             <SelectTrigger className="mt-1.5"><SelectValue placeholder="Chọn phụ xe" /></SelectTrigger>
             <SelectContent>
               {dashboard.conductors.map((conductor) => (
-                <SelectItem key={conductor.staffId} value={String(conductor.staffId)}>{conductor.fullName} ({conductor.status})</SelectItem>
+                <SelectItem key={conductor.staffId} value={String(conductor.staffId)}>{conductor.fullName} ({coordinatorStatusLabel(conductor.status)})</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -1631,6 +1669,25 @@ function NewShiftCard({
 // =============================================================================
 // Screen 6: Routes management (CRUD)
 // =============================================================================
+function routeOperationalDetails(route: RouteListItem, lookup?: any) {
+  const description = route.description || '';
+  const operationTime = description.match(/operationTime=([^|]+)/i)?.[1]?.trim();
+  const outbound = description.match(/outBound=([^|]+)/i)?.[1]?.trim();
+  const inbound = description.match(/inBound=([^|]+)/i)?.[1]?.trim();
+  const firstTrip = lookup?.firstTrip;
+  const lastTrip = lookup?.lastTrip;
+  const estimatedMinutes = Number(route.estimatedMinutes || lookup?.estimatedMinutes);
+
+  return {
+    serviceTime: firstTrip && lastTrip ? firstTrip + ' – ' + lastTrip : operationTime,
+    frequency: Number(lookup?.frequencyMin) > 0 ? Number(lookup.frequencyMin) + ' phút/chuyến' : undefined,
+    stopCount: Number(lookup?.stopCount) > 0 ? Number(lookup.stopCount) : undefined,
+    estimatedMinutes: estimatedMinutes > 0 ? estimatedMinutes : undefined,
+    direction: outbound || inbound || 'Lộ trình hai chiều đang cập nhật',
+    routeCode: lookup?.routeCode,
+  };
+}
+
 function RoutesScreen({ ctx }: { ctx: Ctx }) {
   const [routes, setRoutes] = useState<RouteListItem[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1677,26 +1734,36 @@ function RoutesScreen({ ctx }: { ctx: Ctx }) {
         <EmptyState icon={<RouteIcon className="size-7" />} title="Chưa có tuyến" />
       ) : (
         <StaggerGroup className="space-y-3 min-w-0">
-          {routes.map((r) => (
-            <StaggerItem key={r.id}>
-              <ExpressiveCard variant="elevated" className="p-4 min-w-0">
-                <div className="flex items-start justify-between gap-3 min-w-0">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold truncate">{r.routeName}</p>
-                    <p className="text-xs text-on-surface-variant line-clamp-2">{r.description}</p>
-                    <div className="flex items-center gap-3 mt-2 text-xs">
-                      <span className="flex items-center gap-1"><Clock className="size-3" /> {r.estimatedMinutes} phút</span>
-                      <M3StatusPill label={r.status} tone={r.status === "ACTIVE" ? "success" : "neutral"} />
+          {routes.map((r) => {
+            const lookup = (ctx.routes || []).find((item: any) => Number(item.routeId || item.id) === r.id || item.routeName === r.routeName);
+            const details = routeOperationalDetails(r, lookup);
+            return (
+              <StaggerItem key={r.id}>
+                <ExpressiveCard variant="elevated" className="p-4 min-w-0">
+                  <div className="flex items-start justify-between gap-3 min-w-0">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {details.routeCode && <span className="rounded-full bg-primary-container px-2 py-0.5 text-[11px] font-bold text-on-primary-container">Tuyến {details.routeCode}</span>}
+                        <p className="font-bold text-on-surface truncate">{r.routeName}</p>
+                      </div>
+                      <p className="mt-1 text-xs text-on-surface-variant line-clamp-1">Lượt đi: {details.direction}</p>
+                      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-on-surface-variant">
+                        {details.serviceTime && <span className="flex items-center gap-1"><Clock className="size-3" /> Hoạt động {details.serviceTime}</span>}
+                        {details.frequency && <span className="flex items-center gap-1"><RefreshCw className="size-3" /> Mỗi {details.frequency}</span>}
+                        {details.stopCount && <span className="flex items-center gap-1"><MapPin className="size-3" /> {details.stopCount} trạm</span>}
+                        {details.estimatedMinutes && <span className="flex items-center gap-1"><Gauge className="size-3" /> Khoảng {details.estimatedMinutes} phút/chuyến</span>}
+                        <M3StatusPill label={r.status === "ACTIVE" ? "Đang hoạt động" : r.status} tone={r.status === "ACTIVE" ? "success" : "neutral"} />
+                      </div>
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <ExpressiveButton variant="text" size="icon-sm" onClick={() => setEditing(r)}><Edit className="size-4" /></ExpressiveButton>
+                      <ExpressiveButton variant="text" size="icon-sm" onClick={() => setDeleting(r.id)}><Trash2 className="size-4 text-error" /></ExpressiveButton>
                     </div>
                   </div>
-                  <div className="flex gap-1 shrink-0">
-                    <ExpressiveButton variant="text" size="icon-sm" onClick={() => setEditing(r)}><Edit className="size-4" /></ExpressiveButton>
-                    <ExpressiveButton variant="text" size="icon-sm" onClick={() => setDeleting(r.id)}><Trash2 className="size-4 text-error" /></ExpressiveButton>
-                  </div>
-                </div>
-              </ExpressiveCard>
-            </StaggerItem>
-          ))}
+                </ExpressiveCard>
+              </StaggerItem>
+            );
+          })}
         </StaggerGroup>
       )}
 
@@ -2056,7 +2123,7 @@ function ByUniversityScreen({ onNavigate }: { onNavigate: (id: string) => void }
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Điều phối theo trường"
-        description="Theo dõi nhu cầu sinh viên và năng lực vận hành theo từng trường."
+        description=""
         icon={<School className="size-7" />}
         actions={
           <div className="flex flex-col sm:flex-row gap-2">

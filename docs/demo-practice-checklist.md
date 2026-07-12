@@ -20,26 +20,29 @@ powershell -NoProfile -ExecutionPolicy Bypass -File database\RunDemoData.ps1 -Mo
 Rules:
 - `Audit` is safe and read-only.
 - `Seed` and `Reset` require typed confirmation in the runner.
-- Stable demo data targets `Trường Đại học Duy Tân` and real BUSMAP routes.
+- Baseline covers DTU, UTE, VKU and FPT Đà Nẵng on real BUSMAP routes.
 - Do not run old seed scripts; they were removed to keep one source of truth.
 
 ## 2. Shared Demo Accounts
 
 Shared password: `Password123!`
 
-| Role | Account | What to practice |
-| --- | --- | --- |
-| Student supported | `student.supported@unibus.local` | subsidized route, active monthly pass, QR, tracking |
-| Student full price | `student.fullprice@unibus.local` | public route, full-price purchase |
-| Student monthly | `student.monthly@unibus.local` | monthly pass scenario |
-| Student day ticket | `student.day@unibus.local` | single/day ticket scenario |
-| Student unpaid | `student.unpaid@unibus.local` | registered route without valid ticket |
-| Student history | `student.history@unibus.local` | history and invoice views |
-| University admin | `uniadmin.demo@unibus.local` | Duy Tân students, roster, policies, transactions |
-| Dispatcher | `dispatcher.demo@unibus.local` | schedules, assignments, live fleet |
-| Driver | `driver.demo@unibus.local` | today's trip, start/end trip, contacts |
-| Conductor | `conductor.demo@unibus.local` | assigned trip, scan QR, incident report |
-| System admin | `admin.demo@unibus.local` | universities, routes, staff, system overview |
+| Role | Account | MSSV | What to practice |
+| --- | --- | --- | --- |
+| DTU supported | `student.supported@unibus.local` | `27211200001` | subsidized route, active monthly pass, QR, tracking |
+| DTU full price | `student.fullprice@unibus.local` | `27212100002` | public route, full-price purchase |
+| DTU monthly | `student.monthly@unibus.local` | `27211200003` | monthly pass scenario |
+| DTU single | `student.day@unibus.local` | `27217100004` | single ticket scenario |
+| DTU unpaid | `student.unpaid@unibus.local` | `27212100005` | registered route without valid ticket |
+| DTU history | `student.history@unibus.local` | `27217200006` | history and invoice views |
+| UTE monthly/single | `student.ute.monthly@unibus.local`, `student.ute.single@unibus.local` | `2411505001`, `2411505002` | UTE subsidy and ticket flows |
+| VKU monthly/single | `student.vku.monthly@unibus.local`, `student.vku.single@unibus.local` | `24ITB001`, `24ITB002` | VKU subsidy and ticket flows |
+| FPT monthly/single | `student.fpt.monthly@unibus.local`, `student.fpt.single@unibus.local` | `DE210001`, `DE210002` | FPT subsidy and ticket flows |
+| University admin | `uniadmin.demo@unibus.local` | — | Duy Tân students, roster, policies, transactions |
+| Dispatcher | `dispatcher.demo@unibus.local` | — | schedules, assignments, live fleet |
+| Driver | `driver.demo@unibus.local` | — | today's trip, start/end trip, contacts |
+| Conductor | `conductor.demo@unibus.local` | — | assigned trip, scan QR, incident report |
+| System admin | `admin.demo@unibus.local` | — | universities, routes, staff, system overview |
 
 Special real test student:
 - `khanhnv20a02@gmail.com`: use for a fresh Duy Tân student flow when needed.
@@ -86,8 +89,9 @@ Practice with `dispatcher.demo@unibus.local`.
 Expected checks:
 1. Schedules load for today's date.
 2. Assign bus, driver, and conductor if the scenario requires it.
-3. Live fleet should not look broken when there is no fresh vehicle location.
-4. After assignment, driver/conductor dashboards should reflect today's trip.
+3. Live fleet shows 13 assigned vehicles: 3 running and the remaining vehicles waiting for their scheduled trips.
+4. Every fleet trip has a schedule, bus, driver, and conductor; the same driver must not have two running trips.
+5. After assignment, driver/conductor dashboards should reflect today's trip.
 
 ## 6. Driver Flow
 
@@ -96,8 +100,11 @@ Practice with `driver.demo@unibus.local`.
 Expected checks:
 1. Dashboard shows today's assigned trip clearly.
 2. Trip card includes route code/name, time, bus plate, and status.
-3. Start/end trip actions work only for valid trip states.
-4. Contacts/help screens load without fake fallback data.
+3. A trip can start only from 30 minutes before to 60 minutes after its scheduled departure.
+4. The driver cannot start a second trip while another trip is running.
+5. Current-trip tracking follows the selected `tripId`, not another bus on the same route.
+6. Start/end actions refresh the current, upcoming, and history sections without duplicate cards.
+7. Contacts, notifications, and profile screens remain available.
 
 ## 7. Conductor Flow
 

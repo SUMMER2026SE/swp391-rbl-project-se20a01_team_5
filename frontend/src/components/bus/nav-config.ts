@@ -94,12 +94,9 @@ export const NAV_CONFIG: Record<Role, NavItem[]> = {
   driver: [
     { id: "drv-dashboard", label: "Lịch hôm nay", icon: LayoutDashboard, group: "Tổng quan" },
     { id: "drv-schedule", label: "Lịch chạy xe", icon: CalendarClock, group: "Chuyến xe" },
-    { id: "drv-active", label: "Chuyến đang chạy", icon: PlayCircle, group: "Chuyến xe" },
-    { id: "drv-route", label: "Tuyến được phân", icon: RouteIcon, group: "Chuyến xe" },
+    { id: "drv-active", label: "Chuyến hiện tại", icon: PlayCircle, group: "Chuyến xe" },
     { id: "drv-history", label: "Lịch sử chuyến", icon: History, group: "Chuyến xe" },
     { id: "drv-contact", label: "Liên hệ điều phối", icon: MessageSquare, group: "Hỗ trợ" },
-    { id: "drv-notifications", label: "Thông báo", icon: Bell, group: "Tài khoản" },
-    { id: "drv-profile", label: "Hồ sơ cá nhân", icon: UserIcon, group: "Tài khoản" },
   ],
   assistant: [
     { id: "ast-dashboard", label: "Chuyến được phân", icon: LayoutDashboard, group: "Tổng quan" },
@@ -109,8 +106,6 @@ export const NAV_CONFIG: Record<Role, NavItem[]> = {
     { id: "ast-incident", label: "Báo cáo sự cố", icon: AlertTriangle, group: "Hỗ trợ" },
     { id: "ast-contact", label: "Liên hệ tài xế", icon: MessageSquare, group: "Hỗ trợ" },
     { id: "ast-history", label: "Lịch sử chuyến", icon: History, group: "Tổng quan" },
-    { id: "ast-notifications", label: "Thông báo", icon: Bell, group: "Tài khoản" },
-    { id: "ast-profile", label: "Hồ sơ cá nhân", icon: UserIcon, group: "Tài khoản" },
   ],
   coordinator: [
     { id: "crd-dashboard", label: "Tổng quan điều phối", icon: LayoutDashboard, group: "Tổng quan" },
@@ -122,8 +117,6 @@ export const NAV_CONFIG: Record<Role, NavItem[]> = {
     { id: "crd-by-university", label: "Điều phối theo trường", icon: School, group: "Quản lý" },
     { id: "crd-feedback", label: "Hỗ trợ và phản hồi", icon: MessageSquare, group: "Hỗ trợ" },
     { id: "crd-notify", label: "Gửi thông báo", icon: Megaphone, group: "Hỗ trợ" },
-    { id: "crd-notifications", label: "Thông báo", icon: Bell, group: "Tài khoản" },
-    { id: "crd-profile", label: "Hồ sơ cá nhân", icon: UserIcon, group: "Tài khoản" },
   ],
   admin: [
     { id: "adm-dashboard", label: "Báo cáo", icon: BarChart3, group: "Tổng quan" },
@@ -150,4 +143,3 @@ export const NAV_CONFIG: Record<Role, NavItem[]> = {
     { id: "uniadm-profile", label: "Hồ sơ cá nhân", icon: UserIcon, group: "Tài khoản" },
   ],
 };
-

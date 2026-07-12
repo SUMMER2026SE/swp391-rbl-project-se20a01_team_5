@@ -75,6 +75,7 @@ import {
   PageTransition,
 } from "@/components/m3/motion";
 import { PageHeader, StatCard, Section, EmptyState } from "../primitives";
+import { NotificationsScreen, ProfileScreen } from "../common-screens";
 import { QrScannerModal } from "@/components/bus/qr-scanner-modal";
 
 import {
@@ -140,6 +141,10 @@ export function AssistantModule({ activeId, onNavigate }: AssistantModuleProps) 
       return <AssistantContact ctx={ctx} />;
     case "ast-history":
       return <AssistantHistory ctx={ctx} />;
+    case "ast-notifications":
+      return <NotificationsScreen />;
+    case "ast-profile":
+      return <ProfileScreen />;
     default:
       return <FallbackScreen activeId={activeId} />;
   }
@@ -217,8 +222,8 @@ function ticketStatusLabel(status?: string): string {
   switch (String(status || "").toUpperCase()) {
     case "ACTIVE": return "Đang hiệu lực";
     case "VALID": return "Hợp lệ";
-    case "UNUSED": return "Chưa sử dụng";
-    case "USED": return "Đã sử dụng";
+    case "UNUSED": return "Chưa quét";
+    case "USED": return "Đã quét";
     case "EXPIRED": return "Hết hạn";
     default: return status || "—";
   }
@@ -226,18 +231,18 @@ function ticketStatusLabel(status?: string): string {
 
 function scanBlockReason(trip: any): string | null {
   const tripId = trip?.tripId ?? trip?.id;
-  if (!tripId) return "Thiếu mã chuyến";
+  if (!tripId) return "Chuyến chưa được khởi tạo";
   if (!trip?.routeId) return "Thiếu mã tuyến";
   if (!trip?.routeName?.trim?.()) return "Thiếu tên tuyến";
   const status = String(trip?.status || trip?.rawStatus || "").toUpperCase();
   if (status === "COMPLETED") return "Chuyến đã hoàn thành";
   if (status === "CANCELLED") return "Chuyến đã hủy";
-  if (status === "NOT_CREATED") return "Chuyến chưa được tạo";
+  if (status === "NOT_CREATED") return "Chuyến chưa được khởi tạo";
+  if (status !== "RUNNING" || !trip?.departedAt) return "Tài xế chưa bắt đầu chuyến";
   return null;
 }
 
 function isTripInScanWindow(trip: any): boolean {
-  // ponytail: demo mode keeps scanning open for assigned, non-final trips; restore strict time window for production gatekeeping.
   return scanBlockReason(trip) === null;
 }
 function tripLabel(trip: any): string {
@@ -542,9 +547,6 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
   const lastScanRef = useRef<{ code: string; at: number } | null>(null);
   const validConductorTrips = useMemo(() => ctx.conductorTrips.filter((trip) => isTripInScanWindow(trip)), [ctx.conductorTrips]);
   const hasConductorTrips = ctx.conductorTrips.length > 0;
-  const blockedConductorTrips = useMemo(() => ctx.conductorTrips.map((trip) => ({ trip, reason: scanBlockReason(trip) })).filter((item) => item.reason), [ctx.conductorTrips]);
-  const hasInvalidConductorTrips = blockedConductorTrips.length > 0;
-  const firstScanBlockReason = blockedConductorTrips[0]?.reason || null;
   const preferredTrip = validConductorTrips.find((trip) => isRunningTrip(trip)) || validConductorTrips[0] || null;
   const selectedTrip = validConductorTrips.find((trip) => Number(trip.tripId) === Number(tripId)) || preferredTrip;
 
@@ -629,7 +631,6 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Quét vé"
-        description="Quét QR theo chuyến được phân công."
         icon={<ScanLine className="size-7" />}
         actions={
           validConductorTrips.length > 1 ? (
@@ -654,24 +655,10 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
       {validConductorTrips.length === 0 ? (
         <ExpressiveCard variant="elevated" className="p-6 text-center min-w-0 border border-outline-variant">
           <ScanLine className="size-10 mx-auto text-on-surface-variant" />
-          <p className="mt-3 text-base font-bold">{hasInvalidConductorTrips ? "Chuyến chưa thể quét" : "Không có chuyến được phân công"}</p>
+          <p className="mt-3 text-base font-bold">{hasConductorTrips ? "Chưa có chuyến đang chạy" : "Không có chuyến được phân công"}</p>
           <p className="mt-1.5 text-sm text-on-surface-variant">
-            {hasInvalidConductorTrips
-              ? `Lý do: ${firstScanBlockReason || "chuyến không hợp lệ"}. Chuyến cần có đủ mã chuyến, mã tuyến, tên tuyến và chưa hoàn thành/hủy.`
-              : "Phụ xe cần có chuyến được phân công trước khi quét vé."}
+            {hasConductorTrips ? "Quét vé mở sau khi tài xế bắt đầu chuyến." : "Chuyến được phân công sẽ hiển thị tại đây."}
           </p>
-        </ExpressiveCard>
-      ) : hasInvalidConductorTrips ? (
-        <ExpressiveCard variant="elevated" className="p-4 border border-warning/40 bg-warning-container/30">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="size-5 shrink-0 text-warning" />
-            <div>
-              <p className="text-sm font-bold">Một số chuyến chưa thể quét</p>
-              <p className="mt-1 text-xs text-on-surface-variant">
-                {blockedConductorTrips.slice(0, 3).map(({ trip, reason }) => `${tripLabel(trip)}: ${reason}`).join("; ")}
-              </p>
-            </div>
-          </div>
         </ExpressiveCard>
       ) : null}
 
@@ -693,7 +680,7 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
                 className="w-full h-14 bg-[#beff50] text-[#14140f] hover:bg-[#a6e639]"
                 onClick={() => {
                   if (!tripId || validConductorTrips.length === 0) {
-                    toast.error(hasConductorTrips ? "Chuyến hôm nay thiếu dữ liệu, chưa thể quét" : "Không có chuyến đang mở quét");
+                    toast.error(hasConductorTrips ? "Tài xế chưa bắt đầu chuyến" : "Không có chuyến đang mở quét");
                     return;
                   }
                   setScannerOpen(true);
@@ -1164,6 +1151,7 @@ function AssistantIncident({ ctx }: { ctx: Ctx }) {
 // =============================================================================
 function AssistantContact({ ctx }: { ctx: Ctx }) {
   const [contact, setContact] = useState<ConductorContactView | null>(null);
+  const [recipientType, setRecipientType] = useState<"DRIVER" | "DISPATCHER">("DRIVER");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -1188,13 +1176,23 @@ function AssistantContact({ ctx }: { ctx: Ctx }) {
     return () => window.clearInterval(timer);
   }, [loadContact]);
 
+  const contacts = contact?.contacts?.length ? contact.contacts : [];
+  const dispatcher = contacts.find((item) => item.role === "DISPATCHER");
+  const driver = contacts.find((item) => item.role === "DRIVER");
+  const selectedRecipient = recipientType === "DRIVER" ? driver : dispatcher;
+
+  useEffect(() => {
+    if (recipientType === "DRIVER" && !driver && dispatcher) setRecipientType("DISPATCHER");
+    if (recipientType === "DISPATCHER" && !dispatcher && driver) setRecipientType("DRIVER");
+  }, [dispatcher, driver, recipientType]);
+
   const send = async () => {
-    if (!message.trim() || sending) return;
+    if (!message.trim() || sending || !selectedRecipient) return;
     try {
       setSending(true);
       await conductorApi.sendMessage({
         tripId: contact?.activeTripId,
-        recipientType: "DISPATCHER",
+        recipientType,
         content: message.trim(),
       });
       setMessage("");
@@ -1207,16 +1205,15 @@ function AssistantContact({ ctx }: { ctx: Ctx }) {
   };
 
   const messages = useMemo(() => {
-    return [...(contact?.messages ?? [])].sort((left, right) => {
-      const leftTime = left.sentAt ? new Date(left.sentAt).getTime() : 0;
-      const rightTime = right.sentAt ? new Date(right.sentAt).getTime() : 0;
-      if (leftTime !== rightTime) return leftTime - rightTime;
-      return left.messageId - right.messageId;
-    });
-  }, [contact?.messages]);
-  const contacts = contact?.contacts?.length ? contact.contacts : [];
-  const dispatcher = contacts.find((c) => c.role === "DISPATCHER");
-  const driver = contacts.find((c) => c.role === "DRIVER");
+    return [...(contact?.messages ?? [])]
+      .filter((item) => !selectedRecipient || item.senderUserId === selectedRecipient.userId || item.recipientUserId === selectedRecipient.userId)
+      .sort((left, right) => {
+        const leftTime = left.sentAt ? new Date(left.sentAt).getTime() : 0;
+        const rightTime = right.sentAt ? new Date(right.sentAt).getTime() : 0;
+        if (leftTime !== rightTime) return leftTime - rightTime;
+        return left.messageId - right.messageId;
+      });
+  }, [contact?.messages, selectedRecipient]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ block: "end" });
@@ -1226,7 +1223,6 @@ function AssistantContact({ ctx }: { ctx: Ctx }) {
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Liên hệ"
-        description="Trao đổi nội bộ với tài xế và điều phối viên theo chuyến đang chạy."
         icon={<Phone className="size-7" />}
       />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
@@ -1287,18 +1283,30 @@ function AssistantContact({ ctx }: { ctx: Ctx }) {
                   <span className="absolute -right-0.5 -bottom-0.5 size-3.5 rounded-full border-2 border-white bg-[#22c55e]" />
                 </div>
                 <div className="min-w-0">
-                  <h3 className="truncate text-base font-black text-[#14140f]">{dispatcher?.name || "Điều phối viên"}</h3>
-                  <p className="truncate text-xs font-semibold text-[#6B6B6B]">Chat nội bộ · Đang trực</p>
+                  <h3 className="truncate text-base font-black text-[#14140f]">{selectedRecipient?.name || "Chưa có người nhận"}</h3>
+                  <p className="truncate text-xs font-semibold text-[#6B6B6B]">{recipientType === "DRIVER" ? "Tài xế" : "Điều phối viên"}</p>
                 </div>
               </div>
-              {dispatcher?.phoneNumber && (
-                <a
-                  href={`tel:${dispatcher.phoneNumber}`}
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-[#beff50] px-3.5 py-2 text-xs font-black text-[#14140f] shadow-sm transition hover:brightness-95"
-                >
-                  <Phone className="size-3.5" /> {dispatcher.phoneNumber}
-                </a>
-              )}
+              <div className="flex shrink-0 items-center gap-2">
+                <Select value={recipientType} onValueChange={(value) => setRecipientType(value as "DRIVER" | "DISPATCHER")}>
+                  <SelectTrigger className="h-9 w-36 rounded-full bg-white">
+                    <SelectValue placeholder="Người nhận" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {driver && <SelectItem value="DRIVER">Tài xế</SelectItem>}
+                    {dispatcher && <SelectItem value="DISPATCHER">Điều phối viên</SelectItem>}
+                  </SelectContent>
+                </Select>
+                {selectedRecipient?.phoneNumber && (
+                  <a
+                    href={`tel:${selectedRecipient.phoneNumber}`}
+                    className="inline-flex size-9 items-center justify-center rounded-full bg-[#beff50] text-[#14140f] shadow-sm transition hover:brightness-95"
+                    aria-label={`Gọi ${selectedRecipient.name}`}
+                  >
+                    <Phone className="size-3.5" />
+                  </a>
+                )}
+              </div>
             </div>
             <div className="flex-1 overflow-y-auto bg-[#FAF8F2] p-4 sm:p-5 space-y-4 scrollbar-soft min-w-0">
               {loading && <p className="text-sm text-[#6B6B6B] text-center mt-8">Đang tải tin nhắn...</p>}
@@ -1308,11 +1316,11 @@ function AssistantContact({ ctx }: { ctx: Ctx }) {
                     <MessageSquare className="size-6 text-[#144fcc]" />
                   </div>
                   <p className="text-sm font-black text-[#14140f]">Chưa có tin nhắn</p>
-                  <p className="mt-1 max-w-xs text-xs font-medium">Gửi tin nhắn cho điều phối viên khi cần hỗ trợ.</p>
+
                 </div>
               )}
               {messages.map((m) => {
-                const isMe = m.senderName !== dispatcher?.name && m.senderName !== driver?.name;
+                const isMe = m.senderUserId !== selectedRecipient?.userId;
                 const sentTime = m.sentAt
                   ? new Date(m.sentAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
                   : "";
@@ -1335,7 +1343,7 @@ function AssistantContact({ ctx }: { ctx: Ctx }) {
                         <p className="break-words leading-relaxed">{m.content}</p>
                       </div>
                       <p className="px-1 text-[11px] font-semibold text-[#6B6B6B]">
-                        {isMe ? "Bạn" : m.senderName || dispatcher?.name || "Điều phối viên"}
+                        {isMe ? "Bạn" : m.senderName || selectedRecipient?.name || "Người nhận"}
                         {sentTime ? ` · ${sentTime}` : ""}
                       </p>
                     </div>
@@ -1351,10 +1359,10 @@ function AssistantContact({ ctx }: { ctx: Ctx }) {
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && send()}
-                  disabled={sending}
+                  disabled={sending || !selectedRecipient}
                   className="h-11 flex-1 rounded-full border-0 bg-transparent px-4 text-sm shadow-none focus-visible:ring-0 min-w-0"
                 />
-                <ExpressiveButton variant="filled" size="icon" onClick={send} disabled={sending || !message.trim()} className="shrink-0 rounded-full bg-[#144fcc] text-white hover:bg-[#0f3ea3]">
+                <ExpressiveButton variant="filled" size="icon" onClick={send} disabled={sending || !message.trim() || !selectedRecipient} className="shrink-0 rounded-full bg-[#144fcc] text-white hover:bg-[#0f3ea3]">
                   {sending ? <RefreshCw className="size-4 animate-spin" /> : <Send className="size-4" />}
                 </ExpressiveButton>
               </div>
