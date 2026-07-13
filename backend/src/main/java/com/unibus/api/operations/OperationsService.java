@@ -97,7 +97,7 @@ public class OperationsService {
     @Transactional(readOnly = true)
     public List<DriverTripView> getDriverTrips(CurrentUser currentUser, LocalDate date) {
         Integer driverStaffId = requireDriverStaffId(currentUser);
-        return operationsRepository.findDriverTrips(driverStaffId, date == null ? LocalDate.now() : date);
+        return operationsRepository.findDriverTrips(driverStaffId, date == null ? LocalDate.now(BUSINESS_ZONE) : date);
     }
 
     @Transactional(readOnly = true)
@@ -117,7 +117,7 @@ public class OperationsService {
     @Transactional(readOnly = true)
     public DriverTripOverview getDriverTripOverview(CurrentUser currentUser) {
         Integer driverStaffId = requireDriverStaffId(currentUser);
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(BUSINESS_ZONE);
         LocalDate horizon = today.plusDays(60);
         List<DriverTripView> trips = new ArrayList<>(operationsRepository.findDriverUpcomingActualTrips(driverStaffId, today, horizon));
         List<DriverTripView> historyTrips = operationsRepository.findDriverTripHistory(
@@ -141,7 +141,7 @@ public class OperationsService {
                 .thenComparing(trip -> trip.tripId() == null ? Integer.MAX_VALUE : trip.tripId());
 
         DriverTripView nearestTrip = trips.stream()
-                .filter(trip -> "RUNNING".equals(trip.status()))
+                .filter(this::isActiveRunningTrip)
                 .min(scheduleOrder)
                 .orElseGet(() -> trips.stream()
                         .filter(trip -> isUpcomingTrip(trip, today))
@@ -319,22 +319,18 @@ public class OperationsService {
     @Transactional
     public DriverTripView startTrip(CurrentUser currentUser, Integer tripId) {
         Integer driverStaffId = requireDriverStaffId(currentUser);
-        requireOwnedTrip(tripId, driverStaffId);
-        TripRouteInfo trip = operationsRepository.tripRouteInfo(tripId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy chuyến"));
-        if (!"NOT_STARTED".equals(trip.status())) {
+        DriverTripView trip = requireDriverTrip(tripId, driverStaffId);
+        String status = normalizedStatus(trip.status());
+        if (!"NOT_STARTED".equals(status)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Chỉ chuyến chưa bắt đầu mới có thể khởi hành");
         }
-        LocalDateTime scheduledStart = trip.scheduledStart();
-        LocalDateTime now = LocalDateTime.now(BUSINESS_ZONE);
-        if (scheduledStart == null || now.isBefore(scheduledStart.minusMinutes(30)) || now.isAfter(scheduledStart.plusMinutes(60))) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Chỉ có thể bắt đầu chuyến từ 30 phút trước đến 60 phút sau giờ chạy");
-        }
+        validateDriverStartWindow(trip);
+        operationsRepository.lockDriverForTripStart(driverStaffId);
         if (operationsRepository.hasOtherRunningTrip(driverStaffId, tripId)) {
-            throw new ApiException(HttpStatus.CONFLICT, "Tài xế đang có một chuyến khác chưa kết thúc");
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Bạn đang có một chuyến khác chưa kết thúc");
         }
         if (operationsRepository.startTrip(tripId) != 1) {
-            throw new ApiException(HttpStatus.CONFLICT, "Trạng thái chuyến đã thay đổi, vui lòng tải lại");
+            throw new ApiException(HttpStatus.CONFLICT, "Trạng thái chuyến vừa thay đổi, vui lòng tải lại");
         }
         return findTripAfterChange(driverStaffId, tripId);
     }
@@ -342,9 +338,14 @@ public class OperationsService {
     @Transactional
     public DriverTripView endTrip(CurrentUser currentUser, Integer tripId) {
         Integer driverStaffId = requireDriverStaffId(currentUser);
-        requireOwnedTrip(tripId, driverStaffId);
+        DriverTripView trip = requireDriverTrip(tripId, driverStaffId);
+        if (!"RUNNING".equals(normalizedStatus(trip.status()))
+                || trip.departedAt() == null
+                || trip.endedAt() != null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Chỉ có thể kết thúc chuyến đang chạy");
+        }
         if (operationsRepository.endTrip(tripId) != 1) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Chỉ chuyến đang chạy mới có thể kết thúc");
+            throw new ApiException(HttpStatus.CONFLICT, "Trạng thái chuyến vừa thay đổi, vui lòng tải lại");
         }
         return findTripAfterChange(driverStaffId, tripId);
     }
@@ -352,7 +353,6 @@ public class OperationsService {
     @Transactional(readOnly = true)
     public DriverTripView getDriverTripForTracking(CurrentUser currentUser, Integer tripId) {
         Integer driverStaffId = requireDriverStaffId(currentUser);
-        requireOwnedTrip(tripId, driverStaffId);
         DriverTripView trip = operationsRepository.findDriverTrip(tripId, driverStaffId);
         if (trip == null) {
             throw new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy chuyến");
@@ -386,7 +386,11 @@ public class OperationsService {
         if (trip == null || trip.serviceDate() == null) {
             return false;
         }
-        if ("COMPLETED".equals(trip.status()) || "CANCELLED".equals(trip.status())) {
+        String status = normalizedStatus(trip.status());
+        if ("RUNNING".equals(status)) {
+            return isActiveRunningTrip(trip);
+        }
+        if ("COMPLETED".equals(status) || "CANCELLED".equals(status)) {
             return false;
         }
         if (trip.serviceDate().isBefore(today)) {
@@ -407,13 +411,20 @@ public class OperationsService {
         if (trip == null) {
             return 3;
         }
-        if ("RUNNING".equals(trip.status())) {
+        if (isActiveRunningTrip(trip)) {
             return 0;
         }
         if (trip.tripId() != null) {
             return 1;
         }
         return 2;
+    }
+
+    private boolean isActiveRunningTrip(DriverTripView trip) {
+        return trip != null
+                && "RUNNING".equals(normalizedStatus(trip.status()))
+                && trip.departedAt() != null
+                && trip.endedAt() == null;
     }
 
     private boolean isHistoryTrip(DriverTripView trip) {
@@ -451,11 +462,30 @@ public class OperationsService {
     }
 
     private TicketScanResult scanWindowBlock(TripRouteInfo trip) {
-        String status = trip.status() == null ? "" : trip.status().toUpperCase();
-        if ("COMPLETED".equals(status) || "CANCELLED".equals(status) || "NOT_CREATED".equals(status)) {
-            return new TicketScanResult(false, "Chuyến không còn mở để quét vé: trạng thái " + status + ".", null, null);
+        String status = normalizedStatus(trip.status());
+        if ("NOT_STARTED".equals(status) || "NOT_CREATED".equals(status)) {
+            return new TicketScanResult(false, "Tài xế chưa bắt đầu chuyến.", null, null);
         }
-        // ponytail: demo mode allows scanning outside the scheduled time window; restore time checks for production fraud control.
+        if ("COMPLETED".equals(status)) {
+            return new TicketScanResult(false, "Chuyến đã hoàn thành.", null, null);
+        }
+        if ("CANCELLED".equals(status)) {
+            return new TicketScanResult(false, "Chuyến đã bị hủy.", null, null);
+        }
+        if (!"RUNNING".equals(status) || trip.departedAt() == null || trip.endedAt() != null) {
+            return new TicketScanResult(false, "Chuyến chưa mở để quét vé.", null, null);
+        }
+        if (trip.serviceDate() == null || trip.departureTime() == null) {
+            return new TicketScanResult(false, "Chuyến chưa có giờ vận hành.", null, null);
+        }
+        LocalDateTime scheduledStart = LocalDateTime.of(trip.serviceDate(), trip.departureTime());
+        LocalDateTime now = LocalDateTime.now(BUSINESS_ZONE);
+        if (now.isBefore(scheduledStart.minusMinutes(30))) {
+            return new TicketScanResult(false, "Chưa đến thời gian quét vé.", null, null);
+        }
+        if (now.isAfter(scheduledStart.plusHours(3))) {
+            return new TicketScanResult(false, "Chuyến đã quá thời gian quét vé.", null, null);
+        }
         return null;
     }
 
@@ -521,6 +551,32 @@ public class OperationsService {
                 trip.routeId());
         ConductorTicketView refreshed = operationsRepository.findSingleTicketByQr(ticket.qrCode()).orElse(ticket);
         return new TicketScanResult(true, "Vé lượt hợp lệ. Đã ghi nhận sinh viên lên xe.", refreshed, historyId);
+    }
+
+    private DriverTripView requireDriverTrip(Integer tripId, Integer driverStaffId) {
+        DriverTripView trip = operationsRepository.findDriverTrip(tripId, driverStaffId);
+        if (trip == null) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Trip not found");
+        }
+        return trip;
+    }
+
+    private String normalizedStatus(String status) {
+        return status == null ? "" : status.trim().toUpperCase();
+    }
+
+    private void validateDriverStartWindow(DriverTripView trip) {
+        if (trip.serviceDate() == null || trip.departureTime() == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Chuyến chưa có ngày giờ khởi hành");
+        }
+        LocalDateTime scheduledStart = LocalDateTime.of(trip.serviceDate(), trip.departureTime());
+        LocalDateTime now = LocalDateTime.now(BUSINESS_ZONE);
+        if (now.isBefore(scheduledStart.minusMinutes(30))) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Chưa đến giờ bắt đầu chuyến");
+        }
+        if (now.isAfter(scheduledStart.plusMinutes(60))) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Chuyến đã quá giờ bắt đầu");
+        }
     }
 
     private DriverTripView findTripAfterChange(Integer driverStaffId, Integer tripId) {

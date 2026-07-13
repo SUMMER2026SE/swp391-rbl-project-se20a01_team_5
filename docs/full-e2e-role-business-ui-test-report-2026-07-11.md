@@ -1,6 +1,6 @@
-# Báo cáo kiểm thử E2E UniBus: tích hợp role và dữ liệu demo
+﻿# Báo cáo kiểm thử E2E UniBus: tích hợp role và dữ liệu demo
 
-Ngày cập nhật: 12/07/2026
+Ngày cập nhật: 13/07/2026
 Workspace: `unibus-api`, nhánh `DucHai`
 Baseline trước tích hợp: `75cccd82bd365c01f92305e2aaaa69239d372018`
 
@@ -105,9 +105,9 @@ Reset chỉ thay đổi dữ liệu demo theo marker; không thực hiện DDL h
 
 ### Dispatcher regression smoke
 
-- Dashboard hiển thị 14 xe, 13 xe đang chạy và 2 ca hôm nay.
-- Đã mở: Theo dõi tất cả xe, Lịch trình xe, Phân công xe chạy, Tuyến đường, Trạm dừng, Điều phối theo trường, Hỗ trợ và phản hồi.
-- Không thay đổi cơ chế/UI tracking trong đợt này.
+- Dashboard lấy số xe đang chạy từ backend live fleet; tại lần test 13/07 không có chuyến đang chạy nên bản đồ hiển thị empty state đúng.
+- Đã mở dashboard và xác nhận số chuyến hôm nay, số chuyến đủ phân công và nhóm chuyến theo tuyến tải được.
+- Driver, Dispatcher và Student dùng chung tracking snapshot theo `tripId`; không dùng bộ đếm vị trí giả riêng ở frontend.
 
 ## 6. API E2E
 
@@ -160,3 +160,45 @@ Reset chỉ thay đổi dữ liệu demo theo marker; không thực hiện DDL h
 - Baseline remote trước commit: `75cccd82bd365c01f92305e2aaaa69239d372018`.
 - `.worktrees/` là untracked ngoài phạm vi, không stage và không chỉnh sửa.
 - Không có schema change hoặc Flyway migration.
+## 11. Visual regression 13/07/2026 — PR #67
+
+### Phạm vi và môi trường
+
+- Browser test trực tiếp tại `http://localhost:3000`, backend `http://localhost:8080`.
+- Viewport kiểm tra chính: `1265 × 708`, desktop sidebar đầy đủ.
+- Account đã đăng nhập và kiểm tra trực tiếp: `student.supported@unibus.local`, `dispatcher.demo@unibus.local`, `driver.demo@unibus.local`, `conductor.demo@unibus.local`, `uniadmin.demo@unibus.local`.
+- Không chạy Seed/Reset, không sửa live RDS và không tiêu thụ QR trong lượt visual regression này.
+
+### Kết quả theo màn hình
+
+| Role/màn hình | Kết quả visual/functional |
+| --- | --- |
+| Student dashboard | PASS: nội dung tải không cần scroll để trigger; hero, bốn stat card và CTA không đè/chồng ở viewport test |
+| Student `Vé của tôi` | PASS: trạng thái `Đã có vé hợp lệ`, QR/tracking/chi tiết rõ; card không kéo giãn card bên cạnh |
+| Student thanh toán | PASS sau fix: hai dropdown vé lượt cho phép tên trạm xuống dòng thay vì cắt mất ký tự; hai loại vé, tổng tiền và banner SePay giữ phân cấp rõ |
+| Dispatcher dashboard | PASS: shortcut/stat cards cân hàng, empty state live fleet đúng khi backend trả 0 xe đang chạy; không còn giả 13 xe đang chạy |
+| Driver dashboard | FIXED: banner `Đang trong chuyến` trước đó mâu thuẫn stat `Đang chạy: 0`; stat hiện ưu tiên active trip đang có trên cùng dashboard |
+| Driver lịch chạy | PASS: card theo ngày, route/time/driver/conductor/vehicle/status không chồng chữ; scroll dọc tự nhiên |
+| Conductor dashboard | OPEN: banner có chuyến được phân nhưng stat `Chuyến: 0`; cần truy nguồn mapping dashboard/conductorTrips ở pass riêng |
+| University Admin dashboard | PASS: sidebar, bốn stat đầu, quick actions và chart cards không tràn/chồng; dữ liệu DTU hiện đúng scope |
+
+### Lỗi phát hiện và thay đổi
+
+1. `driver-module.tsx`: đồng bộ stat `Đang chạy` với active trip đang hiển thị, tránh cùng màn hình báo vừa chạy vừa 0 chuyến.
+2. `student-module.tsx`: trigger chọn điểm lên/xuống vé lượt dùng chiều cao linh hoạt và wrap tên trạm; không redesign payment.
+
+Lỗi stat Conductor được ghi nhận nhưng không giữ patch thử nghiệm vì retest vẫn hiển thị 0.
+
+### Validation sau fix
+
+| Kiểm tra | Kết quả |
+| --- | --- |
+| `npm run lint --prefix frontend` | PASS, exit 0; 0 error, còn 5 warning hook dependency cũ thuộc Student tracking |
+| `npm run build --prefix frontend` | PASS, exit 0; compile, TypeScript và 11 static pages hoàn tất |
+| `git diff --check` | PASS |
+
+### Giới hạn evidence
+
+- Đây là visual regression có trọng tâm cho các role và màn hình vừa tích hợp, không phải chạy lại toàn bộ mutation suite SePay/scan/incident trên live RDS.
+- Không kiểm tra mobile viewport trong lượt này; layout desktop 1265 × 708 đã được chụp và đối chiếu trực tiếp.
+- Các API/payment/security và live RDS Reset/Audit đầy đủ vẫn dùng evidence ở các mục trước; nếu code backend/data thay đổi sau báo cáo này phải chạy lại bộ QA tương ứng.

@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.Optional;
 
@@ -30,6 +31,7 @@ import com.unibus.api.user.model.UserRole;
 @ExtendWith(MockitoExtension.class)
 class OperationsServiceTests {
 
+    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
     private static final int CONDUCTOR_USER_ID = 44;
     private static final int CONDUCTOR_ID = 7;
     private static final int TRIP_ID = 101;
@@ -90,16 +92,32 @@ class OperationsServiceTests {
     }
 
     @Test
-    void demoModeAllowsTicketLookupBeforeTripWindow() {
+    void scanRejectsTripBeforeDriverStarts() {
         when(operationsRepository.tripRouteInfo(TRIP_ID))
-                .thenReturn(Optional.of(new TripRouteInfo(TRIP_ID, ROUTE_A, LocalDate.now().plusDays(1), LocalTime.NOON, null, null, "NOT_STARTED")));
+                .thenReturn(Optional.of(new TripRouteInfo(
+                        TRIP_ID, ROUTE_A, LocalDate.now(BUSINESS_ZONE), LocalTime.now(BUSINESS_ZONE),
+                        null, null, "NOT_STARTED")));
 
         TicketScanResult result = operationsService.scanTicket(conductor, new TicketScanRequest(TRIP_ID, "QR-A"));
 
         assertThat(result.valid()).isFalse();
-        assertThat(result.message()).isEqualTo("Không tìm thấy vé với mã QR này.");
-        verify(operationsRepository).findMonthlyTicketByQr("QR-A");
-        verify(operationsRepository).findSingleTicketByQr("QR-A");
+        assertThat(result.message()).isEqualTo("Tài xế chưa bắt đầu chuyến.");
+        verify(operationsRepository, never()).findMonthlyTicketByQr(anyString());
+        verify(operationsRepository, never()).findSingleTicketByQr(anyString());
+    }
+
+    @Test
+    void scanRejectsRunningTripOutsideOperationalWindow() {
+        when(operationsRepository.tripRouteInfo(TRIP_ID))
+                .thenReturn(Optional.of(new TripRouteInfo(
+                        TRIP_ID, ROUTE_A, LocalDate.now(BUSINESS_ZONE).minusDays(1), LocalTime.NOON,
+                        OffsetDateTime.now(ZoneOffset.UTC).minusDays(1), null, "RUNNING")));
+
+        TicketScanResult result = operationsService.scanTicket(conductor, new TicketScanRequest(TRIP_ID, "QR-A"));
+
+        assertThat(result.valid()).isFalse();
+        assertThat(result.message()).isEqualTo("Chuyến đã quá thời gian quét vé.");
+        verify(operationsRepository, never()).findMonthlyTicketByQr(anyString());
     }
 
     @Test
@@ -142,8 +160,8 @@ class OperationsServiceTests {
         return new TripRouteInfo(
                 TRIP_ID,
                 routeId,
-                LocalDate.now(ZoneOffset.UTC),
-                null,
+                LocalDate.now(BUSINESS_ZONE),
+                LocalTime.now(BUSINESS_ZONE).minusMinutes(5),
                 OffsetDateTime.now(ZoneOffset.UTC).minusMinutes(5),
                 null,
                 "RUNNING");

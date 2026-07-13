@@ -230,8 +230,23 @@ function ErrorScreen({
 // =============================================================================
 // Helpers
 // =============================================================================
+const VIETNAM_TIME_ZONE = "Asia/Ho_Chi_Minh";
+
+function vietnamDateParts(date = new Date()) {
+  return Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: VIETNAM_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23",
+    }).formatToParts(date).map(({ type, value }) => [type, value]),
+  );
+}
+
+function vietnamToday(): string {
+  const parts = vietnamDateParts();
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
 function greetingByHour(): string {
-  const h = new Date().getHours();
+  const h = Number(vietnamDateParts().hour);
   if (h < 11) return "Chào buổi sáng";
   if (h < 14) return "Chào buổi trưa";
   if (h < 18) return "Chào buổi chiều";
@@ -525,9 +540,27 @@ function driverTripKey(trip: DriverTripView): string {
 }
 
 
+function driverTripScheduledAt(trip: DriverTripView | null): number | null {
+  const serviceDate = trip?.serviceDate || (trip as DriverTripView & { date?: string })?.date;
+  const departureTime = trip?.departureTime || (trip as DriverTripView & { departTime?: string })?.departTime;
+  if (!serviceDate || !departureTime) return null;
+  const timestamp = new Date(`${serviceDate}T${departureTime}+07:00`).getTime();
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function isActiveDriverTrip(trip: DriverTripView | null): boolean {
+  return String(trip?.status || "").toUpperCase() === "RUNNING" && Boolean(trip?.departedAt) && !trip?.endedAt;
+}
+
+function driverTripScheduleLabel(trip: DriverTripView): string {
+  const serviceDate = trip.serviceDate || (trip as DriverTripView & { date?: string }).date;
+  const departureTime = trip.departureTime || (trip as DriverTripView & { departTime?: string }).departTime;
+  return `${formatDate(serviceDate)} · ${String(departureTime || "Chưa có giờ").slice(0, 5)}`;
+}
+
 function driverTripStatusRank(trip: DriverTripView): number {
   const status = String(trip.status || "").toUpperCase();
-  if (status === "RUNNING") return 0;
+  if (isActiveDriverTrip(trip)) return 0;
   if (status === "COMPLETED") return 3;
   if (status === "CANCELLED") return 4;
   return 1;
@@ -537,7 +570,7 @@ function sortDriverTrips(trips: DriverTripView[]): DriverTripView[] {
   return [...trips].sort((left, right) => {
     const rankDelta = driverTripStatusRank(left) - driverTripStatusRank(right);
     if (rankDelta) return rankDelta;
-    return String(left.departureTime || "").localeCompare(String(right.departureTime || ""));
+    return (driverTripScheduledAt(left) ?? Number.MAX_SAFE_INTEGER) - (driverTripScheduledAt(right) ?? Number.MAX_SAFE_INTEGER);
   });
 }
 
@@ -790,11 +823,14 @@ function DriverDashboard({
   onNavigate: (id: string) => void;
 }) {
   const firstName = (ctx.user.name || "bạn").split(" ").slice(-1)[0];
-  const activeTrip = ctx.trips.find((trip: any) => String(trip.status || "").toUpperCase() === "RUNNING") ?? null;
-  const upcomingTrips = ctx.trips
-    .filter((t: any) => !["RUNNING", "COMPLETED", "CANCELLED"].includes(String(t.status || "").toUpperCase()))
+  const [renderedAt] = useState(() => Date.now());
+  const activeTrip = ctx.trips.find((trip: any) => isActiveDriverTrip(trip)) ?? null;
+  const upcomingTrips = sortDriverTrips(ctx.trips
+    .filter((trip: any) => !isDriverTripExpired(trip, renderedAt) && !["RUNNING", "COMPLETED", "CANCELLED"].includes(String(trip.status || "").toUpperCase())))
     .slice(0, 3);
-  const statCards = ctx.stats.slice(0, 4);
+  const statCards = ctx.stats.slice(0, 4).map((stat) =>
+    activeTrip && stat.label === "Đang chạy" ? { ...stat, value: 1 } : stat,
+  );
 
   return (
     <PageTransition className="space-y-6 sm:space-y-8 min-w-0">
@@ -990,7 +1026,7 @@ function DriverDashboard({
 // =============================================================================
 function DriverSchedule({ ctx }: { ctx: Ctx }) {
   const [filterDate, setFilterDate] = useState(
-    new Date().toISOString().slice(0, 10),
+    vietnamToday(),
   );
   const [trips, setTrips] = useState<DriverTripView[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1127,8 +1163,7 @@ function DriverActiveTrip({
     load();
   }, [load]);
 
-  const runningTrip =
-    trips?.find((trip) => trip.status?.toUpperCase() === "RUNNING") ?? null;
+  const runningTrip = trips?.find(isActiveDriverTrip) ?? null;
   const sortedTrips = useMemo(() => sortDriverTrips(trips ?? []), [trips]);
   const startableTrips = useMemo(() => {
     return sortedTrips.filter((trip) => {
@@ -1143,7 +1178,7 @@ function DriverActiveTrip({
     ?? startableTrips.find((trip) => canStartDriverTrip(trip))
     ?? startableTrips.find((trip) => {
       if (!trip.serviceDate || !trip.departureTime) return false;
-      return new Date(`${trip.serviceDate}T${trip.departureTime}`).getTime() > renderedAt;
+      return (driverTripScheduledAt(trip) ?? 0) > renderedAt;
     })
     ?? startableTrips[0]
     ?? null;
@@ -1542,7 +1577,7 @@ function DriverRoute() {
       const data = await operationsApi.driverTrips();
       setTrips(data);
       const runningTrips = data.filter(
-        (item) => item.status?.toUpperCase() === "RUNNING",
+        (item) => isActiveDriverTrip(item),
       );
       const storedRunningTrip = runningTrips.find(
         (item) => driverTripKey(item) === selectedTripKey,
@@ -1595,7 +1630,7 @@ function DriverRoute() {
   }, [selectedTripKey]);
 
   const runningTrips = useMemo(
-    () => trips.filter((item) => item.status?.toUpperCase() === "RUNNING"),
+    () => trips.filter((item) => isActiveDriverTrip(item)),
     [trips],
   );
 

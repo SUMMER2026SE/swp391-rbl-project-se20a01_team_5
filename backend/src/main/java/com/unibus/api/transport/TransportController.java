@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.unibus.api.common.ApiResponse;
+import com.unibus.api.operations.OperationsService;
 import com.unibus.api.security.CurrentUser;
 import com.unibus.api.transport.dto.TransportDtos.Eta;
 import com.unibus.api.transport.dto.TransportDtos.JourneyOption;
@@ -35,16 +36,19 @@ public class TransportController {
     private final PlaceService placeService;
     private final JourneyPlannerService journeyPlannerService;
     private final JourneyTrackingService journeyTrackingService;
+    private final OperationsService operationsService;
 
     public TransportController(
             TransportService transportService,
             PlaceService placeService,
             JourneyPlannerService journeyPlannerService,
-            JourneyTrackingService journeyTrackingService) {
+            JourneyTrackingService journeyTrackingService,
+            OperationsService operationsService) {
         this.transportService = transportService;
         this.placeService = placeService;
         this.journeyPlannerService = journeyPlannerService;
         this.journeyTrackingService = journeyTrackingService;
+        this.operationsService = operationsService;
     }
 
     @GetMapping("/stops")
@@ -78,6 +82,15 @@ public class TransportController {
     @GetMapping("/tracking/journeys/{journeyId}")
     ApiResponse<JourneyTrackingSnapshot> trackJourney(@PathVariable String journeyId) {
         return ApiResponse.ok("Journey tracking retrieved", journeyTrackingService.snapshot(journeyId));
+    }
+
+    @GetMapping("/tracking/trips/{tripId}")
+    @PreAuthorize("hasRole('DRIVER')")
+    ApiResponse<JourneyTrackingSnapshot> trackTrip(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @PathVariable Integer tripId) {
+        operationsService.getDriverTripForTracking(currentUser, tripId);
+        return ApiResponse.ok("Trip tracking retrieved", journeyTrackingService.tripSnapshot(tripId));
     }
 
     @GetMapping("/tracking/routes/{routeId}")

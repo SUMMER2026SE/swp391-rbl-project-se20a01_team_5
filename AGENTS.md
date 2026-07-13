@@ -335,3 +335,20 @@ dong ho tinh tu departedAt, map nam trong Chuyen hien tai va lich su khong tai s
 - Hướng mô phỏng luôn lấy theo trip/driver; boarding/alighting của student không được đảo chiều xe.
 - Fleet dashboard dispatcher dùng cùng snapshot mô phỏng nên tốc độ, tọa độ và marker không còn lấy GPS rỗng.
 - Thêm test xác nhận cùng trip/thời điểm cho cùng snapshot và xe dừng ở đích.
+
+---
+
+# Changelog: Resolve conflict PR 63 với main
+
+## Quyết định hợp nhất
+- Giữ `VehicleSimulationService` và tracking đồng bộ theo `tripId` của nhánh `TruongPhuc`.
+- Giữ UI driver, logic phụ xe và cảnh báo quét vé; nhận thêm nhãn trạng thái vé và ưu tiên trip `RUNNING` từ main.
+- Nhận lifecycle tài xế của main: timezone nghiệp vụ, row lock khi bắt đầu, kiểm tra trạng thái start/end và endpoint tracking dùng chung.
+- Lấy nguyên bản main cho `database/ResetDemoScenario.sql` và `database/SeedDemoDataUntilAugust.sql`.
+- Xóa test lifecycle cũ trùng phạm vi; dùng bộ `DriverOperationsServiceTests` đầy đủ hơn từ main.
+
+## Kiểm tra
+- Không còn conflict marker.
+- Backend `mvn -B -ntp clean test`: 81 tests đạt.
+- Frontend lint và build đạt; còn 5 hook warning cũ ở student module.
+- UTF-8/mojibake và `git diff --check` đạt.
