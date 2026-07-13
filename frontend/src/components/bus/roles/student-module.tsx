@@ -5597,11 +5597,14 @@ function AIScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => v
 // =============================================================================
 // Screen 10: Chatbot
 // =============================================================================
-const CHATBOT_SUGGESTIONS = [
-  "Tìm tuyến từ Đại học Bách khoa Đà Nẵng đến Đại học FPT",
-  "So sánh giá vé tháng sau trợ giá cho tuyến phù hợp",
-  "Cho biết chuyến gần nhất và các trạm dừng chính",
-  "Hướng dẫn tôi đăng ký tuyến và mua vé tháng SePay",
+const CHATBOT_SUGGESTIONS: Array<{ message: string; context?: Record<string, unknown> }> = [
+  {
+    message: "Từ FPT Đà Nẵng đến Đại học Duy Tân, ưu tiên tuyến được trợ giá",
+    context: { boardingStopId: 729, alightingStopId: 751 },
+  },
+  { message: "So sánh vé lượt và vé tháng sau trợ giá" },
+  { message: "Cho biết chuyến gần nhất và các trạm chính" },
+  { message: "Hướng dẫn đăng ký tuyến và thanh toán SePay" },
 ];
 
 function ToolGlyph({ tool, className }: { tool?: string; className?: string }) {
@@ -5903,7 +5906,7 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, loading]);
 
-  const send = async (value = input) => {
+  const send = async (value = input, extraContext: Record<string, unknown> = {}) => {
     if (!value.trim() || loading || !sessionReady) return;
     const userMsg = { role: "user" as const, text: value.trim(), time: new Date().toISOString() };
     const botTime = new Date().toISOString();
@@ -5925,6 +5928,7 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
       message: userMsg.text,
       context: {
         preferences: ["fast", "cheap"],
+        ...extraContext,
         conversationHistory: historySnapshot.slice(-8).map((message) => ({
           role: message.role === "bot" ? "assistant" as const : "user" as const,
           content: message.text,
@@ -6154,13 +6158,13 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
             <div className="grid min-w-0 grid-cols-2 gap-2 lg:grid-cols-4">
               {CHATBOT_SUGGESTIONS.map((suggestion) => (
                 <button
-                  key={suggestion}
+                  key={suggestion.message}
                   type="button"
-                  onClick={() => send(suggestion)}
+                  onClick={() => send(suggestion.message, suggestion.context)}
                   disabled={loading || !sessionReady}
                   className="min-h-14 min-w-0 rounded-2xl border border-outline-variant bg-surface px-3 py-2.5 text-left text-[11px] font-semibold leading-snug text-on-surface transition-colors hover:bg-surface-container-high disabled:opacity-50 sm:text-xs"
                 >
-                  <span className="block line-clamp-2 whitespace-normal">{suggestion}</span>
+                  <span className="block line-clamp-2 whitespace-normal">{suggestion.message}</span>
                 </button>
               ))}
             </div>
@@ -6268,8 +6272,8 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
   const currentPriceLabel = currentFinal > 0 ? formatVND(currentFinal) : "Theo giá hệ thống";
   const hasSchoolSubsidy = currentSubsidy > 0;
   const subsidyPercent = currentOriginal > 0 && hasSchoolSubsidy ? Math.round((currentSubsidy / currentOriginal) * 100) : 0;
-  const monthlyBasePrice = monthlyOriginal > 0 ? monthlyOriginal : routeMonthlyFare;
-  const singleBasePrice = singleOriginal > 0 ? singleOriginal : singleFare;
+  const monthlyBasePrice = routeMonthlyFare > 0 ? routeMonthlyFare : monthlyOriginal;
+  const singleBasePrice = singleFare > 0 ? singleFare : singleOriginal;
   const paymentRouteStops = useMemo(() => {
     const rawStops = Array.isArray((paymentRouteDetail as any)?.stops)
       ? (paymentRouteDetail as any).stops
@@ -6590,7 +6594,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                         <button
                           key={item.id}
                           type="button"
-                          onClick={() => { setTicketKind(item.id); setSepayOrder(null); setPaidStatus("idle"); setSecondsLeft(null); }}
+                          onClick={() => { setPaymentQuote(null); setTicketKind(item.id); setSepayOrder(null); setPaidStatus("idle"); setSecondsLeft(null); }}
                           className={cn(
                             "relative rounded-[18px] border p-4 text-left transition-colors duration-200",
                             selected
@@ -6618,7 +6622,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="text-sm font-semibold text-[#24251F]">Chọn điểm dự kiến cho vé lượt</p>
-                        <p className="mt-0.5 text-xs text-[#7A756B]">Dùng để hiển thị hành trình và hỗ trợ phụ xe kiểm tra vé. Giá vé không đổi theo trạm.</p>
+                        <p className="mt-0.5 text-xs text-[#7A756B]">Dùng để hiển thị hành trình và hỗ trợ phụ xe kiểm tra vé.</p>
                       </div>
                     </div>
                     {hasSelectableRouteStops ? (
@@ -6681,7 +6685,6 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                             </span>
                             <div className="min-w-0">
                               <p className="text-sm font-semibold text-[#25310E]">Nhà trường hỗ trợ {subsidyPercent > 0 ? `${subsidyPercent}%` : "học phí đi lại"}</p>
-                              <p className="text-xs text-[#5F6E35]">Khoản này được trừ trực tiếp trước khi tạo QR.</p>
                             </div>
                           </div>
                           <motion.p
@@ -6778,7 +6781,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
         {/* QR / status panel */}
         <ScrollReveal delay={0.1}>
           {!sepayOrder ? (
-            <ExpressiveCard variant="elevated" className="relative hidden h-full min-h-[360px] overflow-hidden rounded-[28px] border-[#14140f]/10 bg-[#14140f] p-6 text-[#F8F6EF] lg:block">
+            <ExpressiveCard variant="elevated" className="relative hidden h-[680px] overflow-hidden rounded-[28px] border-[#14140f]/10 bg-[#14140f] p-6 text-[#F8F6EF] lg:block">
               <div className="absolute -right-16 -top-16 size-44 rounded-full bg-[#BDFD4F]/25 blur-2xl" />
               <div className="absolute -bottom-20 left-8 size-52 rounded-full bg-white/10 blur-3xl" />
               <div className="relative flex h-full flex-col justify-between">
