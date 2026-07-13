@@ -471,7 +471,7 @@ BEGIN
     WHERE route_id = v_route_supported_id AND university_id = v_supported_university_id AND status = 'ACTIVE';
 
     INSERT INTO subsidy_policies (university_id, campus_id, policy_name, subsidy_type, value, max_amount, active_from, active_until, status, created_at, updated_at)
-    SELECT v_supported_university_id, v_supported_campus_id, 'Demo trợ giá 50% đến 31/08/2026', 'PERCENTAGE', 50, 90000, CURRENT_DATE, v_end_date, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+    SELECT v_supported_university_id, NULL, 'Demo trợ giá 50% đến 31/08/2026', 'PERCENTAGE', 50, 90000, CURRENT_DATE, v_end_date, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
     WHERE NOT EXISTS (
         SELECT 1
         FROM subsidy_policies
@@ -493,7 +493,7 @@ BEGIN
       AND policy_name = 'Demo trợ giá 50% đến 31/08/2026';
 
     UPDATE subsidy_policies
-    SET campus_id = v_supported_campus_id, subsidy_type = 'PERCENTAGE', value = 50, max_amount = 90000, active_from = CURRENT_DATE, active_until = v_end_date, status = 'ACTIVE', updated_at = CURRENT_TIMESTAMP
+    SET campus_id = NULL, subsidy_type = 'PERCENTAGE', value = 50, max_amount = 90000, active_from = CURRENT_DATE, active_until = v_end_date, status = 'ACTIVE', updated_at = CURRENT_TIMESTAMP
     WHERE subsidy_policy_id = v_policy_id;
 
     DELETE FROM travel_history
@@ -542,9 +542,22 @@ BEGIN
 
     INSERT INTO trips (schedule_id, route_id, bus_id, driver_id, conductor_id, service_date, departed_at, ended_at, status, notes)
     SELECT bs.schedule_id, v_route_supported_id, v_bus_id, v_driver_id, v_conductor_id, d::date,
-           CASE WHEN d::date < CURRENT_DATE THEN d::date + TIME '07:30' ELSE NULL END,
-           CASE WHEN d::date < CURRENT_DATE THEN d::date + TIME '08:25' ELSE NULL END,
-           CASE WHEN d::date < CURRENT_DATE THEN 'COMPLETED' ELSE 'NOT_STARTED' END,
+           CASE
+               WHEN d::date < CURRENT_DATE THEN d::date + TIME '07:30'
+               WHEN d::date = CURRENT_DATE AND CURRENT_TIME >= TIME '07:30' THEN d::date + TIME '07:30'
+               ELSE NULL
+           END,
+           CASE
+               WHEN d::date < CURRENT_DATE THEN d::date + TIME '08:25'
+               WHEN d::date = CURRENT_DATE AND CURRENT_TIME >= TIME '08:25' THEN d::date + TIME '08:25'
+               ELSE NULL
+           END,
+           CASE
+               WHEN d::date < CURRENT_DATE THEN 'COMPLETED'
+               WHEN d::date = CURRENT_DATE AND CURRENT_TIME >= TIME '08:25' THEN 'COMPLETED'
+               WHEN d::date = CURRENT_DATE AND CURRENT_TIME >= TIME '07:30' THEN 'RUNNING'
+               ELSE 'NOT_STARTED'
+           END,
            'DEMO_DATA supported morning trip'
     FROM generate_series(CURRENT_DATE - INTERVAL '7 days', v_end_date, INTERVAL '1 day') AS d
     JOIN bus_schedules bs ON bs.route_id = v_route_supported_id
@@ -555,8 +568,7 @@ BEGIN
         AND bs.departure_time = TIME '07:30'
         AND bs.status = 'ACTIVE'
         AND bs.assigned_by_user_id = v_admin_user_id
-    WHERE CURRENT_DATE <= v_end_date
-      AND d::date <> CURRENT_DATE;
+    WHERE CURRENT_DATE <= v_end_date;
 
     INSERT INTO trips (schedule_id, route_id, bus_id, driver_id, conductor_id, service_date, departed_at, ended_at, status, notes)
     SELECT bs.schedule_id, v_route_full_id, v_bus_id, v_driver_id, v_conductor_id, d::date,
@@ -599,6 +611,10 @@ BEGIN
     DELETE FROM tb_transactions WHERE matched_order_id IN (SELECT o.id FROM tb_orders o JOIN students s ON s.student_code = o.student_code JOIN users u ON u.user_id = s.user_id WHERE u.email = ANY(v_baseline_student_emails));
     DELETE FROM tb_orders WHERE student_code IN (SELECT s.student_code FROM students s JOIN users u ON u.user_id = s.user_id WHERE u.email = ANY(v_baseline_student_emails));
     DELETE FROM route_registrations WHERE student_code IN (SELECT s.student_code FROM students s JOIN users u ON u.user_id = s.user_id WHERE u.email = ANY(v_baseline_student_emails));
+    DELETE FROM feedback WHERE student_code = '27211200001';
+    DELETE FROM driver_ratings WHERE student_code = '27211200001';
+    DELETE FROM lost_item_reports WHERE reported_by_user_id = (SELECT user_id FROM users WHERE email = 'student.supported@unibus.local');
+    DELETE FROM notifications WHERE recipient_user_id = (SELECT user_id FROM users WHERE email = 'student.supported@unibus.local');
 
     FOR v_student IN
         SELECT student_code,
@@ -608,7 +624,6 @@ BEGIN
         FROM students s
         JOIN users u ON u.user_id = s.user_id
         WHERE u.email IN (
-            'student.supported@unibus.local',
             'student.fullprice@unibus.local',
             'student.monthly@unibus.local',
             'student.day@unibus.local',
@@ -653,9 +668,6 @@ BEGIN
     LIMIT 1;
 
     INSERT INTO monthly_passes (student_code, route_id, effective_month, effective_year, valid_from, purchased_at, expires_on, fare_amount, original_fare_amount, subsidy_amount, final_fare_amount, subsidy_policy_id, qr_code, status)
-    VALUES ('27211200001', v_route_supported_id, EXTRACT(MONTH FROM CURRENT_DATE)::int, EXTRACT(YEAR FROM CURRENT_DATE)::int, date_trunc('month', CURRENT_DATE)::date, CURRENT_TIMESTAMP - INTERVAL '1 hour', (v_end_date + INTERVAL '1 day')::date, v_supported_monthly_final, v_supported_monthly_amount, v_supported_monthly_subsidy, v_supported_monthly_final, v_policy_id, 'DEMO-SUB-27211200001', 'ACTIVE');
-
-    INSERT INTO monthly_passes (student_code, route_id, effective_month, effective_year, valid_from, purchased_at, expires_on, fare_amount, original_fare_amount, subsidy_amount, final_fare_amount, subsidy_policy_id, qr_code, status)
     VALUES ('27212100002', v_route_full_id, EXTRACT(MONTH FROM CURRENT_DATE)::int, EXTRACT(YEAR FROM CURRENT_DATE)::int, date_trunc('month', CURRENT_DATE)::date, CURRENT_TIMESTAMP - INTERVAL '1 hour', (v_end_date + INTERVAL '1 day')::date, v_full_monthly_amount, v_full_monthly_amount, 0, v_full_monthly_amount, NULL, 'DEMO-FULL-27212100002', 'ACTIVE');
 
     INSERT INTO tb_orders (student_code, ticket_type, route_id, total, payment_status, name, paid_at, created_at, updated_at, order_mode, ticket_period, origin_label, destination_label, original_amount, subsidy_amount, final_amount)
@@ -679,7 +691,6 @@ BEGIN
     SELECT u.user_id, v_admin_user_id, 'Dữ liệu demo sẵn sàng', 'Kịch bản demo đã sẵn sàng đến 31/08/2026.', 'SYSTEM', false, CURRENT_TIMESTAMP
     FROM users u
     WHERE u.email IN (
-        'student.supported@unibus.local',
         'student.fullprice@unibus.local',
         'student.monthly@unibus.local',
         'student.day@unibus.local',
@@ -1457,7 +1468,8 @@ BEGIN
     FROM users usr
     CROSS JOIN generate_series(1, 2) g(n)
     WHERE usr.status = 'ACTIVE'
-      AND (usr.email LIKE '%.demo@unibus.local' OR usr.email = ANY(v_baseline_student_emails));
+      AND (usr.email LIKE '%.demo@unibus.local' OR usr.email = ANY(v_baseline_student_emails))
+      AND usr.email <> 'student.supported@unibus.local';
 END
 $baseline$;
 

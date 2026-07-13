@@ -204,8 +204,8 @@ subsidy_status AS (
     SELECT
         'route_policy' AS section,
         'Duy Tân active subsidy policy' AS subject,
-        CASE WHEN count(*) > 0 THEN 'PASS' ELSE 'FAIL' END AS status,
-        concat('active_policies=', count(*), '; policy_names=', COALESCE(string_agg(sp.policy_name, ', ' ORDER BY sp.policy_name), 'none')) AS detail
+        CASE WHEN count(*) FILTER (WHERE sp.campus_id IS NULL) > 0 THEN 'PASS' ELSE 'FAIL' END AS status,
+        concat('active_policies=', count(*), '; university_wide=', count(*) FILTER (WHERE sp.campus_id IS NULL), '; policy_names=', COALESCE(string_agg(sp.policy_name, ', ' ORDER BY sp.policy_name), 'none')) AS detail
     FROM dtu d
     JOIN subsidy_policies sp ON sp.university_id = d.university_id
     JOIN params p ON true
@@ -352,9 +352,14 @@ ticket_status AS (
            CASE WHEN EXISTS (SELECT 1 FROM monthly_passes WHERE student_code = '27211200003' AND status = 'ACTIVE') THEN 'PASS' ELSE 'FAIL' END AS status,
            '27211200003 should have ACTIVE monthly pass' AS detail
     UNION ALL
-    SELECT 'ticketing', 'supported monthly pass',
-           CASE WHEN EXISTS (SELECT 1 FROM monthly_passes mp JOIN linked_routes lr ON lr.route_id = mp.route_id WHERE mp.student_code = '27211200001' AND mp.status = 'ACTIVE') THEN 'PASS' ELSE 'FAIL' END,
-           '27211200001 should have ACTIVE monthly pass on Duy Tân linked BUSMAP route'
+    SELECT 'ticketing', 'fresh Duy Tan student',
+           CASE WHEN NOT EXISTS (SELECT 1 FROM route_registrations WHERE student_code = '27211200001')
+                  AND NOT EXISTS (SELECT 1 FROM monthly_passes WHERE student_code = '27211200001')
+                  AND NOT EXISTS (SELECT 1 FROM single_trip_tickets WHERE student_code = '27211200001')
+                  AND NOT EXISTS (SELECT 1 FROM tb_orders WHERE student_code = '27211200001')
+                  AND NOT EXISTS (SELECT 1 FROM travel_history WHERE student_code = '27211200001')
+                THEN 'PASS' ELSE 'FAIL' END,
+           '27211200001 should be a fresh Duy Tan student without registration, ticket, order or travel history'
     UNION ALL
     SELECT 'ticketing', 'day ticket',
            CASE WHEN EXISTS (SELECT 1 FROM single_trip_tickets WHERE student_code = '27217100004' AND status = 'UNUSED' AND expires_at >= CURRENT_TIMESTAMP) THEN 'PASS' ELSE 'FAIL' END,
