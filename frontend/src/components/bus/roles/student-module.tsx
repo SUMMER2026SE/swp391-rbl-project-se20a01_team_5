@@ -6268,8 +6268,8 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
   const currentPriceLabel = currentFinal > 0 ? formatVND(currentFinal) : "Theo giá hệ thống";
   const hasSchoolSubsidy = currentSubsidy > 0;
   const subsidyPercent = currentOriginal > 0 && hasSchoolSubsidy ? Math.round((currentSubsidy / currentOriginal) * 100) : 0;
-  const monthlyBasePrice = monthlyOriginal > 0 ? monthlyOriginal : routeMonthlyFare;
-  const singleBasePrice = singleOriginal > 0 ? singleOriginal : singleFare;
+  const monthlyBasePrice = routeMonthlyFare > 0 ? routeMonthlyFare : monthlyOriginal;
+  const singleBasePrice = singleFare > 0 ? singleFare : singleOriginal;
   const paymentRouteStops = useMemo(() => {
     const rawStops = Array.isArray((paymentRouteDetail as any)?.stops)
       ? (paymentRouteDetail as any).stops
@@ -6590,7 +6590,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                         <button
                           key={item.id}
                           type="button"
-                          onClick={() => { setTicketKind(item.id); setSepayOrder(null); setPaidStatus("idle"); setSecondsLeft(null); }}
+                          onClick={() => { setPaymentQuote(null); setTicketKind(item.id); setSepayOrder(null); setPaidStatus("idle"); setSecondsLeft(null); }}
                           className={cn(
                             "relative rounded-[18px] border p-4 text-left transition-colors duration-200",
                             selected
@@ -6618,7 +6618,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="text-sm font-semibold text-[#24251F]">Chọn điểm dự kiến cho vé lượt</p>
-                        <p className="mt-0.5 text-xs text-[#7A756B]">Dùng để hiển thị hành trình và hỗ trợ phụ xe kiểm tra vé. Giá vé không đổi theo trạm.</p>
+                        <p className="mt-0.5 text-xs text-[#7A756B]">Dùng để hiển thị hành trình và hỗ trợ phụ xe kiểm tra vé.</p>
                       </div>
                     </div>
                     {hasSelectableRouteStops ? (
@@ -6681,7 +6681,6 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                             </span>
                             <div className="min-w-0">
                               <p className="text-sm font-semibold text-[#25310E]">Nhà trường hỗ trợ {subsidyPercent > 0 ? `${subsidyPercent}%` : "học phí đi lại"}</p>
-                              <p className="text-xs text-[#5F6E35]">Khoản này được trừ trực tiếp trước khi tạo QR.</p>
                             </div>
                           </div>
                           <motion.p
@@ -6778,7 +6777,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
         {/* QR / status panel */}
         <ScrollReveal delay={0.1}>
           {!sepayOrder ? (
-            <ExpressiveCard variant="elevated" className="relative hidden h-full min-h-[360px] overflow-hidden rounded-[28px] border-[#14140f]/10 bg-[#14140f] p-6 text-[#F8F6EF] lg:block">
+            <ExpressiveCard variant="elevated" className="relative hidden h-[680px] overflow-hidden rounded-[28px] border-[#14140f]/10 bg-[#14140f] p-6 text-[#F8F6EF] lg:block">
               <div className="absolute -right-16 -top-16 size-44 rounded-full bg-[#BDFD4F]/25 blur-2xl" />
               <div className="absolute -bottom-20 left-8 size-52 rounded-full bg-white/10 blur-3xl" />
               <div className="relative flex h-full flex-col justify-between">
