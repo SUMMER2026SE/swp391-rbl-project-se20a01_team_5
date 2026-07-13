@@ -320,7 +320,7 @@ public class ChatbotService {
             StopMention origin = limitedMentions.get(originIndex);
             for (int destinationIndex = originIndex + 1; destinationIndex < limitedMentions.size(); destinationIndex++) {
                 StopMention destination = limitedMentions.get(destinationIndex);
-                if (origin.stopId().equals(destination.stopId())) {
+                if (origin.stopId().equals(destination.stopId()) || origin.index() == destination.index()) {
                     continue;
                 }
                 RouteSuggestionRequest request = new RouteSuggestionRequest(
