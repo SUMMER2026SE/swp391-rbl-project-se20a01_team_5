@@ -128,7 +128,7 @@ BEGIN
     v_supported_university_id := v_dtu_university_id;
 
     INSERT INTO campuses (university_id, code, name, address, latitude, longitude, status, created_at, updated_at)
-    VALUES (v_supported_university_id, 'DTU_DEMO_MAIN', 'Cơ sở demo Duy Tân', 'Đà Nẵng', 16.0544, 108.2022, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    VALUES (v_supported_university_id, 'DTU_MAIN', 'Cơ sở Nguyễn Văn Linh', '254 Nguyễn Văn Linh, Thanh Khê, Đà Nẵng', 16.0600568, 108.2096704, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     ON CONFLICT (university_id, code) DO UPDATE
     SET name = EXCLUDED.name,
         address = EXCLUDED.address,
@@ -137,7 +137,7 @@ BEGIN
         status = EXCLUDED.status,
         updated_at = CURRENT_TIMESTAMP;
 
-    SELECT campus_id INTO v_supported_campus_id FROM campuses WHERE university_id = v_supported_university_id AND code = 'DTU_DEMO_MAIN';
+    SELECT campus_id INTO v_supported_campus_id FROM campuses WHERE university_id = v_supported_university_id AND code = 'DTU_MAIN';
 
     UPDATE university_domains
     SET university_id = v_supported_university_id,
@@ -334,7 +334,7 @@ BEGIN
 
     SELECT route_id INTO v_route_supported_id
     FROM routes
-    WHERE route_code = '12'
+    WHERE route_code = '16'
       AND status = 'ACTIVE'
       AND COALESCE(external_source, '') = 'BUSMAP_DN'
       AND (SELECT count(*) FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id WHERE rs.route_id = routes.route_id) >= 2
@@ -344,21 +344,21 @@ BEGIN
     IF v_route_supported_id IS NULL THEN
         SELECT route_id INTO v_route_supported_id
         FROM routes
-        WHERE route_code IN ('01', '06')
+        WHERE route_code IN ('12', '01', '06')
           AND status = 'ACTIVE'
           AND COALESCE(external_source, '') = 'BUSMAP_DN'
           AND (SELECT count(*) FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id WHERE rs.route_id = routes.route_id) >= 2
-        ORDER BY CASE route_code WHEN '01' THEN 0 WHEN '06' THEN 1 ELSE 2 END, route_id
+        ORDER BY CASE route_code WHEN '12' THEN 0 WHEN '01' THEN 1 WHEN '06' THEN 2 ELSE 3 END, route_id
         LIMIT 1;
     END IF;
 
     IF v_route_supported_id IS NULL THEN
-        RAISE EXCEPTION 'Không tìm thấy tuyến BUSMAP thật 12/01/06 đang hoạt động cho kịch bản trợ giá Duy Tân.';
+        RAISE EXCEPTION 'Không tìm thấy tuyến BUSMAP thật 16/12/01/06 đang hoạt động cho kịch bản trợ giá Duy Tân.';
     END IF;
 
     SELECT r.route_id INTO v_route_full_id
     FROM routes r
-    WHERE r.route_code IN ('02', '16')
+    WHERE r.route_code IN ('02', '06')
       AND r.status = 'ACTIVE'
       AND COALESCE(r.external_source, '') = 'BUSMAP_DN'
       AND (SELECT count(*) FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id WHERE rs.route_id = r.route_id) >= 2
@@ -372,7 +372,7 @@ BEGIN
             AND ru.active_from <= CURRENT_DATE
             AND (ru.active_until IS NULL OR ru.active_until >= CURRENT_DATE)
       )
-    ORDER BY CASE r.route_code WHEN '02' THEN 0 WHEN '16' THEN 1 ELSE 2 END, r.route_id
+    ORDER BY CASE r.route_code WHEN '02' THEN 0 WHEN '06' THEN 1 ELSE 2 END, r.route_id
     LIMIT 1;
 
     IF v_route_full_id IS NULL THEN
@@ -404,8 +404,16 @@ BEGIN
         RAISE EXCEPTION 'Demo không được dùng tuyến UB-DN-* làm kịch bản chính.';
     END IF;
 
-    SELECT rs.stop_id INTO v_boarding_supported_id FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id WHERE rs.route_id = v_route_supported_id ORDER BY rs.stop_order ASC LIMIT 1;
-    SELECT rs.stop_id INTO v_alighting_supported_id FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id WHERE rs.route_id = v_route_supported_id ORDER BY rs.stop_order DESC LIMIT 1;
+    SELECT rs.stop_id INTO v_boarding_supported_id
+    FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id
+    WHERE rs.route_id = v_route_supported_id
+    ORDER BY CASE WHEN rs.stop_id = 729 OR lower(st.stop_name) = lower('E144 Trần Đại Nghĩa') THEN 0 ELSE 1 END, rs.stop_order ASC
+    LIMIT 1;
+    SELECT rs.stop_id INTO v_alighting_supported_id
+    FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id
+    WHERE rs.route_id = v_route_supported_id
+    ORDER BY CASE WHEN rs.stop_id = 751 OR lower(st.stop_name) = lower('10 Lý Thái Tổ') THEN 0 ELSE 1 END, rs.stop_order DESC
+    LIMIT 1;
     SELECT rs.stop_id INTO v_boarding_full_id FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id WHERE rs.route_id = v_route_full_id ORDER BY rs.stop_order ASC LIMIT 1;
     SELECT rs.stop_id INTO v_alighting_full_id FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id WHERE rs.route_id = v_route_full_id ORDER BY rs.stop_order DESC LIMIT 1;
     IF v_boarding_supported_id IS NULL OR v_alighting_supported_id IS NULL OR v_boarding_supported_id = v_alighting_supported_id THEN
@@ -831,6 +839,9 @@ BEGIN
 
     SELECT university_id INTO v_dtu_id FROM universities WHERE code = 'DTU';
     SELECT campus_id INTO v_main_campus_id FROM campuses WHERE university_id = v_dtu_id AND code = 'DTU_MAIN';
+    UPDATE campuses
+    SET latitude = 16.0600568, longitude = 108.2096704, updated_at = CURRENT_TIMESTAMP
+    WHERE campus_id = v_main_campus_id;
     SELECT campus_id INTO v_old_campus_id FROM campuses WHERE university_id = v_dtu_id AND code = 'DTU_DEMO_MAIN';
     IF v_old_campus_id IS NOT NULL AND v_old_campus_id <> v_main_campus_id THEN
         UPDATE route_universities SET campus_id = v_main_campus_id, updated_at = CURRENT_TIMESTAMP WHERE campus_id = v_old_campus_id;
@@ -1114,7 +1125,7 @@ BEGIN
 
     FOR v_school IN
         SELECT * FROM (VALUES
-            ('DTU', 'DTU_MAIN', '12', 50::numeric, 90000::numeric),
+            ('DTU', 'DTU_MAIN', '16', 50::numeric, 90000::numeric),
             ('UTE', 'UTE_MAIN', '11', 40::numeric, 70000::numeric),
             ('VKU', 'VKU_MAIN', '02', 35::numeric, 60000::numeric),
             ('FPTDN', 'FPTDN_MAIN', 'N1', 25::numeric, 50000::numeric)
@@ -1173,7 +1184,7 @@ BEGIN
 
     FOR v_school IN
         SELECT * FROM (VALUES
-            ('DTU', 'DTU_MAIN', '06'),
+            ('DTU', 'DTU_MAIN', '12'),
             ('UTE', 'UTE_MAIN', '01'),
             ('VKU', 'VKU_MAIN', '16'),
             ('FPTDN', 'FPTDN_MAIN', '02')

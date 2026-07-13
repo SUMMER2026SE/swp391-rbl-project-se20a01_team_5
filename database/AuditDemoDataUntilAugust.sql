@@ -192,6 +192,36 @@ linked_routes AS (
         AND (ru.active_until IS NULL OR ru.active_until >= CURRENT_DATE)
     JOIN routes r ON r.route_id = ru.route_id AND r.status = 'ACTIVE'
 ),
+dtu_demo_campus_status AS (
+    SELECT
+        'route_policy' AS section,
+        'Duy Tân Nguyễn Văn Linh campus' AS subject,
+        CASE WHEN c.address = '254 Nguyễn Văn Linh, Thanh Khê, Đà Nẵng'
+                  AND abs(c.latitude - 16.0600568) < 0.000001
+                  AND abs(c.longitude - 108.2096704) < 0.000001 THEN 'PASS' ELSE 'FAIL' END AS status,
+        concat('address=', COALESCE(c.address, 'missing'), '; lat=', COALESCE(c.latitude::text, 'missing'), '; lng=', COALESCE(c.longitude::text, 'missing')) AS detail
+    FROM dtu d
+    LEFT JOIN campuses c ON c.university_id = d.university_id AND c.code = 'DTU_MAIN'
+),
+route_16_status AS (
+    SELECT
+        'route_policy' AS section,
+        'DTU route 16 demo path' AS subject,
+        CASE WHEN r.external_source = 'BUSMAP_DN'
+                  AND EXISTS (SELECT 1 FROM linked_routes lr WHERE lr.route_id = r.route_id)
+                  AND count(DISTINCT f.fare_type) FILTER (WHERE f.fare_type IN ('SINGLE', 'MONTHLY')) = 2
+                  AND count(DISTINCT rs.stop_id) FILTER (WHERE rs.stop_id IN (729, 751) OR st.stop_name IN ('E144 Trần Đại Nghĩa', '10 Lý Thái Tổ')) = 2
+             THEN 'PASS' ELSE 'FAIL' END AS status,
+        concat('route_id=', COALESCE(r.route_id::text, 'missing'), '; source=', COALESCE(r.external_source, 'missing'),
+               '; fares=', count(DISTINCT f.fare_type) FILTER (WHERE f.fare_type IN ('SINGLE', 'MONTHLY')),
+               '; demo_stops=', count(DISTINCT rs.stop_id) FILTER (WHERE rs.stop_id IN (729, 751) OR st.stop_name IN ('E144 Trần Đại Nghĩa', '10 Lý Thái Tổ'))) AS detail
+    FROM routes r
+    LEFT JOIN fares f ON f.route_id = r.route_id AND f.effective_from <= CURRENT_DATE AND (f.effective_until IS NULL OR f.effective_until >= CURRENT_DATE)
+    LEFT JOIN route_stops rs ON rs.route_id = r.route_id
+    LEFT JOIN stops st ON st.stop_id = rs.stop_id
+    WHERE r.route_code = '16' AND r.status = 'ACTIVE'
+    GROUP BY r.route_id, r.external_source
+),
 supported_route_status AS (
     SELECT
         'route_policy' AS section,
@@ -595,6 +625,8 @@ UNION ALL SELECT * FROM staff_status
 UNION ALL SELECT * FROM university_density
 UNION ALL SELECT * FROM student_status WHERE subject LIKE 'student.%@unibus.local' OR subject = 'khanhnv20a02@gmail.com'
 UNION ALL SELECT * FROM uniadmin_status
+UNION ALL SELECT * FROM dtu_demo_campus_status
+UNION ALL SELECT * FROM route_16_status
 UNION ALL SELECT * FROM supported_route_status
 UNION ALL SELECT * FROM subsidy_status
 UNION ALL SELECT * FROM full_price_route_status

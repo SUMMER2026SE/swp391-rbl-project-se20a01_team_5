@@ -102,6 +102,21 @@ class AiCopilotServiceTests {
     }
 
     @Test
+    void chatDoesNotPairTwoStopsFromTheSamePlaceMention() throws Exception {
+        var stopMentions = ChatbotService.class.getDeclaredMethod("stopMentions", String.class);
+        stopMentions.setAccessible(true);
+        var mentions = (java.util.List<?>) stopMentions.invoke(chatbotService, "Tôi đang ở Đại học FPT Đà Nẵng và muốn đến Đại học Duy Tân");
+        var compatiblePair = ChatbotService.class.getDeclaredMethod(
+                "firstRouteCompatiblePair", Integer.class, java.util.List.class, String.class, java.util.List.class, String.class);
+        compatiblePair.setAccessible(true);
+
+        Object pair = compatiblePair.invoke(chatbotService, 1, mentions, null, java.util.List.of("fast", "cheap"),
+                "Tôi đang ở Đại học FPT Đà Nẵng và muốn đến Đại học Duy Tân");
+
+        assertThat(pair).isNull();
+    }
+
+    @Test
     void chatUsesLlmResponseAndPersistsBothTurns() {
         ChatResponse response = chatbotService.respond(1, new ChatRequest(
                 "Sáng nay tôi muốn tới trường, hãy phân tích vì sao tuyến này tối ưu, rẻ và phù hợp nhất.",
@@ -316,7 +331,7 @@ class AiCopilotServiceTests {
         jdbcTemplate.update("INSERT INTO stops VALUES (30, 'S30', 'Trung tâm', 'ACTIVE')");
         jdbcTemplate.update("INSERT INTO stops VALUES (40, 'DN-ST-BKDN', 'Đại học Bách khoa Đà Nẵng', 'ACTIVE')");
         jdbcTemplate.update("INSERT INTO stops VALUES (41, 'DN-ST-FPT-GATE', 'Cổng khu đô thị FPT', 'ACTIVE')");
-        jdbcTemplate.update("INSERT INTO stops VALUES (42, 'DN-ST-FPT', 'Đại học FPT Đà Nẵng', 'ACTIVE')");
+        jdbcTemplate.update("INSERT INTO stops VALUES (42, 'DN-ST-FPT', 'Cơ sở FPT Đà Nẵng', 'ACTIVE')");
         jdbcTemplate.update("INSERT INTO route_stops VALUES (1, 100, 10, 1, 0)");
         jdbcTemplate.update("INSERT INTO route_stops VALUES (2, 100, 20, 2, 12)");
         jdbcTemplate.update("INSERT INTO route_stops VALUES (3, 200, 10, 1, 0)");
@@ -324,7 +339,8 @@ class AiCopilotServiceTests {
         jdbcTemplate.update("INSERT INTO route_stops VALUES (5, 300, 30, 1, 0)");
         jdbcTemplate.update("INSERT INTO route_stops VALUES (6, 300, 20, 2, 15)");
         jdbcTemplate.update("INSERT INTO route_stops VALUES (7, 400, 40, 1, 0)");
-        jdbcTemplate.update("INSERT INTO route_stops VALUES (8, 400, 42, 2, 58)");
+        jdbcTemplate.update("INSERT INTO route_stops VALUES (8, 400, 41, 2, 4)");
+        jdbcTemplate.update("INSERT INTO route_stops VALUES (9, 400, 42, 3, 54)");
         jdbcTemplate.update("INSERT INTO fares VALUES (1, 100, 'SINGLE', 7000, CURRENT_DATE - 1, NULL)");
         jdbcTemplate.update("INSERT INTO fares VALUES (2, 100, 'MONTHLY', 120000, CURRENT_DATE - 1, NULL)");
         jdbcTemplate.update("INSERT INTO fares VALUES (3, 200, 'MONTHLY', 150000, CURRENT_DATE - 1, NULL)");
