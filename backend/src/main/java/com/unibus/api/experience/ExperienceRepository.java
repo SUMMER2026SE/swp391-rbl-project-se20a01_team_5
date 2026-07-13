@@ -83,7 +83,10 @@ public class ExperienceRepository {
     public DriverDashboardView driverDashboard(Integer userId) {
         Integer driverId = driverIdForUser(userId).orElse(null);
         List<TripCard> trips = driverId == null ? List.of() : driverTrips(driverId, 12);
-        TripCard activeTrip = trips.stream().filter(t -> "RUNNING".equalsIgnoreCase(t.status())).findFirst().orElse(null);
+        TripCard activeTrip = trips.stream()
+                .filter(t -> "RUNNING".equalsIgnoreCase(t.status()) && t.departedAt() != null && t.endedAt() == null)
+                .findFirst()
+                .orElse(null);
         List<FeedbackCard> feedback = driverId == null ? List.of() : driverFeedback(driverId, 8);
         return new DriverDashboardView(
                 fullName(userId),
@@ -92,7 +95,9 @@ public class ExperienceRepository {
                 feedback,
                 List.of(
                         stat("Chuyến hôm nay", trips.size(), "chuyến", "primary"),
-                        stat("Đang chạy", trips.stream().filter(t -> "RUNNING".equalsIgnoreCase(t.status())).count(), "chuyến", "success"),
+                        stat("Đang chạy", trips.stream()
+                                .filter(t -> "RUNNING".equalsIgnoreCase(t.status()) && t.departedAt() != null && t.endedAt() == null)
+                                .count(), "chuyến", "success"),
                         stat("Phản hồi", feedback.size(), "mục", "tertiary")));
     }
 
@@ -778,7 +783,13 @@ public class ExperienceRepository {
     private List<TripCard> driverTrips(Integer driverId, int limit) {
         return jdbcTemplate.query(tripSelect("""
                 WHERE t.driver_id = ?
-                  AND t.service_date = CURRENT_DATE
+                  AND t.service_date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh')::date
+                  AND (
+                      t.status IN ('RUNNING', 'COMPLETED', 'CANCELLED')
+                      OR bs.departure_time IS NULL
+                      OR (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh')
+                          <= t.service_date + bs.departure_time + INTERVAL '60 minutes'
+                  )
                 ORDER BY t.service_date DESC, bs.departure_time NULLS LAST, t.trip_id DESC
                 LIMIT ?
                 """), (rs, rowNum) -> mapTrip(rs), driverId, limit);

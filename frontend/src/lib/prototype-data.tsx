@@ -520,7 +520,9 @@ export function useDriverPrototypeData() {
         createdAt: "",
       } as User,
       trips: (trips.raw || []).map((t: DriverTripView) => ({
-        id: String(t.tripId),
+        id: t.tripId != null
+          ? `trip:${t.tripId}`
+          : `schedule:${t.scheduleId ?? `${t.routeId}-${t.serviceDate || "date"}-${t.departureTime || "time"}`}`,
         routeId: String(t.routeId),
         routeName: t.routeName,
         busId: String(t.busId ?? 0),
@@ -529,7 +531,9 @@ export function useDriverPrototypeData() {
         date: t.serviceDate || "",
         departTime: t.departureTime || "",
         arriveTime: t.endedAt || "",
-        status: t.status === "RUNNING" ? "running" : t.status === "COMPLETED" ? "completed" : t.status === "CANCELLED" ? "cancelled" : "scheduled",
+        status: t.status === "RUNNING" && t.departedAt ? "running" : t.status === "COMPLETED" ? "completed" : t.status === "CANCELLED" ? "cancelled" : "scheduled",
+        departedAt: t.departedAt,
+        endedAt: t.endedAt,
         passengerCount: 0,
         revenue: 0,
         stops: t.stops,
@@ -626,7 +630,7 @@ export function useCoordinatorPrototypeData() {
     const scheduleData = schedule.raw;
     const assignedShifts = scheduleData?.shifts?.filter((shift) => shift.busId && shift.driverStaffId && shift.conductorStaffId) || [];
     const stats = scheduleData ? [
-      { label: "Xe live", value: liveFleet.filter((trip) => trip.status === "RUNNING").length, unit: "xe", tone: "success" },
+      { label: "Xe đang chạy", value: new Set(liveFleet.filter((trip) => trip.status === "RUNNING").map((trip) => trip.busId).filter(Boolean)).size, unit: "xe", tone: "success" },
       { label: "Ca hôm nay", value: scheduleData.shifts.length, unit: "ca", tone: "primary" },
       { label: "Đã phân công", value: assignedShifts.length, unit: "ca", tone: "secondary" },
       { label: "Feedback mở", value: (d.feedback || []).filter((item) => item.status !== "RESOLVED").length, unit: "mục", tone: "warning" },
@@ -649,6 +653,7 @@ export function useCoordinatorPrototypeData() {
         ...mapBus(v as any),
         tripId: String(v.tripId),
         routeId: String(v.routeId),
+        busId: v.busId,
         routeName: v.routeName,
         routeCode: "",
         licensePlate: v.licensePlate,
@@ -903,4 +908,3 @@ export function ErrorBlock({ message, onRetry }: { message: string; onRetry?: ()
 export function isApiError(err: unknown): err is ApiError {
   return err instanceof ApiError;
 }
-
