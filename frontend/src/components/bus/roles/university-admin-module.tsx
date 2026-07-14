@@ -1368,18 +1368,15 @@ function StudentsScreen({
   const [loadingDetailBatch, setLoadingDetailBatch] = useState(false);
   const [downloadingReportId, setDownloadingReportId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
   const fileRef = useRef<HTMLInputElement>(null);
   const importBatchesResource = useUniAdminImportBatches();
   const importBatches = importBatchesResource.raw || ctx.importBatches;
   const rosterResource = useUniAdminRoster({
     keyword: search || undefined,
-    status: statusFilter === "all" ? undefined : statusFilter,
     importBatchId,
   });
   const roster = rosterResource.raw || (importBatchId ? [] : ctx.roster);
   const filtered = roster.filter((r) => {
-    if (statusFilter !== "all" && r.status !== statusFilter) return false;
     if (search && !`${r.fullName} ${r.email} ${r.studentCode || ""}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
@@ -1763,13 +1760,6 @@ function StudentsScreen({
             <Filter className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant" />
             <Input className="pl-9" placeholder="Tìm theo tên, email, mã SV..." value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-full sm:w-40"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tất cả trạng thái</SelectItem>
-              <SelectItem value="ACTIVE">Đang học</SelectItem>
-            </SelectContent>
-          </Select>
         </div>
         {rosterResource.loading ? (
           <LoadingScreen label="Đang tải danh sách sinh viên..." />
