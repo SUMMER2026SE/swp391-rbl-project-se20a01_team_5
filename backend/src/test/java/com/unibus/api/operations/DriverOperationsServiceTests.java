@@ -101,7 +101,7 @@ class DriverOperationsServiceTests {
                 LocalDate.now(BUSINESS_ZONE),
                 LocalTime.now(BUSINESS_ZONE));
         when(operationsRepository.findDriverTrip(TRIP_ID, DRIVER_ID)).thenReturn(notStarted);
-        when(operationsRepository.hasOtherRunningTrip(DRIVER_ID, TRIP_ID)).thenReturn(true);
+        when(operationsRepository.hasOtherRunningTrip(DRIVER_ID, TRIP_ID, notStarted.serviceDate())).thenReturn(true);
 
         assertThatThrownBy(() -> operationsService.startTrip(driver, TRIP_ID))
                 .isInstanceOf(ApiException.class)

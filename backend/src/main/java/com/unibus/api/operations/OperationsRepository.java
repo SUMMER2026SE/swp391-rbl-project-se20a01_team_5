@@ -332,7 +332,7 @@ public class OperationsRepository {
         return Boolean.TRUE.equals(owns);
     }
 
-    public boolean hasOtherRunningTrip(Integer driverId, Integer tripId) {
+    public boolean hasOtherRunningTrip(Integer driverId, Integer tripId, LocalDate serviceDate) {
         Boolean exists = jdbcTemplate.queryForObject("""
                 SELECT EXISTS (
                     SELECT 1
@@ -340,8 +340,9 @@ public class OperationsRepository {
                     WHERE driver_id = ?
                       AND status = 'RUNNING'
                       AND trip_id <> ?
+                      AND service_date = ?
                 )
-                """, Boolean.class, driverId, tripId);
+                """, Boolean.class, driverId, tripId, serviceDate);
         return Boolean.TRUE.equals(exists);
     }
 
@@ -811,7 +812,7 @@ public class OperationsRepository {
                     ORDER BY updated_at DESC
                     LIMIT 1
                 ) vl ON TRUE
-                WHERE (t.service_date = ? OR t.status = 'RUNNING')
+                WHERE t.service_date = ?
                   AND t.status IN ('NOT_STARTED', 'RUNNING', 'COMPLETED')
                   AND (t.status <> 'RUNNING' OR du.status = 'ACTIVE')
                 ORDER BY
