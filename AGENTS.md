@@ -120,3 +120,293 @@ Fix lỗi Next.js 16 khi build trang `/student/payment/result` do page dùng
 ## Kiểm tra
 - `npm run lint` chạy qua, còn các warning hook dependency cũ ở module khác.
 - `npm run build` chạy qua.
+
+---
+
+# Changelog: Luồng mua vé sinh viên theo tuyến và hành trình
+
+## Tóm tắt
+Triển khai luồng mua vé cho sinh viên dựa trên kết quả `Tìm tuyến xe` đã pull từ nhánh
+DucHai. Sinh viên có thể mua vé cho một tuyến hoặc mua combo toàn bộ các tuyến trong
+một hành trình nhiều chặng.
+
+## Thay đổi gì
+- Màn `Tìm tuyến xe` phân loại hành trình theo số tuyến bus thực tế:
+  - 1 tuyến: hiển thị `Vé ngày tuyến này` và `Vé tháng tuyến này`.
+  - từ 2 tuyến trở lên: hiển thị `Combo vé ngày` và `Combo vé tháng`.
+- `Số chuyến tối đa` chỉ là giới hạn tìm đường, không tự biến vé thành combo.
+  - Nếu kết quả tìm được 1 tuyến thì vẫn là vé tuyến.
+  - Nếu kết quả tìm được nhiều tuyến thì là combo.
+- Khi sinh viên bấm mua vé từ hành trình:
+  - frontend lưu `payment context` vào `localStorage` key `unibus.studentPaymentContext.v1`;
+  - context gồm `mode`, `ticketPeriod`, `routeId` hoặc `legs`, điểm đi/đến, ngày sử dụng;
+  - với hành trình nhiều tuyến, `legs` chứa toàn bộ tuyến/chặng cần mua.
+- Màn `Mua vé` đổi nhãn chung từ `Mua vé tháng` thành `Mua vé`.
+- Màn `Mua vé` đọc payment context:
+  - `single-route`: hiển thị đơn một tuyến;
+  - `journey-combo`: hiển thị danh sách tuyến trong combo, giá từng tuyến, trợ giá từng tuyến, tổng tiền.
+- Dropdown `Chọn tuyến cần mua vé`:
+  - hiển thị tên tuyến ở dòng 1;
+  - hiển thị điểm đầu tuyến -> điểm cuối tuyến ở dòng 2;
+  - lọc trùng các registration cùng `routeId`;
+  - tránh lỗi lặp text và tràn kích cỡ ô select.
+- Route chưa có trợ giá từ trường vẫn được mua; chỉ hiển thị trợ giá `0đ`.
+
+## Backend
+- Thêm API quote SePay:
+  - `POST /api/v1/students/me/payments/sepay/quote`
+- Mở rộng API order SePay:
+  - `POST /api/v1/students/me/payments/sepay/order`
+  - nhận `mode: single-route | journey-combo`;
+  - nhận `ticketPeriod: day | month`;
+  - nhận `routeId` hoặc `legs`.
+- Với combo, backend quote từng tuyến độc lập:
+  - lấy fare theo tuyến và loại vé;
+  - gọi `SubsidyService.quoteFor(...)`;
+  - cộng `originalAmount`, `subsidyAmount`, `finalAmount`.
+- Không dùng một `monthlyPassQuote` chung cho nhiều tuyến.
+- Webhook SePay paid:
+  - vé tháng một tuyến: tạo `monthly_passes`;
+  - combo vé tháng: tạo monthly pass cho từng tuyến, tránh tạo trùng vé tháng active, rồi gom vào `journey_order`;
+  - vé ngày: tạo `single_trip_tickets` cho từng tuyến/chặng.
+- `SePayService` không còn bắt buộc phải có `route_registration APPROVED` khi order có đủ `legs`.
+  - Nếu có registration thì dùng để lấy tên tuyến/trạm.
+  - Nếu chưa có registration thì dùng `routeId`, `boardingStopId`, `alightingStopId` từ payment context.
+- `TransportService.requireValidSelection(...)` không chặn tuyến chưa liên kết trợ giá khi đăng ký tuyến.
+- `JourneyPlannerService.primaryAction(...)` không disable mua/đăng ký khi tuyến chưa có trợ giá; chỉ trả note.
+
+## Migration
+- Thêm file:
+  - `backend/src/main/resources/db/migration/V16__sepay_journey_combo_orders.sql`
+- Migration thêm metadata vào `tb_orders`:
+  - `order_mode`
+  - `ticket_period`
+  - `origin_label`
+  - `destination_label`
+  - `legs_json`
+  - `original_amount`
+  - `subsidy_amount`
+  - `final_amount`
+- Cập nhật order cũ:
+  - `ticket_type = single` -> `ticket_period = day`;
+  - còn lại -> `ticket_period = month`.
+
+## Trợ giá
+- Trợ giá áp dụng theo từng tuyến, không áp dụng một lần cho cả combo.
+- Tuyến có trợ giá của trường: giảm tiền tuyến đó.
+- Tuyến không có trợ giá: vẫn mua được, trợ giá `0đ`.
+- Tổng thanh toán combo = tổng `finalAmount` của từng tuyến.
+
+## Ví dụ nghiệp vụ
+Sinh viên ở gần một trạm gần trọ muốn đến Đại học FPT:
+
+```text
+Trạm gần trọ -> tuyến A -> trạm trung chuyển
+Trạm trung chuyển -> tuyến B -> Đại học FPT
+```
+
+Nếu không có tuyến thẳng, sinh viên mua:
+
+```text
+Combo vé ngày hoặc combo vé tháng
+1. Vé tuyến A
+2. Vé tuyến B
+```
+
+## Lưu ý khi test mua vé
+- Restart backend để code Java mới có hiệu lực.
+- Chạy migration `V16__sepay_journey_combo_orders.sql`.
+- Tìm hành trình 1 tuyến:
+  - nút hiển thị `Vé ngày tuyến này` / `Vé tháng tuyến này`;
+  - order chỉ có 1 item.
+- Tìm hành trình nhiều tuyến:
+  - nút hiển thị `Combo vé ngày` / `Combo vé tháng`;
+  - order có đủ các tuyến trong combo.
+- Tuyến chưa trợ giá vẫn tạo quote/order được, trợ giá hiển thị `0đ`.
+- Nếu đã có vé tháng active cho tuyến đó trong tháng, webhook không tạo vé tháng trùng.
+
+---
+
+# Changelog: Lịch sử chuyến đi, phản hồi và đồ thất lạc phía sinh viên
+
+## Tóm tắt
+Gộp luồng phản hồi và báo mất đồ vào từng card trong `Lịch sử chuyến đi`.
+Sinh viên thao tác từ một chuyến đã đi cụ thể thay vì chọn lại chuyến trong form.
+
+## Thay đổi gì
+- Màn `Lịch sử chuyến đi` bỏ tab riêng:
+  - `Phản hồi`
+  - `Mất đồ`
+- Trong mỗi card chuyến đã đi có sẵn 2 action:
+  - `Đánh giá`
+  - `Mất đồ`
+- Khi bấm `Đánh giá`:
+  - lưu trip id vào `localStorage` key `unibus.supportTripId`;
+  - lưu route id vào `unibus.supportRouteId` nếu có;
+  - điều hướng sang màn `stu-feedback`.
+- Khi bấm `Mất đồ`:
+  - lưu trip id vào `localStorage` key `unibus.lostTripId`;
+  - điều hướng sang màn `stu-lost`.
+- Màn `Phản hồi` bỏ field:
+  - `Chuyến đi cần hỗ trợ`
+  - `Tuyến (tùy chọn)`
+- Màn `Đồ thất lạc` bỏ field:
+  - `Chuyến đi (tùy chọn)`
+- Hai form lấy trip/route ngầm từ card chuyến đã đi vừa bấm.
+- Thêm nút `Quay lại lịch sử` ở màn `Phản hồi` và `Đồ thất lạc`.
+- Nếu chưa có lịch sử thật, frontend hiển thị 1 chuyến giả định để test UI.
+- Nếu trip id bắt đầu bằng `mock-`, không gửi id giả lên backend.
+
+## Lưu ý khi test lịch sử
+- Vào `Lịch sử chuyến đi`.
+- Nếu chưa có dữ liệu thật, phải thấy thông báo đang hiển thị chuyến giả định.
+- Trên card chuyến có nút `Đánh giá` và `Mất đồ`.
+- Bấm `Đánh giá`:
+  - form không còn dropdown chọn chuyến/tuyến;
+  - có nút quay lại lịch sử.
+- Bấm `Mất đồ`:
+  - form không còn dropdown chọn chuyến;
+  - có nút quay lại lịch sử.
+
+---
+
+# Changelog: Fix lỗi UI/runtime sau khi cập nhật tìm tuyến và mua vé
+
+## Tóm tắt
+Sửa các lỗi phát sinh khi thao tác trên màn tìm tuyến/mua vé.
+
+## Thay đổi gì
+- Fix Next dev overlay issue tại `journey-planner-desktop.tsx` khi `journeys` có item thiếu dữ liệu:
+  - thêm `safeJourneys`;
+  - chỉ render item có `optionId` và `legs`;
+  - key render thêm fallback index.
+- Fix dropdown chọn tuyến bị lặp text:
+  - không dùng `SelectValue` auto render full child text;
+  - custom trigger 2 dòng;
+  - item dropdown truncate đúng kích cỡ.
+- Fix dropdown có nhiều registration trùng tuyến:
+  - lọc unique theo `routeId`.
+- Fix endpoint bị lặp kiểu `Cao đẳng Việt Hàn -> Cao đẳng Việt Hàn`:
+  - fallback tách điểm đầu/cuối từ tên tuyến nếu from/to bị trùng.
+
+## Kiểm tra
+- `npm run lint` chạy qua, còn các warning hook dependency cũ ở module khác.
+- `npm run build` đã chạy qua trong các lượt kiểm tra frontend trước đó.
+- `git diff --check` chạy qua, chỉ có warning CRLF trên Windows.
+
+---
+
+# Changelog: Hoàn thiện flow tìm tuyến liên tuyến và mua vé combo phía sinh viên
+
+## Tóm tắt
+Sửa các lỗi chính trong flow sinh viên từ `Tìm đường` sang `Mua vé`, đặc biệt với hành trình nối tuyến.
+Sinh viên chọn một hành trình nào thì màn mua vé chỉ xử lý đúng hành trình đó, không cho chọn lẫn các tuyến khác.
+
+## Thay đổi gì
+- Màn `Mua vé` khóa lựa chọn tuyến khi đi từ `Tìm đường`:
+  - nếu có `paymentContext.legs`, không hiển thị dropdown tất cả tuyến đã đăng ký;
+  - quote/order dùng đúng route hoặc combo vừa chọn từ bản đồ.
+- Màn `Tìm đường` hỗ trợ hiển thị phương án nối tuyến rõ hơn:
+  - tăng số kết quả hành trình từ 2 lên 4;
+  - không lọc mất hành trình có trung chuyển khi đã chọn `2 tuyến` trở lên;
+  - backend ưu tiên trả thêm phương án `tuyến gần vị trí hiện tại -> trạm trung chuyển -> tuyến đến đích`.
+- Dedupe kết quả hành trình trùng tuyến:
+  - nếu nhiều card cùng chuỗi tuyến như `16 -> 08`, chỉ giữ phương án tốt nhất;
+  - tránh sinh viên thấy 2 card gần như giống nhau nhưng chỉ khác thời gian chờ.
+- Combo vé tháng xử lý tuyến đã có vé:
+  - nếu sinh viên đã có vé tháng active cho một route trong combo, route đó hiển thị `0đ`;
+  - không tạo vé tháng trùng trong webhook;
+  - vẫn tính tiền các route còn thiếu vé.
+- Fix tạo QR SePay cho combo:
+  - lỗi cũ: `tb_orders.route_id` null làm DB reject;
+  - code dùng route đầu tiên làm route đại diện khi cần;
+  - migration `V16` cho phép `tb_orders.route_id` nullable vì chi tiết combo đã nằm trong `legs_json`.
+
+## File thay đổi chính
+- `frontend/src/components/bus/roles/student-module.tsx`
+- `frontend/src/components/bus/student/journey-planner-desktop.tsx`
+- `frontend/src/lib/api/client.ts`
+- `backend/src/main/java/com/unibus/api/transport/JourneyPlannerService.java`
+- `backend/src/main/java/com/unibus/api/transport/TransportService.java`
+- `backend/src/main/java/com/unibus/api/ticketing/SePayController.java`
+- `backend/src/main/java/com/unibus/api/ticketing/SePayService.java`
+- `backend/src/main/resources/db/migration/V16__sepay_journey_combo_orders.sql`
+
+## Lưu ý khi test
+- Restart backend sau khi pull code để class Java mới có hiệu lực.
+- Chạy migration `V16` hoặc đảm bảo `tb_orders.route_id` cho phép null.
+- Từ `Tìm đường`, chọn `2 tuyến`, tìm hành trình có trung chuyển.
+- Bấm `Xem chi tiết` rồi mua vé:
+  - màn mua vé không được hiện dropdown chọn tất cả tuyến;
+  - chỉ hiển thị đúng route/combo vừa chọn.
+- Nếu combo có route đã mua vé tháng, route đó phải hiện `0đ`.
+- Bấm tạo QR combo không còn lỗi `tb_orders.route_id violates not-null constraint`.
+
+---
+
+# Changelog: Fix chọn tuyến mua vé mới và tải lại phản hồi/mất đồ phía sinh viên
+
+## Tóm tắt
+Hoàn thiện các lỗi còn lại sau flow mua vé theo tuyến/hành trình. Khi sinh viên đăng ký
+tuyến mới từ màn tra cứu tuyến, màn `Mua vé` phải nhận đúng tuyến vừa đăng ký thay vì
+giữ context tuyến cũ. Đồng thời danh sách phản hồi và báo mất đồ của sinh viên được tải
+từ API thật để sau khi gửi có thể thấy lại trên UI.
+
+## So với changelog mua vé trước đó, phần mới thêm
+- Changelog trước đã bao gồm logic lớn:
+  - tìm tuyến liên tuyến;
+  - mua vé 1 tuyến/combo;
+  - quote/order SePay;
+  - xử lý trợ giá và vé tháng đã có;
+  - fix QR combo và migration `V16`.
+- Lần cập nhật này chỉ bổ sung phần sau:
+  - sửa context khi đăng ký tuyến mới từ route lookup rồi chuyển sang `Mua vé`;
+  - sửa trường hợp đăng ký trả `409` nhưng vẫn cần chuyển sang mua đúng tuyến đó;
+  - sửa danh sách phản hồi/mất đồ để đọc API thật và reload sau khi gửi.
+
+## Thay đổi gì
+- Màn `Tìm tuyến xe` / `route lookup` thêm helper lưu payment context cho tuyến vừa đăng ký:
+  - cập nhật `unibus.paymentRouteId`;
+  - ghi `unibus.studentPaymentContext.v1` với `mode: single-route`;
+  - ghi đầy đủ `routeId`, `boardingStopId`, `alightingStopId`, điểm đi/đến, `serviceDate`, `legs`;
+  - vẫn ghi `unibus.lastRegisteredRouteContext.v1` để các luồng cũ dùng được.
+- Khi đăng ký tuyến thành công:
+  - lưu context tuyến mới trước;
+  - reload dữ liệu sinh viên;
+  - điều hướng sang `stu-payment`.
+- Khi API đăng ký trả `409` do tuyến đã đăng ký:
+  - vẫn cập nhật context tuyến mới;
+  - điều hướng sang `stu-payment`;
+  - tránh màn mua vé tiếp tục hiện tuyến đăng ký trước đó.
+- `useStudentPrototypeData()` không còn hardcode:
+  - `feedback: []`;
+  - `lostItems: []`.
+- Frontend gọi API thật:
+  - `feedbackApi.mine()`;
+  - `experienceApi.studentLostItems()`.
+- Mapping dữ liệu:
+  - phản hồi dùng `mapFeedback`;
+  - báo mất đồ dùng `mapLostItem`.
+- Hàm reload dữ liệu sinh viên gọi thêm:
+  - `feedback.reload()`;
+  - `lostItems.reload()`.
+
+## Phạm vi cố ý không đưa vào PR này
+- Không đưa phần `LiveArrival` / `live-arrivals`.
+- Không đưa UI tracking từ nhánh TruongPhuc.
+- Không thêm menu/card tracking mới.
+- Không đưa các chỉnh sửa icon/map xe của tracking.
+
+## File thay đổi
+- `frontend/src/components/bus/student/journey-planner-desktop.tsx`
+- `frontend/src/lib/prototype-data.tsx`
+
+## Lưu ý khi test
+- Vào `Tìm tuyến xe`.
+- Chọn một tuyến khác tuyến đã từng đăng ký/mua trước đó.
+- Bấm đăng ký tuyến.
+- Sang `Mua vé` phải thấy đúng tuyến vừa chọn, không còn giữ tuyến cũ.
+- Gửi phản hồi chuyến đi, quay lại danh sách phải thấy phản hồi vừa gửi.
+- Gửi báo mất đồ, quay lại danh sách phải thấy báo mất đồ vừa gửi.
+- `npm run lint` chạy qua, còn 3 warning cũ.
+- `npm run build` chạy qua.

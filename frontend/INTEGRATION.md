@@ -51,7 +51,7 @@ Useful seeded role accounts:
 - `conductor.iter1@unibus.local`
 - `dispatcher.iter1@unibus.local`
 - `admin.verify@unibus.local`
-- `uni.admin@unibus.local`
+- `uniadmin.demo@unibus.local`
 
 ## Backend Display Fields
 

@@ -1,6 +1,7 @@
 package com.unibus.api.ticketing;
 
 import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -8,8 +9,6 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
-import java.util.Map;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -54,7 +53,7 @@ class SePayControllerTests {
 
     @Test
     void webhookAcceptsConfiguredApiKey() throws Exception {
-        when(sePayService.processWebhook(anyMap())).thenReturn(Map.of("processed", true));
+        doNothing().when(sePayService).processWebhook(anyMap());
 
         mockMvc.perform(post("/api/v1/payments/sepay/webhook")
                         .header("Authorization", "Apikey test-webhook-key")

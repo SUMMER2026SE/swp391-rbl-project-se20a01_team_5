@@ -23,9 +23,9 @@ public class SubsidyService {
     public static final String STATUS_NOT_VERIFIED = "NOT_VERIFIED";
     public static final String STATUS_NO_UNIVERSITY = "NO_UNIVERSITY";
     public static final String STATUS_ROUTE_NOT_LINKED = "ROUTE_NOT_LINKED";
+    public static final String STATUS_ROUTE_SUBSIDY_DISABLED = "ROUTE_SUBSIDY_DISABLED";
     public static final String STATUS_NO_ACTIVE_POLICY = "NO_ACTIVE_POLICY";
     public static final String STATUS_NOT_CONFIGURED = "NOT_CONFIGURED";
-
     private static final BigDecimal ONE_HUNDRED = BigDecimal.valueOf(100);
 
     private final UniversitySubsidyRepository repository;
@@ -51,6 +51,9 @@ public class SubsidyService {
         }
         if (!repository.isRouteLinked(student.universityId(), routeId, serviceDate)) {
             return noSubsidy(routeId, routeName, normalizedBase, STATUS_ROUTE_NOT_LINKED);
+        }
+        if (!repository.isRouteSubsidyEnabled(student.universityId(), routeId, serviceDate)) {
+            return noSubsidy(routeId, routeName, normalizedBase, STATUS_ROUTE_SUBSIDY_DISABLED);
         }
         return repository.findActivePolicy(student.universityId(), serviceDate)
                 .map(policy -> applied(routeId, routeName, normalizedBase, policy))
@@ -114,13 +117,29 @@ public class SubsidyService {
     }
 
     private BigDecimal calculateSubsidy(BigDecimal baseAmount, SubsidyPolicy policy) {
-        BigDecimal calculated = "PERCENTAGE".equals(policy.subsidyType())
-                ? baseAmount.multiply(policy.value()).divide(ONE_HUNDRED, 0, RoundingMode.HALF_UP)
-                : money(policy.value());
-        if (policy.maxAmount() != null) {
-            calculated = calculated.min(money(policy.maxAmount()));
+        BigDecimal calculated;
+        if (isPercentagePolicy(policy)) {
+            calculated = baseAmount.multiply(policy.value()).divide(ONE_HUNDRED, 0, RoundingMode.HALF_UP);
+            if (policy.maxAmount() != null) {
+                calculated = calculated.min(money(policy.maxAmount()));
+            }
+        } else if ("FIXED_AMOUNT".equals(policy.subsidyType())) {
+            calculated = money(policy.value());
+        } else {
+            calculated = BigDecimal.ZERO;
         }
         return money(calculated.min(baseAmount).max(BigDecimal.ZERO));
+    }
+
+    private boolean isPercentagePolicy(SubsidyPolicy policy) {
+        if ("PERCENTAGE".equals(policy.subsidyType())) {
+            return true;
+        }
+        BigDecimal value = policy.value();
+        return "FIXED_AMOUNT".equals(policy.subsidyType())
+                && value != null
+                && value.signum() > 0
+                && value.compareTo(ONE_HUNDRED) <= 0;
     }
 
     private BigDecimal money(BigDecimal value) {

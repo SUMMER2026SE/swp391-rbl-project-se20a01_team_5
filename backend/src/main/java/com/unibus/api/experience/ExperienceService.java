@@ -219,6 +219,11 @@ public class ExperienceService {
         return repository.violations(status, 50);
     }
 
+    @Transactional(readOnly = true)
+    public List<ViolationTargetView> violationTargets(String keyword) {
+        return repository.violationTargets(keyword, 80);
+    }
+
     @Transactional
     public Long submitViolation(CurrentUser currentUser, CreateViolationRequest request) {
         return repository.createViolation(currentUser.userId(), request.reportedUserId(),
@@ -227,11 +232,10 @@ public class ExperienceService {
 
     @Transactional
     public boolean reviewViolation(CurrentUser currentUser, Integer violationId, ReviewViolationRequest request) {
-        if (!"ACKNOWLEDGED".equalsIgnoreCase(request.status()) && !"WARNED".equalsIgnoreCase(request.status())
-                && !"LOCKED".equalsIgnoreCase(request.status())
-                && !"DISMISSED".equalsIgnoreCase(request.status())) {
+        if (!"OPEN".equalsIgnoreCase(request.status()) && !"IN_PROGRESS".equalsIgnoreCase(request.status())
+                && !"RESOLVED".equalsIgnoreCase(request.status())) {
             throw new ApiException(HttpStatus.BAD_REQUEST,
-                    "Status must be one of: ACKNOWLEDGED, WARNED, LOCKED, DISMISSED");
+                    "Status must be one of: OPEN, IN_PROGRESS, RESOLVED");
         }
         boolean ok = repository.reviewViolation(violationId, currentUser.userId(),
                 request.status().toUpperCase(), request.actionTaken());

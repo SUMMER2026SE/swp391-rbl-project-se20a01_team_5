@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -42,6 +43,7 @@ public class StudentVerificationService {
     private final SubsidyService subsidyService;
     private final StudentCardOcrService studentCardOcrService;
     private final FileStorageService fileStorageService;
+    private final JdbcTemplate jdbcTemplate;
 
     public StudentVerificationService(
             StudentVerificationRepository verificationRepository,
@@ -50,7 +52,8 @@ public class StudentVerificationService {
             UniversityCatalog universityCatalog,
             SubsidyService subsidyService,
             StudentCardOcrService studentCardOcrService,
-            FileStorageService fileStorageService) {
+            FileStorageService fileStorageService,
+            JdbcTemplate jdbcTemplate) {
         this.verificationRepository = verificationRepository;
         this.userRepository = userRepository;
         this.studentRepository = studentRepository;
@@ -58,6 +61,7 @@ public class StudentVerificationService {
         this.subsidyService = subsidyService;
         this.studentCardOcrService = studentCardOcrService;
         this.fileStorageService = fileStorageService;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @Transactional(readOnly = true)
@@ -164,7 +168,10 @@ public class StudentVerificationService {
         user.setStudentVerificationStatus(StudentVerificationStatus.VERIFIED);
         user.setUpdatedAt(timestamp);
         userRepository.save(user);
-        return toView(verificationRepository.save(verification));
+        VerificationView view = toView(verificationRepository.save(verification));
+        audit(admin.userId(), student.getUniversityId(), "STUDENT_VERIFICATION_APPROVE", "student_verifications",
+                verification.getId(), "SUCCESS", user.getFullName());
+        return view;
     }
 
     @Transactional
@@ -217,7 +224,20 @@ public class StudentVerificationService {
         verification.getUser().setStudentVerificationStatus(status);
         verification.getUser().setUpdatedAt(timestamp);
         userRepository.save(verification.getUser());
-        return toView(verificationRepository.save(verification));
+        VerificationView view = toView(verificationRepository.save(verification));
+        audit(admin.userId(), verification.getUniversityId(), "STUDENT_VERIFICATION_" + status.name(),
+                "student_verifications", verification.getId(), "SUCCESS", verification.getUser().getFullName());
+        return view;
+    }
+
+    private void audit(Integer performedByUserId, Integer universityId, String action, String affectedTable,
+            Long affectedRecordId, String result, String notes) {
+        jdbcTemplate.update("""
+                INSERT INTO audit_logs(performed_by_user_id, university_id, action, affected_table,
+                                       affected_record_id, result, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, performedByUserId, universityId, action, affectedTable,
+                affectedRecordId == null ? null : String.valueOf(affectedRecordId), result, notes);
     }
 
     private void requireStudentCodeAvailable(User user, String studentCode) {

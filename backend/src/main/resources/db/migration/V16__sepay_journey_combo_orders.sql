@@ -8,6 +8,9 @@ ALTER TABLE tb_orders
     ADD COLUMN IF NOT EXISTS subsidy_amount NUMERIC(12, 0) DEFAULT 0 NOT NULL,
     ADD COLUMN IF NOT EXISTS final_amount NUMERIC(12, 0) DEFAULT 0 NOT NULL;
 
+ALTER TABLE tb_orders
+    ALTER COLUMN route_id DROP NOT NULL;
+
 UPDATE tb_orders
 SET final_amount = total
 WHERE final_amount = 0 AND total > 0;

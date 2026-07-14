@@ -377,6 +377,8 @@ export function useStudentPrototypeData() {
   // Passes (tickets+payments) — needed for PaymentScreen + InvoicesScreen
   // Dashboard doesn't return full payments list, so we need this
   const passes = useApi(() => studentApi.tickets(), undefined, [], "student-passes");
+  const feedback = useApi(() => feedbackApi.mine(), undefined, [], "student-feedback");
+  const lostItems = useApi(() => experienceApi.studentLostItems(), undefined, [], "student-lost-items");
 
   const mapped = (() => {
     if (!dashboard.raw) return null;
@@ -419,8 +421,8 @@ export function useStudentPrototypeData() {
       invoices: (passes.raw?.payments || []).map((p: any) => mapInvoice(p as PaymentTransactionView)),
       // Use dashboard's notifications/history (already aggregated) — no separate API needed
       notifications: (d.notifications || []).map(mapNotification),
-      feedback: [],
-      lostItems: [],
+      feedback: (feedback.raw || []).map(mapFeedback),
+      lostItems: (lostItems.raw || []).map(mapLostItem),
       tripsHistory: (d.history || []).map((h: any) => ({
         id: String(h.travelHistoryId),
         tripId: h.tripId,
@@ -454,8 +456,8 @@ export function useStudentPrototypeData() {
       dashboard,
       passes,
       history: { raw: null } as any,
-      feedbackRaw: { raw: null } as any,
-      lostItemsRaw: { raw: null } as any,
+      feedbackRaw: feedback,
+      lostItemsRaw: lostItems,
       notificationsRaw: { raw: null } as any,
       profileRaw: profile,
       registrationRaw: { raw: d.registration } as any,
@@ -473,6 +475,8 @@ export function useStudentPrototypeData() {
       dashboard.reload();
       profile.reload();
       passes.reload();
+      feedback.reload();
+      lostItems.reload();
     },
   };
 }
@@ -773,6 +777,12 @@ export function useAdminNotifications() {
 export function useAdminPayments(params?: { universityId?: number }) {
   return useApi(() => adminApi.paymentTransactions(params), undefined, [params?.universityId]);
 }
+export function useAdminComplaints(status?: string) {
+  return useApi(() => experienceApi.complaints(status), undefined, [status]);
+}
+export function useAdminViolations(status?: string) {
+  return useApi(() => experienceApi.violations(status), undefined, [status]);
+}
 export function useAdminRouteUnis(universityId?: number) {
   return useApi(() => adminApi.routeUniversities(universityId), undefined, [universityId]);
 }
@@ -860,8 +870,8 @@ export function useUniAdminCampuses() {
 export function useUniAdminDomains() {
   return useApi(() => universityApi.domains(), undefined, []);
 }
-export function useUniAdminRoster(params?: { keyword?: string; status?: string }) {
-  return useApi(() => universityApi.roster(params), undefined, [params?.keyword, params?.status]);
+export function useUniAdminRoster(params?: { keyword?: string; status?: string; importBatchId?: number }) {
+  return useApi(() => universityApi.roster(params), undefined, [params?.keyword, params?.status, params?.importBatchId]);
 }
 export function useUniAdminImportBatches() {
   return useApi(() => universityApi.importBatches(), undefined, []);

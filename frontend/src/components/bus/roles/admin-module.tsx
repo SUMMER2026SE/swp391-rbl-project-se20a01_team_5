@@ -23,7 +23,6 @@ import {
   ShieldAlert,
   AlertOctagon,
   Tag,
-  Megaphone,
   TrendingUp,
   TrendingDown,
   RefreshCw,
@@ -125,7 +124,7 @@ import {
   Counter,
   PageTransition,
 } from "@/components/m3/motion";
-import { PageHeader, StatCard, Section, EmptyState } from "../primitives";
+import { PageHeader, StatCard, EmptyState } from "../primitives";
 
 import {
   useAdminPrototypeData,
@@ -145,7 +144,6 @@ import {
   isUnpaidStatus,
   experienceApi,
   coordinatorRoutesApi,
-  notificationApi,
   type AdminUserView,
   type UniversityView,
   type UniversityAdminView,
@@ -396,8 +394,6 @@ export function AdminModule({ activeId, onNavigate }: AdminModuleProps) {
       return <RouteUniScreen ctx={ctx} />;
     case "adm-audit":
       return <AuditScreen ctx={ctx} />;
-    case "adm-notify":
-      return <NotifyScreen ctx={ctx} />;
     case "adm-users":
       return <UsersScreen ctx={ctx} />;
     case "adm-complaints":
@@ -464,50 +460,210 @@ function ErrorScreen({ message, onRetry }: { message: string; onRetry?: () => vo
   );
 }
 
+type AccountTab = "users" | "uni-admins";
+
+const accountTabs: Array<{ id: AccountTab; label: string; icon: typeof Users }> = [
+  { id: "users", label: "Tất cả tài khoản", icon: Users },
+  { id: "uni-admins", label: "Admin trường", icon: UserCog },
+];
+
 function AccountsScreen({ ctx }: { ctx: Ctx }) {
+  const [activeTab, setActiveTab] = useState<AccountTab>("users");
+  const users = useAdminUsers();
+  const uniAdmins = useAdminUniAdmins();
+  const tabCounts: Record<AccountTab, number> = {
+    users: users.raw?.length ?? ctx.users.length,
+    "uni-admins": uniAdmins.raw?.length ?? ctx.uniAdmins.length,
+  };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const tab = new URLSearchParams(window.location.search).get("accountTab");
+    if (tab === "users" || tab === "uni-admins") {
+      setActiveTab(tab);
+    }
+  }, []);
+
+  const selectTab = (tab: AccountTab) => {
+    setActiveTab(tab);
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("accountTab", tab);
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  };
+
+  const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+    event.preventDefault();
+    const direction = event.key === "ArrowRight" ? 1 : -1;
+    const nextIndex = (index + direction + accountTabs.length) % accountTabs.length;
+    const nextTab = accountTabs[nextIndex].id;
+    selectTab(nextTab);
+    window.setTimeout(() => document.getElementById(`admin-account-tab-${nextTab}`)?.focus(), 0);
+  };
+
   return (
     <PageTransition className="space-y-6 min-w-0">
-      <PageHeader
-        title="Tài khoản & phân quyền"
-        description="Quản lý tài khoản người dùng và Admin trường."
-        icon={<Users className="size-7" />}
-      />
-      <Tabs defaultValue="users" className="min-w-0">
-        <TabsList className="w-full justify-start overflow-x-auto rounded-2xl bg-surface-container-high p-1 scrollbar-soft">
-          <TabsTrigger value="users">Tài khoản</TabsTrigger>
-          <TabsTrigger value="uni-admins">Admin trường</TabsTrigger>
-        </TabsList>
-        <TabsContent value="users" className="mt-4">
+      <div role="tablist" aria-label="Tài khoản và admin trường" className="flex flex-wrap items-center justify-start gap-2">
+        {accountTabs.map((tab, index) => {
+          const Icon = tab.icon;
+          const active = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              id={`admin-account-tab-${tab.id}`}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              aria-controls={`admin-account-panel-${tab.id}`}
+              tabIndex={active ? 0 : -1}
+              onClick={() => selectTab(tab.id)}
+              onKeyDown={(event) => handleTabKeyDown(event, index)}
+              className={cn(
+                "group inline-flex h-12 items-center gap-2 rounded-[14px] border px-4 text-sm font-bold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#beff50] focus-visible:ring-offset-2",
+                active
+                  ? "border-[#14140f] bg-[#14140f] text-[#beff50] shadow-sm"
+                  : "border-outline-variant/60 bg-white text-on-surface hover:border-[#14140f]/25 hover:bg-surface-container-low"
+              )}
+            >
+              <Icon className={cn("size-4", active ? "text-[#beff50]" : "text-on-surface-variant group-hover:text-on-surface")} />
+              <span>{tab.label}</span>
+              <span
+                className={cn(
+                  "ml-1 inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-xs font-black",
+                  active ? "bg-[#beff50] text-[#14140f]" : "bg-surface-container-high text-on-surface"
+                )}
+              >
+                {tabCounts[tab.id]}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {activeTab === "users" ? (
+        <div
+          id="admin-account-panel-users"
+          role="tabpanel"
+          aria-labelledby="admin-account-tab-users"
+          className="min-w-0"
+        >
           <UsersScreen ctx={ctx} />
-        </TabsContent>
-        <TabsContent value="uni-admins" className="mt-4">
+        </div>
+      ) : (
+        <div
+          id="admin-account-panel-uni-admins"
+          role="tabpanel"
+          aria-labelledby="admin-account-tab-uni-admins"
+          className="min-w-0"
+        >
           <UniAdminsScreen ctx={ctx} />
-        </TabsContent>
-      </Tabs>
+        </div>
+      )}
     </PageTransition>
   );
 }
 
+type SchoolTab = "universities" | "routes";
+
+const schoolTabs: Array<{ id: SchoolTab; label: string; icon: typeof School }> = [
+  { id: "universities", label: "Danh sách trường", icon: School },
+  { id: "routes", label: "Tuyến được gán", icon: RouteIcon },
+];
+
 function SchoolsScreen({ ctx }: { ctx: Ctx }) {
+  const [activeTab, setActiveTab] = useState<SchoolTab>("universities");
+  const universities = useAdminUniversities();
+  const routeUnis = useAdminRouteUnis();
+  const tabCounts: Record<SchoolTab, number> = {
+    universities: universities.raw?.length ?? ctx.universities.length,
+    routes: routeUnis.raw?.length ?? ctx.routeUnis.length,
+  };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const tab = new URLSearchParams(window.location.search).get("schoolTab");
+    if (tab === "universities" || tab === "routes") {
+      setActiveTab(tab);
+    }
+  }, []);
+
+  const selectTab = (tab: SchoolTab) => {
+    setActiveTab(tab);
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("schoolTab", tab);
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  };
+
+  const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+    event.preventDefault();
+    const direction = event.key === "ArrowRight" ? 1 : -1;
+    const nextIndex = (index + direction + schoolTabs.length) % schoolTabs.length;
+    const nextTab = schoolTabs[nextIndex].id;
+    selectTab(nextTab);
+    window.setTimeout(() => document.getElementById(`admin-school-tab-${nextTab}`)?.focus(), 0);
+  };
+
   return (
     <PageTransition className="space-y-6 min-w-0">
-      <PageHeader
-        title="Trường đối tác"
-        description="Quản lý trường, campus, domain và tuyến được gán."
-        icon={<School className="size-7" />}
-      />
-      <Tabs defaultValue="universities" className="min-w-0">
-        <TabsList className="w-full justify-start overflow-x-auto rounded-2xl bg-surface-container-high p-1 scrollbar-soft">
-          <TabsTrigger value="universities">Danh sách trường</TabsTrigger>
-          <TabsTrigger value="routes">Tuyến được gán</TabsTrigger>
-        </TabsList>
-        <TabsContent value="universities" className="mt-4">
+      <div role="tablist" aria-label="Trường đối tác" className="flex flex-wrap items-center justify-start gap-2">
+        {schoolTabs.map((tab, index) => {
+          const Icon = tab.icon;
+          const active = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              id={`admin-school-tab-${tab.id}`}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              aria-controls={`admin-school-panel-${tab.id}`}
+              tabIndex={active ? 0 : -1}
+              onClick={() => selectTab(tab.id)}
+              onKeyDown={(event) => handleTabKeyDown(event, index)}
+              className={cn(
+                "group inline-flex h-12 items-center gap-2 rounded-[14px] border px-4 text-sm font-bold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#beff50] focus-visible:ring-offset-2",
+                active
+                  ? "border-[#14140f] bg-[#14140f] text-[#beff50] shadow-sm"
+                  : "border-outline-variant/60 bg-white text-on-surface hover:border-[#14140f]/25 hover:bg-surface-container-low"
+              )}
+            >
+              <Icon className={cn("size-4", active ? "text-[#beff50]" : "text-on-surface-variant group-hover:text-on-surface")} />
+              <span>{tab.label}</span>
+              <span
+                className={cn(
+                  "ml-1 inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-xs font-black",
+                  active ? "bg-[#beff50] text-[#14140f]" : "bg-surface-container-high text-on-surface"
+                )}
+              >
+                {tabCounts[tab.id]}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {activeTab === "universities" ? (
+        <div
+          id="admin-school-panel-universities"
+          role="tabpanel"
+          aria-labelledby="admin-school-tab-universities"
+          className="min-w-0"
+        >
           <UniversitiesScreen ctx={ctx} />
-        </TabsContent>
-        <TabsContent value="routes" className="mt-4">
+        </div>
+      ) : (
+        <div
+          id="admin-school-panel-routes"
+          role="tabpanel"
+          aria-labelledby="admin-school-tab-routes"
+          className="min-w-0"
+        >
           <RouteUniScreen ctx={ctx} />
-        </TabsContent>
-      </Tabs>
+        </div>
+      )}
     </PageTransition>
   );
 }
@@ -515,23 +671,14 @@ function SchoolsScreen({ ctx }: { ctx: Ctx }) {
 function RiskScreen({ ctx }: { ctx: Ctx }) {
   return (
     <PageTransition className="space-y-6 min-w-0">
-      <PageHeader
-        title="Khiếu nại & vi phạm"
-        description="Theo dõi các vấn đề cần Admin rà soát."
-        icon={<ShieldAlert className="size-7" />}
-      />
-      <Tabs defaultValue="complaints" className="min-w-0">
-        <TabsList className="w-full justify-start overflow-x-auto rounded-2xl bg-surface-container-high p-1 scrollbar-soft">
-          <TabsTrigger value="complaints">Khiếu nại</TabsTrigger>
-          <TabsTrigger value="violations">Vi phạm</TabsTrigger>
-        </TabsList>
-        <TabsContent value="complaints" className="mt-4">
-          <ComplaintsScreen ctx={ctx} />
-        </TabsContent>
-        <TabsContent value="violations" className="mt-4">
-          <ViolationsScreen ctx={ctx} />
-        </TabsContent>
-      </Tabs>
+      <div
+        id="admin-risk-panel-violations"
+        role="tabpanel"
+        aria-labelledby="admin-risk-tab-violations"
+        className="min-w-0"
+      >
+        <ViolationsScreen ctx={ctx} />
+      </div>
     </PageTransition>
   );
 }
@@ -992,37 +1139,60 @@ function UniversitiesScreen({ ctx }: { ctx: Ctx }) {
   const rows = universities.raw || [];
   return (
     <PageTransition className="space-y-6 min-w-0">
-      <PageHeader
-        title="Trường đại học"
-        description={`${rows.length} trường trong hệ thống`}
-        icon={<School className="size-7" />}
-        actions={<ExpressiveButton variant="filled" onClick={() => setAdding(true)}><Plus className="size-4" /> Thêm trường</ExpressiveButton>}
-      />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="flex size-12 shrink-0 items-center justify-center rounded-[14px] bg-[#14140f] text-[#beff50]">
+            <School className="size-6" />
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-2xl sm:text-3xl font-black leading-tight text-on-surface">Trường đại học</h2>
+            <p className="mt-1 text-sm text-on-surface-variant">{rows.length} trường trong hệ thống</p>
+          </div>
+        </div>
+        <ExpressiveButton variant="filled" onClick={() => setAdding(true)}><Plus className="size-4" /> Thêm trường</ExpressiveButton>
+      </div>
       {universities.error && (
         <ExpressiveCard variant="filled" className="p-4 text-sm text-error">{universities.error}</ExpressiveCard>
       )}
       {rows.length === 0 && !universities.loading ? (
         <EmptyState icon={<School className="size-7" />} title="Chưa có trường" />
       ) : (
-        <StaggerGroup className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 min-w-0">
+        <StaggerGroup className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 min-w-0">
           {rows.map((u) => (
             <StaggerItem key={u.universityId}>
-              <ExpressiveCard variant="elevated" className="p-5 h-full min-w-0">
-                <div className="flex items-start gap-3 min-w-0">
-                  <div className="size-14 shrink-0 rounded-2xl bg-[#beff50] text-[#14140f] flex items-center justify-center text-xl font-black">
+              <ExpressiveCard variant="elevated" className="group h-full min-w-0 overflow-hidden border border-outline-variant/40 bg-white p-4 transition-all hover:-translate-y-0.5 hover:shadow-md">
+                <div className="flex items-start gap-4 min-w-0">
+                  <div className="size-14 shrink-0 rounded-[14px] bg-[#beff50] text-[#14140f] flex items-center justify-center text-xl font-black shadow-sm">
                     {(u.shortName || u.name || "U").slice(0, 2).toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-bold truncate">{u.name}</p>
-                    {u.shortName && <p className="text-xs text-on-surface-variant">{u.shortName}</p>}
-                    <div className="flex flex-wrap gap-1 mt-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-bold leading-snug truncate">{u.name}</p>
+                        <p className="mt-0.5 text-xs text-on-surface-variant truncate">{u.shortName || u.code}</p>
+                      </div>
+                      <M3StatusPill label={u.status} tone={u.status === "ACTIVE" ? "success" : "neutral"} />
+                    </div>
+                    <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                      <div className="rounded-xl bg-surface-container-low px-2 py-2">
+                        <p className="text-[10px] font-semibold uppercase text-on-surface-variant">Cơ sở</p>
+                        <p className="text-sm font-black">{u.campusCount}</p>
+                      </div>
+                      <div className="rounded-xl bg-surface-container-low px-2 py-2">
+                        <p className="text-[10px] font-semibold uppercase text-on-surface-variant">Domain</p>
+                        <p className="text-sm font-black">{u.domainCount}</p>
+                      </div>
+                      <div className="rounded-xl bg-surface-container-low px-2 py-2">
+                        <p className="text-[10px] font-semibold uppercase text-on-surface-variant">SV</p>
+                        <p className="text-sm font-black">{u.rosterCount}</p>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between gap-2">
                       <Badge variant="outline" className="text-[10px]">{u.code}</Badge>
-                      <Badge variant="secondary" className="text-[10px]">{u.campusCount} cơ sở</Badge>
-                      <Badge variant="secondary" className="text-[10px]">{u.rosterCount} SV</Badge>
+                      {u.contactEmail && <span className="min-w-0 truncate text-xs text-on-surface-variant">{u.contactEmail}</span>}
                     </div>
                   </div>
                 </div>
-                {u.contactEmail && <p className="text-xs text-on-surface-variant mt-3 truncate">{u.contactEmail}</p>}
               </ExpressiveCard>
             </StaggerItem>
           ))}
@@ -1105,6 +1275,7 @@ function UniversityAddDialog({ onClose, onAdded }: { onClose: () => void; onAdde
 // =============================================================================
 function UniAdminsScreen({ ctx }: { ctx: Ctx }) {
   const admins = useAdminUniAdmins();
+  const [adding, setAdding] = useState(false);
   const rows = admins.raw || [];
   return (
     <PageTransition className="space-y-6 min-w-0">
@@ -1112,6 +1283,7 @@ function UniAdminsScreen({ ctx }: { ctx: Ctx }) {
         title="Admin trường ĐH"
         description={`${rows.length} quản trị viên trường`}
         icon={<UserCog className="size-7" />}
+        actions={<ExpressiveButton variant="filled" onClick={() => setAdding(true)}><Plus className="size-4" /> Thêm admin trường</ExpressiveButton>}
       />
       {admins.error && (
         <ExpressiveCard variant="filled" className="p-4 text-sm text-error">{admins.error}</ExpressiveCard>
@@ -1139,7 +1311,117 @@ function UniAdminsScreen({ ctx }: { ctx: Ctx }) {
           ))}
         </StaggerGroup>
       )}
+
+      <Dialog open={adding} onOpenChange={setAdding}>
+        <CreateUniversityAdminDialog
+          onClose={() => setAdding(false)}
+          onCreated={() => {
+            setAdding(false);
+            admins.reload();
+            ctx.reload();
+          }}
+        />
+      </Dialog>
     </PageTransition>
+  );
+}
+
+function CreateUniversityAdminDialog({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const universities = useAdminUniversities({ status: "ACTIVE" });
+  const [universityId, setUniversityId] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [title, setTitle] = useState("");
+  const [saving, setSaving] = useState(false);
+  const rows = universities.raw || [];
+
+  const save = async () => {
+    const parsedUniversityId = Number(universityId);
+    if (!parsedUniversityId || !fullName.trim() || !email.trim() || !password.trim()) {
+      toast.error("Vui lòng chọn trường và nhập họ tên, email, mật khẩu");
+      return;
+    }
+    if (password.length < 8) {
+      toast.error("Mật khẩu tạm phải có ít nhất 8 ký tự");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await adminApi.createUniversityAdmin({
+        universityId: parsedUniversityId,
+        fullName: fullName.trim(),
+        email: email.trim(),
+        password,
+        phoneNumber: phoneNumber.trim() || undefined,
+        title: title.trim() || undefined,
+      });
+      toast.success("Đã tạo tài khoản admin trường");
+      onCreated();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Không thể tạo admin trường");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <DialogContent className="sm:max-w-xl">
+      <DialogHeader>
+        <DialogTitle>Thêm admin trường</DialogTitle>
+        <DialogDescription>Tạo tài khoản UNIVERSITY_ADMIN và gán trực tiếp vào một trường.</DialogDescription>
+      </DialogHeader>
+      <div className="space-y-3 py-2">
+        <div>
+          <Label className="text-xs font-bold">Trường</Label>
+          <Select value={universityId} onValueChange={setUniversityId} disabled={universities.loading}>
+            <SelectTrigger className="mt-1.5">
+              <SelectValue placeholder={universities.loading ? "Đang tải danh sách trường..." : "Chọn trường"} />
+            </SelectTrigger>
+            <SelectContent>
+              {rows.map((university) => (
+                <SelectItem key={university.universityId} value={String(university.universityId)}>
+                  {university.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <Label className="text-xs font-bold">Họ tên</Label>
+            <Input className="mt-1.5" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+          </div>
+          <div>
+            <Label className="text-xs font-bold">Chức danh</Label>
+            <Input className="mt-1.5" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="VD: Quản trị tài chính" />
+          </div>
+        </div>
+        <div>
+          <Label className="text-xs font-bold">Email đăng nhập</Label>
+          <Input className="mt-1.5" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <Label className="text-xs font-bold">Mật khẩu tạm</Label>
+            <Input className="mt-1.5" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          </div>
+          <div>
+            <Label className="text-xs font-bold">Điện thoại</Label>
+            <Input className="mt-1.5" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} />
+          </div>
+        </div>
+      </div>
+      <DialogFooter>
+        <ExpressiveButton variant="text" onClick={onClose} disabled={saving}>Hủy</ExpressiveButton>
+        <ExpressiveButton variant="filled" onClick={save} disabled={saving || universities.loading}>
+          {saving ? <RefreshCw className="size-4 animate-spin" /> : <Plus className="size-4" />}
+          Tạo tài khoản
+        </ExpressiveButton>
+      </DialogFooter>
+    </DialogContent>
   );
 }
 
@@ -1223,12 +1505,16 @@ function RouteUniScreen({ ctx }: { ctx: Ctx }) {
 
   return (
     <PageTransition className="space-y-6 min-w-0">
-      <PageHeader
-        title="Gán tuyến cho trường"
-        description={`${rows.length} liên kết tuyến-trường`}
-        icon={<RouteIcon className="size-7" />}
-      />
-      <ExpressiveCard variant="elevated" className="p-4 min-w-0">
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="flex size-12 shrink-0 items-center justify-center rounded-[14px] bg-[#14140f] text-[#beff50]">
+          <RouteIcon className="size-6" />
+        </div>
+        <div className="min-w-0">
+          <h2 className="text-2xl sm:text-3xl font-black leading-tight text-on-surface">Tuyến được gán</h2>
+          <p className="mt-1 text-sm text-on-surface-variant">{rows.length} liên kết tuyến-trường</p>
+        </div>
+      </div>
+      <ExpressiveCard variant="elevated" className="border border-outline-variant/40 bg-white p-4 min-w-0">
         <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
           <div>
             <Label className="text-xs font-bold">Trường</Label>
@@ -1246,7 +1532,7 @@ function RouteUniScreen({ ctx }: { ctx: Ctx }) {
           </div>
           <div>
             <Label className="text-xs font-bold">Tuyến</Label>
-            <div className="mt-1.5 max-h-44 overflow-y-auto rounded-2xl border border-outline-variant bg-surface p-2">
+            <div className="mt-1.5 max-h-44 overflow-y-auto rounded-[14px] border border-outline-variant/70 bg-surface p-2">
               {routesLoading ? (
                 <p className="px-2 py-2 text-sm text-on-surface-variant">Đang tải tuyến...</p>
               ) : !universityId ? (
@@ -1258,7 +1544,7 @@ function RouteUniScreen({ ctx }: { ctx: Ctx }) {
                   const value = String(route.routeId);
                   const checked = routeIds.includes(value);
                   return (
-                    <label key={route.routeId} className="flex cursor-pointer items-center gap-2 rounded-xl px-2 py-2 text-sm hover:bg-surface-container">
+                    <label key={route.routeId} className="flex cursor-pointer items-center gap-2 rounded-xl px-2 py-2 text-sm transition-colors hover:bg-surface-container">
                       <Checkbox
                         checked={checked}
                         onCheckedChange={(isChecked) => setRouteIds((current) =>
@@ -1286,10 +1572,10 @@ function RouteUniScreen({ ctx }: { ctx: Ctx }) {
       {rows.length === 0 && !routeLinks.loading ? (
         <EmptyState icon={<RouteIcon className="size-7" />} title="Chưa có liên kết" />
       ) : (
-        <ExpressiveCard variant="elevated" className="overflow-hidden min-w-0">
+        <ExpressiveCard variant="elevated" className="overflow-hidden border border-outline-variant/40 bg-white min-w-0">
           <Table>
             <TableHeader>
-              <TableRow>
+              <TableRow className="bg-surface-container-low">
                 <TableHead>Tuyến</TableHead>
                 <TableHead>Trường</TableHead>
                 <TableHead>Cơ sở</TableHead>
@@ -1299,11 +1585,18 @@ function RouteUniScreen({ ctx }: { ctx: Ctx }) {
             </TableHeader>
             <TableBody>
               {rows.map((ru) => (
-                <TableRow key={ru.routeUniversityId}>
-                  <TableCell className="font-bold truncate">{ru.routeName}</TableCell>
-                  <TableCell className="truncate">{ru.universityName}</TableCell>
-                  <TableCell className="truncate">{ru.campusName || "—"}</TableCell>
-                  <TableCell className="text-xs">{formatDate(ru.activeFrom)} → {formatDate(ru.activeUntil)}</TableCell>
+                <TableRow key={ru.routeUniversityId} className="hover:bg-surface-container-low/70">
+                  <TableCell className="min-w-[220px]">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#14140f] text-[#beff50]">
+                        <Bus className="size-4" />
+                      </div>
+                      <span className="font-bold truncate">{ru.routeName}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="min-w-[220px] font-semibold truncate">{ru.universityName}</TableCell>
+                  <TableCell className="truncate text-on-surface-variant">{ru.campusName || "—"}</TableCell>
+                  <TableCell className="text-xs text-on-surface-variant">{formatDate(ru.activeFrom)} → {formatDate(ru.activeUntil)}</TableCell>
                   <TableCell><M3StatusPill label={ru.status} tone={ru.status === "ACTIVE" ? "success" : "neutral"} /></TableCell>
                 </TableRow>
               ))}
@@ -2179,13 +2472,20 @@ function ComplaintsScreen({ ctx }: { ctx: Ctx }) {
         <StaggerGroup className="space-y-3 min-w-0">
           {ctx.complaints.map((c: any) => (
             <StaggerItem key={c.id}>
-              <ExpressiveCard variant="elevated" className="p-4 min-w-0">
-                <div className="flex items-start justify-between gap-2 mb-2 min-w-0">
-                  <p className="font-bold truncate">{c.subject}</p>
+              <ExpressiveCard variant="elevated" className="border border-outline-variant/40 bg-white p-4 min-w-0 transition-all hover:-translate-y-0.5 hover:shadow-md">
+                <div className="flex items-start justify-between gap-3 mb-2 min-w-0">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#14140f] text-[#beff50]">
+                      <ShieldAlert className="size-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-bold truncate">{c.subject}</p>
+                      <p className="text-xs text-on-surface-variant">{formatDate(c.createdAt)}</p>
+                    </div>
+                  </div>
                   <M3StatusPill label={c.status} tone={c.status === "resolved" ? "success" : c.status === "rejected" ? "error" : "warning"} />
                 </div>
-                <p className="text-xs text-on-surface-variant mb-2">{formatDate(c.createdAt)}</p>
-                <p className="text-sm line-clamp-3">{c.description}</p>
+                <p className="text-sm line-clamp-3 text-on-surface-variant">{c.description}</p>
               </ExpressiveCard>
             </StaggerItem>
           ))}
@@ -2212,13 +2512,20 @@ function ViolationsScreen({ ctx }: { ctx: Ctx }) {
         <StaggerGroup className="space-y-3 min-w-0">
           {ctx.violations.map((v: any, i: number) => (
             <StaggerItem key={i}>
-              <ExpressiveCard variant="elevated" className="p-4 min-w-0">
-                <div className="flex items-start justify-between gap-2 mb-2 min-w-0">
-                  <p className="font-bold truncate">{v.reporterName || "—"}</p>
+              <ExpressiveCard variant="elevated" className="border border-outline-variant/40 bg-white p-4 min-w-0 transition-all hover:-translate-y-0.5 hover:shadow-md">
+                <div className="flex items-start justify-between gap-3 mb-2 min-w-0">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#14140f] text-[#beff50]">
+                      <AlertOctagon className="size-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-bold truncate">{v.reporterName || "—"}</p>
+                      <p className="text-xs text-on-surface-variant">{formatDate(v.submittedAt)}</p>
+                    </div>
+                  </div>
                   <M3StatusPill label={v.status} tone={v.status === "RESOLVED" ? "success" : "warning"} />
                 </div>
-                <p className="text-xs text-on-surface-variant mb-2">{formatDate(v.submittedAt)}</p>
-                <p className="text-sm line-clamp-3">{v.content}</p>
+                <p className="text-sm line-clamp-3 text-on-surface-variant">{v.content}</p>
               </ExpressiveCard>
             </StaggerItem>
           ))}
@@ -2315,78 +2622,6 @@ function FareScreen({ ctx }: { ctx: Ctx }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </PageTransition>
-  );
-}
-
-// =============================================================================
-// Screen 10: Notify
-// =============================================================================
-function NotifyScreen({ ctx }: { ctx: Ctx }) {
-  const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
-  const [sending, setSending] = useState(false);
-
-  const send = async () => {
-    if (!title.trim() || !content.trim()) {
-      toast.error("Vui lòng nhập tiêu đề và nội dung");
-      return;
-    }
-    setSending(true);
-    try {
-      await notificationApi.create({ title: title.trim(), content: content.trim() });
-      toast.success("Đã gửi thông báo");
-      setTitle("");
-      setContent("");
-      ctx.reload();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Không thể gửi");
-    } finally {
-      setSending(false);
-    }
-  };
-
-  return (
-    <PageTransition className="space-y-6 min-w-0">
-      <PageHeader title="Gửi thông báo" description="Gửi thông báo toàn hệ thống." icon={<Megaphone className="size-7" />} />
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
-        <ScrollReveal>
-          <ExpressiveCard variant="elevated" className="p-5 min-w-0">
-            <h3 className="text-base font-bold mb-4">Soạn thông báo</h3>
-            <div className="space-y-3">
-              <div>
-                <Label className="text-xs font-bold">Tiêu đề</Label>
-                <Input className="mt-1.5" value={title} onChange={(event) => setTitle(event.target.value)} />
-              </div>
-              <div>
-                <Label className="text-xs font-bold">Nội dung</Label>
-                <Textarea className="mt-1.5" value={content} onChange={(event) => setContent(event.target.value)} rows={5} />
-              </div>
-              <ExpressiveButton variant="filled" className="w-full" onClick={send} disabled={sending}>
-                {sending ? <RefreshCw className="size-4 animate-spin" /> : <Megaphone className="size-4" />}
-                Gửi
-              </ExpressiveButton>
-            </div>
-          </ExpressiveCard>
-        </ScrollReveal>
-        <ScrollReveal delay={0.1}>
-          <Section title={`Gần đây (${ctx.notifications.length})`}>
-            {ctx.notifications.length === 0 ? (
-              <EmptyState icon={<Megaphone className="size-7" />} title="Chưa có thông báo" />
-            ) : (
-              <div className="space-y-2">
-                {ctx.notifications.slice(0, 6).map((notification: any) => (
-                  <ExpressiveCard key={notification.id} variant="filled" className="p-3 min-w-0">
-                    <p className="font-bold text-sm truncate">{notification.title}</p>
-                    <p className="text-xs text-on-surface-variant line-clamp-2">{notification.body}</p>
-                    <p className="text-[10px] text-on-surface-variant mt-1">{formatDateTime(notification.createdAt)}</p>
-                  </ExpressiveCard>
-                ))}
-              </div>
-            )}
-          </Section>
-        </ScrollReveal>
-      </div>
     </PageTransition>
   );
 }

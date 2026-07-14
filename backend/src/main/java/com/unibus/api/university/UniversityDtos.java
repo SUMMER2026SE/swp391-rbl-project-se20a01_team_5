@@ -84,6 +84,10 @@ public final class UniversityDtos {
             int successRows,
             int errorRows,
             String status,
+            Integer importedByUserId,
+            String importedByName,
+            String mode,
+            int skippedRows,
             OffsetDateTime createdAt,
             OffsetDateTime completedAt,
             List<ImportErrorView> errors) {
@@ -98,17 +102,93 @@ public final class UniversityDtos {
             String errorMessage) {
     }
 
+    public record RosterImportPreviewView(
+            String previewToken,
+            String fileName,
+            long fileSize,
+            int totalRows,
+            int validRows,
+            int errorRows,
+            int duplicateRows,
+            int createRows,
+            int existingRows,
+            int skippedRows,
+            OffsetDateTime expiresAt,
+            List<RosterImportPreviewRowView> previewRows,
+            List<RosterImportPreviewErrorView> errors,
+            List<RosterImportPreviewErrorView> structuralErrors) {
+    }
+
+    public record RosterImportPreviewRowView(
+            int rowNumber,
+            String studentCode,
+            String fullName,
+            String email,
+            String faculty,
+            Integer academicYear,
+            String status,
+            boolean valid,
+            boolean existing,
+            boolean duplicateInFile,
+            String action) {
+    }
+
+    public record RosterImportPreviewErrorView(
+            int rowNumber,
+            String field,
+            String value,
+            String code,
+            String message,
+            String suggestion) {
+    }
+
+    public record RosterImportConfirmRequest(
+            @NotBlank String previewToken,
+            String mode) {
+    }
+
+    public record RosterImportCommitRequest(
+            @NotBlank String previewToken,
+            String mode,
+            String idempotencyKey) {
+    }
+
+    public record RosterImportConfirmView(
+            String previewToken,
+            String mode,
+            int totalRows,
+            int createRows,
+            int updateRows,
+            int skippedExistingRows,
+            int errorRows,
+            int skippedRows,
+            int importableRows,
+            boolean canConfirm,
+            String confirmLabel,
+            List<String> warnings,
+            List<RosterImportPreviewRowView> affectedRows) {
+    }
+
     public record RouteUniversityView(
             Integer routeUniversityId,
             Integer routeId,
+            String routeCode,
             String routeName,
+            String routeStartStop,
+            String routeEndStop,
+            String routeStatus,
             Integer universityId,
             String universityName,
             Integer campusId,
             String campusName,
             LocalDate activeFrom,
             LocalDate activeUntil,
-            String status) {
+            String status,
+            boolean subsidyEnabled) {
+    }
+
+    public record UpdateRouteSubsidyRequest(
+            boolean subsidyEnabled) {
     }
 
     public record SubsidyPolicyView(
@@ -123,7 +203,8 @@ public final class UniversityDtos {
             BigDecimal maxAmount,
             LocalDate activeFrom,
             LocalDate activeUntil,
-            String status) {
+            String status,
+            OffsetDateTime updatedAt) {
     }
 
     public record AuditLogView(
@@ -315,6 +396,12 @@ public final class UniversityDtos {
             LocalDate activeFrom,
             LocalDate activeUntil,
             @Pattern(regexp = "ACTIVE|INACTIVE|SUSPENDED") String status) {
+    }
+
+    public record UpdateUniversitySubsidyConfigRequest(
+            @NotNull BigDecimal value,
+            @NotBlank @Pattern(regexp = "ACTIVE|INACTIVE") String status,
+            @Pattern(regexp = "PERCENTAGE|FIXED_AMOUNT") String subsidyType) {
     }
 
     public record CreateUniversityNotificationRequest(
