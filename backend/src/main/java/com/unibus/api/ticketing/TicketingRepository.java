@@ -108,6 +108,17 @@ public class TicketingRepository {
         return fares.isEmpty() ? BigDecimal.ZERO : fares.get(0);
     }
 
+    public Optional<String> activeRouteName(Integer routeId) {
+        List<String> names = jdbcTemplate.queryForList("""
+                SELECT route_name
+                FROM routes
+                WHERE route_id = ?
+                  AND status = 'ACTIVE'
+                LIMIT 1
+                """, String.class, routeId);
+        return names.stream().findFirst();
+    }
+
     public Integer createSingleTripTicket(String studentCode, Integer routeId, Integer boardingStopId,
             Integer alightingStopId, BigDecimal amount, BigDecimal originalAmount, BigDecimal subsidyAmount,
             BigDecimal finalAmount, Integer subsidyPolicyId) {

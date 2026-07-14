@@ -575,7 +575,7 @@ function sortDriverTrips(trips: DriverTripView[]): DriverTripView[] {
 }
 
 function canStartDriverTrip(trip: DriverTripView | null): boolean {
-  if (!trip?.tripId || String(trip.status || "").toUpperCase() !== "NOT_STARTED") return false;
+  if (!trip?.tripId || !['NOT_STARTED', 'SCHEDULED'].includes(String(trip.status || "").toUpperCase())) return false;
   if (!trip.serviceDate || !trip.departureTime) return false;
   const scheduledAt = new Date(`${trip.serviceDate}T${trip.departureTime}`);
   if (!Number.isFinite(scheduledAt.getTime())) return false;
@@ -584,7 +584,7 @@ function canStartDriverTrip(trip: DriverTripView | null): boolean {
 }
 function driverTripStartLabel(trip: DriverTripView | null): string {
   if (!trip?.tripId) return "CHƯA TẠO CHUYẾN";
-  if (String(trip.status || "").toUpperCase() !== "NOT_STARTED") return "CHƯA THỂ BẮT ĐẦU";
+  if (!['NOT_STARTED', 'SCHEDULED'].includes(String(trip.status || "").toUpperCase())) return "CHƯA THỂ BẮT ĐẦU";
   if (!trip.serviceDate || !trip.departureTime) return "THIẾU LỊCH KHỞI HÀNH";
   const scheduledAt = new Date(`${trip.serviceDate}T${trip.departureTime}`);
   if (!Number.isFinite(scheduledAt.getTime())) return "LỊCH KHỞI HÀNH KHÔNG HỢP LỆ";

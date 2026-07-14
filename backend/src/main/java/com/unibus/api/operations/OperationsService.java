@@ -52,7 +52,7 @@ public class OperationsService {
 
     @Transactional(readOnly = true)
     public ScheduleDashboard getScheduleDashboard(LocalDate date) {
-        LocalDate serviceDate = date == null ? LocalDate.now() : date;
+        LocalDate serviceDate = date == null ? LocalDate.now(BUSINESS_ZONE) : date;
         return new ScheduleDashboard(
                 serviceDate,
                 operationsRepository.findShifts(serviceDate),
@@ -77,6 +77,7 @@ public class OperationsService {
                 validateShift(normalizedShift, serviceDate);
                 Integer scheduleId = operationsRepository.saveSchedule(normalizedShift, currentUser.userId());
                 operationsRepository.ensureTrip(scheduleId, serviceDate);
+                operationsRepository.syncPendingTrip(scheduleId, serviceDate);
             }
         }
         return getScheduleDashboard(serviceDate);
@@ -221,7 +222,7 @@ public class OperationsService {
     @Transactional(readOnly = true)
     public List<ConductorTripView> getConductorTrips(CurrentUser currentUser, LocalDate date) {
         Integer conductorStaffId = requireConductorStaffId(currentUser);
-        return operationsRepository.findConductorTrips(conductorStaffId, date == null ? LocalDate.now() : date);
+        return operationsRepository.findConductorTrips(conductorStaffId, date == null ? LocalDate.now(BUSINESS_ZONE) : date);
     }
 
     @Transactional(readOnly = true)
@@ -320,7 +321,7 @@ public class OperationsService {
         Integer driverStaffId = requireDriverStaffId(currentUser);
         DriverTripView trip = requireDriverTrip(tripId, driverStaffId);
         String status = normalizedStatus(trip.status());
-        if (!"NOT_STARTED".equals(status)) {
+        if (!"NOT_STARTED".equals(status) && !"SCHEDULED".equals(status)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Chỉ chuyến chưa bắt đầu mới có thể khởi hành");
         }
         validateDriverStartWindow(trip);
@@ -378,7 +379,7 @@ public class OperationsService {
 
     @Transactional(readOnly = true)
     public List<LiveFleetVehicle> getLiveFleet(LocalDate date) {
-        return operationsRepository.findLiveFleet(date == null ? LocalDate.now() : date);
+        return operationsRepository.findLiveFleet(date == null ? LocalDate.now(BUSINESS_ZONE) : date);
     }
 
     private boolean isUpcomingTrip(DriverTripView trip, LocalDate today) {

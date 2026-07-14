@@ -128,7 +128,7 @@ BEGIN
     v_supported_university_id := v_dtu_university_id;
 
     INSERT INTO campuses (university_id, code, name, address, latitude, longitude, status, created_at, updated_at)
-    VALUES (v_supported_university_id, 'DTU_DEMO_MAIN', 'Cơ sở demo Duy Tân', 'Đà Nẵng', 16.0544, 108.2022, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    VALUES (v_supported_university_id, 'DTU_MAIN', 'Cơ sở Nguyễn Văn Linh', '254 Nguyễn Văn Linh, Thanh Khê, Đà Nẵng', 16.0600568, 108.2096704, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     ON CONFLICT (university_id, code) DO UPDATE
     SET name = EXCLUDED.name,
         address = EXCLUDED.address,
@@ -137,7 +137,7 @@ BEGIN
         status = EXCLUDED.status,
         updated_at = CURRENT_TIMESTAMP;
 
-    SELECT campus_id INTO v_supported_campus_id FROM campuses WHERE university_id = v_supported_university_id AND code = 'DTU_DEMO_MAIN';
+    SELECT campus_id INTO v_supported_campus_id FROM campuses WHERE university_id = v_supported_university_id AND code = 'DTU_MAIN';
 
     UPDATE university_domains
     SET university_id = v_supported_university_id,
@@ -334,7 +334,7 @@ BEGIN
 
     SELECT route_id INTO v_route_supported_id
     FROM routes
-    WHERE route_code = '12'
+    WHERE route_code = '16'
       AND status = 'ACTIVE'
       AND COALESCE(external_source, '') = 'BUSMAP_DN'
       AND (SELECT count(*) FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id WHERE rs.route_id = routes.route_id) >= 2
@@ -344,21 +344,21 @@ BEGIN
     IF v_route_supported_id IS NULL THEN
         SELECT route_id INTO v_route_supported_id
         FROM routes
-        WHERE route_code IN ('01', '06')
+        WHERE route_code IN ('12', '01', '06')
           AND status = 'ACTIVE'
           AND COALESCE(external_source, '') = 'BUSMAP_DN'
           AND (SELECT count(*) FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id WHERE rs.route_id = routes.route_id) >= 2
-        ORDER BY CASE route_code WHEN '01' THEN 0 WHEN '06' THEN 1 ELSE 2 END, route_id
+        ORDER BY CASE route_code WHEN '12' THEN 0 WHEN '01' THEN 1 WHEN '06' THEN 2 ELSE 3 END, route_id
         LIMIT 1;
     END IF;
 
     IF v_route_supported_id IS NULL THEN
-        RAISE EXCEPTION 'Không tìm thấy tuyến BUSMAP thật 12/01/06 đang hoạt động cho kịch bản trợ giá Duy Tân.';
+        RAISE EXCEPTION 'Không tìm thấy tuyến BUSMAP thật 16/12/01/06 đang hoạt động cho kịch bản trợ giá Duy Tân.';
     END IF;
 
     SELECT r.route_id INTO v_route_full_id
     FROM routes r
-    WHERE r.route_code IN ('02', '16')
+    WHERE r.route_code IN ('02', '06')
       AND r.status = 'ACTIVE'
       AND COALESCE(r.external_source, '') = 'BUSMAP_DN'
       AND (SELECT count(*) FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id WHERE rs.route_id = r.route_id) >= 2
@@ -372,7 +372,7 @@ BEGIN
             AND ru.active_from <= CURRENT_DATE
             AND (ru.active_until IS NULL OR ru.active_until >= CURRENT_DATE)
       )
-    ORDER BY CASE r.route_code WHEN '02' THEN 0 WHEN '16' THEN 1 ELSE 2 END, r.route_id
+    ORDER BY CASE r.route_code WHEN '02' THEN 0 WHEN '06' THEN 1 ELSE 2 END, r.route_id
     LIMIT 1;
 
     IF v_route_full_id IS NULL THEN
@@ -404,8 +404,16 @@ BEGIN
         RAISE EXCEPTION 'Demo không được dùng tuyến UB-DN-* làm kịch bản chính.';
     END IF;
 
-    SELECT rs.stop_id INTO v_boarding_supported_id FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id WHERE rs.route_id = v_route_supported_id ORDER BY rs.stop_order ASC LIMIT 1;
-    SELECT rs.stop_id INTO v_alighting_supported_id FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id WHERE rs.route_id = v_route_supported_id ORDER BY rs.stop_order DESC LIMIT 1;
+    SELECT rs.stop_id INTO v_boarding_supported_id
+    FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id
+    WHERE rs.route_id = v_route_supported_id
+    ORDER BY CASE WHEN rs.stop_id = 729 OR lower(st.stop_name) = lower('E144 Trần Đại Nghĩa') THEN 0 ELSE 1 END, rs.stop_order ASC
+    LIMIT 1;
+    SELECT rs.stop_id INTO v_alighting_supported_id
+    FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id
+    WHERE rs.route_id = v_route_supported_id
+    ORDER BY CASE WHEN rs.stop_id = 751 OR lower(st.stop_name) = lower('10 Lý Thái Tổ') THEN 0 ELSE 1 END, rs.stop_order DESC
+    LIMIT 1;
     SELECT rs.stop_id INTO v_boarding_full_id FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id WHERE rs.route_id = v_route_full_id ORDER BY rs.stop_order ASC LIMIT 1;
     SELECT rs.stop_id INTO v_alighting_full_id FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id WHERE rs.route_id = v_route_full_id ORDER BY rs.stop_order DESC LIMIT 1;
     IF v_boarding_supported_id IS NULL OR v_alighting_supported_id IS NULL OR v_boarding_supported_id = v_alighting_supported_id THEN
@@ -471,7 +479,7 @@ BEGIN
     WHERE route_id = v_route_supported_id AND university_id = v_supported_university_id AND status = 'ACTIVE';
 
     INSERT INTO subsidy_policies (university_id, campus_id, policy_name, subsidy_type, value, max_amount, active_from, active_until, status, created_at, updated_at)
-    SELECT v_supported_university_id, v_supported_campus_id, 'Demo trợ giá 50% đến 31/08/2026', 'PERCENTAGE', 50, 90000, CURRENT_DATE, v_end_date, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+    SELECT v_supported_university_id, NULL, 'Demo trợ giá 50% đến 31/08/2026', 'PERCENTAGE', 50, 90000, CURRENT_DATE, v_end_date, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
     WHERE NOT EXISTS (
         SELECT 1
         FROM subsidy_policies
@@ -493,7 +501,7 @@ BEGIN
       AND policy_name = 'Demo trợ giá 50% đến 31/08/2026';
 
     UPDATE subsidy_policies
-    SET campus_id = v_supported_campus_id, subsidy_type = 'PERCENTAGE', value = 50, max_amount = 90000, active_from = CURRENT_DATE, active_until = v_end_date, status = 'ACTIVE', updated_at = CURRENT_TIMESTAMP
+    SET campus_id = NULL, subsidy_type = 'PERCENTAGE', value = 50, max_amount = 90000, active_from = CURRENT_DATE, active_until = v_end_date, status = 'ACTIVE', updated_at = CURRENT_TIMESTAMP
     WHERE subsidy_policy_id = v_policy_id;
 
     DELETE FROM travel_history
@@ -542,9 +550,22 @@ BEGIN
 
     INSERT INTO trips (schedule_id, route_id, bus_id, driver_id, conductor_id, service_date, departed_at, ended_at, status, notes)
     SELECT bs.schedule_id, v_route_supported_id, v_bus_id, v_driver_id, v_conductor_id, d::date,
-           CASE WHEN d::date < CURRENT_DATE THEN d::date + TIME '07:30' ELSE NULL END,
-           CASE WHEN d::date < CURRENT_DATE THEN d::date + TIME '08:25' ELSE NULL END,
-           CASE WHEN d::date < CURRENT_DATE THEN 'COMPLETED' ELSE 'NOT_STARTED' END,
+           CASE
+               WHEN d::date < CURRENT_DATE THEN d::date + TIME '07:30'
+               WHEN d::date = CURRENT_DATE AND CURRENT_TIME >= TIME '07:30' THEN d::date + TIME '07:30'
+               ELSE NULL
+           END,
+           CASE
+               WHEN d::date < CURRENT_DATE THEN d::date + TIME '08:25'
+               WHEN d::date = CURRENT_DATE AND CURRENT_TIME >= TIME '08:25' THEN d::date + TIME '08:25'
+               ELSE NULL
+           END,
+           CASE
+               WHEN d::date < CURRENT_DATE THEN 'COMPLETED'
+               WHEN d::date = CURRENT_DATE AND CURRENT_TIME >= TIME '08:25' THEN 'COMPLETED'
+               WHEN d::date = CURRENT_DATE AND CURRENT_TIME >= TIME '07:30' THEN 'RUNNING'
+               ELSE 'NOT_STARTED'
+           END,
            'DEMO_DATA supported morning trip'
     FROM generate_series(CURRENT_DATE - INTERVAL '7 days', v_end_date, INTERVAL '1 day') AS d
     JOIN bus_schedules bs ON bs.route_id = v_route_supported_id
@@ -555,8 +576,7 @@ BEGIN
         AND bs.departure_time = TIME '07:30'
         AND bs.status = 'ACTIVE'
         AND bs.assigned_by_user_id = v_admin_user_id
-    WHERE CURRENT_DATE <= v_end_date
-      AND d::date <> CURRENT_DATE;
+    WHERE CURRENT_DATE <= v_end_date;
 
     INSERT INTO trips (schedule_id, route_id, bus_id, driver_id, conductor_id, service_date, departed_at, ended_at, status, notes)
     SELECT bs.schedule_id, v_route_full_id, v_bus_id, v_driver_id, v_conductor_id, d::date,
@@ -599,6 +619,10 @@ BEGIN
     DELETE FROM tb_transactions WHERE matched_order_id IN (SELECT o.id FROM tb_orders o JOIN students s ON s.student_code = o.student_code JOIN users u ON u.user_id = s.user_id WHERE u.email = ANY(v_baseline_student_emails));
     DELETE FROM tb_orders WHERE student_code IN (SELECT s.student_code FROM students s JOIN users u ON u.user_id = s.user_id WHERE u.email = ANY(v_baseline_student_emails));
     DELETE FROM route_registrations WHERE student_code IN (SELECT s.student_code FROM students s JOIN users u ON u.user_id = s.user_id WHERE u.email = ANY(v_baseline_student_emails));
+    DELETE FROM feedback WHERE student_code = '27211200001';
+    DELETE FROM driver_ratings WHERE student_code = '27211200001';
+    DELETE FROM lost_item_reports WHERE reported_by_user_id = (SELECT user_id FROM users WHERE email = 'student.supported@unibus.local');
+    DELETE FROM notifications WHERE recipient_user_id = (SELECT user_id FROM users WHERE email = 'student.supported@unibus.local');
 
     FOR v_student IN
         SELECT student_code,
@@ -608,7 +632,6 @@ BEGIN
         FROM students s
         JOIN users u ON u.user_id = s.user_id
         WHERE u.email IN (
-            'student.supported@unibus.local',
             'student.fullprice@unibus.local',
             'student.monthly@unibus.local',
             'student.day@unibus.local',
@@ -653,9 +676,6 @@ BEGIN
     LIMIT 1;
 
     INSERT INTO monthly_passes (student_code, route_id, effective_month, effective_year, valid_from, purchased_at, expires_on, fare_amount, original_fare_amount, subsidy_amount, final_fare_amount, subsidy_policy_id, qr_code, status)
-    VALUES ('27211200001', v_route_supported_id, EXTRACT(MONTH FROM CURRENT_DATE)::int, EXTRACT(YEAR FROM CURRENT_DATE)::int, date_trunc('month', CURRENT_DATE)::date, CURRENT_TIMESTAMP - INTERVAL '1 hour', (v_end_date + INTERVAL '1 day')::date, v_supported_monthly_final, v_supported_monthly_amount, v_supported_monthly_subsidy, v_supported_monthly_final, v_policy_id, 'DEMO-SUB-27211200001', 'ACTIVE');
-
-    INSERT INTO monthly_passes (student_code, route_id, effective_month, effective_year, valid_from, purchased_at, expires_on, fare_amount, original_fare_amount, subsidy_amount, final_fare_amount, subsidy_policy_id, qr_code, status)
     VALUES ('27212100002', v_route_full_id, EXTRACT(MONTH FROM CURRENT_DATE)::int, EXTRACT(YEAR FROM CURRENT_DATE)::int, date_trunc('month', CURRENT_DATE)::date, CURRENT_TIMESTAMP - INTERVAL '1 hour', (v_end_date + INTERVAL '1 day')::date, v_full_monthly_amount, v_full_monthly_amount, 0, v_full_monthly_amount, NULL, 'DEMO-FULL-27212100002', 'ACTIVE');
 
     INSERT INTO tb_orders (student_code, ticket_type, route_id, total, payment_status, name, paid_at, created_at, updated_at, order_mode, ticket_period, origin_label, destination_label, original_amount, subsidy_amount, final_amount)
@@ -679,7 +699,6 @@ BEGIN
     SELECT u.user_id, v_admin_user_id, 'Dữ liệu demo sẵn sàng', 'Kịch bản demo đã sẵn sàng đến 31/08/2026.', 'SYSTEM', false, CURRENT_TIMESTAMP
     FROM users u
     WHERE u.email IN (
-        'student.supported@unibus.local',
         'student.fullprice@unibus.local',
         'student.monthly@unibus.local',
         'student.day@unibus.local',
@@ -820,6 +839,9 @@ BEGIN
 
     SELECT university_id INTO v_dtu_id FROM universities WHERE code = 'DTU';
     SELECT campus_id INTO v_main_campus_id FROM campuses WHERE university_id = v_dtu_id AND code = 'DTU_MAIN';
+    UPDATE campuses
+    SET latitude = 16.0600568, longitude = 108.2096704, updated_at = CURRENT_TIMESTAMP
+    WHERE campus_id = v_main_campus_id;
     SELECT campus_id INTO v_old_campus_id FROM campuses WHERE university_id = v_dtu_id AND code = 'DTU_DEMO_MAIN';
     IF v_old_campus_id IS NOT NULL AND v_old_campus_id <> v_main_campus_id THEN
         UPDATE route_universities SET campus_id = v_main_campus_id, updated_at = CURRENT_TIMESTAMP WHERE campus_id = v_old_campus_id;
@@ -1103,7 +1125,7 @@ BEGIN
 
     FOR v_school IN
         SELECT * FROM (VALUES
-            ('DTU', 'DTU_MAIN', '12', 50::numeric, 90000::numeric),
+            ('DTU', 'DTU_MAIN', '16', 50::numeric, 90000::numeric),
             ('UTE', 'UTE_MAIN', '11', 40::numeric, 70000::numeric),
             ('VKU', 'VKU_MAIN', '02', 35::numeric, 60000::numeric),
             ('FPTDN', 'FPTDN_MAIN', 'N1', 25::numeric, 50000::numeric)
@@ -1162,7 +1184,7 @@ BEGIN
 
     FOR v_school IN
         SELECT * FROM (VALUES
-            ('DTU', 'DTU_MAIN', '06'),
+            ('DTU', 'DTU_MAIN', '12'),
             ('UTE', 'UTE_MAIN', '01'),
             ('VKU', 'VKU_MAIN', '16'),
             ('FPTDN', 'FPTDN_MAIN', '02')
@@ -1457,7 +1479,8 @@ BEGIN
     FROM users usr
     CROSS JOIN generate_series(1, 2) g(n)
     WHERE usr.status = 'ACTIVE'
-      AND (usr.email LIKE '%.demo@unibus.local' OR usr.email = ANY(v_baseline_student_emails));
+      AND (usr.email LIKE '%.demo@unibus.local' OR usr.email = ANY(v_baseline_student_emails))
+      AND usr.email <> 'student.supported@unibus.local';
 END
 $baseline$;
 

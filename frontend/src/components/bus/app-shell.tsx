@@ -132,12 +132,23 @@ export function AppShell({
     return () => window.removeEventListener("notification-read", handleNotificationRead as EventListener);
   }, []);
 
+  const clearUnreadNotifications = () => {
+    if (!unread) return;
+    setUnread(0);
+    void notificationApi.mine()
+      .then((items) => Promise.allSettled(
+        items.filter((item) => !item.read).map((item) => notificationApi.markRead(item.notificationId)),
+      ))
+      .catch(() => notificationApi.unreadCount().then((count) => setUnread(Number(count) || 0)).catch(() => setUnread(null)));
+  };
+
   // Debounce navigation to prevent lag when user clicks rapidly.
   // Each new click cancels the previous pending navigation.
   const navTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewOpenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const goTo = (id: string) => {
+    if (id === notificationsNavId) clearUnreadNotifications();
     setMobileOpen(false);
     setSidebarPreviewOpen(false);
     if (role === "student" && id === "stu-find") {
