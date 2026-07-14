@@ -326,7 +326,7 @@ public class OperationsService {
         }
         validateDriverStartWindow(trip);
         operationsRepository.lockDriverForTripStart(driverStaffId);
-        if (operationsRepository.hasOtherRunningTrip(driverStaffId, tripId)) {
+        if (operationsRepository.hasOtherRunningTrip(driverStaffId, tripId, trip.serviceDate())) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Bạn đang có một chuyến khác chưa kết thúc");
         }
         if (operationsRepository.startTrip(tripId) != 1) {
