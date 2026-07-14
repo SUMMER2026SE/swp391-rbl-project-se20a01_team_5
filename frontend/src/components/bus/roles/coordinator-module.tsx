@@ -2485,16 +2485,40 @@ function FeedbackScreen({ ctx, initialTab }: { ctx: Ctx; initialTab?: string }) 
   const [violationTargetId, setViolationTargetId] = useState("");
   const [violationCategory, setViolationCategory] = useState("OPERATION");
   const [violationDescription, setViolationDescription] = useState("");
+  const [violationTargetRole, setViolationTargetRole] = useState<"ALL" | "DRIVER" | "CONDUCTOR" | "STUDENT">("ALL");
+  const [violationTargetSearch, setViolationTargetSearch] = useState("");
+  const [reportedViolationSourceIds, setReportedViolationSourceIds] = useState<string[]>([]);
   const [violationSubmitting, setViolationSubmitting] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("unibus.coordinator.reported-violation-sources");
+      const parsed = saved ? JSON.parse(saved) : [];
+      if (Array.isArray(parsed)) setReportedViolationSourceIds(parsed.map(String));
+    } catch {
+      setReportedViolationSourceIds([]);
+    }
+  }, []);
 
   const feedbackResource = useApi(() => coordinatorFeedbackApi.all(), (items) => items.map(mapFeedback), []);
   const lostItemResource = useApi(() => coordinatorLostItemApi.all(), undefined, []);
   const notificationResource = useApi(() => notificationApi.mine(), undefined, []);
+  const violationSearchKeyword = violationTargetSearch.trim();
+  const canBrowseViolationTargets = violationTargetRole !== "ALL" || violationSearchKeyword.length >= 2;
   const violationTargets = useApi(
-    () => adminApi.users({ status: "ACTIVE" }),
-    (items) => items.filter((item) => ["STUDENT", "DRIVER", "CONDUCTOR", "DISPATCHER"].includes(item.role)),
-    []
+    () => canBrowseViolationTargets
+      ? adminApi.users({
+          status: "ACTIVE",
+          role: violationTargetRole === "ALL" ? undefined : violationTargetRole,
+          search: violationSearchKeyword,
+        })
+      : Promise.resolve([]),
+    undefined,
+    [canBrowseViolationTargets, violationSearchKeyword, violationTargetRole]
   );
+  const suggestedTripCrew = violationSource?.tripId
+    ? (ctx.fleet || []).find((trip: any) => Number(trip.tripId) === Number(violationSource.tripId))
+    : undefined;
   const feedbackItems = feedbackResource.data || ctx.feedback;
   const historicalItems = ((notificationResource.raw || []) as any[])
     .filter((item) => !isPrivateMessageNotification(item))
@@ -2556,6 +2580,7 @@ function FeedbackScreen({ ctx, initialTab }: { ctx: Ctx; initialTab?: string }) 
       return bt - at;
     });
 
+  const hasViolationReport = (item: any) => reportedViolationSourceIds.includes(String(item.id));
   const pendingFeedback = feedbackOnly.filter((f: any) => f.status !== 'resolved').length;
   const pendingLost = lostItems.filter((l) => l.status === 'REPORTED' || l.status === 'SEARCHING').length;
   const pendingSos = sosOnly.filter((f: any) => f.status !== 'resolved').length;
@@ -2584,6 +2609,8 @@ function FeedbackScreen({ ctx, initialTab }: { ctx: Ctx; initialTab?: string }) 
     const sourceLabel = isSos ? "SOS" : "phản hồi";
     setViolationSource(item);
     setViolationTargetId("");
+    setViolationTargetRole("ALL");
+    setViolationTargetSearch("");
     setViolationCategory(isSos ? "SAFETY" : "OPERATION");
     setViolationDescription([
       `Nguồn: ${sourceLabel}${item.id ? ` #${item.id}` : ""}`,
@@ -2608,9 +2635,18 @@ function FeedbackScreen({ ctx, initialTab }: { ctx: Ctx; initialTab?: string }) 
         category: violationCategory,
         description: violationDescription.trim(),
       });
-      toast.success("Đã gửi báo cáo vi phạm lên Admin");
+      toast.success("Đã gửi báo cáo vi phạm tới Admin");
+      if (violationSource?.id != null) {
+        setReportedViolationSourceIds((previous) => {
+          const next = previous.includes(String(violationSource.id)) ? previous : [...previous, String(violationSource.id)];
+          window.localStorage.setItem("unibus.coordinator.reported-violation-sources", JSON.stringify(next));
+          return next;
+        });
+      }
       setViolationSource(null);
       setViolationTargetId("");
+      setViolationTargetRole("ALL");
+      setViolationTargetSearch("");
       setViolationDescription("");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Không thể tạo báo cáo vi phạm");
@@ -2723,18 +2759,22 @@ function FeedbackScreen({ ctx, initialTab }: { ctx: Ctx; initialTab?: string }) 
                               </div>
                             )}
                           </div>
-                          <div className="flex md:flex-col gap-2 md:items-end">
-                            <ExpressiveButton
-                              variant="outlined"
-                              size="sm"
-                              onClick={() => openViolationDialog(f)}
-                            >
-                              <AlertTriangle className="size-4" />
-                              Tạo vi phạm
-                            </ExpressiveButton>
+                          <div className="flex flex-col gap-1.5 md:w-44">
+                            {!isResolved && !hasViolationReport(f) && (
+                              <ExpressiveButton
+                                variant="text"
+                                size="sm"
+                                className="order-2 w-full justify-center text-error hover:bg-error-container/30"
+                                onClick={() => openViolationDialog(f)}
+                              >
+                                <AlertTriangle className="size-4" />
+                                Báo cáo vi phạm
+                              </ExpressiveButton>
+                            )}
                             {!isResolved ? (
                               <ExpressiveButton
                                 variant="filled" size="sm"
+                                className="order-1 w-full justify-center"
                                 onClick={() => {
                                   setSelectedFeedback(f);
                                   setResponses((prev) => ({ ...prev, [f.id]: prev[f.id] || "Đã tiếp nhận và xử lý phản hồi." }));
@@ -2788,7 +2828,7 @@ function FeedbackScreen({ ctx, initialTab }: { ctx: Ctx; initialTab?: string }) 
                               </div>
                             )}
                           </div>
-                          <div className="flex md:flex-col gap-2 md:items-end">
+                          <div className="flex flex-col gap-1.5 md:w-44">
                             {!isResolved ? (
                               <>
                                 <ExpressiveButton
@@ -2849,26 +2889,32 @@ function FeedbackScreen({ ctx, initialTab }: { ctx: Ctx; initialTab?: string }) 
                               </div>
                             )}
                           </div>
-                          <ExpressiveButton
-                            variant="outlined"
-                            size="sm"
-                            onClick={() => openViolationDialog(item)}
-                          >
-                            <AlertTriangle className="size-4" />
-                            Tạo vi phạm
-                          </ExpressiveButton>
                           {!isResolved && (
-                            <ExpressiveButton
-                              variant="filled" size="sm"
-                              onClick={() => {
-                                setSelectedFeedback(item);
-                                setResponses((prev) => ({ ...prev, [item.id]: prev[item.id] || "Đã tiếp nhận và xử lý thông báo SOS." }));
-                              }}
-                              disabled={responding === Number(item.id)}
-                            >
-                              {responding === Number(item.id) ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
-                              Xử lý
-                            </ExpressiveButton>
+                            <div className="flex flex-col gap-1.5 md:w-44">
+                              <ExpressiveButton
+                                variant="filled" size="sm"
+                                className="order-1 w-full justify-center"
+                                onClick={() => {
+                                  setSelectedFeedback(item);
+                                  setResponses((prev) => ({ ...prev, [item.id]: prev[item.id] || "Đã tiếp nhận và xử lý thông báo SOS." }));
+                                }}
+                                disabled={responding === Number(item.id)}
+                              >
+                                {responding === Number(item.id) ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+                                Xử lý
+                              </ExpressiveButton>
+                              {!hasViolationReport(item) && (
+                                <ExpressiveButton
+                                  variant="text"
+                                  size="sm"
+                                  className="order-2 w-full justify-center text-error hover:bg-error-container/30"
+                                  onClick={() => openViolationDialog(item)}
+                              >
+                                <AlertTriangle className="size-4" />
+                                  Báo cáo vi phạm
+                                </ExpressiveButton>
+                              )}
+                            </div>
                           )}
                         </div>
                       </ExpressiveCard>
@@ -2925,28 +2971,80 @@ function FeedbackScreen({ ctx, initialTab }: { ctx: Ctx; initialTab?: string }) 
         {violationSource && (
           <DialogContent className="sm:max-w-lg">
             <DialogHeader>
-              <DialogTitle>Tạo báo cáo vi phạm</DialogTitle>
-              <DialogDescription>Gửi báo cáo này lên Admin để xử lý cấp hệ thống.</DialogDescription>
+              <DialogTitle>Gửi báo cáo vi phạm</DialogTitle>
+              <DialogDescription>Báo cáo được gửi ngay để Admin xem xét; chỉ Admin mới quyết định khóa tài khoản khi cần.</DialogDescription>
             </DialogHeader>
             <div className="space-y-3 py-2">
               <div className="rounded-xl bg-surface-container-low p-3 text-sm text-on-surface">
                 {violationSource.content}
               </div>
-              <div>
+              <div className="space-y-2">
                 <Label className="text-xs font-bold">Người bị báo cáo</Label>
-                <Select value={violationTargetId} onValueChange={setViolationTargetId} disabled={violationTargets.loading}>
-                  <SelectTrigger className="mt-1.5">
-                    <SelectValue placeholder={violationTargets.loading ? "Đang tải danh sách..." : "Chọn người bị báo cáo"} />
+                {suggestedTripCrew && (
+                  <div className="rounded-xl bg-primary-container/30 p-3 text-xs text-on-surface">
+                    <p className="font-bold">Gợi ý từ chuyến #{violationSource.tripId}</p>
+                    <p className="mt-0.5 text-on-surface-variant">Chọn đúng nhân sự của chuyến trước khi tìm người khác.</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {suggestedTripCrew.driverName && (
+                        <ExpressiveButton
+                          type="button"
+                          variant="tonal"
+                          size="sm"
+                          onClick={() => {
+                            setViolationTargetRole("DRIVER");
+                            setViolationTargetSearch(suggestedTripCrew.driverName);
+                            setViolationTargetId("");
+                          }}
+                        >
+                          Tài xế · {suggestedTripCrew.driverName}
+                        </ExpressiveButton>
+                      )}
+                      {suggestedTripCrew.conductorName && (
+                        <ExpressiveButton
+                          type="button"
+                          variant="tonal"
+                          size="sm"
+                          onClick={() => {
+                            setViolationTargetRole("CONDUCTOR");
+                            setViolationTargetSearch(suggestedTripCrew.conductorName);
+                            setViolationTargetId("");
+                          }}
+                        >
+                          Phụ xe · {suggestedTripCrew.conductorName}
+                        </ExpressiveButton>
+                      )}
+                    </div>
+                  </div>
+                )}
+                <div className="grid gap-2 sm:grid-cols-[11rem_1fr]">
+                  <Select value={violationTargetRole} onValueChange={(value) => { setViolationTargetRole(value as typeof violationTargetRole); setViolationTargetId(""); }}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">Tất cả vai trò</SelectItem>
+                      <SelectItem value="DRIVER">Tài xế</SelectItem>
+                      <SelectItem value="CONDUCTOR">Phụ xe</SelectItem>
+                      <SelectItem value="STUDENT">Sinh viên</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    value={violationTargetSearch}
+                    onChange={(event) => { setViolationTargetSearch(event.target.value); setViolationTargetId(""); }}
+                    placeholder="Nhập ít nhất 2 ký tự để tìm..."
+                  />
+                </div>
+                <Select value={violationTargetId} onValueChange={setViolationTargetId} disabled={!canBrowseViolationTargets || violationTargets.loading || (violationTargets.data || []).length === 0}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={violationTargets.loading ? "Đang tải danh sách..." : !canBrowseViolationTargets ? "Chọn vai trò hoặc nhập từ 2 ký tự" : (violationTargets.data || []).length === 0 ? "Không tìm thấy người phù hợp" : "Chọn người bị báo cáo"} />
                   </SelectTrigger>
                   <SelectContent>
                     {(violationTargets.data || []).map((target) => (
                       <SelectItem key={target.userId} value={String(target.userId)}>
-                        {target.fullName} · {target.role}
+                        {target.fullName} · {target.role} · {target.email}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                {violationTargets.error && <p className="mt-1 text-xs text-error">{violationTargets.error}</p>}
+                {violationTargets.error && <p className="text-xs text-error">{violationTargets.error}</p>}
               </div>
               <div>
                 <Label className="text-xs font-bold">Loại vi phạm</Label>
@@ -2977,7 +3075,7 @@ function FeedbackScreen({ ctx, initialTab }: { ctx: Ctx; initialTab?: string }) 
               </ExpressiveButton>
               <ExpressiveButton variant="filled" onClick={submitViolation} disabled={violationSubmitting || violationTargets.loading}>
                 {violationSubmitting ? <RefreshCw className="size-4 animate-spin" /> : <AlertTriangle className="size-4" />}
-                Gửi Admin
+                Gửi báo cáo
               </ExpressiveButton>
             </DialogFooter>
           </DialogContent>
