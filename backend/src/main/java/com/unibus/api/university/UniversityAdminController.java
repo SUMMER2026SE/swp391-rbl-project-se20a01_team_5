@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -35,10 +36,13 @@ import com.unibus.api.university.UniversityDtos.RosterImportConfirmRequest;
 import com.unibus.api.university.UniversityDtos.RosterImportConfirmView;
 import com.unibus.api.university.UniversityDtos.RosterImportCommitRequest;
 import com.unibus.api.university.UniversityDtos.RosterStudentView;
+import com.unibus.api.university.UniversityDtos.RouteUniversityView;
 import com.unibus.api.university.UniversityDtos.SubsidyPolicyView;
 import com.unibus.api.university.UniversityDtos.UniversityAdminView;
 import com.unibus.api.university.UniversityDtos.UniversityStatsView;
+import com.unibus.api.university.UniversityDtos.UpdateRouteSubsidyRequest;
 import com.unibus.api.university.UniversityDtos.UpdateStatusRequest;
+import com.unibus.api.university.UniversityDtos.UpdateUniversitySubsidyConfigRequest;
 
 import jakarta.validation.Valid;
 
@@ -122,15 +126,18 @@ public class UniversityAdminController {
             @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "csv") String format) {
         Integer universityId = service.requireUniversityAdmin(currentUser).universityId();
-        UniversityManagementService.RosterExportFile file = service.exportRosterCsv(
+        UniversityManagementService.RosterExportFile file = service.exportRoster(
                 currentUser,
                 universityId,
                 keyword,
                 status,
                 format);
+        MediaType contentType = file.fileName().endsWith(".xlsx")
+                ? MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                : MediaType.parseMediaType("text/csv; charset=utf-8");
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + file.fileName() + "\"")
-                .contentType(MediaType.parseMediaType("text/csv; charset=utf-8"))
+                .contentType(contentType)
                 .body(file.bytes());
     }
 
@@ -206,7 +213,7 @@ public class UniversityAdminController {
     @GetMapping("/subsidy-policies")
     ApiResponse<List<SubsidyPolicyView>> subsidyPolicies(@AuthenticationPrincipal CurrentUser currentUser) {
         Integer universityId = service.requireUniversityAdmin(currentUser).universityId();
-        return ApiResponse.ok("Subsidy policies retrieved", service.listSubsidyPolicies(universityId));
+        return ApiResponse.ok("Subsidy config retrieved", service.listCurrentSubsidyConfig(universityId));
     }
 
     @PostMapping("/subsidy-policies")
@@ -214,6 +221,27 @@ public class UniversityAdminController {
             @AuthenticationPrincipal CurrentUser currentUser,
             @Valid @RequestBody CreateScopedSubsidyPolicyRequest request) {
         return ApiResponse.ok("Subsidy policy created", service.createScopedSubsidyPolicy(currentUser, request));
+    }
+
+    @PutMapping({"/subsidy-policy", "/subsidy-policies"})
+    ApiResponse<SubsidyPolicyView> updateSubsidyConfig(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @Valid @RequestBody UpdateUniversitySubsidyConfigRequest request) {
+        return ApiResponse.ok("Subsidy config updated", service.updateScopedSubsidyConfig(currentUser, request));
+    }
+
+    @GetMapping("/route-subsidies")
+    ApiResponse<List<RouteUniversityView>> routeSubsidies(@AuthenticationPrincipal CurrentUser currentUser) {
+        return ApiResponse.ok("Route subsidies retrieved", service.listScopedRouteSubsidies(currentUser));
+    }
+
+    @PatchMapping("/route-subsidies/{routeUniversityId}")
+    ApiResponse<RouteUniversityView> updateRouteSubsidy(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @PathVariable Integer routeUniversityId,
+            @RequestBody UpdateRouteSubsidyRequest request) {
+        return ApiResponse.ok("Route subsidy updated",
+                service.updateScopedRouteSubsidy(currentUser, routeUniversityId, request));
     }
 
     @GetMapping("/stats")

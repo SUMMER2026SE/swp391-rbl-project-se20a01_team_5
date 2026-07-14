@@ -77,6 +77,25 @@ public class UniversitySubsidyRepository {
         return count != null && count > 0;
     }
 
+    public boolean isRouteSubsidyEnabled(Integer universityId, Integer routeId, LocalDate serviceDate) {
+        if (universityId == null || routeId == null) {
+            return false;
+        }
+        Integer count = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM route_universities ru
+                JOIN routes r ON r.route_id = ru.route_id
+                WHERE ru.university_id = ?
+                  AND ru.route_id = ?
+                  AND ru.status = 'ACTIVE'
+                  AND COALESCE(ru.subsidy_enabled, TRUE) = TRUE
+                  AND r.status = 'ACTIVE'
+                  AND ru.active_from <= ?
+                  AND (ru.active_until IS NULL OR ru.active_until >= ?)
+                """, Integer.class, universityId, routeId, serviceDate, serviceDate);
+        return count != null && count > 0;
+    }
+
     public Optional<SubsidyPolicy> findActivePolicy(Integer universityId, LocalDate serviceDate) {
         if (universityId == null) {
             return Optional.empty();

@@ -172,14 +172,23 @@ public final class UniversityDtos {
     public record RouteUniversityView(
             Integer routeUniversityId,
             Integer routeId,
+            String routeCode,
             String routeName,
+            String routeStartStop,
+            String routeEndStop,
+            String routeStatus,
             Integer universityId,
             String universityName,
             Integer campusId,
             String campusName,
             LocalDate activeFrom,
             LocalDate activeUntil,
-            String status) {
+            String status,
+            boolean subsidyEnabled) {
+    }
+
+    public record UpdateRouteSubsidyRequest(
+            boolean subsidyEnabled) {
     }
 
     public record SubsidyPolicyView(
@@ -194,7 +203,8 @@ public final class UniversityDtos {
             BigDecimal maxAmount,
             LocalDate activeFrom,
             LocalDate activeUntil,
-            String status) {
+            String status,
+            OffsetDateTime updatedAt) {
     }
 
     public record AuditLogView(
@@ -386,6 +396,12 @@ public final class UniversityDtos {
             LocalDate activeFrom,
             LocalDate activeUntil,
             @Pattern(regexp = "ACTIVE|INACTIVE|SUSPENDED") String status) {
+    }
+
+    public record UpdateUniversitySubsidyConfigRequest(
+            @NotNull BigDecimal value,
+            @NotBlank @Pattern(regexp = "ACTIVE|INACTIVE") String status,
+            @Pattern(regexp = "PERCENTAGE|FIXED_AMOUNT") String subsidyType) {
     }
 
     public record CreateUniversityNotificationRequest(

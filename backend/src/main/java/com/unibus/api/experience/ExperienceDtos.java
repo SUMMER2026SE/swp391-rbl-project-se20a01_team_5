@@ -272,6 +272,9 @@ public final class ExperienceDtos {
             String status, OffsetDateTime submittedAt) {
     }
 
+    public record ViolationTargetView(Integer userId, String fullName, String email, String role, String status) {
+    }
+
     public record FareCard(Integer fareId, Integer routeId, String routeCode, String routeName, String fareType,
             BigDecimal amount, LocalDate effectiveFrom, LocalDate effectiveUntil, String notes) {
     }

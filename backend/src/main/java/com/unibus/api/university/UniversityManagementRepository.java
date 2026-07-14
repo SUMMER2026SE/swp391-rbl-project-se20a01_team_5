@@ -684,14 +684,33 @@ public class UniversityManagementRepository {
             params.add(universityId);
         }
         return jdbcTemplate.query("""
-                SELECT ru.route_university_id, ru.route_id, r.route_name, ru.university_id, u.name AS university_name,
-                       ru.campus_id, c.name AS campus_name, ru.active_from, ru.active_until, ru.status
+                SELECT ru.route_university_id, ru.route_id, r.route_code, r.route_name, r.status AS route_status,
+                       start_stop.stop_name AS route_start_stop, end_stop.stop_name AS route_end_stop,
+                       ru.university_id, u.name AS university_name,
+                       ru.campus_id, c.name AS campus_name, ru.active_from, ru.active_until, ru.status,
+                       COALESCE(ru.subsidy_enabled, TRUE) AS subsidy_enabled
                 FROM route_universities ru
                 JOIN routes r ON r.route_id = ru.route_id
                 JOIN universities u ON u.university_id = ru.university_id
                 LEFT JOIN campuses c ON c.campus_id = ru.campus_id
+                LEFT JOIN LATERAL (
+                    SELECT s.stop_name
+                    FROM route_stops rs
+                    JOIN stops s ON s.stop_id = rs.stop_id
+                    WHERE rs.route_id = ru.route_id
+                    ORDER BY COALESCE(rs.station_direction, 0), rs.stop_order
+                    LIMIT 1
+                ) start_stop ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT s.stop_name
+                    FROM route_stops rs
+                    JOIN stops s ON s.stop_id = rs.stop_id
+                    WHERE rs.route_id = ru.route_id
+                    ORDER BY COALESCE(rs.station_direction, 0) DESC, rs.stop_order DESC
+                    LIMIT 1
+                ) end_stop ON TRUE
                 """ + where + """
-                ORDER BY u.name, r.route_name
+                ORDER BY u.name, r.route_code NULLS LAST, r.route_name
                 """, (rs, rowNum) -> mapRouteUniversity(rs), params.toArray());
     }
 
@@ -743,15 +762,53 @@ public class UniversityManagementRepository {
 
     public Optional<RouteUniversityView> findRouteUniversity(Integer routeUniversityId) {
         List<RouteUniversityView> rows = jdbcTemplate.query("""
-                SELECT ru.route_university_id, ru.route_id, r.route_name, ru.university_id, u.name AS university_name,
-                       ru.campus_id, c.name AS campus_name, ru.active_from, ru.active_until, ru.status
+                SELECT ru.route_university_id, ru.route_id, r.route_code, r.route_name, r.status AS route_status,
+                       start_stop.stop_name AS route_start_stop, end_stop.stop_name AS route_end_stop,
+                       ru.university_id, u.name AS university_name,
+                       ru.campus_id, c.name AS campus_name, ru.active_from, ru.active_until, ru.status,
+                       COALESCE(ru.subsidy_enabled, TRUE) AS subsidy_enabled
                 FROM route_universities ru
                 JOIN routes r ON r.route_id = ru.route_id
                 JOIN universities u ON u.university_id = ru.university_id
                 LEFT JOIN campuses c ON c.campus_id = ru.campus_id
+                LEFT JOIN LATERAL (
+                    SELECT s.stop_name
+                    FROM route_stops rs
+                    JOIN stops s ON s.stop_id = rs.stop_id
+                    WHERE rs.route_id = ru.route_id
+                    ORDER BY COALESCE(rs.station_direction, 0), rs.stop_order
+                    LIMIT 1
+                ) start_stop ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT s.stop_name
+                    FROM route_stops rs
+                    JOIN stops s ON s.stop_id = rs.stop_id
+                    WHERE rs.route_id = ru.route_id
+                    ORDER BY COALESCE(rs.station_direction, 0) DESC, rs.stop_order DESC
+                    LIMIT 1
+                ) end_stop ON TRUE
                 WHERE ru.route_university_id = ?
                 """, (rs, rowNum) -> mapRouteUniversity(rs), routeUniversityId);
         return rows.stream().findFirst();
+    }
+
+    public Optional<RouteUniversityView> findRouteUniversityForUniversity(Integer routeUniversityId, Integer universityId) {
+        return findRouteUniversity(routeUniversityId)
+                .filter(link -> link.universityId().equals(universityId));
+    }
+
+    public Optional<RouteUniversityView> updateRouteUniversitySubsidy(Integer routeUniversityId, Integer universityId, boolean subsidyEnabled) {
+        int updated = jdbcTemplate.update("""
+                UPDATE route_universities
+                SET subsidy_enabled = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE route_university_id = ?
+                  AND university_id = ?
+                """, subsidyEnabled, routeUniversityId, universityId);
+        if (updated <= 0) {
+            return Optional.empty();
+        }
+        return findRouteUniversity(routeUniversityId);
     }
 
     public List<SubsidyPolicyView> findSubsidyPolicies(Integer universityId) {
@@ -763,7 +820,7 @@ public class UniversityManagementRepository {
         }
         return jdbcTemplate.query("""
                 SELECT sp.subsidy_policy_id, sp.university_id, u.name AS university_name, sp.campus_id, c.name AS campus_name,
-                       sp.policy_name, sp.subsidy_type, sp.value, sp.max_amount, sp.active_from, sp.active_until, sp.status
+                       sp.policy_name, sp.subsidy_type, sp.value, sp.max_amount, sp.active_from, sp.active_until, sp.status, COALESCE(sp.updated_at, sp.created_at) AS updated_at
                 FROM subsidy_policies sp
                 JOIN universities u ON u.university_id = sp.university_id
                 LEFT JOIN campuses c ON c.campus_id = sp.campus_id
@@ -785,13 +842,54 @@ public class UniversityManagementRepository {
     public Optional<SubsidyPolicyView> findSubsidyPolicy(Integer policyId) {
         List<SubsidyPolicyView> rows = jdbcTemplate.query("""
                 SELECT sp.subsidy_policy_id, sp.university_id, u.name AS university_name, sp.campus_id, c.name AS campus_name,
-                       sp.policy_name, sp.subsidy_type, sp.value, sp.max_amount, sp.active_from, sp.active_until, sp.status
+                       sp.policy_name, sp.subsidy_type, sp.value, sp.max_amount, sp.active_from, sp.active_until, sp.status, COALESCE(sp.updated_at, sp.created_at) AS updated_at
                 FROM subsidy_policies sp
                 JOIN universities u ON u.university_id = sp.university_id
                 LEFT JOIN campuses c ON c.campus_id = sp.campus_id
                 WHERE sp.subsidy_policy_id = ?
                 """, (rs, rowNum) -> mapSubsidyPolicy(rs), policyId);
         return rows.stream().findFirst();
+    }
+
+    public Optional<SubsidyPolicyView> findCurrentUniversitySubsidyConfig(Integer universityId) {
+        List<SubsidyPolicyView> rows = jdbcTemplate.query("""
+                SELECT sp.subsidy_policy_id, sp.university_id, u.name AS university_name, sp.campus_id, c.name AS campus_name,
+                       sp.policy_name, sp.subsidy_type, sp.value, sp.max_amount, sp.active_from, sp.active_until, sp.status, COALESCE(sp.updated_at, sp.created_at) AS updated_at
+                FROM subsidy_policies sp
+                JOIN universities u ON u.university_id = sp.university_id
+                LEFT JOIN campuses c ON c.campus_id = sp.campus_id
+                WHERE sp.university_id = ?
+                  AND sp.campus_id IS NULL
+                ORDER BY sp.updated_at DESC NULLS LAST, sp.active_from DESC, sp.subsidy_policy_id DESC
+                LIMIT 1
+                """, (rs, rowNum) -> mapSubsidyPolicy(rs), universityId);
+        return rows.stream().findFirst();
+    }
+
+    public SubsidyPolicyView updateUniversitySubsidyConfig(Integer policyId, BigDecimal value, String status, String subsidyType) {
+        jdbcTemplate.update("""
+                UPDATE subsidy_policies
+                SET campus_id = NULL,
+                    subsidy_type = ?,
+                    "value" = ?,
+                    max_amount = CASE WHEN ? = 'FIXED_AMOUNT' THEN NULL ELSE max_amount END,
+                    active_until = NULL,
+                    status = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE subsidy_policy_id = ?
+                """, subsidyType, value, subsidyType, status, policyId);
+        return findSubsidyPolicy(policyId).orElseThrow();
+    }
+
+    public void deactivateOtherUniversitySubsidyPolicies(Integer universityId, Integer keepPolicyId) {
+        jdbcTemplate.update("""
+                UPDATE subsidy_policies
+                SET status = 'INACTIVE',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE university_id = ?
+                  AND subsidy_policy_id <> ?
+                  AND status = 'ACTIVE'
+                """, universityId, keepPolicyId);
     }
 
     public UniversityStatsView stats(Integer universityId) {
@@ -1223,14 +1321,19 @@ public class UniversityManagementRepository {
         return new RouteUniversityView(
                 rs.getInt("route_university_id"),
                 rs.getInt("route_id"),
+                rs.getString("route_code"),
                 rs.getString("route_name"),
+                rs.getString("route_start_stop"),
+                rs.getString("route_end_stop"),
+                rs.getString("route_status"),
                 rs.getInt("university_id"),
                 rs.getString("university_name"),
                 (Integer) rs.getObject("campus_id"),
                 rs.getString("campus_name"),
                 rs.getObject("active_from", LocalDate.class),
                 rs.getObject("active_until", LocalDate.class),
-                rs.getString("status"));
+                rs.getString("status"),
+                rs.getBoolean("subsidy_enabled"));
     }
 
     private SubsidyPolicyView mapSubsidyPolicy(ResultSet rs) throws SQLException {
@@ -1246,7 +1349,8 @@ public class UniversityManagementRepository {
                 rs.getBigDecimal("max_amount"),
                 rs.getObject("active_from", LocalDate.class),
                 rs.getObject("active_until", LocalDate.class),
-                rs.getString("status"));
+                rs.getString("status"),
+                toOffset(rs.getTimestamp("updated_at")));
     }
 
     private AuditLogView mapAudit(ResultSet rs) throws SQLException {

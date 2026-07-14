@@ -777,6 +777,12 @@ export function useAdminNotifications() {
 export function useAdminPayments(params?: { universityId?: number }) {
   return useApi(() => adminApi.paymentTransactions(params), undefined, [params?.universityId]);
 }
+export function useAdminComplaints(status?: string) {
+  return useApi(() => experienceApi.complaints(status), undefined, [status]);
+}
+export function useAdminViolations(status?: string) {
+  return useApi(() => experienceApi.violations(status), undefined, [status]);
+}
 export function useAdminRouteUnis(universityId?: number) {
   return useApi(() => adminApi.routeUniversities(universityId), undefined, [universityId]);
 }

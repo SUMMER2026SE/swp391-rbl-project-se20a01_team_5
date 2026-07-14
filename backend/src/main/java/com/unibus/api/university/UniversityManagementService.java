@@ -78,6 +78,8 @@ import com.unibus.api.university.UniversityDtos.RosterStudentView;
 import com.unibus.api.university.UniversityDtos.RouteUniversityView;
 import com.unibus.api.university.UniversityDtos.StudentUniversityView;
 import com.unibus.api.university.UniversityDtos.SubsidyPolicyView;
+import com.unibus.api.university.UniversityDtos.UpdateRouteSubsidyRequest;
+import com.unibus.api.university.UniversityDtos.UpdateUniversitySubsidyConfigRequest;
 import com.unibus.api.university.UniversityDtos.UniversityAdminView;
 import com.unibus.api.university.UniversityDtos.UniversityStatsView;
 import com.unibus.api.university.UniversityDtos.UniversityView;
@@ -266,6 +268,30 @@ public class UniversityManagementService {
         return repository.findRouteUniversities(universityId);
     }
 
+    @Transactional(readOnly = true)
+    public List<RouteUniversityView> listScopedRouteSubsidies(CurrentUser currentUser) {
+        Integer universityId = requireUniversityAdmin(currentUser).universityId();
+        return repository.findRouteUniversities(universityId);
+    }
+
+    @Transactional
+    public RouteUniversityView updateScopedRouteSubsidy(CurrentUser actor, Integer routeUniversityId,
+            UpdateRouteSubsidyRequest request) {
+        UniversityAdminView admin = requireUniversityAdmin(actor);
+        RouteUniversityView current = repository.findRouteUniversityForUniversity(routeUniversityId, admin.universityId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Route assignment not found for this university"));
+        RouteUniversityView updated = repository.updateRouteUniversitySubsidy(
+                        routeUniversityId,
+                        admin.universityId(),
+                        request != null && request.subsidyEnabled())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Route assignment not found for this university"));
+        audit(actor, admin.universityId(), "ROUTE_SUBSIDY_TOGGLE", "route_universities",
+                String.valueOf(routeUniversityId),
+                updated.subsidyEnabled() ? "ENABLED" : "DISABLED",
+                "routeId=" + current.routeId() + "; route=" + current.routeName());
+        return updated;
+    }
+
     @Transactional
     public SubsidyPolicyView createSubsidyPolicy(CurrentUser actor, CreateSubsidyPolicyRequest request) {
         return createSubsidyPolicy(
@@ -287,6 +313,14 @@ public class UniversityManagementService {
     }
 
     @Transactional(readOnly = true)
+    public List<SubsidyPolicyView> listCurrentSubsidyConfig(Integer universityId) {
+        requireUniversity(universityId);
+        return repository.findCurrentUniversitySubsidyConfig(universityId)
+                .map(policy -> List.of(policy))
+                .orElseGet(List::of);
+    }
+
+    @Transactional(readOnly = true)
     public List<RosterStudentView> listRoster(Integer universityId, String keyword, String status) {
         requireUniversity(universityId);
         return repository.findRoster(universityId, keyword, status);
@@ -299,6 +333,15 @@ public class UniversityManagementService {
             requireImportBatch(universityId, importBatchId);
         }
         return repository.findRoster(universityId, keyword, status, importBatchId);
+    }
+
+    @Transactional(readOnly = true)
+    public RosterExportFile exportRoster(CurrentUser actor, Integer universityId, String keyword, String status, String format) {
+        String normalizedFormat = blank(format) ? "csv" : format.trim().toLowerCase(Locale.ROOT);
+        if ("xlsx".equals(normalizedFormat)) {
+            return exportRosterXlsx(actor, universityId, keyword, status);
+        }
+        return exportRosterCsv(actor, universityId, keyword, status, normalizedFormat);
     }
 
     @Transactional(readOnly = true)
@@ -336,6 +379,94 @@ public class UniversityManagementService {
         String fileName = "danh-sach-sinh-vien_" + sanitizeFileName(university.code()) + "_"
                 + LocalDate.now().format(DateTimeFormatter.ISO_DATE) + ".csv";
         return new RosterExportFile(fileName, csv.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    private RosterExportFile exportRosterXlsx(CurrentUser actor, Integer universityId, String keyword, String status) {
+        UniversityView university = requireUniversity(universityId);
+        List<RosterStudentView> rows = repository.findRosterForExport(universityId, keyword, status);
+        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            Sheet importSheet = workbook.createSheet("Danh s\u00e1ch sinh vi\u00ean");
+            Sheet guideSheet = workbook.createSheet("H\u01b0\u1edbng d\u1eabn");
+            Sheet catalogSheet = workbook.createSheet("Danh m\u1ee5c");
+
+            CellStyle headerStyle = workbook.createCellStyle();
+            Font headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            headerFont.setColor(IndexedColors.WHITE.getIndex());
+            headerStyle.setFont(headerFont);
+            headerStyle.setFillForegroundColor(IndexedColors.DARK_BLUE.getIndex());
+            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+            CellStyle textStyle = workbook.createCellStyle();
+            textStyle.setDataFormat(workbook.getCreationHelper().createDataFormat().getFormat("@"));
+
+            CreationHelper creationHelper = workbook.getCreationHelper();
+            Drawing<?> drawing = importSheet.createDrawingPatriarch();
+            Row headerRow = importSheet.createRow(0);
+            for (int index = 0; index < ROSTER_IMPORT_HEADERS.size(); index++) {
+                Cell cell = headerRow.createCell(index);
+                cell.setCellValue(ROSTER_IMPORT_HEADERS.get(index));
+                cell.setCellStyle(headerStyle);
+                importSheet.setColumnWidth(index, switch (index) {
+                    case 0 -> 9000;
+                    case 1 -> 4500;
+                    case 2 -> 7000;
+                    case 3 -> 6500;
+                    case 4 -> 4200;
+                    default -> 5200;
+                });
+                addHeaderComment(creationHelper, drawing, cell, rosterHeaderComment(ROSTER_IMPORT_HEADERS.get(index)));
+            }
+            importSheet.setDefaultColumnStyle(1, textStyle);
+            importSheet.createFreezePane(0, 1);
+            importSheet.setAutoFilter(new CellRangeAddress(0, Math.max(3, rows.size()), 0, ROSTER_IMPORT_HEADERS.size() - 1));
+
+            for (int index = 0; index < rows.size(); index++) {
+                RosterStudentView student = rows.get(index);
+                Row row = importSheet.createRow(index + 1);
+                row.createCell(0).setCellValue(nullToEmpty(student.email()));
+                Cell studentCodeCell = row.createCell(1);
+                studentCodeCell.setCellValue(nullToEmpty(student.studentCode()));
+                studentCodeCell.setCellStyle(textStyle);
+                row.createCell(2).setCellValue(nullToEmpty(student.fullName()));
+                row.createCell(3).setCellValue(nullToEmpty(student.faculty()));
+                if (student.academicYear() != null) {
+                    row.createCell(4).setCellValue(student.academicYear());
+                } else {
+                    row.createCell(4).setCellValue("");
+                }
+                row.createCell(5).setCellValue(nullToEmpty(student.status()));
+            }
+
+            DataValidationHelper validationHelper = importSheet.getDataValidationHelper();
+            DataValidationConstraint statusConstraint = validationHelper.createExplicitListConstraint(
+                    VALID_ROSTER_STATUSES.stream().sorted().toArray(String[]::new));
+            DataValidation statusValidation = validationHelper.createValidation(
+                    statusConstraint,
+                    new CellRangeAddressList(1, MAX_ROSTER_IMPORT_ROWS, 5, 5));
+            statusValidation.setSuppressDropDownArrow(true);
+            importSheet.addValidationData(statusValidation);
+
+            List<String> faculties = repository.findRosterFaculties(universityId);
+            if (shouldUseExplicitDropdown(faculties)) {
+                DataValidationConstraint facultyConstraint = validationHelper.createExplicitListConstraint(faculties.toArray(String[]::new));
+                DataValidation facultyValidation = validationHelper.createValidation(
+                        facultyConstraint,
+                        new CellRangeAddressList(1, MAX_ROSTER_IMPORT_ROWS, 3, 3));
+                facultyValidation.setSuppressDropDownArrow(true);
+                importSheet.addValidationData(facultyValidation);
+            }
+
+            writeGuideSheet(guideSheet, headerStyle);
+            writeCatalogSheet(catalogSheet, headerStyle, repository.findDomains(universityId), repository.findCampuses(universityId), faculties);
+
+            workbook.write(output);
+            String fileName = "danh-sach-sinh-vien_" + sanitizeFileName(university.code()) + "_"
+                    + LocalDate.now().format(DateTimeFormatter.ISO_DATE) + ".xlsx";
+            return new RosterExportFile(fileName, output.toByteArray());
+        } catch (IOException exception) {
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Unable to generate roster export");
+        }
     }
 
     @Transactional(readOnly = true)
@@ -376,7 +507,7 @@ public class UniversityManagementService {
             }
             importSheet.setDefaultColumnStyle(1, textStyle);
             importSheet.createFreezePane(0, 1);
-            importSheet.setAutoFilter(new CellRangeAddress(0, 0, 0, ROSTER_IMPORT_HEADERS.size() - 1));
+            importSheet.setAutoFilter(new CellRangeAddress(0, 3, 0, ROSTER_IMPORT_HEADERS.size() - 1));
 
             DataValidationHelper validationHelper = importSheet.getDataValidationHelper();
             DataValidationConstraint statusConstraint = validationHelper.createExplicitListConstraint(
@@ -789,18 +920,55 @@ public class UniversityManagementService {
 
     @Transactional
     public SubsidyPolicyView createScopedSubsidyPolicy(CurrentUser actor, CreateScopedSubsidyPolicyRequest request) {
+        if (request.campusId() != null || request.maxAmount() != null || request.activeUntil() != null
+                || !Set.of("PERCENTAGE", "FIXED_AMOUNT").contains(request.subsidyType().trim().toUpperCase(Locale.ROOT))) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "University admin supports only one monthly pass subsidy config");
+        }
+        String status = defaultStatus(request.status());
+        if (!"ACTIVE".equals(status) && !"INACTIVE".equals(status)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Subsidy status must be ACTIVE or INACTIVE");
+        }
+        return updateScopedSubsidyConfig(actor, new UpdateUniversitySubsidyConfigRequest(request.value(), status, request.subsidyType()));
+    }
+
+    @Transactional
+    public SubsidyPolicyView updateScopedSubsidyConfig(CurrentUser actor, UpdateUniversitySubsidyConfigRequest request) {
         Integer universityId = requireUniversityAdmin(actor).universityId();
-        return createSubsidyPolicy(
-                actor,
-                universityId,
-                request.campusId(),
-                request.policyName(),
-                request.subsidyType(),
-                request.value(),
-                request.maxAmount(),
-                request.activeFrom(),
-                request.activeUntil(),
-                request.status());
+        requireUniversity(universityId);
+        BigDecimal value = request.value();
+        if (value == null || value.signum() < 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Subsidy amount must be greater than or equal to 0");
+        }
+        String status = request.status() == null ? "INACTIVE" : request.status().trim().toUpperCase(Locale.ROOT);
+        if (!"ACTIVE".equals(status) && !"INACTIVE".equals(status)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Subsidy status must be ACTIVE or INACTIVE");
+        }
+        Optional<SubsidyPolicyView> existingPolicy = repository.findCurrentUniversitySubsidyConfig(universityId);
+        String subsidyType = blank(request.subsidyType())
+                ? existingPolicy.map(SubsidyPolicyView::subsidyType).orElse("FIXED_AMOUNT")
+                : request.subsidyType().trim().toUpperCase(Locale.ROOT);
+        if (!Set.of("PERCENTAGE", "FIXED_AMOUNT").contains(subsidyType)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Subsidy type must be PERCENTAGE or FIXED_AMOUNT");
+        }
+        if ("PERCENTAGE".equals(subsidyType) && value.compareTo(BigDecimal.valueOf(100)) > 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Percentage subsidy must not exceed 100");
+        }
+        SubsidyPolicyView policy = existingPolicy
+                .map(existing -> repository.updateUniversitySubsidyConfig(existing.subsidyPolicyId(), value, status, subsidyType))
+                .orElseGet(() -> repository.createSubsidyPolicy(
+                        universityId,
+                        null,
+                        "Cấu hình trợ giá vé tháng",
+                        subsidyType,
+                        value,
+                        null,
+                        LocalDate.now(),
+                        null,
+                        status));
+        repository.deactivateOtherUniversitySubsidyPolicies(universityId, policy.subsidyPolicyId());
+        audit(actor, universityId, "SUBSIDY_CONFIG_UPDATE", "subsidy_policies",
+                policy.subsidyPolicyId(), "SUCCESS", "type=" + subsidyType + ", value=" + value + ", status=" + status);
+        return policy;
     }
 
     private SubsidyPolicyView createSubsidyPolicy(CurrentUser actor, Integer universityId, Integer campusId,

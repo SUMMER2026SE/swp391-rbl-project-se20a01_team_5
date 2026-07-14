@@ -574,6 +574,7 @@ export interface StudentProfile extends UserProfile {
 export interface RegistrationDTO {
   registrationId: number;
   routeId: number;
+  routeCode?: string;
   routeName: string;
   boardingStopId: number;
   boardingStopName: string;
@@ -582,6 +583,8 @@ export interface RegistrationDTO {
   effectiveDate?: string;
   status: string;
   registeredAt?: string;
+  hasActiveMonthlyPass?: boolean;
+  monthlyPassExpiresOn?: string;
 }
 
 export type SePayTicketPeriod = "day" | "month";
@@ -785,6 +788,8 @@ export const studentApi = {
     apiFetch.put<RegistrationDTO>(`/students/me/route-registrations/${registrationId}`, data),
   cancelRegistration: (registrationId: number, reason?: string) =>
     apiFetch.delete<void>(`/students/me/route-registrations/${registrationId}`, reason ? { reason } : undefined),
+  ticketQuote: (routeId: number | string, ticketType?: string) =>
+    apiFetch.get<NonNullable<PassesDashboard["monthlyPassQuote"]>>("/students/me/tickets/quote", { routeId, ticketType }),
   tickets: () => apiFetch.get<PassesDashboard>("/students/me/tickets"),
   purchaseMonthlyPass: (method = "E_WALLET", routeId?: number) =>
     apiFetch.post<TicketView>("/students/me/tickets/monthly-pass", { method, routeId }),
@@ -823,9 +828,13 @@ export const studentApi = {
   payments: () => apiFetch.get<PaymentView[]>("/students/me/payments"),
   quoteSePayOrder: (data: SePayOrderRequestDTO) =>
     apiFetch.post<SePayQuoteDTO>("/students/me/payments/sepay/quote", data),
-  createSePayOrder: (ticketTypeOrData: string | SePayOrderRequestDTO, routeId?: number) => {
+  createSePayOrder: (
+    ticketTypeOrData: string | SePayOrderRequestDTO,
+    routeId?: number,
+    stopMetadata?: Pick<SePayOrderRequestDTO, "boardingStopId" | "alightingStopId">
+  ) => {
     const data = typeof ticketTypeOrData === "string"
-      ? { ticketType: ticketTypeOrData, routeId }
+      ? { ticketType: ticketTypeOrData, routeId, ...stopMetadata }
       : ticketTypeOrData;
     return apiFetch.post<SePayOrderDTO>("/students/me/payments/sepay/order", data);
   },
@@ -1130,6 +1139,14 @@ export interface ExperienceIncidentCard {
   reportedAt?: string;
 }
 
+export interface ViolationTargetView {
+  userId: number;
+  fullName: string;
+  email: string;
+  role: string;
+  status: string;
+}
+
 export interface ExperienceDashboardStat {
   label: string;
   value: number | string;
@@ -1333,6 +1350,9 @@ export const experienceApi = {
     apiFetch.put<AdminStatsView["fares"][number]>(`/admin/fares/${fareId}`, data),
   complaints: (status?: string) => apiFetch.get<AdminStatsView["complaints"]>("/admin/complaints", { status }),
   violations: (status?: string) => apiFetch.get<AdminStatsView["violations"]>("/admin/violations", { status }),
+  violationTargets: (keyword?: string) => apiFetch.get<ViolationTargetView[]>("/admin/violation-targets", { keyword }),
+  createViolation: (data: { reportedUserId: number; category: string; description: string }) =>
+    apiFetch.post<{ violationId: number }>("/admin/violations", data),
 };
 
 export interface ContactThreadCard {
@@ -1694,7 +1714,11 @@ export interface RosterImportConfirmView {
 export interface RouteUniversityView {
   routeUniversityId: number;
   routeId: number;
+  routeCode?: string;
   routeName: string;
+  routeStartStop?: string;
+  routeEndStop?: string;
+  routeStatus?: string;
   universityId: number;
   universityName: string;
   campusId?: number;
@@ -1702,6 +1726,7 @@ export interface RouteUniversityView {
   activeFrom?: string;
   activeUntil?: string;
   status: string;
+  subsidyEnabled?: boolean;
 }
 
 export type SubsidyType = "PERCENTAGE" | "FIXED_AMOUNT";
@@ -1719,6 +1744,7 @@ export interface SubsidyPolicyView {
   activeFrom?: string;
   activeUntil?: string;
   status: string;
+  updatedAt?: string;
 }
 
 export interface UniversityStatsView {
@@ -1870,6 +1896,8 @@ export const universityApi = {
   rosterTemplate: () => apiFetch.download("/university-admin/roster/template"),
   rosterExportCsv: (params?: { keyword?: string; status?: string }) =>
     apiFetch.download(`/university-admin/roster/export${buildQuery({ ...params, format: "csv" })}`),
+  rosterExportXlsx: (params?: { keyword?: string; status?: string }) =>
+    apiFetch.download(`/university-admin/roster/export${buildQuery({ ...params, format: "xlsx" })}`),
   previewRosterImport: (file: File) => {
     const form = new FormData();
     form.set("file", file);
@@ -1888,8 +1916,13 @@ export const universityApi = {
   importBatch: (importBatchId: number) => apiFetch.get<ImportBatchView>(`/university-admin/roster/import/${importBatchId}`),
   importBatchReport: (importBatchId: number) => apiFetch.download(`/university-admin/roster/import/${importBatchId}/report`),
   subsidyPolicies: () => apiFetch.get<SubsidyPolicyView[]>("/university-admin/subsidy-policies"),
-  createSubsidyPolicy: (data: { campusId?: number; policyName: string; subsidyType: SubsidyType; value: number; maxAmount?: number; activeFrom?: string; activeUntil?: string; status?: string }) =>
+  createSubsidyPolicy: (data: { policyName: string; subsidyType: SubsidyType; value: number; status: "ACTIVE" | "INACTIVE" }) =>
     apiFetch.post<SubsidyPolicyView>("/university-admin/subsidy-policies", data),
+  updateSubsidyConfig: (data: { value: number; status: "ACTIVE" | "INACTIVE"; subsidyType?: SubsidyType }) =>
+    apiFetch.put<SubsidyPolicyView>("/university-admin/subsidy-policy", data),
+  routeSubsidies: () => apiFetch.get<RouteUniversityView[]>("/university-admin/route-subsidies"),
+  updateRouteSubsidy: (routeUniversityId: number, data: { subsidyEnabled: boolean }) =>
+    apiFetch.patch<RouteUniversityView>(`/university-admin/route-subsidies/${routeUniversityId}`, data),
   stats: () => apiFetch.get<UniversityStatsView>("/university-admin/stats"),
   reconciliation: (params?: { from?: string; to?: string }) => apiFetch.get<ReconciliationView>("/university-admin/reconciliation", params),
   paymentTransactions: () => apiFetch.get<PaymentTransactionView[]>("/university-admin/payment-transactions"),

@@ -4,7 +4,7 @@
 // University Admin Module — UniBus (M3 Expressive, aligned to UIPrototype v1.1)
 // 9 role-specific screens:
 //   uniadm-dashboard, uniadm-info, uniadm-domains, uniadm-import, uniadm-roster,
-//   uniadm-subsidy, uniadm-stats, uniadm-notify, uniadm-recon
+//   uniadm-subsidy, uniadm-notify, uniadm-recon
 // Visual: keeps prototype v1.1 (hero perk card, university info card,
 // import batch progress, roster table, subsidy policy cards, reconciliation summary).
 // Data: real service data via /university-admin/* endpoints.
@@ -43,6 +43,7 @@ import {
   MapPin,
   Wallet,
   ShieldCheck,
+  TicketPercent,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -50,8 +51,6 @@ import {
   Area,
   BarChart,
   Bar,
-  PieChart,
-  Pie,
   LineChart,
   Line,
   Cell,
@@ -67,6 +66,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -126,16 +126,17 @@ import {
   type CampusView,
   type DomainView,
   type ImportBatchView,
+  type ImportErrorView,
   type RosterImportConfirmView,
   type RosterImportPreviewView,
   type RosterStudentView,
+  type RouteUniversityView,
   type SubsidyPolicyView,
   type UniversityStatsView,
   type ReconciliationView,
   type PaymentTransactionView,
   type UniversityAdminView,
   type ExperienceDashboardStat,
-  type SubsidyType,
   type BlobDownload,
 } from "@/lib/api/client";
 
@@ -163,16 +164,30 @@ const downloadFile = (download: BlobDownload, fallbackFileName: string, allowedC
   URL.revokeObjectURL(url);
 };
 
-const downloadLocalCsv = (csv: string, fileName: string) => {
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = fileName;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
+const effectiveSubsidyType = (policy?: Pick<SubsidyPolicyView, "subsidyType" | "value"> | null) => {
+  if (policy?.subsidyType === "PERCENTAGE") return "PERCENTAGE";
+  const value = Number(policy?.value || 0);
+  if (policy?.subsidyType === "FIXED_AMOUNT" && value > 0 && value <= 100) {
+    return "PERCENTAGE";
+  }
+  return "FIXED_AMOUNT";
+};
+
+const isPercentageSubsidy = (policy?: Pick<SubsidyPolicyView, "subsidyType" | "value"> | null) =>
+  effectiveSubsidyType(policy) === "PERCENTAGE";
+
+const subsidyConfigValueLabel = (policy?: Pick<SubsidyPolicyView, "subsidyType" | "value"> | null) => {
+  const value = Math.round(Number(policy?.value || 0));
+  return isPercentageSubsidy(policy) ? `${value}%` : formatVND(value);
+};
+
+const DETAIL_ROUTE_COLORS = ["#144fcc", "#16a34a", "#ff855d", "#f59e0b", "#7c3aed", "#0f766e", "#dc2626", "#64748b"];
+
+const routeDisplayName = (routeCode?: string | null, routeName?: string | null) => {
+  const code = routeCode?.trim();
+  const name = routeName?.trim();
+  if (code && name && code !== name) return `${code} - ${name}`;
+  return name || code || "Tuyến chưa đặt tên";
 };
 
 const formatBytes = (bytes: number) => {
@@ -317,6 +332,161 @@ const importErrorMessage = (message?: string | null) => {
   }
 };
 
+const importFieldLabel = (field?: string | null) => {
+  const normalized = (field || "").replace(/[_\s-]/g, "").toLowerCase();
+  if (normalized === "studentcode" || normalized === "mssv") return "MSSV";
+  if (normalized === "email") return "Email";
+  if (normalized === "fullname" || normalized === "name") return "Họ tên";
+  if (normalized === "academicyear") return "Năm học";
+  if (normalized === "status") return "Trạng thái";
+  return field || "Dữ liệu";
+};
+
+const importPreviewErrorReason = (error: RosterImportPreviewView["errors"][number]) => {
+  const fieldLabel = importFieldLabel(error.field);
+  const code = (error.code || "").toUpperCase();
+  if (code.includes("EXISTING") || code.includes("DUPLICATE")) return fieldLabel;
+  if (code.includes("INVALID_EMAIL")) return "Email";
+  if (code.includes("EMAIL")) return "Email";
+  if (code.includes("STUDENT_CODE") || code.includes("MSSV")) return "MSSV";
+  if (code.includes("FULL_NAME")) return "Họ tên";
+  if (code.includes("ACADEMIC_YEAR")) return "Năm học";
+  return fieldLabel;
+};
+
+const importErrorSuggestion = (error?: ImportErrorView | null) => {
+  const message = error?.errorMessage || "";
+  const field = (error?.fieldName || "").toLowerCase();
+  if (message.includes("duplicated") || message.includes("already exists")) {
+    return field === "email" ? "Giữ một email duy nhất hoặc kiểm tra lại sinh viên đã tồn tại" : "Giữ một dòng duy nhất cho MSSV này";
+  }
+  if (field === "email" || message.includes("Email")) return "Kiểm tra lại email và domain của trường";
+  if (field === "studentcode" || field === "student_code" || message.includes("MSSV")) return "Kiểm tra lại MSSV, không để trống và không trùng";
+  if (field === "fullname" || field === "full_name") return "Bổ sung họ tên sinh viên";
+  if (field === "academicyear" || field === "academic_year") return "Nhập năm học dạng 4 chữ số, ví dụ 2024";
+  return "Sửa dữ liệu ở dòng này rồi import lại";
+};
+
+function ImportErrorTable({ errors }: { errors?: ImportErrorView[] | null }) {
+  if (!errors?.length) {
+    return (
+      <div className="rounded-xl border border-dashed border-outline-variant bg-surface-container-lowest p-6 text-center text-sm text-on-surface-variant">
+        Chưa có chi tiết lỗi cho lượt import này.
+      </div>
+    );
+  }
+  return (
+    <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-20">Dòng</TableHead>
+            <TableHead>Cột</TableHead>
+            <TableHead>Giá trị</TableHead>
+            <TableHead>Nguyên nhân</TableHead>
+            <TableHead>Gợi ý sửa</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {errors.map((error) => (
+            <TableRow key={error.importErrorId || `${error.importBatchId}-${error.rowNumber}-${error.fieldName}`}>
+              <TableCell className="font-mono font-bold">{error.rowNumber}</TableCell>
+              <TableCell className="font-bold">{importFieldLabel(error.fieldName)}</TableCell>
+              <TableCell className="max-w-[220px] truncate text-sm">{error.rawValue || "Trống"}</TableCell>
+              <TableCell>
+                <p className="font-bold text-error">{importFieldLabel(error.fieldName)}</p>
+                <p className="text-xs text-on-surface-variant">{importErrorMessage(error.errorMessage)}</p>
+              </TableCell>
+              <TableCell className="text-sm text-on-surface-variant">{importErrorSuggestion(error)}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+function ImportPreviewRowsTable({
+  preview,
+}: {
+  preview?: RosterImportPreviewView | null;
+}) {
+  if (!preview?.previewRows?.length) return null;
+  const errorsByRow = new Map<number, number>();
+  for (const error of preview.errors || []) {
+    errorsByRow.set(error.rowNumber, (errorsByRow.get(error.rowNumber) || 0) + 1);
+  }
+  const rowResult = (row: RosterImportPreviewView["previewRows"][number]) => {
+    if (!row.valid || errorsByRow.has(row.rowNumber)) return { label: "Có lỗi", tone: "error" as const };
+    if (row.existing || row.action === "SKIP_EXISTING") return { label: "Bỏ qua", tone: "warning" as const };
+    if (row.action === "CREATE") return { label: "Tạo mới", tone: "success" as const };
+    return { label: row.action || "Hợp lệ", tone: "success" as const };
+  };
+  return (
+    <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-20">Dòng</TableHead>
+            <TableHead>MSSV</TableHead>
+            <TableHead>Họ tên</TableHead>
+            <TableHead>Email</TableHead>
+            <TableHead>Trạng thái</TableHead>
+            <TableHead>Kết quả</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {preview.previewRows.map((row) => {
+            const result = rowResult(row);
+            return (
+              <TableRow key={row.rowNumber}>
+                <TableCell className="font-mono font-bold">{row.rowNumber}</TableCell>
+                <TableCell className="font-mono font-bold">{row.studentCode || "Trống"}</TableCell>
+                <TableCell className="font-bold">{row.fullName || "Trống"}</TableCell>
+                <TableCell className="text-sm">{row.email || "Trống"}</TableCell>
+                <TableCell className="text-sm">{row.status || "ACTIVE"}</TableCell>
+                <TableCell><M3StatusPill label={result.label} tone={result.tone} /></TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+function ImportPreviewErrorTable({ errors }: { errors?: RosterImportPreviewView["errors"] | null }) {
+  if (!errors?.length) return null;
+  return (
+    <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-20">Dòng</TableHead>
+            <TableHead>Cột</TableHead>
+            <TableHead>Giá trị</TableHead>
+            <TableHead>Nguyên nhân</TableHead>
+            <TableHead>Gợi ý sửa</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {errors.map((error) => (
+            <TableRow key={`${error.rowNumber}-${error.field}-${error.code}`}>
+              <TableCell className="font-mono font-bold">{error.rowNumber}</TableCell>
+              <TableCell className="font-bold">{importFieldLabel(error.field)}</TableCell>
+              <TableCell className="max-w-[220px] truncate text-sm">{error.value || "Trống"}</TableCell>
+              <TableCell>
+                <p className="font-bold text-error">{importPreviewErrorReason(error)}</p>
+              </TableCell>
+              <TableCell className="text-sm text-on-surface-variant">{error.suggestion || "Sửa dữ liệu ở dòng này rồi import lại"}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
 const campusStatusLabel = (status?: string | null) => {
   switch ((status || "").toUpperCase()) {
     case "ACTIVE":
@@ -389,12 +559,6 @@ const subsidyStatusTone = (status?: string | null) => {
       return "neutral";
   }
 };
-
-const isFixedAmountSubsidy = (subsidyType?: string | null) =>
-  (subsidyType || "").toUpperCase() === "FIXED_AMOUNT";
-
-const subsidyValueLabel = (policy: SubsidyPolicyView) =>
-  isFixedAmountSubsidy(policy.subsidyType) ? formatVND(policy.value) : `${policy.value}%`;
 
 const normalizeDomainInput = (value: string) => value.trim().toLowerCase().replace(/^@+/, "");
 
@@ -474,34 +638,41 @@ export function UniversityAdminModule({ activeId, onNavigate }: UniversityAdminM
     case "uniadm-domains":
       screen = <DomainsScreen ctx={ctx} />;
       break;
-    case "uniadm-import":
-      screen = <ImportScreen
+    case "uniadm-students":
+      screen = <StudentsScreen
         ctx={ctx}
-        onNavigate={onNavigate}
-        onViewImportedStudents={(batchId) => {
-          setRosterImportBatchId(batchId);
-          onNavigate("uniadm-roster");
-        }}
+        initialTab="import"
+        importBatchId={rosterImportBatchId}
+        onSetImportBatch={setRosterImportBatchId}
+        onClearImportBatch={() => setRosterImportBatchId(undefined)}
+      />;
+      break;
+    case "uniadm-import":
+      screen = <StudentsScreen
+        ctx={ctx}
+        initialTab="import"
+        importBatchId={rosterImportBatchId}
+        onSetImportBatch={setRosterImportBatchId}
+        onClearImportBatch={() => setRosterImportBatchId(undefined)}
       />;
       break;
     case "uniadm-roster":
-      screen = <RosterScreen
+      screen = <StudentsScreen
         ctx={ctx}
+        initialTab="roster"
         importBatchId={rosterImportBatchId}
+        onSetImportBatch={setRosterImportBatchId}
         onClearImportBatch={() => setRosterImportBatchId(undefined)}
       />;
       break;
     case "uniadm-subsidy":
       screen = <SubsidyScreen ctx={ctx} />;
       break;
-    case "uniadm-stats":
-      screen = <StatsScreen ctx={ctx} />;
-      break;
     case "uniadm-notify":
       screen = <NotifyScreen ctx={ctx} />;
       break;
     case "uniadm-recon":
-      screen = <ReconScreen ctx={ctx} />;
+      screen = <TransactionsScreen ctx={ctx} />;
       break;
     case "uniadm-transactions":
       screen = <TransactionsScreen ctx={ctx} />;
@@ -540,7 +711,6 @@ function LoadingScreen({ label = "Đang tải..." }: { label?: string }) {
     </div>
   );
 }
-
 function ErrorScreen({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center">
@@ -564,26 +734,71 @@ function ErrorScreen({ message, onRetry }: { message: string; onRetry?: () => vo
 function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => void }) {
   const ua = ctx.universityAdmin;
   const s = ctx.stats;
+  const [detailRange, setDetailRange] = useState<"7d" | "30d" | "semester">("30d");
 
-  const passesByRoute = (s?.passesByRoute || []).map((point) => ({
-    name: point.routeCode || point.routeName,
+  const passesByRoute = useMemo(() => (s?.passesByRoute || []).map((point, index) => ({
+    name: routeDisplayName(point.routeCode, point.routeName),
     passes: point.passes,
-    fill: point.colorHex || "#144fcc",
-  }));
+    fill: DETAIL_ROUTE_COLORS[index % DETAIL_ROUTE_COLORS.length],
+  })), [s?.passesByRoute]);
   const tripsLast7 = s?.tripsSeries || [];
-  const subsidyDist = (s?.subsidyDistribution || []).map((point) => ({
-    name: point.policyName,
-    value: point.subsidyType === "PERCENTAGE" ? point.value : Math.round(point.value / 1000),
-    color: point.colorHex,
-    unit: point.subsidyType === "PERCENTAGE" ? "%" : "k",
-  }));
-
-  const quickActions = [
-    { id: "uniadm-roster", label: "Danh sách sinh viên", description: "Tra cứu và kiểm tra trạng thái", icon: Users },
-    { id: "uniadm-import", label: "Nhập danh sách", description: "Cập nhật roster sinh viên", icon: Upload },
-    { id: "uniadm-subsidy", label: "Chính sách trợ giá", description: "Thiết lập mức hỗ trợ", icon: Percent },
-    { id: "uniadm-stats", label: "Thống kê", description: "Theo dõi số liệu vận hành", icon: FileBarChart },
-  ];
+  const currentSubsidyPolicy = useMemo(
+    () => [...ctx.subsidyPolicies].sort((a, b) => b.subsidyPolicyId - a.subsidyPolicyId)[0],
+    [ctx.subsidyPolicies],
+  );
+  const detailRouteSeries = useMemo(() => {
+    // TODO: thay bằng API thật trả lượt dùng xe theo tuyến, group theo tuần và filter theo khoảng thời gian.
+    const weekCount = detailRange === "7d" ? 1 : detailRange === "semester" ? 16 : 4;
+    const sourceRoutes = passesByRoute.length
+      ? passesByRoute
+      : [
+          { name: "Tuyến A", passes: 18, fill: DETAIL_ROUTE_COLORS[0] },
+          { name: "Tuyến B", passes: 12, fill: DETAIL_ROUTE_COLORS[1] },
+          { name: "Tuyến C", passes: 8, fill: DETAIL_ROUTE_COLORS[2] },
+        ];
+    const chartRoutes = sourceRoutes.length > 8
+      ? [
+          ...sourceRoutes.slice(0, 7),
+          {
+            name: "Khác",
+            passes: sourceRoutes.slice(7).reduce((sum, route) => sum + route.passes, 0),
+            fill: DETAIL_ROUTE_COLORS[7],
+          },
+        ]
+      : sourceRoutes;
+    const visibleRoutes = chartRoutes.map((route, index) => ({
+      key: `route_${index}`,
+      name: route.name,
+      color: DETAIL_ROUTE_COLORS[index % DETAIL_ROUTE_COLORS.length],
+      base: Math.max(route.passes || 1, 1),
+    }));
+    const weeks = Array.from({ length: weekCount }, (_, weekIndex) => {
+      const row: Record<string, string | number> = { week: `Tuần ${weekIndex + 1}` };
+      visibleRoutes.forEach((route, routeIndex) => {
+        row[route.key] = Math.max(0, Math.round((route.base / Math.max(weekCount, 1)) * (0.78 + weekIndex * 0.08 + routeIndex * 0.04)));
+      });
+      return row;
+    });
+    const routeRows = visibleRoutes.map((route) => {
+      const values = weeks.map((week) => Number(week[route.key] || 0));
+      const total = values.reduce((sum, value) => sum + value, 0);
+      const first = values[0] || 0;
+      const latest = values[values.length - 1] || 0;
+      return {
+        ...route,
+        total,
+        latest,
+        trend: latest - first,
+      };
+    }).sort((a, b) => b.total - a.total);
+    const totalUses = routeRows.reduce((sum, route) => sum + route.total, 0);
+    const latestWeekTotal = weeks.length
+      ? visibleRoutes.reduce((sum, route) => sum + Number(weeks[weeks.length - 1][route.key] || 0), 0)
+      : 0;
+    const avgPerWeek = weeks.length ? Math.round(totalUses / weeks.length) : 0;
+    const strongestRoute = routeRows[0];
+    return { routes: visibleRoutes, weeks, routeRows, totalUses, latestWeekTotal, avgPerWeek, strongestRoute };
+  }, [detailRange, passesByRoute]);
 
   return (
     <PageTransition className="space-y-6 sm:space-y-8 min-w-0">
@@ -633,37 +848,6 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
                 icon={<Icon className="size-6" />}
                 accent={item.accent}
               />
-            );
-          })}
-        </div>
-      </ScrollReveal>
-
-      <ScrollReveal>
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 min-w-0">
-          {quickActions.map((action) => {
-            const Icon = action.icon;
-            return (
-              <motion.div
-                key={action.id}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                whileHover={{ y: -2 }}
-                whileTap={{ scale: 0.98 }}
-              >
-                <ExpressiveCard
-                  variant="filled"
-                  interactive
-                  className="group min-h-[118px] text-left transition-colors min-w-0"
-                >
-                  <button type="button" onClick={() => onNavigate(action.id)} className="flex min-h-[118px] w-full flex-col justify-between p-4 text-left">
-                    <Icon className="size-5 text-on-surface-variant transition-colors group-hover:text-on-surface" />
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold leading-tight text-on-surface">{action.label}</p>
-                      <p className="mt-1 text-xs leading-snug text-on-surface-variant">{action.description}</p>
-                    </div>
-                  </button>
-                </ExpressiveCard>
-              </motion.div>
             );
           })}
         </div>
@@ -795,49 +979,62 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
         </ScrollReveal>
       </div>
 
-      {/* Charts row 2: subsidy pie + recent payments */}
+      {/* Charts row 2: subsidy config + recent payments */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 min-w-0">
         <ScrollReveal className="min-w-0">
           <ExpressiveCard variant="outlined" className="p-5 h-full min-w-0">
-            <h3 className="text-lg font-semibold text-on-surface mb-2">Chính sách trợ giá</h3>
-            <ResponsiveContainer width="100%" height={180}>
-              <PieChart>
-                <Pie data={subsidyDist} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={3}>
-                  {subsidyDist.map((entry, i) => (
-                    <Cell key={i} fill={entry.color} stroke="transparent" />
-                  ))}
-                </Pie>
-                <RTooltip
-                  contentStyle={{ background: "#14140f", border: "1px solid #14140f", borderRadius: 16, color: "#beff50" }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="mt-3 space-y-1.5 min-w-0">
-              {subsidyDist.slice(0, 5).map((s, i) => (
-                <div key={i} className="flex items-center justify-between text-xs gap-2 min-w-0">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="size-2.5 rounded-full shrink-0" style={{ background: s.color }} />
-                    <span className="text-on-surface-variant truncate">{s.name}</span>
-                  </div>
-                  <span className="font-bold text-on-surface shrink-0">{s.value}{s.unit}</span>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-on-surface">{"Ch\u00ednh s\u00e1ch tr\u1ee3 gi\u00e1"}</h3>
+                <p className="mt-1 text-xs text-on-surface-variant">
+                  {"C\u1ea5u h\u00ecnh \u0111ang \u00e1p d\u1ee5ng cho v\u00e9 th\u00e1ng c\u1ee7a tr\u01b0\u1eddng"}
+                </p>
+              </div>
+              <M3StatusPill
+                label={currentSubsidyPolicy?.status === "ACTIVE" ? "\u0110ang b\u1eadt" : "\u0110\u00e3 t\u1eaft"}
+                tone={currentSubsidyPolicy?.status === "ACTIVE" ? "success" : "neutral"}
+              />
+            </div>
+
+            <div className="mt-6 flex flex-col items-center text-center">
+              <div className="relative flex size-36 items-center justify-center rounded-full bg-primary-container">
+                <div className="absolute inset-3 rounded-full border-[10px] border-primary/20" />
+                <div className="flex size-24 items-center justify-center rounded-full bg-primary text-on-primary shadow-sm">
+                  <TicketPercent className="size-10" />
                 </div>
-              ))}
+              </div>
+              <p className="mt-5 text-4xl font-black text-primary">
+                {subsidyConfigValueLabel(currentSubsidyPolicy)}
+              </p>
+              <p className="mt-2 text-sm font-semibold text-on-surface">
+                {isPercentageSubsidy(currentSubsidyPolicy) ? "Gi\u1ea3m theo ph\u1ea7n tr\u0103m" : "Gi\u1ea3m theo s\u1ed1 ti\u1ec1n c\u1ed1 \u0111\u1ecbnh"}
+              </p>
+              <p className="mt-1 max-w-xs text-xs leading-relaxed text-on-surface-variant">
+                {"Sinh vi\u00ean thanh to\u00e1n v\u00e9 th\u00e1ng s\u1ebd \u0111\u01b0\u1ee3c \u00e1p d\u1ee5ng m\u1ee9c tr\u1ee3 gi\u00e1 n\u00e0y khi ch\u00ednh s\u00e1ch \u0111ang b\u1eadt."}
+              </p>
             </div>
           </ExpressiveCard>
         </ScrollReveal>
 
         <ScrollReveal delay={0.1} className="lg:col-span-2 min-w-0">
-          <Section title="Giao dịch gần đây" actions={<button onClick={() => onNavigate("uniadm-recon")} className="text-xs font-bold text-primary">Đối soát theo kỳ</button>}>
+          <Section
+            title={"Giao d\u1ecbch g\u1ea7n \u0111\u00e2y"}
+            actions={
+              <button onClick={() => onNavigate("uniadm-transactions")} className="text-xs font-bold text-primary">
+                {"\u0110\u1ed1i so\u00e1t theo k\u1ef3"}
+              </button>
+            }
+          >
             {ctx.payments.length === 0 ? (
-              <EmptyState icon={<Banknote className="size-7" />} title="Chưa có giao dịch" />
+              <EmptyState icon={<Banknote className="size-7" />} title={"Ch\u01b0a c\u00f3 giao d\u1ecbch"} />
             ) : (
               <div className="space-y-2">
                 {ctx.payments.slice(0, 5).map((p) => (
                   <ExpressiveCard key={p.orderId} variant="filled" className="p-3 min-w-0">
                     <div className="flex items-center justify-between gap-2 min-w-0">
                       <div className="min-w-0">
-                        <p className="font-bold text-sm truncate">{p.studentName || p.studentCode || "—"}</p>
-                        <p className="text-xs text-on-surface-variant truncate">{paymentModeLabel(p)} · {paymentJourneyLabel(p)}</p>
+                        <p className="font-bold text-sm truncate">{p.studentName || p.studentCode || "\u2014"}</p>
+                        <p className="text-xs text-on-surface-variant truncate">{paymentModeLabel(p)} {"\u00b7"} {paymentJourneyLabel(p)}</p>
                       </div>
                       <div className="text-right shrink-0">
                         <p className="font-bold text-primary">{formatVND(paymentFinalAmount(p))}</p>
@@ -851,6 +1048,132 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
           </Section>
         </ScrollReveal>
       </div>
+
+      <ScrollReveal>
+        <div className="border-t border-outline-variant pt-6 min-w-0">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between min-w-0">
+            <div className="min-w-0">
+              <h2 className="text-xl font-bold text-on-surface">Báo cáo chi tiết</h2>
+              <p className="mt-1 text-sm text-on-surface-variant">Xu hướng sử dụng theo từng tuyến</p>
+            </div>
+            <Select value={detailRange} onValueChange={(value) => setDetailRange(value as "7d" | "30d" | "semester")}>
+              <SelectTrigger className="w-full sm:w-44 rounded-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7d">7 ngày qua</SelectItem>
+                <SelectItem value="30d">30 ngày qua</SelectItem>
+                <SelectItem value="semester">Học kỳ này</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <ExpressiveCard variant="outlined" className="p-5 min-w-0">
+            <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {[
+                {
+                  label: "Tổng lượt dùng",
+                  value: detailRouteSeries.totalUses.toLocaleString("vi-VN"),
+                  hint: "Trong khoảng thời gian đã chọn",
+                },
+                {
+                  label: "Tuyến nổi bật",
+                  value: detailRouteSeries.strongestRoute?.name || "Chưa có",
+                  hint: `${detailRouteSeries.strongestRoute?.total || 0} lượt dùng`,
+                },
+                {
+                  label: "Trung bình mỗi tuần",
+                  value: detailRouteSeries.avgPerWeek.toLocaleString("vi-VN"),
+                  hint: "Lượt dùng/tuần",
+                },
+                {
+                  label: "Tuần gần nhất",
+                  value: detailRouteSeries.latestWeekTotal.toLocaleString("vi-VN"),
+                  hint: "Tổng lượt dùng của tuần cuối kỳ",
+                },
+              ].map((item) => (
+                <div key={item.label} className="rounded-[24px] border border-outline-variant bg-surface-container-low p-4">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-on-surface-variant">{item.label}</p>
+                  <p className="mt-2 truncate text-2xl font-black text-on-surface">{item.value}</p>
+                  <p className="mt-1 text-xs text-on-surface-variant">{item.hint}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between min-w-0">
+              <div className="min-w-0">
+                <h3 className="text-lg font-semibold text-on-surface">Hiệu suất theo tuyến</h3>
+                <p className="mt-0.5 text-xs text-on-surface-variant">
+                  So sánh lượt dùng xe theo từng tuyến, gom theo tuần trong khoảng thời gian đã chọn.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-2">
+                {detailRouteSeries.routeRows.map((route) => (
+                  <div key={route.key} className="flex items-center gap-2 text-xs font-medium text-on-surface-variant">
+                    <span className="size-2.5 rounded-[3px]" style={{ background: route.color }} />
+                    <span>{route.name}</span>
+                    <span className="font-bold text-on-surface">{route.total}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="mt-5 overflow-x-auto pb-2">
+              <div className="h-72 min-w-[720px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={detailRouteSeries.weeks} margin={{ top: 8, right: 16, left: -12, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-outline-variant)" vertical={false} opacity={0.55} />
+                    <XAxis dataKey="week" stroke="var(--color-on-surface-variant)" fontSize={12} axisLine={false} tickLine={false} />
+                    <YAxis stroke="var(--color-on-surface-variant)" fontSize={12} axisLine={false} tickLine={false} allowDecimals={false} />
+                    <RTooltip
+                      cursor={{ fill: "var(--color-surface-container-highest)" }}
+                      contentStyle={{
+                        background: "#14140f",
+                        border: "1px solid #14140f",
+                        borderRadius: 12,
+                        color: "#beff50",
+                        fontSize: 12,
+                      }}
+                      formatter={(value: any) => [`${value} lượt`, "Lượt dùng"]}
+                    />
+                    {detailRouteSeries.routes.map((route) => (
+                      <Bar key={route.key} dataKey={route.key} name={route.name} fill={route.color} radius={[6, 6, 0, 0]} />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="mt-5 overflow-x-auto rounded-[24px] border border-outline-variant">
+              <div className="min-w-[640px]">
+                <div className="grid grid-cols-[1.4fr_0.8fr_0.8fr_0.8fr] gap-2 bg-surface-container-high px-4 py-3 text-[11px] font-bold uppercase tracking-wide text-on-surface-variant">
+                  <span>Tuyến</span>
+                  <span className="text-right">Tổng lượt</span>
+                  <span className="text-right">Tỷ trọng</span>
+                  <span className="text-right">Xu hướng</span>
+                </div>
+                <div className="divide-y divide-outline-variant bg-surface">
+                  {detailRouteSeries.routeRows.map((route) => {
+                    const share = detailRouteSeries.totalUses ? Math.round((route.total / detailRouteSeries.totalUses) * 100) : 0;
+                    return (
+                      <div key={route.key} className="grid grid-cols-[1.4fr_0.8fr_0.8fr_0.8fr] items-center gap-2 px-4 py-3 text-sm">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="size-2.5 shrink-0 rounded-[3px]" style={{ background: route.color }} />
+                          <span className="truncate font-semibold text-on-surface">{route.name}</span>
+                        </div>
+                        <span className="text-right font-bold tabular-nums text-on-surface">{route.total.toLocaleString("vi-VN")}</span>
+                        <span className="text-right tabular-nums text-on-surface-variant">{share}%</span>
+                        <span className={cn("text-right font-bold tabular-nums", route.trend >= 0 ? "text-success" : "text-error")}>
+                          {route.trend >= 0 ? "+" : ""}{route.trend}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </ExpressiveCard>
+        </div>
+      </ScrollReveal>
     </PageTransition>
   );
 }
@@ -1010,36 +1333,64 @@ function DomainsScreen({ ctx }: { ctx: Ctx }) {
 }
 
 // =============================================================================
-// Screen 4: Import roster (CSV/XLSX)
+// Screen 4: Students (import + roster)
 // =============================================================================
-function ImportScreen({
+type StudentsTab = "import" | "roster";
+
+function StudentsScreen({
   ctx,
-  onNavigate,
-  onViewImportedStudents,
+  initialTab,
+  importBatchId,
+  onSetImportBatch,
+  onClearImportBatch,
 }: {
   ctx: Ctx;
-  onNavigate: (id: string) => void;
-  onViewImportedStudents: (batchId: number) => void;
+  initialTab: StudentsTab;
+  importBatchId?: number;
+  onSetImportBatch: (batchId: number) => void;
+  onClearImportBatch: () => void;
 }) {
-  const importBatchesResource = useUniAdminImportBatches();
-  const importBatches = importBatchesResource.raw || ctx.importBatches;
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
+  const [activeTab, setActiveTab] = useState<StudentsTab>(() => {
+    if (typeof window === "undefined") return initialTab;
+    const tab = new URLSearchParams(window.location.search).get("tab");
+    if (tab === "danh-sach" || tab === "roster") return "roster";
+    if (tab === "import") return "import";
+    return initialTab;
+  });
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const [exportingRoster, setExportingRoster] = useState(false);
-  const [preview, setPreview] = useState<RosterImportPreviewView | null>(null);
-  const [confirmation, setConfirmation] = useState<RosterImportConfirmView | null>(null);
-  const [confirmingImport, setConfirmingImport] = useState(false);
-  const [previewFilter, setPreviewFilter] = useState("all");
-  const [previewErrorCode, setPreviewErrorCode] = useState("all");
-  const [previewSearch, setPreviewSearch] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [committingImport, setCommittingImport] = useState(false);
   const [latestBatch, setLatestBatch] = useState<ImportBatchView | null>(null);
+  const [latestPreview, setLatestPreview] = useState<RosterImportPreviewView | null>(null);
+  const [latestPlan, setLatestPlan] = useState<RosterImportConfirmView | null>(null);
+  const [detailBatch, setDetailBatch] = useState<ImportBatchView | null>(null);
+  const [loadingDetailBatch, setLoadingDetailBatch] = useState(false);
+  const [downloadingReportId, setDownloadingReportId] = useState<number | null>(null);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const fileRef = useRef<HTMLInputElement>(null);
+  const importBatchesResource = useUniAdminImportBatches();
+  const importBatches = importBatchesResource.raw || ctx.importBatches;
+  const rosterResource = useUniAdminRoster({
+    keyword: search || undefined,
+    status: statusFilter === "all" ? undefined : statusFilter,
+    importBatchId,
+  });
+  const roster = rosterResource.raw || (importBatchId ? [] : ctx.roster);
+  const filtered = roster.filter((r) => {
+    if (statusFilter !== "all" && r.status !== statusFilter) return false;
+    if (search && !`${r.fullName} ${r.email} ${r.studentCode || ""}`.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
 
-  const downloadCsvFallback = useCallback(() => {
-    const rows = [["email", "studentCode", "fullName", "faculty", "academicYear", "status"]];
-    const escapeCell = (value: string) => `"${value.replaceAll('"', '""')}"`;
-    const csv = `\uFEFF${rows.map((row) => row.map(escapeCell).join(",")).join("\r\n")}`;
-    downloadLocalCsv(csv, "uniadmin-roster-template.csv");
+  const selectTab = useCallback((tab: StudentsTab) => {
+    setActiveTab(tab);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", tab === "roster" ? "danh-sach" : "import");
+      window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+    }
   }, []);
 
   const downloadTemplate = useCallback(async () => {
@@ -1052,18 +1403,19 @@ function ImportScreen({
       toast.success("Đã tải template nhập sinh viên.");
     } catch (error) {
       console.error("Failed to download roster template", error);
-      downloadCsvFallback();
-      toast.warning("Không thể tải template XLSX. Hệ thống đã tải template CSV thay thế.");
+      toast.error("Không thể tải template XLSX. Vui lòng thử lại.");
     } finally {
       setDownloadingTemplate(false);
     }
-  }, [downloadCsvFallback]);
+  }, []);
 
   const exportRoster = useCallback(async () => {
     setExportingRoster(true);
     try {
-      const file = await universityApi.rosterExportCsv();
-      downloadFile(file, "danh-sach-sinh-vien.csv", ["text/csv"]);
+      const file = await universityApi.rosterExportXlsx();
+      downloadFile(file, "danh-sach-sinh-vien.xlsx", [
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      ]);
       toast.success("Đã xuất danh sách sinh viên.");
     } catch (error) {
       console.error("Failed to export roster", error);
@@ -1073,116 +1425,123 @@ function ImportScreen({
     }
   }, []);
 
-  const downloadImportReport = useCallback(async (batchId: number) => {
+  const openImportBatchDetail = useCallback(async (batchId: number) => {
+    setLoadingDetailBatch(true);
     try {
-      const file = await universityApi.importBatchReport(batchId);
-      downloadFile(file, `bao-cao-import-sinh-vien_${batchId}.csv`, ["text/csv"]);
-      toast.success("Đã tải báo cáo kết quả import.");
+      const batch = await universityApi.importBatch(batchId);
+      setDetailBatch(batch);
     } catch (error) {
-      console.error("Failed to download import report", error);
-      toast.error(error instanceof Error ? error.message : "Không thể tải báo cáo import");
+      console.error("Failed to load roster import detail", error);
+      toast.error("Không thể tải chi tiết lỗi import.");
+    } finally {
+      setLoadingDetailBatch(false);
     }
   }, []);
 
-  const importAnotherFile = useCallback(() => {
-    setPreview(null);
-    setConfirmation(null);
-    setLatestBatch(null);
-    setPreviewFilter("all");
-    setPreviewErrorCode("all");
-    setPreviewSearch("");
-    fileRef.current?.click();
+  const downloadImportReport = useCallback(async (batchId: number) => {
+    setDownloadingReportId(batchId);
+    try {
+      const file = await universityApi.importBatchReport(batchId);
+      downloadFile(file, `bao-cao-import-sinh-vien-${batchId}.csv`, ["text/csv", "application/octet-stream"]);
+      toast.success("Đã tải báo cáo lỗi import.");
+    } catch (error) {
+      console.error("Failed to download roster import report", error);
+      toast.error("Không thể tải báo cáo import.");
+    } finally {
+      setDownloadingReportId(null);
+    }
   }, []);
 
   const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
+    const file = e.target.files?.[0];
+    if (!file) return;
     setUploading(true);
     setLatestBatch(null);
-    setPreview(null);
-    setConfirmation(null);
+    setLatestPreview(null);
+    setLatestPlan(null);
     try {
-      const result = await universityApi.previewRosterImport(f);
-      setPreview(result);
       try {
-        const plan = await universityApi.confirmRosterImport({ previewToken: result.previewToken, mode: "ADD_NEW_ONLY" });
-        setConfirmation(plan);
-      } catch (confirmError) {
-        console.error("Failed to calculate roster import confirmation", confirmError);
-        toast.warning("Đã kiểm tra file nhưng chưa tính được bước xác nhận import.");
+        const preview = await universityApi.previewRosterImport(file);
+        const plan = await universityApi.confirmRosterImport({ previewToken: preview.previewToken, mode: "ADD_NEW_ONLY" });
+        setLatestPreview(preview);
+        setLatestPlan(plan);
+        if (!plan.canConfirm) {
+          toast.error("Không có sinh viên mới hợp lệ để import.");
+          return;
+        }
+        if (plan.canConfirm) {
+          toast.success(`Đã kiểm tra file. Có thể import ${plan.importableRows} sinh viên hợp lệ.`);
+          return;
+        }
+        const batch = await universityApi.commitRosterImport({
+          previewToken: preview.previewToken,
+          mode: "ADD_NEW_ONLY",
+          idempotencyKey: preview.previewToken,
+        });
+        setLatestBatch(batch);
+        importBatchesResource.reload();
+        ctx.reload();
+        toast.success(`Đã import ${batch.successRows} sinh viên mới.`);
+      } catch (error) {
+        const endpointMissing =
+          error instanceof ApiError &&
+          error.status === 404 &&
+          /roster\/import\/preview|No static resource/i.test(`${error.message} ${error.details || ""}`);
+        if (!endpointMissing) throw error;
+        const batch = await universityApi.importRoster(file);
+        setLatestBatch(batch);
+        setLatestPreview(null);
+        setLatestPlan(null);
+        importBatchesResource.reload();
+        ctx.reload();
+        toast.warning("Backend hiện tại chưa hỗ trợ bước kiểm tra trước. Hệ thống đã import bằng luồng cũ.");
+        toast.success(`Đã import ${batch.successRows} sinh viên mới.`);
       }
-      if (result.errorRows > 0 || result.structuralErrors.length > 0) {
-        toast.warning(`Đã kiểm tra ${result.totalRows} dòng, có ${result.errorRows + result.structuralErrors.length} lỗi cần sửa`);
-      } else {
-        toast.success(`Dữ liệu hợp lệ: ${result.validRows}/${result.totalRows} dòng`);
-      }
-    } catch (err) {
-      const detail = err instanceof ApiError && err.details ? String(err.details) : null;
-      toast.error(detail || (err instanceof Error ? err.message : "Không thể kiểm tra file import"));
+    } catch (error) {
+      const detail = error instanceof ApiError && error.details ? String(error.details) : null;
+      toast.error(detail || (error instanceof Error ? error.message : "Không thể import file"));
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
     }
   };
 
-  const previewToken = preview?.previewToken;
-
-  const confirmImportPlan = async () => {
-    if (!previewToken) return;
-    setConfirmingImport(true);
+  const confirmImport = async () => {
+    if (!latestPreview || !latestPlan) {
+      toast.error("Vui lòng chọn file và kiểm tra trước khi import.");
+      return;
+    }
+    if (!latestPlan.canConfirm || latestPlan.importableRows <= 0) {
+      toast.error("Không có sinh viên hợp lệ để import.");
+      return;
+    }
+    setCommittingImport(true);
     try {
-      if (!confirmation?.canConfirm) {
-        const plan = await universityApi.confirmRosterImport({ previewToken, mode: "ADD_NEW_ONLY" });
-        setConfirmation(plan);
-        if (!plan.canConfirm) {
-          toast.error("Không thể xác nhận vì không có sinh viên mới hợp lệ để import.");
-          return;
-        }
-      }
       const batch = await universityApi.commitRosterImport({
-        previewToken,
+        previewToken: latestPreview.previewToken,
         mode: "ADD_NEW_ONLY",
-        idempotencyKey: previewToken,
+        idempotencyKey: latestPreview.previewToken,
       });
       setLatestBatch(batch);
       importBatchesResource.reload();
       ctx.reload();
-      if (batch.successRows <= 0) {
-        toast.warning("Không có sinh viên mới được import. Các dòng hợp lệ có thể đã tồn tại.");
-        return;
-      }
       toast.success(`Đã import ${batch.successRows} sinh viên mới.`);
     } catch (error) {
       const detail = error instanceof ApiError && error.details ? String(error.details) : null;
-      toast.error(detail || (error instanceof Error ? error.message : "Không thể thực hiện import"));
+      toast.error(detail || (error instanceof Error ? error.message : "Không thể xác nhận import"));
     } finally {
-      setConfirmingImport(false);
+      setCommittingImport(false);
     }
   };
 
-  const allPreviewErrors = [...(preview?.structuralErrors || []), ...(preview?.errors || [])];
-  const previewErrorCodes = Array.from(new Set(allPreviewErrors.map((error) => error.code))).sort();
-  const visiblePreviewErrors = allPreviewErrors.filter((error) => {
-    if (previewErrorCode !== "all" && error.code !== previewErrorCode) return false;
-    if (!previewSearch.trim()) return true;
-    const needle = previewSearch.trim().toLowerCase();
-    return `${error.rowNumber} ${error.field || ""} ${error.value || ""} ${error.code} ${error.message}`
-      .toLowerCase()
-      .includes(needle);
-  });
-  const visiblePreviewRows = (preview?.previewRows || []).filter((row) => {
-    if (previewFilter === "errors" && row.valid) return false;
-    if (!previewSearch.trim()) return true;
-    const needle = previewSearch.trim().toLowerCase();
-    return `${row.studentCode || ""} ${row.email || ""} ${row.fullName || ""}`.toLowerCase().includes(needle);
-  });
+  const rosterCount = rosterResource.raw?.length ?? ctx.roster.length;
 
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
-        title="Nhập danh sách sinh viên"
-        description="Tải lên file CSV/XLSX danh sách sinh viên."
-        icon={<Upload className="size-7" />}
+        title="Sinh viên"
+        description="Nhập dữ liệu và quản lý danh sách sinh viên của trường."
+        icon={<Users className="size-7" />}
         actions={
           <div className="flex flex-wrap gap-2">
             <ExpressiveButton variant="tonal" onClick={downloadTemplate} disabled={downloadingTemplate}>
@@ -1196,575 +1555,598 @@ function ImportScreen({
           </div>
         }
       />
-      <ScrollReveal>
-        <ExpressiveCard variant="elevated" className="p-8 text-center min-w-0">
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".csv,.xlsx"
-            onChange={onFile}
-            className="hidden"
-          />
-          <motion.div
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => fileRef.current?.click()}
-            className="mx-auto max-w-md border-2 border-dashed border-outline-variant rounded-2xl p-8 cursor-pointer hover:border-primary hover:bg-primary-container/10 transition-colors"
-          >
-            {uploading ? (
-              <RefreshCw className="size-12 mx-auto text-primary animate-spin" />
-            ) : (
-              <Upload className="size-12 mx-auto text-on-surface-variant" />
-            )}
-            <p className="mt-4 text-base font-bold">Chọn file để tải lên</p>
-            <p className="text-xs text-on-surface-variant mt-1">Hỗ trợ CSV, XLSX. Tối đa 1000 dòng/lần.</p>
-            <p className="text-xs text-on-surface-variant mt-2">
-              Cột bắt buộc: email, studentCode, fullName. Trạng thái hợp lệ: ACTIVE, INACTIVE, GRADUATED, SUSPENDED.
-            </p>
-            <div className="mt-4 rounded-xl border border-outline-variant bg-surface-container-low p-3 text-left text-xs text-on-surface-variant">
-              <p className="font-bold text-on-surface">Quy tắc nhập dữ liệu</p>
-              <ul className="mt-2 list-disc space-y-1 pl-4">
-                <li>Không đổi tên header và không thêm dòng ghi chú vào file import.</li>
-                <li>MSSV là bắt buộc, không trùng trong cùng file, nên định dạng Text để giữ số 0 đầu.</li>
-                <li>Email phải thuộc domain đang hoạt động của trường.</li>
-                <li>academicYear là năm nhập học dạng 4 chữ số, ví dụ 2024.</li>
-                <li>Nếu bỏ trống status, hệ thống mặc định là ACTIVE.</li>
-              </ul>
-            </div>
-          </motion.div>
-        </ExpressiveCard>
-      </ScrollReveal>
 
-      {latestBatch && (
-        <Section title="Kết quả import">
-          <ExpressiveCard variant="elevated" className="p-5 min-w-0">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <M3StatusPill
-                    label={importStatusLabel(latestBatch.status)}
-                    tone={latestBatch.status === "COMPLETED" ? "success" : latestBatch.status === "FAILED" ? "error" : "warning"}
-                  />
-                  <span className="text-xs font-mono text-on-surface-variant">Batch #{latestBatch.importBatchId}</span>
-                </div>
-                <h3 className="mt-2 text-xl font-black truncate">{latestBatch.fileName}</h3>
-                <p className="mt-1 text-sm text-on-surface-variant">
-                  Người thực hiện: {latestBatch.importedByName || ctx.user.name || "Không xác định"} ·
-                  Hoàn tất: {latestBatch.completedAt ? formatDateTime(latestBatch.completedAt) : "Đang xử lý"}
-                </p>
+      <div className="overflow-x-auto border-b border-outline-variant">
+        <div className="flex min-w-max gap-6">
+          <button
+            type="button"
+            onClick={() => selectTab("import")}
+            className={cn(
+              "border-b-2 px-1 pb-3 text-sm font-bold transition-colors",
+              activeTab === "import" ? "border-primary text-on-surface" : "border-transparent text-on-surface-variant hover:text-on-surface",
+            )}
+          >
+            Nhập dữ liệu
+          </button>
+          <button
+            type="button"
+            onClick={() => selectTab("roster")}
+            className={cn(
+              "flex items-center gap-2 border-b-2 px-1 pb-3 text-sm font-bold transition-colors",
+              activeTab === "roster" ? "border-primary text-on-surface" : "border-transparent text-on-surface-variant hover:text-on-surface",
+            )}
+          >
+            <span>Danh sách sinh viên</span>
+            {rosterCount > 0 && (
+              <span className="rounded-full bg-surface-container px-2 py-0.5 text-[12px] font-bold text-on-surface-variant">
+                {rosterCount.toLocaleString("vi-VN")}
+              </span>
+            )}
+          </button>
+        </div>
+      </div>
+
+      <div className={activeTab === "import" ? "space-y-6" : "hidden"}>
+        <ScrollReveal>
+          <ExpressiveCard variant="elevated" className="p-8 text-center min-w-0">
+            <input ref={fileRef} type="file" accept=".csv,.xlsx" onChange={onFile} className="hidden" />
+            <motion.div
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => fileRef.current?.click()}
+              className="mx-auto max-w-md border-2 border-dashed border-outline-variant rounded-2xl p-8 cursor-pointer hover:border-primary hover:bg-primary-container/10 transition-colors"
+            >
+              {uploading ? <RefreshCw className="size-12 mx-auto text-primary animate-spin" /> : <Upload className="size-12 mx-auto text-on-surface-variant" />}
+              <p className="mt-4 text-base font-bold">Chọn file để tải lên</p>
+              <p className="text-xs text-on-surface-variant mt-1">Hỗ trợ CSV, XLSX. Tối đa 1000 dòng/lần.</p>
+              <p className="text-xs text-on-surface-variant mt-2">File cần có Mã sinh viên, Họ và tên và Email sinh viên.</p>
+              <div className="mt-4 rounded-xl border border-outline-variant bg-surface-container-low p-3 text-left text-xs text-on-surface-variant">
+                <p className="font-bold text-on-surface">Quy tắc nhập dữ liệu</p>
+                <ul className="mt-2 list-disc space-y-1 pl-4">
+                  <li>Không đổi tên header và không thêm dòng ghi chú vào file import.</li>
+                  <li>MSSV là bắt buộc, không trùng trong cùng file, nên định dạng Text để giữ số 0 đầu.</li>
+                  <li>Email phải thuộc domain đang hoạt động của trường.</li>
+                  <li>academicYear là năm nhập học dạng 4 chữ số, ví dụ 2024.</li>
+                  <li>Nếu bỏ trống status, hệ thống mặc định là ACTIVE.</li>
+                </ul>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <ExpressiveButton variant="tonal" onClick={() => onViewImportedStudents(latestBatch.importBatchId)}>
+            </motion.div>
+          </ExpressiveCard>
+        </ScrollReveal>
+
+        {latestPreview && latestPlan && !latestBatch && (
+          <Section title="Kết quả kiểm tra file">
+            <ExpressiveCard variant="elevated" className="p-5 min-w-0">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <M3StatusPill label={latestPlan.canConfirm ? "Sẵn sàng import" : "Không thể import"} tone={latestPlan.canConfirm ? "success" : "error"} />
+                  <h3 className="mt-2 text-xl font-black truncate">{latestPreview.fileName}</h3>
+                  <p className="mt-1 text-sm text-on-surface-variant">
+                    Kiểm tra xong. Chỉ các dòng hợp lệ mới được import vào danh sách sinh viên.
+                  </p>
+                </div>
+                <ExpressiveButton variant="filled" onClick={confirmImport} disabled={!latestPlan.canConfirm || committingImport}>
+                  {committingImport ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+                  Xác nhận import {latestPlan.importableRows} sinh viên
+                </ExpressiveButton>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-4">
+                <div className="rounded-xl border border-outline-variant bg-surface-container-low p-3"><p className="text-xs text-on-surface-variant">Tổng số dòng</p><p className="mt-1 text-xl font-black">{latestPreview.totalRows}</p></div>
+                <div className="rounded-xl border border-outline-variant bg-surface-container-low p-3"><p className="text-xs text-on-surface-variant">Hợp lệ</p><p className="mt-1 text-xl font-black text-success">{latestPreview.validRows}</p></div>
+                <div className="rounded-xl border border-outline-variant bg-surface-container-low p-3"><p className="text-xs text-on-surface-variant">Có lỗi</p><p className="mt-1 text-xl font-black text-error">{latestPreview.errorRows}</p></div>
+                <div className="rounded-xl border border-outline-variant bg-surface-container-low p-3"><p className="text-xs text-on-surface-variant">Có thể import</p><p className="mt-1 text-xl font-black">{latestPlan.importableRows}</p></div>
+              </div>
+              {latestPlan.warnings.length > 0 && (
+                <div className="mt-4 rounded-xl border border-warning/30 bg-warning-container/20 p-3 text-sm text-on-surface-variant">
+                  {latestPlan.warnings.map((warning) => <p key={warning}>{warning}</p>)}
+                </div>
+              )}
+              {(latestPreview.errors.length > 0 || latestPreview.previewRows.length > 0) && (
+                <div className="mt-5 space-y-3">
+                  {latestPreview.errors.length > 0 && (
+                    <div>
+                      <p className="font-bold">Chi tiết dòng lỗi</p>
+                      <p className="text-xs text-on-surface-variant">Các dòng này sẽ không được đưa vào danh sách sinh viên.</p>
+                    </div>
+                  )}
+                  <ImportPreviewErrorTable errors={latestPreview.errors} />
+                  <ImportPreviewRowsTable preview={latestPreview} />
+                </div>
+              )}
+            </ExpressiveCard>
+          </Section>
+        )}
+
+        {latestBatch && (
+          <Section title="Kết quả import">
+            <ExpressiveCard variant="elevated" className="p-5 min-w-0">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <M3StatusPill label={importStatusLabel(latestBatch.status)} tone={latestBatch.status === "COMPLETED" ? "success" : latestBatch.status === "FAILED" ? "error" : "warning"} />
+                  <h3 className="mt-2 text-xl font-black truncate">{latestBatch.fileName}</h3>
+                  <p className="mt-1 text-sm text-on-surface-variant">Hoàn tất: {latestBatch.completedAt ? formatDateTime(latestBatch.completedAt) : "Đang xử lý"}</p>
+                </div>
+                <ExpressiveButton variant="tonal" onClick={() => { onSetImportBatch(latestBatch.importBatchId); selectTab("roster"); }}>
                   <Users className="size-4" />
                   Xem sinh viên vừa import
                 </ExpressiveButton>
-                <ExpressiveButton variant="tonal" onClick={() => downloadImportReport(latestBatch.importBatchId)}>
-                  <Download className="size-4" />
-                  Tải báo cáo kết quả
-                </ExpressiveButton>
-                <ExpressiveButton variant="tonal" onClick={importAnotherFile}>
-                  <Upload className="size-4" />
-                  Import file khác
-                </ExpressiveButton>
-                <ExpressiveButton variant="text" onClick={() => onNavigate("uniadm-roster")}>
-                  Quay về danh sách sinh viên
-                </ExpressiveButton>
               </div>
-            </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-              {[
-                ["Tổng số dòng", latestBatch.totalRows],
-                ["Tạo mới thành công", latestBatch.successRows],
-                ["Cập nhật thành công", 0],
-                ["Bỏ qua / lỗi", latestBatch.errorRows],
-                ["Chế độ", latestBatch.mode || "ADD_NEW_ONLY"],
-              ].map(([label, value]) => (
-                <div key={label} className="rounded-xl border border-outline-variant bg-surface-container-low p-3">
-                  <p className="text-xs text-on-surface-variant">{label}</p>
-                  <p className="mt-1 text-xl font-black">{value}</p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-xl border border-outline-variant bg-surface-container-low p-3"><p className="text-xs text-on-surface-variant">Tổng số dòng</p><p className="mt-1 text-xl font-black">{latestBatch.totalRows}</p></div>
+                <div className="rounded-xl border border-outline-variant bg-surface-container-low p-3"><p className="text-xs text-on-surface-variant">Thành công</p><p className="mt-1 text-xl font-black text-success">{latestBatch.successRows}</p></div>
+                <div className="rounded-xl border border-outline-variant bg-surface-container-low p-3"><p className="text-xs text-on-surface-variant">Lỗi</p><p className="mt-1 text-xl font-black text-error">{latestBatch.errorRows}</p></div>
+              </div>
+              {latestPlan && (
+                <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-xl border border-outline-variant bg-surface-container-low p-3"><p className="text-xs text-on-surface-variant">Tạo mới</p><p className="mt-1 text-xl font-black">{latestPlan.createRows}</p></div>
+                  <div className="rounded-xl border border-outline-variant bg-surface-container-low p-3"><p className="text-xs text-on-surface-variant">Đã tồn tại/bỏ qua</p><p className="mt-1 text-xl font-black">{latestPlan.skippedExistingRows}</p></div>
+                  <div className="rounded-xl border border-outline-variant bg-surface-container-low p-3"><p className="text-xs text-on-surface-variant">Có thể import</p><p className="mt-1 text-xl font-black">{latestPlan.importableRows}</p></div>
                 </div>
+              )}
+              {latestBatch.errorRows > 0 && (
+                <div className="mt-5 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="font-bold">Chi tiết dòng lỗi</p>
+                      <p className="text-xs text-on-surface-variant">Các dòng này không được đưa vào danh sách sinh viên.</p>
+                    </div>
+                    <ExpressiveButton variant="tonal" onClick={() => downloadImportReport(latestBatch.importBatchId)} disabled={downloadingReportId === latestBatch.importBatchId}>
+                      {downloadingReportId === latestBatch.importBatchId ? <RefreshCw className="size-4 animate-spin" /> : <Download className="size-4" />}
+                      Tải báo cáo lỗi
+                    </ExpressiveButton>
+                  </div>
+                  <ImportErrorTable errors={latestBatch.errors} />
+                  <ImportPreviewRowsTable preview={latestPreview} />
+                </div>
+              )}
+            </ExpressiveCard>
+          </Section>
+        )}
+
+        <Section title={`Lịch sử nhập (${importBatches.length})`}>
+          {importBatchesResource.loading ? (
+            <LoadingScreen label="Đang tải lịch sử import..." />
+          ) : importBatches.length === 0 ? (
+            <EmptyState icon={<FileSpreadsheet className="size-7" />} title="Chưa có lượt nhập" />
+          ) : (
+            <StaggerGroup className="space-y-3 min-w-0">
+              {importBatches.map((b) => (
+                <StaggerItem key={b.importBatchId}>
+                  <ExpressiveCard variant="elevated" className="p-4 min-w-0">
+                    <div className="flex items-start justify-between gap-3 mb-3 min-w-0">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold truncate">{b.fileName}</p>
+                        <p className="text-xs text-on-surface-variant">{formatDateTime(b.createdAt)}</p>
+                      </div>
+                      <M3StatusPill label={importStatusLabel(b.status)} tone={b.status === "COMPLETED" ? "success" : b.status === "FAILED" ? "error" : "warning"} />
+                    </div>
+                    <div className="grid grid-cols-3 gap-3 text-xs">
+                      <div><p className="text-on-surface-variant">Tổng số dòng</p><p className="font-bold">{b.totalRows}</p></div>
+                      <div><p className="text-on-surface-variant">Thành công</p><p className="font-bold text-success">{b.successRows}</p></div>
+                      <div><p className="text-on-surface-variant">Lỗi</p><p className="font-bold text-error">{b.errorRows}</p></div>
+                    </div>
+                    {b.totalRows > 0 && <M3Progress value={(b.successRows / b.totalRows) * 100} className="mt-3" />}
+                    {b.errorRows > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <ExpressiveButton variant="tonal" size="sm" onClick={() => openImportBatchDetail(b.importBatchId)} disabled={loadingDetailBatch}>
+                          {loadingDetailBatch ? <RefreshCw className="size-4 animate-spin" /> : <AlertTriangle className="size-4" />}
+                          Xem lỗi
+                        </ExpressiveButton>
+                        <ExpressiveButton variant="text" size="sm" onClick={() => downloadImportReport(b.importBatchId)} disabled={downloadingReportId === b.importBatchId}>
+                          {downloadingReportId === b.importBatchId ? <RefreshCw className="size-4 animate-spin" /> : <Download className="size-4" />}
+                          Tải báo cáo lỗi
+                        </ExpressiveButton>
+                      </div>
+                    )}
+                  </ExpressiveCard>
+                </StaggerItem>
               ))}
+            </StaggerGroup>
+          )}
+        </Section>
+      </div>
+
+      <div className={activeTab === "roster" ? "space-y-6" : "hidden"}>
+        {importBatchId && (
+          <ExpressiveCard variant="elevated" className="p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="font-bold">Đang xem sinh viên vừa import</p>
+                <p className="text-xs text-on-surface-variant">Bộ lọc backend: imported_batch_id = {importBatchId}</p>
+              </div>
+              <ExpressiveButton variant="tonal" onClick={onClearImportBatch}>Bỏ lọc batch</ExpressiveButton>
             </div>
           </ExpressiveCard>
-        </Section>
-      )}
-
-      {preview && (
-        <Section title="Kết quả kiểm tra dữ liệu">
-          <div className="space-y-4">
-            <ExpressiveCard variant="elevated" className="p-5 min-w-0">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="font-bold truncate">{preview.fileName}</p>
-                  <p className="text-xs text-on-surface-variant">
-                    {formatBytes(preview.fileSize)} · Token hết hạn: {preview.expiresAt ? formatDateTime(preview.expiresAt) : "Không xác định"}
-                  </p>
-                </div>
-                <ExpressiveButton variant="tonal" onClick={() => fileRef.current?.click()} disabled={uploading}>
-                  {uploading ? <RefreshCw className="size-4 animate-spin" /> : <Upload className="size-4" />}
-                  Kiểm tra lại
-                </ExpressiveButton>
-              </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                {[
-                  ["Tổng số dòng", preview.totalRows],
-                  ["Hợp lệ", preview.validRows],
-                  ["Có lỗi", preview.errorRows + preview.structuralErrors.length],
-                  ["Trùng trong file", preview.duplicateRows],
-                  ["Tạo mới", preview.createRows],
-                  ["Đã tồn tại", preview.existingRows],
-                  ["Bị bỏ qua", preview.skippedRows],
-                ].map(([label, value]) => (
-                  <div key={label} className="rounded-xl border border-outline-variant bg-surface-container-low p-3">
-                    <p className="text-xs text-on-surface-variant">{label}</p>
-                    <p className="mt-1 text-xl font-black">{value}</p>
-                  </div>
-                ))}
-              </div>
-            </ExpressiveCard>
-
-            {confirmation && (
-              <ExpressiveCard variant="elevated" className="p-5 min-w-0">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <p className="text-xs font-bold uppercase tracking-wide text-on-surface-variant">Chế độ xử lý</p>
-                    <h3 className="mt-1 text-xl font-black">ADD_NEW_ONLY</h3>
-                    <p className="mt-1 text-sm text-on-surface-variant">
-                      Chỉ tạo sinh viên mới. Sinh viên có MSSV đã tồn tại sẽ bị bỏ qua, không cập nhật dữ liệu cũ.
-                    </p>
-                  </div>
-                  <ExpressiveButton
-                    variant="filled"
-                    onClick={confirmImportPlan}
-                    disabled={confirmingImport || !confirmation.canConfirm}
-                  >
-                    {confirmingImport ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
-                    {confirmation.confirmLabel}
-                  </ExpressiveButton>
-                </div>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                  {[
-                    ["Tổng số dòng", confirmation.totalRows],
-                    ["Tạo mới", confirmation.createRows],
-                    ["Cập nhật", confirmation.updateRows],
-                    ["Bỏ qua do tồn tại", confirmation.skippedExistingRows],
-                    ["Dòng lỗi", confirmation.errorRows],
-                  ].map(([label, value]) => (
-                    <div key={label} className="rounded-xl border border-outline-variant bg-surface-container-low p-3">
-                      <p className="text-xs text-on-surface-variant">{label}</p>
-                      <p className="mt-1 text-xl font-black">{value}</p>
-                    </div>
-                  ))}
-                </div>
-                {confirmation.warnings.length > 0 && (
-                  <div className="mt-4 rounded-xl border border-warning/25 bg-warning/10 p-3 text-xs text-on-surface-variant">
-                    {confirmation.warnings.map((warning) => (
-                      <p key={warning}>{warning}</p>
-                    ))}
-                  </div>
-                )}
-              </ExpressiveCard>
-            )}
-
-            <ExpressiveCard variant="elevated" className="p-4 min-w-0">
-              <div className="flex flex-wrap gap-2">
-                <div className="relative w-full flex-1 min-w-0 sm:min-w-[220px]">
-                  <Filter className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant" />
-                  <Input className="pl-9" placeholder="Tìm MSSV, email, dòng lỗi..." value={previewSearch} onChange={(e) => setPreviewSearch(e.target.value)} />
-                </div>
-                <Select value={previewFilter} onValueChange={setPreviewFilter}>
-                  <SelectTrigger className="w-full sm:w-44"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Tất cả dòng</SelectItem>
-                    <SelectItem value="errors">Chỉ dòng lỗi</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={previewErrorCode} onValueChange={setPreviewErrorCode}>
-                  <SelectTrigger className="w-full sm:w-56"><SelectValue placeholder="Loại lỗi" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Tất cả loại lỗi</SelectItem>
-                    {previewErrorCodes.map((code) => (
-                      <SelectItem key={code} value={code}>{code}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </ExpressiveCard>
-
-            {visiblePreviewErrors.length > 0 && (
-              <ExpressiveCard variant="elevated" className="overflow-hidden min-w-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Dòng</TableHead>
-                      <TableHead>Cột</TableHead>
-                      <TableHead>Giá trị</TableHead>
-                      <TableHead>Nguyên nhân</TableHead>
-                      <TableHead>Gợi ý sửa</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {visiblePreviewErrors.slice(0, 50).map((error, index) => (
-                      <TableRow key={`${error.rowNumber}-${error.code}-${index}`}>
-                        <TableCell className="font-mono">{error.rowNumber || "-"}</TableCell>
-                        <TableCell className="font-bold">{error.field || "-"}</TableCell>
-                        <TableCell className="max-w-[180px] truncate text-xs">{error.value || "-"}</TableCell>
-                        <TableCell>
-                          <p className="font-bold text-error">{error.code}</p>
-                          <p className="text-xs text-on-surface-variant">{error.message}</p>
-                        </TableCell>
-                        <TableCell className="text-xs text-on-surface-variant">{error.suggestion || "-"}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </ExpressiveCard>
-            )}
-
-            <ExpressiveCard variant="elevated" className="overflow-hidden min-w-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Dòng</TableHead>
-                    <TableHead>MSSV</TableHead>
-                    <TableHead>Họ tên</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Trạng thái</TableHead>
-                    <TableHead>Kết quả</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {visiblePreviewRows.map((row) => (
-                    <TableRow key={row.rowNumber}>
-                      <TableCell className="font-mono">{row.rowNumber}</TableCell>
-                      <TableCell className="font-mono font-bold">{row.studentCode || "-"}</TableCell>
-                      <TableCell className="font-bold">{row.fullName || "-"}</TableCell>
-                      <TableCell className="text-xs">{row.email || "-"}</TableCell>
-                      <TableCell>{row.status || "ACTIVE"}</TableCell>
-                      <TableCell>
-                        <M3StatusPill
-                          label={row.action === "CREATE" ? "Tạo mới" : row.action === "SKIP_EXISTING" ? "Bỏ qua do tồn tại" : "Có lỗi"}
-                          tone={row.action === "CREATE" ? "success" : row.action === "SKIP_EXISTING" ? "warning" : "error"}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </ExpressiveCard>
-          </div>
-        </Section>
-      )}
-
-      <Section title={`Lịch sử nhập (${importBatches.length})`}>
-        {importBatchesResource.loading ? (
-          <LoadingScreen label="Đang tải lịch sử import..." />
-        ) : importBatches.length === 0 ? (
-          <EmptyState icon={<FileSpreadsheet className="size-7" />} title="Chưa có lượt nhập" />
-        ) : (
-          <StaggerGroup className="space-y-3 min-w-0">
-            {importBatches.map((b) => (
-              <StaggerItem key={b.importBatchId}>
-                <ExpressiveCard variant="elevated" className="p-4 min-w-0">
-                  <div className="flex items-start justify-between gap-3 mb-3 min-w-0">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold truncate">{b.fileName}</p>
-                      <p className="text-xs text-on-surface-variant">{formatDateTime(b.createdAt)}</p>
-                    </div>
-                    <M3StatusPill label={importStatusLabel(b.status)} tone={b.status === "COMPLETED" ? "success" : b.status === "FAILED" ? "error" : "warning"} />
-                  </div>
-                  <div className="grid grid-cols-3 gap-3 text-xs">
-                    <div>
-                      <p className="text-on-surface-variant">Tổng số dòng</p>
-                      <p className="font-bold">{b.totalRows}</p>
-                    </div>
-                    <div>
-                      <p className="text-on-surface-variant">Thành công</p>
-                      <p className="font-bold text-success">{b.successRows}</p>
-                    </div>
-                    <div>
-                      <p className="text-on-surface-variant">Lỗi</p>
-                      <p className="font-bold text-error">{b.errorRows}</p>
-                    </div>
-                  </div>
-                  {b.totalRows > 0 && (
-                    <M3Progress value={(b.successRows / b.totalRows) * 100} className="mt-3" />
-                  )}
-                  {(() => {
-                    const errors = latestBatch?.importBatchId === b.importBatchId ? latestBatch.errors || [] : b.errors || [];
-                    return errors.length > 0 ? (
-                      <div className="mt-3 rounded-lg border border-error/25 bg-error/5 p-3 text-xs">
-                        <p className="font-bold text-error">Lỗi import cần kiểm tra</p>
-                        <div className="mt-2 space-y-1">
-                          {errors.slice(0, 6).map((error) => (
-                            <p key={error.importErrorId || `${error.rowNumber}-${error.fieldName}`} className="text-on-surface-variant">
-                              Dòng {error.rowNumber}
-                              {error.fieldName ? ` · ${error.fieldName}` : ""}: {importErrorMessage(error.errorMessage)}
-                              {error.rawValue ? ` (${error.rawValue})` : ""}
-                            </p>
-                          ))}
-                          {errors.length > 6 && <p className="text-on-surface-variant">Còn {errors.length - 6} lỗi khác.</p>}
-                        </div>
-                      </div>
-                    ) : null;
-                  })()}
-                </ExpressiveCard>
-              </StaggerItem>
-            ))}
-          </StaggerGroup>
         )}
-      </Section>
-    </PageTransition>
-  );
-}
-
-// =============================================================================
-// Screen 5: Roster
-// =============================================================================
-function RosterScreen({
-  ctx,
-  importBatchId,
-  onClearImportBatch,
-}: {
-  ctx: Ctx;
-  importBatchId?: number;
-  onClearImportBatch: () => void;
-}) {
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [exportingRoster, setExportingRoster] = useState(false);
-  const rosterResource = useUniAdminRoster({
-    keyword: search || undefined,
-    status: statusFilter === "all" ? undefined : statusFilter,
-    importBatchId,
-  });
-  const roster = rosterResource.raw || (importBatchId ? [] : ctx.roster);
-
-  const filtered = roster.filter((r) => {
-    if (statusFilter !== "all" && r.status !== statusFilter) return false;
-    if (search && !`${r.fullName} ${r.email} ${r.studentCode || ""}`.toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  });
-
-  const exportRoster = useCallback(async () => {
-    setExportingRoster(true);
-    try {
-      const file = await universityApi.rosterExportCsv({
-        keyword: search || undefined,
-        status: statusFilter === "all" ? undefined : statusFilter,
-      });
-      downloadFile(file, "danh-sach-sinh-vien.csv", ["text/csv"]);
-      toast.success("Đã xuất danh sách sinh viên.");
-    } catch (error) {
-      console.error("Failed to export roster", error);
-      toast.error("Không thể tải file. Vui lòng thử lại.");
-    } finally {
-      setExportingRoster(false);
-    }
-  }, [search, statusFilter]);
-
-  return (
-    <PageTransition className="space-y-6 min-w-0">
-      <PageHeader
-        title="Danh sách sinh viên"
-        description={importBatchId ? `${roster.length} sinh viên vừa import từ batch #${importBatchId}` : `${roster.length} sinh viên`}
-        icon={<Users className="size-7" />}
-        actions={
-          <ExpressiveButton variant="tonal" onClick={exportRoster} disabled={exportingRoster}>
-            {exportingRoster ? <RefreshCw className="size-4 animate-spin" /> : <Download className="size-4" />}
-            Xuất danh sách sinh viên
-          </ExpressiveButton>
-        }
-      />
-      {importBatchId && (
-        <ExpressiveCard variant="elevated" className="p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="font-bold">Đang xem sinh viên vừa import</p>
-              <p className="text-xs text-on-surface-variant">Bộ lọc backend: imported_batch_id = {importBatchId}</p>
-            </div>
-            <ExpressiveButton variant="tonal" onClick={onClearImportBatch}>
-              Bỏ lọc batch
-            </ExpressiveButton>
+        <div className="flex flex-wrap gap-2 min-w-0">
+          <div className="relative w-full flex-1 min-w-0 sm:min-w-[200px]">
+            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant" />
+            <Input className="pl-9" placeholder="Tìm theo tên, email, mã SV..." value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-        </ExpressiveCard>
-      )}
-      <div className="flex flex-wrap gap-2 min-w-0">
-        <div className="relative w-full flex-1 min-w-0 sm:min-w-[200px]">
-          <Filter className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant" />
-          <Input className="pl-9" placeholder="Tìm theo tên, email, mã SV..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-full sm:w-40"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả trạng thái</SelectItem>
+              <SelectItem value="ACTIVE">Đang học</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-full sm:w-40"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Tất cả trạng thái</SelectItem>
-            <SelectItem value="ACTIVE">Đang học</SelectItem>
-            <SelectItem value="INACTIVE">Ngừng học</SelectItem>
-            <SelectItem value="GRADUATED">Đã tốt nghiệp</SelectItem>
-            <SelectItem value="SUSPENDED">Bị đình chỉ</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      {rosterResource.loading ? (
-        <LoadingScreen label="Đang tải danh sách sinh viên..." />
-      ) : filtered.length === 0 ? (
-        <EmptyState icon={<Users className="size-7" />} title="Không có sinh viên" />
-      ) : (
-        <ExpressiveCard variant="elevated" className="overflow-hidden min-w-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Mã SV</TableHead>
-                <TableHead>Họ tên</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Khoa</TableHead>
-                <TableHead>Trạng thái</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.slice(0, 100).map((r) => (
-                <TableRow key={r.rosterId}>
-                  <TableCell className="font-mono font-bold">{r.studentCode?.trim() || "Chưa có MSSV"}</TableCell>
-                  <TableCell className="font-bold truncate">{r.fullName}</TableCell>
-                  <TableCell className="text-xs truncate">{r.email}</TableCell>
-                  <TableCell className="text-xs">{r.faculty || "—"}</TableCell>
-                  <TableCell><M3StatusPill label={rosterStatusLabel(r.status)} tone={rosterStatusTone(r.status)} /></TableCell>
+        {rosterResource.loading ? (
+          <LoadingScreen label="Đang tải danh sách sinh viên..." />
+        ) : filtered.length === 0 ? (
+          <EmptyState icon={<Users className="size-7" />} title="Không có sinh viên" />
+        ) : (
+          <ExpressiveCard variant="elevated" className="overflow-hidden min-w-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Mã SV</TableHead>
+                  <TableHead>Họ tên</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Khoa</TableHead>
+                  <TableHead>Trạng thái</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </ExpressiveCard>
-      )}
+              </TableHeader>
+              <TableBody>
+                {filtered.slice(0, 100).map((r) => (
+                  <TableRow key={r.rosterId}>
+                    <TableCell className="font-mono font-bold">{r.studentCode?.trim() || "Chưa có MSSV"}</TableCell>
+                    <TableCell className="font-bold truncate">{r.fullName}</TableCell>
+                    <TableCell className="text-xs truncate">{r.email}</TableCell>
+                    <TableCell className="text-xs">{r.faculty || "—"}</TableCell>
+                    <TableCell><M3StatusPill label="Đang học" tone="success" /></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </ExpressiveCard>
+        )}
+      </div>
+
+      <Dialog open={Boolean(detailBatch)} onOpenChange={(open) => !open && setDetailBatch(null)}>
+        <DialogContent className="max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>Chi tiết lỗi import</DialogTitle>
+            <DialogDescription>
+              {detailBatch?.fileName} • {detailBatch?.errorRows || 0} dòng lỗi
+            </DialogDescription>
+          </DialogHeader>
+          <ImportErrorTable errors={detailBatch?.errors} />
+          <DialogFooter>
+            {detailBatch && (
+              <ExpressiveButton variant="tonal" onClick={() => downloadImportReport(detailBatch.importBatchId)} disabled={downloadingReportId === detailBatch.importBatchId}>
+                {downloadingReportId === detailBatch.importBatchId ? <RefreshCw className="size-4 animate-spin" /> : <Download className="size-4" />}
+                Tải báo cáo lỗi
+              </ExpressiveButton>
+            )}
+            <ExpressiveButton variant="filled" onClick={() => setDetailBatch(null)}>Đóng</ExpressiveButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageTransition>
   );
 }
-
-// =============================================================================
 // Screen 6: Subsidy policies
 // =============================================================================
 function SubsidyScreen({ ctx }: { ctx: Ctx }) {
-  const [adding, setAdding] = useState(false);
-  const [name, setName] = useState("");
-  const [type, setType] = useState<SubsidyType>("PERCENTAGE");
+  const currentPolicy = useMemo(
+    () => [...ctx.subsidyPolicies].sort((a, b) => b.subsidyPolicyId - a.subsidyPolicyId)[0],
+    [ctx.subsidyPolicies],
+  );
+  const [editing, setEditing] = useState(false);
   const [value, setValue] = useState("");
-  const [maxAmount, setMaxAmount] = useState("");
   const [saving, setSaving] = useState(false);
+  const [routeSubsidies, setRouteSubsidies] = useState<RouteUniversityView[]>([]);
+  const [loadingRoutes, setLoadingRoutes] = useState(false);
+  const [routeSearch, setRouteSearch] = useState("");
+  const [routeStatusFilter, setRouteStatusFilter] = useState("all");
+  const [updatingRouteId, setUpdatingRouteId] = useState<number | null>(null);
+  const [confirmDisableRoute, setConfirmDisableRoute] = useState<RouteUniversityView | null>(null);
 
-  const add = async () => {
-    const numericValue = Number(value);
-    const numericMaxAmount = Number(maxAmount);
-    if (!name.trim()) {
-      toast.error("Vui lòng nhập tên chính sách");
+  useEffect(() => {
+    setValue(currentPolicy ? String(Math.round(Number(currentPolicy.value || 0))) : "");
+  }, [currentPolicy]);
+
+  const loadRouteSubsidies = useCallback(async () => {
+    setLoadingRoutes(true);
+    try {
+      setRouteSubsidies(await universityApi.routeSubsidies());
+    } catch (error) {
+      console.error("Failed to load route subsidies", error);
+      toast.error("Không thể tải danh sách tuyến được gán");
+    } finally {
+      setLoadingRoutes(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadRouteSubsidies();
+  }, [loadRouteSubsidies]);
+
+  const filteredRouteSubsidies = useMemo(() => {
+    const keyword = routeSearch.trim().toLowerCase();
+    return routeSubsidies.filter((route) => {
+      const routeStatus = (route.routeStatus || "").toUpperCase();
+      const assignmentStatus = (route.status || "").toUpperCase();
+      if (routeStatusFilter === "active" && !(routeStatus === "ACTIVE" && assignmentStatus === "ACTIVE")) return false;
+      if (routeStatusFilter === "inactive" && routeStatus === "ACTIVE" && assignmentStatus === "ACTIVE") return false;
+      if (!keyword) return true;
+      return `${route.routeCode || ""} ${route.routeName || ""} ${route.routeStartStop || ""} ${route.routeEndStop || ""}`
+        .toLowerCase()
+        .includes(keyword);
+    });
+  }, [routeSearch, routeStatusFilter, routeSubsidies]);
+
+  const enabledRoutes = routeSubsidies.filter((route) =>
+    route.subsidyEnabled && (route.status || "").toUpperCase() === "ACTIVE" && (route.routeStatus || "").toUpperCase() === "ACTIVE"
+  ).length;
+
+  const updateRouteSubsidy = async (route: RouteUniversityView, subsidyEnabled: boolean) => {
+    if (!subsidyEnabled) {
+      setConfirmDisableRoute(route);
       return;
     }
-    if (!value.trim() || Number.isNaN(numericValue) || numericValue <= 0) {
-      toast.error(type === "PERCENTAGE" ? "Vui lòng nhập phần trăm trợ giá hợp lệ" : "Vui lòng nhập số tiền trợ giá hợp lệ");
+    setUpdatingRouteId(route.routeUniversityId);
+    try {
+      const updated = await universityApi.updateRouteSubsidy(route.routeUniversityId, { subsidyEnabled });
+      setRouteSubsidies((items) => items.map((item) => item.routeUniversityId === updated.routeUniversityId ? updated : item));
+      toast.success("Đã bật áp dụng trợ giá cho tuyến");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể cập nhật tuyến trợ giá");
+    } finally {
+      setUpdatingRouteId(null);
+    }
+  };
+
+  const confirmDisableRouteSubsidy = async () => {
+    if (!confirmDisableRoute) return;
+    setUpdatingRouteId(confirmDisableRoute.routeUniversityId);
+    try {
+      const updated = await universityApi.updateRouteSubsidy(confirmDisableRoute.routeUniversityId, { subsidyEnabled: false });
+      setRouteSubsidies((items) => items.map((item) => item.routeUniversityId === updated.routeUniversityId ? updated : item));
+      toast.success("Đã tắt áp dụng trợ giá cho tuyến");
+      setConfirmDisableRoute(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể cập nhật tuyến trợ giá");
+    } finally {
+      setUpdatingRouteId(null);
+    }
+  };
+
+  const saveConfig = async (status?: "ACTIVE" | "INACTIVE", overrideValue?: number) => {
+    const rawValue = overrideValue == null ? value : String(overrideValue);
+    const numericValue = Number(rawValue);
+    if (!rawValue.trim() || Number.isNaN(numericValue) || numericValue < 0) {
+      toast.error("Vui lòng nhập mức trợ giá hợp lệ");
       return;
     }
-    if (type === "PERCENTAGE" && numericValue > 100) {
+    const nextSubsidyType = currentPolicy ? effectiveSubsidyType(currentPolicy) : "FIXED_AMOUNT";
+    if (nextSubsidyType === "PERCENTAGE" && numericValue > 100) {
       toast.error("Phần trăm trợ giá không được vượt quá 100%");
       return;
     }
-    if (type === "PERCENTAGE" && maxAmount.trim() && (Number.isNaN(numericMaxAmount) || numericMaxAmount <= 0)) {
-      toast.error("Số tiền tối đa phải lớn hơn 0");
-      return;
-    }
+    const nextStatus = status || (currentPolicy?.status === "ACTIVE" ? "ACTIVE" : "INACTIVE");
     setSaving(true);
     try {
-      await universityApi.createSubsidyPolicy({
-        policyName: name.trim(),
-        subsidyType: type,
-        value: numericValue,
-        maxAmount: type === "PERCENTAGE" && maxAmount.trim() ? numericMaxAmount : undefined,
-      });
-      toast.success("Đã thêm chính sách trợ giá");
-      setName(""); setValue(""); setMaxAmount("");
-      setAdding(false);
+      try {
+        await universityApi.updateSubsidyConfig({ value: numericValue, status: nextStatus, subsidyType: nextSubsidyType });
+      } catch (error) {
+        const missingUpdateEndpoint =
+          error instanceof ApiError &&
+          error.status === 404 &&
+          /subsidy-policy|No static resource/i.test(error.message);
+        if (!missingUpdateEndpoint) {
+          throw error;
+        }
+        await universityApi.createSubsidyPolicy({
+          policyName: "Cau hinh tro gia ve thang",
+          subsidyType: nextSubsidyType,
+          value: numericValue,
+          status: nextStatus,
+        });
+      }
+      toast.success(nextStatus === "ACTIVE" ? "Đã bật trợ giá" : "Đã cập nhật cấu hình trợ giá");
+      setEditing(false);
       ctx.reload();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Không thể thêm chính sách trợ giá");
+      toast.error(e instanceof Error ? e.message : "Không thể cập nhật trợ giá");
     } finally {
       setSaving(false);
     }
   };
 
+  const toggleStatus = async () => {
+    const currentValue = Math.round(Number(currentPolicy?.value || 0));
+    setValue(String(currentValue));
+    await saveConfig(currentPolicy?.status === "ACTIVE" ? "INACTIVE" : "ACTIVE", currentValue);
+  };
+
+  const isActive = currentPolicy?.status === "ACTIVE";
+  const isPercent = isPercentageSubsidy(currentPolicy);
+
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Chính sách trợ giá"
-        description="Áp dụng cho sinh viên của trường khi mua vé."
+        description="Một cấu hình trợ giá vé tháng cho sinh viên trong trường."
         icon={<Percent className="size-7" />}
-        actions={<ExpressiveButton variant="filled" onClick={() => setAdding(true)}><Plus className="size-4" /> Thêm chính sách</ExpressiveButton>}
       />
-      {ctx.subsidyPolicies.length === 0 ? (
-        <EmptyState icon={<Percent className="size-7" />} title="Chưa có chính sách trợ giá" />
-      ) : (
-        <StaggerGroup className="grid grid-cols-1 md:grid-cols-2 gap-3 min-w-0">
-          {ctx.subsidyPolicies.map((p) => (
-            <StaggerItem key={p.subsidyPolicyId}>
-              <ExpressiveCard variant="elevated" className="p-5 h-full min-w-0">
-                <div className="flex items-start justify-between gap-2 mb-2 min-w-0">
-                  <p className="font-bold truncate">{p.policyName}</p>
-                  <M3StatusPill label={subsidyStatusLabel(p.status)} tone={subsidyStatusTone(p.status)} />
-                </div>
-                <div className="text-2xl font-black text-primary">
-                  {subsidyValueLabel(p)}
-                </div>
-                <p className="text-xs text-on-surface-variant mt-1">
-                  {p.subsidyType === "PERCENTAGE" ? "Theo phần trăm giá vé" : "Số tiền cố định"}
-                </p>
-                {p.maxAmount != null && (
-                  <p className="text-xs text-on-surface-variant mt-1">Tối đa: {formatVND(p.maxAmount)}</p>
-                )}
-                <div className="mt-3 space-y-1 text-xs text-on-surface-variant">
-                  {p.activeFrom && <p>Hiệu lực từ: {formatDate(p.activeFrom)}</p>}
-                  {p.activeUntil && <p>Đến: {formatDate(p.activeUntil)}</p>}
-                </div>
-              </ExpressiveCard>
-            </StaggerItem>
-          ))}
-        </StaggerGroup>
-      )}
 
-      <Dialog open={adding} onOpenChange={setAdding}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Thêm chính sách trợ giá</DialogTitle>
-            <DialogDescription>Chính sách áp dụng cho sinh viên của trường. Chọn phần trăm hoặc số tiền cố định.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div>
-              <Label className="text-xs font-bold">Tên chính sách</Label>
-              <Input className="mt-1.5" value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Trợ giá 50% vé tháng" />
+      <ExpressiveCard variant="elevated" className="p-6 max-w-3xl">
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-bold uppercase text-on-surface-variant">Mức trợ giá vé tháng</p>
+              <M3StatusPill label={isActive ? "Đang bật" : "Đã tắt"} tone={isActive ? "success" : "neutral"} />
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs font-bold">Loại trợ giá</Label>
-                <Select value={type} onValueChange={(v: SubsidyType) => setType(v)}>
-                  <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="PERCENTAGE">Theo %</SelectItem>
-                    <SelectItem value="FIXED_AMOUNT">Số tiền cố định</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs font-bold">{type === "PERCENTAGE" ? "Phần trăm trợ giá" : "Số tiền trợ giá"}</Label>
-                <Input className="mt-1.5" type="number" min="0" value={value} onChange={(e) => setValue(e.target.value)} placeholder={type === "PERCENTAGE" ? "VD: 50" : "VD: 100000"} />
-              </div>
+            <p className="mt-3 text-4xl font-black text-primary">
+              {subsidyConfigValueLabel(currentPolicy)}
+            </p>
+            <p className="mt-2 text-sm text-on-surface-variant">
+              {isPercent
+                ? "Khi b\u1eadt: sinh vi\u00ean \u0111\u01b0\u1ee3c gi\u1ea3m theo t\u1ef7 l\u1ec7 n\u00e0y tr\u00ean gi\u00e1 v\u00e9 th\u00e1ng."
+                : "Khi b\u1eadt: sinh vi\u00ean \u0111\u01b0\u1ee3c gi\u1ea3m t\u1ed1i \u0111a m\u1ee9c n\u00e0y nh\u01b0ng kh\u00f4ng v\u01b0\u1ee3t qu\u00e1 gi\u00e1 v\u00e9 th\u00e1ng."}
+            </p>
+            <p className="mt-3 text-xs text-on-surface-variant">
+              Cập nhật gần nhất: {currentPolicy?.updatedAt ? formatDateTime(currentPolicy.updatedAt) : "Chưa có cấu hình"}
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <ExpressiveButton variant="tonal" onClick={() => setEditing(true)} disabled={saving}>
+              <Edit className="size-4" />
+              Chỉnh sửa mức trợ giá
+            </ExpressiveButton>
+            <ExpressiveButton variant={isActive ? "outlined" : "filled"} onClick={toggleStatus} disabled={saving}>
+              {saving ? <RefreshCw className="size-4 animate-spin" /> : <ShieldCheck className="size-4" />}
+              {isActive ? "Tắt trợ giá" : "Bật trợ giá"}
+            </ExpressiveButton>
+          </div>
+        </div>
+      </ExpressiveCard>
+
+      <Section title="Tuyến áp dụng trợ giá" description={`${enabledRoutes}/${routeSubsidies.length} tuyến đang áp dụng`}>
+        <ExpressiveCard variant="elevated" className="p-5 min-w-0">
+          <div className="flex flex-wrap gap-2">
+            <div className="relative min-w-0 flex-1">
+              <Filter className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-on-surface-variant" />
+              <Input
+                className="pl-9"
+                value={routeSearch}
+                onChange={(event) => setRouteSearch(event.target.value)}
+                placeholder="Tìm theo mã tuyến, tên tuyến, điểm đầu/cuối..."
+              />
             </div>
-            {type === "PERCENTAGE" && (
-              <div>
-                <Label className="text-xs font-bold">Số tiền tối đa (VND, tùy chọn)</Label>
-                <Input className="mt-1.5" type="number" min="0" value={maxAmount} onChange={(e) => setMaxAmount(e.target.value)} placeholder="VD: 90000" />
+            <Select value={routeStatusFilter} onValueChange={setRouteStatusFilter}>
+              <SelectTrigger className="w-full sm:w-56"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tất cả tuyến</SelectItem>
+                <SelectItem value="active">Đang hoạt động</SelectItem>
+                <SelectItem value="inactive">Tạm ngừng/không hoạt động</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {!isActive && (
+            <div className="mt-4 rounded-xl border border-warning/30 bg-warning-container/20 p-3 text-sm text-on-surface-variant">
+              Trợ giá chung của trường đang tắt. Các lựa chọn tuyến được giữ nguyên nhưng chưa có hiệu lực cho giao dịch mới.
+            </div>
+          )}
+
+          <div className="mt-4">
+            {loadingRoutes ? (
+              <LoadingScreen label="Đang tải tuyến được gán..." />
+            ) : routeSubsidies.length === 0 ? (
+              <EmptyState
+                icon={<TicketPercent className="size-7" />}
+                title="Chưa có tuyến nào được gán cho trường"
+                description="Vui lòng liên hệ quản trị viên hệ thống."
+              />
+            ) : filteredRouteSubsidies.length === 0 ? (
+              <EmptyState icon={<TicketPercent className="size-7" />} title="Không có tuyến phù hợp với bộ lọc" />
+            ) : (
+              <div className="divide-y divide-outline-variant overflow-hidden rounded-xl border border-outline-variant">
+                {filteredRouteSubsidies.map((route) => {
+                  const routeActive = (route.routeStatus || "").toUpperCase() === "ACTIVE";
+                  const assignmentActive = (route.status || "").toUpperCase() === "ACTIVE";
+                  const switchDisabled = !isActive || !routeActive || !assignmentActive || updatingRouteId === route.routeUniversityId;
+                  return (
+                    <div key={route.routeUniversityId} className="flex flex-col gap-3 bg-surface px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-full bg-surface-container px-2 py-0.5 font-mono text-xs font-bold">
+                            {route.routeCode || `#${route.routeId}`}
+                          </span>
+                          <p className="font-bold">{route.routeName}</p>
+                          <M3StatusPill
+                            label={routeActive && assignmentActive ? "Đang hoạt động" : "Tạm ngừng"}
+                            tone={routeActive && assignmentActive ? "success" : "warning"}
+                          />
+                        </div>
+                        {(route.routeStartStop || route.routeEndStop) && (
+                          <p className="mt-1 text-sm text-on-surface-variant">
+                            {[route.routeStartStop, route.routeEndStop].filter(Boolean).join(" – ")}
+                          </p>
+                        )}
+                        {!routeActive && (
+                          <p className="mt-1 text-xs font-bold text-warning">Tạm ngừng do tuyến không hoạt động</p>
+                        )}
+                        {routeActive && !assignmentActive && (
+                          <p className="mt-1 text-xs font-bold text-warning">Tạm ngừng do gán tuyến không hoạt động</p>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between gap-3 sm:justify-end">
+                        <Label htmlFor={`route-subsidy-${route.routeUniversityId}`} className="text-sm font-bold">
+                          Áp dụng trợ giá
+                        </Label>
+                        {updatingRouteId === route.routeUniversityId ? (
+                          <RefreshCw className="size-5 animate-spin text-primary" />
+                        ) : (
+                          <Switch
+                            id={`route-subsidy-${route.routeUniversityId}`}
+                            checked={Boolean(route.subsidyEnabled)}
+                            disabled={switchDisabled}
+                            onCheckedChange={(checked) => updateRouteSubsidy(route, checked)}
+                            aria-label={`Áp dụng trợ giá cho ${route.routeName}`}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
+        </ExpressiveCard>
+      </Section>
+
+      <Dialog open={editing} onOpenChange={setEditing}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Chỉnh sửa mức trợ giá</DialogTitle>
+            <DialogDescription>Mức trợ giá mới chỉ áp dụng cho giao dịch phát sinh sau khi lưu.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <Label className="text-xs font-bold">
+                {isPercent ? "Ph\u1ea7n tr\u0103m tr\u1ee3 gi\u00e1" : "S\u1ed1 ti\u1ec1n tr\u1ee3 gi\u00e1 c\u1ed1 \u0111\u1ecbnh"}
+              </Label>
+              <Input
+                className="mt-1.5"
+                type="number"
+                min="0"
+                max={isPercent ? "100" : undefined}
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                placeholder={isPercent ? "VD: 50" : "VD: 50000"}
+              />
+            </div>
+          </div>
           <DialogFooter>
-            <ExpressiveButton variant="text" onClick={() => setAdding(false)} disabled={saving}>Hủy</ExpressiveButton>
-            <ExpressiveButton variant="filled" onClick={add} disabled={saving}>
-              {saving ? <RefreshCw className="size-4 animate-spin" /> : <Plus className="size-4" />}
-              Thêm chính sách
+            <ExpressiveButton variant="text" onClick={() => setEditing(false)} disabled={saving}>Hủy</ExpressiveButton>
+            <ExpressiveButton variant="filled" onClick={() => saveConfig()} disabled={saving}>
+              {saving ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
+              Lưu mức trợ giá
+            </ExpressiveButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(confirmDisableRoute)} onOpenChange={(open) => !open && setConfirmDisableRoute(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Tắt trợ giá cho tuyến?</DialogTitle>
+            <DialogDescription>
+              Giao dịch mới trên tuyến {confirmDisableRoute?.routeCode || confirmDisableRoute?.routeName} sẽ không còn được trợ giá.
+              Các giao dịch đã phát sinh trước đó không bị thay đổi.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <ExpressiveButton variant="text" onClick={() => setConfirmDisableRoute(null)} disabled={updatingRouteId === confirmDisableRoute?.routeUniversityId}>
+              Hủy
+            </ExpressiveButton>
+            <ExpressiveButton variant="filled" onClick={confirmDisableRouteSubsidy} disabled={updatingRouteId === confirmDisableRoute?.routeUniversityId}>
+              {updatingRouteId === confirmDisableRoute?.routeUniversityId ? <RefreshCw className="size-4 animate-spin" /> : <ShieldCheck className="size-4" />}
+              Tắt trợ giá tuyến
             </ExpressiveButton>
           </DialogFooter>
         </DialogContent>
@@ -1774,63 +2156,7 @@ function SubsidyScreen({ ctx }: { ctx: Ctx }) {
 }
 
 // =============================================================================
-// Screen 7: Stats
-// =============================================================================
-function StatsScreen({ ctx }: { ctx: Ctx }) {
-  const s = ctx.stats;
-  if (!s) {
-    return (
-      <PageTransition>
-        <PageHeader title="Thống kê" icon={<FileBarChart className="size-7" />} />
-        <EmptyState icon={<FileBarChart className="size-7" />} title="Chưa có dữ liệu" />
-      </PageTransition>
-    );
-  }
-  const stats: { label: string; value: number; unit?: string; tone?: string }[] = [
-    { label: "Sinh viên hoạt động", value: s.activeRosterStudents, tone: "primary" },
-    { label: "Sinh viên đã match", value: s.matchedStudents, tone: "success" },
-    { label: "Domain hoạt động", value: s.activeDomains, tone: "tertiary" },
-    { label: "Cơ sở hoạt động", value: s.activeCampuses, tone: "secondary" },
-    { label: "Tuyến hoạt động", value: s.activeRoutes, tone: "primary" },
-    { label: "Chính sách trợ giá", value: s.activeSubsidyPolicies, tone: "tertiary" },
-    { label: "Tổng trợ giá", value: s.totalSubsidyAmount, unit: "VND", tone: "secondary" },
-    { label: "Vé tháng đã bán", value: s.monthlyPasses, tone: "success" },
-  ];
-  return (
-    <PageTransition className="space-y-6 min-w-0">
-      <PageHeader
-        title="Thống kê"
-        description={`Trường ${s.universityName}`}
-        icon={<FileBarChart className="size-7" />}
-      />
-      <ScrollReveal>
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 min-w-0">
-          {stats.map((stat, i) => (
-            <StatCard
-              key={i}
-              label={stat.label}
-              value={
-                <Counter
-                  to={stat.value}
-                  format={(n) =>
-                    stat.unit === "VND"
-                      ? formatVND(Math.round(n))
-                      : Math.round(n).toLocaleString("vi-VN")
-                  }
-                />
-              }
-              icon={<TrendingUp className="size-5" />}
-              accent={(stat.tone as any) || "primary"}
-            />
-          ))}
-        </div>
-      </ScrollReveal>
-    </PageTransition>
-  );
-}
-
-// =============================================================================
-// Screen 8: Notify
+// Screen 7: Notify
 // =============================================================================
 function NotifyScreen({ ctx }: { ctx: Ctx }) {
   const [title, setTitle] = useState("");
@@ -1935,36 +2261,75 @@ function NotifyScreen({ ctx }: { ctx: Ctx }) {
 function TransactionsScreen({ ctx }: { ctx: Ctx }) {
   const rows = ctx.payments || [];
   const [statusFilter, setStatusFilter] = useState("all");
-  const [dateFilter, setDateFilter] = useState("");
-  const paidRows = rows.filter((p) => isSettledPaymentStatus(p.paymentStatus));
-  const pendingRows = rows.filter((p) => paymentStatusGroup(p.paymentStatus) === "pending");
-  const failedOrCancelledRows = rows.filter((p) => ["failed", "cancelled"].includes(paymentStatusGroup(p.paymentStatus)));
-  const finalTotal = paidRows.reduce((sum, p) => sum + paymentFinalAmount(p), 0);
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const reconciliationResource = useUniAdminReconciliation({
+    from: from || undefined,
+    to: to || undefined,
+  });
+  const reconciliation = reconciliationResource.raw || ctx.reconciliation;
   const filteredRows = rows.filter((payment) => {
     if (statusFilter !== "all" && paymentStatusGroup(payment.paymentStatus) !== statusFilter) return false;
-    if (dateFilter && paymentDateKey(payment) !== dateFilter) return false;
+    const date = paymentDateKey(payment);
+    if (from && date < from) return false;
+    if (to && date > to) return false;
     return true;
   });
+  const paidRows = filteredRows.filter((p) => isSettledPaymentStatus(p.paymentStatus));
+  const pendingRows = filteredRows.filter((p) => paymentStatusGroup(p.paymentStatus) === "pending");
+  const failedOrCancelledRows = filteredRows.filter((p) => ["failed", "cancelled"].includes(paymentStatusGroup(p.paymentStatus)));
+  const financialOriginalTotal = reconciliation?.totalOriginalAmount ?? paidRows.reduce((sum, p) => sum + paymentOriginalAmount(p), 0);
+  const financialSubsidyTotal = reconciliation?.totalSubsidyAmount ?? paidRows.reduce((sum, p) => sum + Number(p.subsidyAmount || 0), 0);
+  const financialFinalTotal = reconciliation?.totalFinalAmount ?? paidRows.reduce((sum, p) => sum + paymentFinalAmount(p), 0);
+
+  const reload = useCallback(() => {
+    reconciliationResource.reload();
+    ctx.reload();
+  }, [ctx, reconciliationResource]);
 
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
-        title="Lịch sử giao dịch"
-        description="Tra cứu từng giao dịch/order của sinh viên theo trạng thái và ngày giao dịch."
+        title="Đối soát và giao dịch"
+        description="Tổng hợp trạng thái, tiền vé, trợ giá và số tiền sinh viên đã trả theo khoảng ngày."
         icon={<Banknote className="size-7" />}
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 min-w-0">
-        <StatCard label="Tổng giao dịch" value={rows.length} icon={<Banknote className="size-5" />} accent="primary" />
-        <StatCard label="Đã thanh toán" value={paidRows.length} icon={<CheckCircle2 className="size-5" />} accent="success" />
-        <StatCard label="Chờ thanh toán" value={pendingRows.length} icon={<RefreshCw className="size-5" />} accent="secondary" />
-        <StatCard label="Lỗi/Hủy" value={failedOrCancelledRows.length} icon={<XCircle className="size-5" />} accent="error" />
+      <div className="space-y-3">
+        <p className="text-xs font-bold uppercase tracking-wide text-on-surface-variant">Trạng thái giao dịch</p>
+        <div className="grid grid-cols-1 gap-3 min-w-0 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard label="Tổng giao dịch" value={filteredRows.length} icon={<Banknote className="size-5" />} accent="primary" />
+          <StatCard label="Đã thanh toán" value={paidRows.length} icon={<CheckCircle2 className="size-5" />} accent="success" />
+          <StatCard label="Chờ thanh toán" value={pendingRows.length} icon={<RefreshCw className="size-5" />} accent="secondary" />
+          <StatCard label="Lỗi / hủy" value={failedOrCancelledRows.length} icon={<XCircle className="size-5" />} accent="error" />
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-[1fr_220px_180px] gap-2 min-w-0">
-        <div className="rounded-xl border border-outline-variant bg-surface-container-low px-3 py-2 text-sm text-on-surface-variant">
-          Sinh viên đã trả: <span className="font-bold text-on-surface">{formatVND(finalTotal)}</span>
+      <div className="space-y-3">
+        <p className="text-xs font-bold uppercase tracking-wide text-on-surface-variant">Tổng hợp tài chính</p>
+        <div className="grid grid-cols-1 gap-3 min-w-0 sm:grid-cols-2 xl:grid-cols-3">
+          <StatCard
+            label="Tổng tiền gốc"
+            value={<Counter to={financialOriginalTotal} format={(n) => formatVND(Math.round(n))} />}
+            icon={<Banknote className="size-5" />}
+            accent="primary"
+          />
+          <StatCard
+            label="Tổng trợ giá"
+            value={<Counter to={financialSubsidyTotal} format={(n) => formatVND(Math.round(n))} />}
+            icon={<Wallet className="size-5" />}
+            accent="success"
+          />
+          <StatCard
+            label="Sinh viên đã trả"
+            value={<Counter to={financialFinalTotal} format={(n) => formatVND(Math.round(n))} />}
+            icon={<BadgeCheck className="size-5" />}
+            accent="secondary"
+          />
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-2 min-w-0 md:grid-cols-[220px_180px_180px_auto]">
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>
@@ -1972,25 +2337,42 @@ function TransactionsScreen({ ctx }: { ctx: Ctx }) {
             <SelectItem value="paid">Đã thanh toán</SelectItem>
             <SelectItem value="pending">Chờ thanh toán</SelectItem>
             <SelectItem value="failed">Thất bại</SelectItem>
-            <SelectItem value="cancelled">Đã hủy/hoàn tiền</SelectItem>
+            <SelectItem value="cancelled">Đã hủy / hoàn tiền</SelectItem>
           </SelectContent>
         </Select>
         <Input
           type="date"
-          value={dateFilter}
-          onChange={(event) => setDateFilter(event.target.value)}
-          onInput={(event) => setDateFilter(event.currentTarget.value)}
+          value={from}
+          onChange={(event) => setFrom(event.target.value)}
+          onInput={(event) => setFrom(event.currentTarget.value)}
+          aria-label="Từ ngày"
         />
+        <Input
+          type="date"
+          value={to}
+          onChange={(event) => setTo(event.target.value)}
+          onInput={(event) => setTo(event.currentTarget.value)}
+          aria-label="Đến ngày"
+        />
+        <ExpressiveButton variant="tonal" size="icon" onClick={reload} disabled={reconciliationResource.loading}>
+          <RefreshCw className={cn("size-4", reconciliationResource.loading && "animate-spin")} />
+        </ExpressiveButton>
       </div>
+
+      {reconciliationResource.error && (
+        <ExpressiveCard variant="outlined" className="border-error/30 bg-error/5 p-4 text-sm text-error">
+          {reconciliationResource.error}
+        </ExpressiveCard>
+      )}
 
       {filteredRows.length === 0 ? (
         <EmptyState
           icon={<Banknote className="size-7" />}
           title={rows.length === 0 ? "Chưa có giao dịch" : "Không có giao dịch phù hợp"}
-          description={dateFilter ? `Không có giao dịch trong ngày ${formatDate(dateFilter)} với bộ lọc đã chọn.` : undefined}
+          description={from || to ? `Không có giao dịch trong khoảng ${from ? formatDate(from) : "đầu kỳ"} - ${to ? formatDate(to) : "hiện tại"} với bộ lọc đã chọn.` : undefined}
         />
       ) : (
-        <ExpressiveCard variant="elevated" className="overflow-hidden min-w-0">
+        <ExpressiveCard variant="elevated" className="overflow-x-auto min-w-0">
           <Table>
             <TableHeader>
               <TableRow>
@@ -2000,7 +2382,7 @@ function TransactionsScreen({ ctx }: { ctx: Ctx }) {
                 <TableHead>Chặng/Tuyến</TableHead>
                 <TableHead className="text-right">Giá gốc</TableHead>
                 <TableHead className="text-right">Trợ giá</TableHead>
-                <TableHead className="text-right">Sinh viên trả</TableHead>
+                <TableHead className="text-right">SV trả</TableHead>
                 <TableHead>Trạng thái</TableHead>
                 <TableHead>Ngày</TableHead>
               </TableRow>
@@ -2029,7 +2411,6 @@ function TransactionsScreen({ ctx }: { ctx: Ctx }) {
     </PageTransition>
   );
 }
-
 // =============================================================================
 // Screen 9: Reconciliation
 // =============================================================================

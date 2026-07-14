@@ -20,7 +20,6 @@ import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/v1/admin/users")
-@PreAuthorize("hasRole('ADMIN')")
 public class AdminUserController {
 
     private final AdminUserService adminUserService;
@@ -30,6 +29,7 @@ public class AdminUserController {
     }
 
     @GetMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'DISPATCHER')")
     ApiResponse<PageResponse<UserView>> list(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String role,
@@ -42,11 +42,13 @@ public class AdminUserController {
     }
 
     @GetMapping("/{userId}")
+    @PreAuthorize("hasRole('ADMIN')")
     ApiResponse<UserView> get(@PathVariable Integer userId) {
         return ApiResponse.ok("User retrieved", adminUserService.get(userId));
     }
 
     @PutMapping("/{userId}/status")
+    @PreAuthorize("hasRole('ADMIN')")
     ApiResponse<UserView> updateStatus(
             @PathVariable Integer userId,
             @Valid @RequestBody UpdateUserStatusRequest request) {
@@ -54,6 +56,7 @@ public class AdminUserController {
     }
 
     @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
     ApiResponse<UserView> create(@Valid @RequestBody CreateStaffUserRequest request) {
         return ApiResponse.ok("User created", adminUserService.create(request));
     }

@@ -127,6 +127,7 @@ import {
 } from "@/lib/prototype-data";
 import {
   apiFetch,
+  adminApi,
   operationsApi,
   transportApi,
   coordinatorRoutesApi,
@@ -2480,10 +2481,20 @@ function FeedbackScreen({ ctx, initialTab }: { ctx: Ctx; initialTab?: string }) 
   const [responses, setResponses] = useState<Record<string, string>>({});
   const [selectedLost, setSelectedLost] = useState<any | null>(null);
   const [lostNotes, setLostNotes] = useState<Record<number, string>>({});
+  const [violationSource, setViolationSource] = useState<any | null>(null);
+  const [violationTargetId, setViolationTargetId] = useState("");
+  const [violationCategory, setViolationCategory] = useState("OPERATION");
+  const [violationDescription, setViolationDescription] = useState("");
+  const [violationSubmitting, setViolationSubmitting] = useState(false);
 
   const feedbackResource = useApi(() => coordinatorFeedbackApi.all(), (items) => items.map(mapFeedback), []);
   const lostItemResource = useApi(() => coordinatorLostItemApi.all(), undefined, []);
   const notificationResource = useApi(() => notificationApi.mine(), undefined, []);
+  const violationTargets = useApi(
+    () => adminApi.users({ status: "ACTIVE" }),
+    (items) => items.filter((item) => ["STUDENT", "DRIVER", "CONDUCTOR", "DISPATCHER"].includes(item.role)),
+    []
+  );
   const feedbackItems = feedbackResource.data || ctx.feedback;
   const historicalItems = ((notificationResource.raw || []) as any[])
     .filter((item) => !isPrivateMessageNotification(item))
@@ -2565,6 +2576,46 @@ function FeedbackScreen({ ctx, initialTab }: { ctx: Ctx; initialTab?: string }) 
       toast.error(e instanceof Error ? e.message : 'Không thể xử lý');
     } finally {
       setResponding(null);
+    }
+  };
+
+  const openViolationDialog = (item: any) => {
+    const isSos = isSosFeedback(item);
+    const sourceLabel = isSos ? "SOS" : "phản hồi";
+    setViolationSource(item);
+    setViolationTargetId("");
+    setViolationCategory(isSos ? "SAFETY" : "OPERATION");
+    setViolationDescription([
+      `Nguồn: ${sourceLabel}${item.id ? ` #${item.id}` : ""}`,
+      item.studentName ? `Người gửi: ${item.studentName}` : "",
+      item.routeName || item.routeCode ? `Tuyến: ${item.routeName || item.routeCode}` : "",
+      item.tripId ? `Chuyến: #${item.tripId}` : "",
+      "",
+      item.content || "",
+    ].filter(Boolean).join("\n"));
+  };
+
+  const submitViolation = async () => {
+    const reportedUserId = Number(violationTargetId);
+    if (!reportedUserId || !violationDescription.trim()) {
+      toast.error("Vui lòng chọn người bị báo cáo và nhập nội dung vi phạm");
+      return;
+    }
+    setViolationSubmitting(true);
+    try {
+      await experienceApi.createViolation({
+        reportedUserId,
+        category: violationCategory,
+        description: violationDescription.trim(),
+      });
+      toast.success("Đã gửi báo cáo vi phạm lên Admin");
+      setViolationSource(null);
+      setViolationTargetId("");
+      setViolationDescription("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Không thể tạo báo cáo vi phạm");
+    } finally {
+      setViolationSubmitting(false);
     }
   };
 
@@ -2673,6 +2724,14 @@ function FeedbackScreen({ ctx, initialTab }: { ctx: Ctx; initialTab?: string }) 
                             )}
                           </div>
                           <div className="flex md:flex-col gap-2 md:items-end">
+                            <ExpressiveButton
+                              variant="outlined"
+                              size="sm"
+                              onClick={() => openViolationDialog(f)}
+                            >
+                              <AlertTriangle className="size-4" />
+                              Tạo vi phạm
+                            </ExpressiveButton>
                             {!isResolved ? (
                               <ExpressiveButton
                                 variant="filled" size="sm"
@@ -2790,6 +2849,14 @@ function FeedbackScreen({ ctx, initialTab }: { ctx: Ctx; initialTab?: string }) 
                               </div>
                             )}
                           </div>
+                          <ExpressiveButton
+                            variant="outlined"
+                            size="sm"
+                            onClick={() => openViolationDialog(item)}
+                          >
+                            <AlertTriangle className="size-4" />
+                            Tạo vi phạm
+                          </ExpressiveButton>
                           {!isResolved && (
                             <ExpressiveButton
                               variant="filled" size="sm"
@@ -2854,6 +2921,69 @@ function FeedbackScreen({ ctx, initialTab }: { ctx: Ctx; initialTab?: string }) 
       </Dialog>
 
       {/* Dialog xử lý mất đồ */}
+      <Dialog open={!!violationSource} onOpenChange={(open) => !open && !violationSubmitting && setViolationSource(null)}>
+        {violationSource && (
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Tạo báo cáo vi phạm</DialogTitle>
+              <DialogDescription>Gửi báo cáo này lên Admin để xử lý cấp hệ thống.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <div className="rounded-xl bg-surface-container-low p-3 text-sm text-on-surface">
+                {violationSource.content}
+              </div>
+              <div>
+                <Label className="text-xs font-bold">Người bị báo cáo</Label>
+                <Select value={violationTargetId} onValueChange={setViolationTargetId} disabled={violationTargets.loading}>
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue placeholder={violationTargets.loading ? "Đang tải danh sách..." : "Chọn người bị báo cáo"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(violationTargets.data || []).map((target) => (
+                      <SelectItem key={target.userId} value={String(target.userId)}>
+                        {target.fullName} · {target.role}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {violationTargets.error && <p className="mt-1 text-xs text-error">{violationTargets.error}</p>}
+              </div>
+              <div>
+                <Label className="text-xs font-bold">Loại vi phạm</Label>
+                <Select value={violationCategory} onValueChange={setViolationCategory}>
+                  <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="OPERATION">Vận hành</SelectItem>
+                    <SelectItem value="SAFETY">An toàn</SelectItem>
+                    <SelectItem value="SERVICE">Dịch vụ</SelectItem>
+                    <SelectItem value="PAYMENT">Thanh toán/vé</SelectItem>
+                    <SelectItem value="OTHER">Khác</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs font-bold">Nội dung báo cáo</Label>
+                <Textarea
+                  className="mt-1.5"
+                  value={violationDescription}
+                  onChange={(event) => setViolationDescription(event.target.value)}
+                  rows={6}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <ExpressiveButton variant="text" onClick={() => setViolationSource(null)} disabled={violationSubmitting}>
+                Hủy
+              </ExpressiveButton>
+              <ExpressiveButton variant="filled" onClick={submitViolation} disabled={violationSubmitting || violationTargets.loading}>
+                {violationSubmitting ? <RefreshCw className="size-4 animate-spin" /> : <AlertTriangle className="size-4" />}
+                Gửi Admin
+              </ExpressiveButton>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
+
       <Dialog open={!!selectedLost} onOpenChange={(open) => !open && setSelectedLost(null)}>
         {selectedLost && (
           <DialogContent className="sm:max-w-md">
