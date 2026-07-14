@@ -714,6 +714,10 @@ function LiveMapScreen({ ctx }: { ctx: Ctx }) {
   const fleetReloadRef = useRef(fleet.reload);
   const liveVehicles = useMemo(() => (fleet.raw || ctx.raw.dashboard.raw?.liveFleet || []) as LiveFleetVehicle[], [ctx.raw.dashboard.raw?.liveFleet, fleet.raw]);
   const vehicles = useMemo(() => liveVehicles.filter(isRunningVehicle), [liveVehicles]);
+  const displayedVehicles = selectedVehicleId
+    ? vehicles.filter((vehicle) => String(vehicle.tripId) === selectedVehicleId)
+    : vehicles;
+
   const toggleSelectedVehicle = useCallback((vehicleId: string) => {
     setSelectedVehicleId((current) => current === vehicleId ? null : vehicleId);
   }, []);
@@ -759,14 +763,15 @@ function LiveMapScreen({ ctx }: { ctx: Ctx }) {
         </ScrollReveal>
         <ScrollReveal delay={0.1}>
           <ExpressiveCard variant="filled" className="p-5 h-full min-w-0">
-            <h3 className="text-base font-bold mb-3">{vehicles.length} xe đang chạy</h3>
+            <h3 className="text-base font-bold mb-1">{selectedVehicleId ? 'Đang xem 1 xe' : vehicles.length + ' xe đang chạy'}</h3>
+            {selectedVehicleId && <p className="mb-3 text-xs text-on-surface-variant">Bấm lại xe để hiện tất cả.</p>}
             <div className="space-y-2 overflow-y-auto max-h-[560px] xl:max-h-[620px]">
-              {vehicles.length === 0 ? (
+              {displayedVehicles.length === 0 ? (
                 <p className="text-sm text-on-surface-variant text-center mt-8">
                   Không có xe đang chạy lúc này.
                 </p>
               ) : (
-                vehicles.map((v: any, index) => (
+                displayedVehicles.map((v: any, index) => (
                   <button
                     key={v.tripId}
                     type="button"
@@ -946,16 +951,21 @@ function LiveFleetMap({
       const snapshot = trackingByTrip[String(vehicle.tripId)];
       const tracked = snapshot?.vehicles?.find((item) => Number(item.tripId) === Number(vehicle.tripId));
       const preview = displayPreviews[vehicle.routeId];
-      const lat = numberValue(tracked?.latitude);
-      const lng = numberValue(tracked?.longitude);
-      if (!lat || !lng) return null;
+      const trackedPoint = {
+        lat: numberValue(tracked?.latitude ?? vehicle.latitude),
+        lng: numberValue(tracked?.longitude ?? vehicle.longitude),
+      };
+      const fallbackPoint = pointOnPreview(preview, index, vehicle);
+      const point = validCoordinate(trackedPoint) ? trackedPoint : fallbackPoint;
+      if (!point || !validCoordinate(point)) return null;
+
       return {
         id: String(vehicle.tripId),
         plate: tracked?.plateNumber || vehicle.licensePlate || `Xe ${index + 1}`,
         routeCode: preview?.routeCode || `R${vehicle.routeId}`,
         routeColor: preview?.colorHex || "#BDFD4F",
-        lat,
-        lng,
+        lat: point.lat,
+        lng: point.lng,
         occupancy: tracked?.occupancy ?? vehicle.occupancy,
         capacity: tracked?.capacity ?? 45,
         driverName: tracked?.driverName || vehicle.driverName,
@@ -964,14 +974,16 @@ function LiveFleetMap({
   }, [displayPreviews, trackingByTrip, vehicles]);
 
   const selectedRouteLines = useMemo(
-    () => selectedVehicleRoutePolylines(selectedVehicleId, vehicles, displayPreviews, buses),
-    [buses, displayPreviews, selectedVehicleId, vehicles],
+    () => selectedVehicleRoutePolylines(selectedVehicleId, vehicles, displayPreviews, trackingByTrip, buses),
+    [buses, displayPreviews, selectedVehicleId, trackingByTrip, vehicles],
   );
   const selectedRouteStops = useMemo(
-    () => selectedVehicleRouteStops(selectedVehicleId, vehicles, displayPreviews),
-    [displayPreviews, selectedVehicleId, vehicles],
+    () => selectedVehicleRouteStops(selectedVehicleId, vehicles, displayPreviews, trackingByTrip),
+    [displayPreviews, selectedVehicleId, trackingByTrip, vehicles],
   );
   const selectedRouteColor = selectedRouteLines[0]?.color || buses.find((bus) => bus.id === selectedVehicleId)?.routeColor || "#144fcc";
+  const visibleBuses = selectedVehicleId ? buses.filter((bus) => bus.id === selectedVehicleId) : buses;
+  const visiblePolylines = selectedVehicleId ? selectedRouteLines : mapFitPolylines(displayPreviews, buses);
 
   useEffect(() => {
     if (!onVehicleLocationsChange) return;
@@ -987,8 +999,8 @@ function LiveFleetMap({
     <div className="relative h-full w-full">
       <JourneyMap
         stops={selectedRouteStops}
-        buses={buses}
-        polylines={[...selectedRouteLines, ...mapFitPolylines(displayPreviews, buses)]}
+        buses={visibleBuses}
+        polylines={visiblePolylines}
         onSelectBus={onSelectVehicle}
         routeColor={selectedRouteColor}
         originLabel="Điểm khởi hành"
@@ -999,10 +1011,21 @@ function LiveFleetMap({
         allowFallbackPolyline={false}
       />
       <div className="absolute bottom-3 left-3 z-[500] rounded-full bg-[#14140f]/90 px-3 py-1.5 text-xs font-bold text-[#BDFD4F]">
-        {buses.length || vehicles.length} xe đang vận hành
+        {selectedVehicleId ? 'Đang xem 1 xe' : (buses.length || vehicles.length) + ' xe đang vận hành'}
       </div>
     </div>
   );
+}
+
+function coordinatorToday(): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const value = Object.fromEntries(parts.map(({ type, value: part }) => [type, part]));
+  return `${value.year}-${value.month}-${value.day}`;
 }
 
 function numberValue(value: unknown) {
@@ -1040,18 +1063,21 @@ function selectedVehicleRoutePolylines(
   selectedVehicleId: string | null,
   vehicles: LiveFleetVehicle[],
   previews: Record<number, RouteMapPreviewDTO>,
+  trackingByTrip: Record<string, JourneyTrackingSnapshotDTO>,
   buses: JourneyBus[],
 ): JourneyPolyline[] {
   if (!selectedVehicleId) return [];
   const vehicle = vehicles.find((item) => String(item.tripId) === selectedVehicleId);
   const selectedBus = buses.find((bus) => bus.id === selectedVehicleId);
   const preview = vehicle ? previews[vehicle.routeId] : undefined;
-  if (!preview) return [];
-  return (preview.polylines || [])
+  const tracking = trackingByTrip[selectedVehicleId];
+  const polylines = tracking?.polylines?.length ? tracking.polylines : preview?.polylines;
+  if (!polylines?.length) return [];
+  return polylines
     .map((line, index) => ({
       id: `selected-${selectedVehicleId}-${line.legId || index}`,
-      color: selectedBus?.routeColor || line.colorHex || preview.colorHex || "#144fcc",
-      label: preview.routeName || preview.routeCode || `Tuyến ${preview.routeId}`,
+      color: selectedBus?.routeColor || line.colorHex || preview?.colorHex || "#144fcc",
+      label: tracking?.routeName || preview?.routeName || preview?.routeCode || `Tuyến ${vehicle?.routeId ?? ""}`,
       points: (line.points || [])
         .map((point) => ({ lat: numberValue(point.latitude), lng: numberValue(point.longitude) }))
         .filter(validCoordinate),
@@ -1063,16 +1089,19 @@ function selectedVehicleRouteStops(
   selectedVehicleId: string | null,
   vehicles: LiveFleetVehicle[],
   previews: Record<number, RouteMapPreviewDTO>,
+  trackingByTrip: Record<string, JourneyTrackingSnapshotDTO>,
 ): BusStop[] {
   if (!selectedVehicleId) return [];
   const vehicle = vehicles.find((item) => String(item.tripId) === selectedVehicleId);
   const preview = vehicle ? previews[vehicle.routeId] : undefined;
-  if (!preview?.stops?.length) return [];
-  const routePoints = (preview.polylines || [])
+  const tracking = trackingByTrip[selectedVehicleId];
+  const stops = tracking?.stops?.length ? tracking.stops : preview?.stops;
+  if (!stops?.length) return [];
+  const routePoints = (tracking?.polylines?.length ? tracking.polylines : preview?.polylines || [])
     .flatMap((line) => line.points || [])
     .map((point) => ({ lat: numberValue(point.latitude), lng: numberValue(point.longitude) }))
     .filter(validCoordinate);
-  return preview.stops
+  return stops
     .map((stop) => {
       const point = snapPointToRoute({ lat: numberValue(stop.latitude), lng: numberValue(stop.longitude) }, routePoints);
       return {
@@ -1082,7 +1111,7 @@ function selectedVehicleRouteStops(
         address: stop.address || "",
         lat: point.lat,
         lng: point.lng,
-        routes: [String(preview.routeId)],
+        routes: [String(preview?.routeId ?? vehicle?.routeId ?? "")],
         hasShelter: false,
       };
     })
@@ -1237,7 +1266,7 @@ function pointOnPreview(preview: RouteMapPreviewDTO | undefined, index: number, 
 // Screen 3: Schedule (weekly grid)
 // =============================================================================
 function ScheduleScreen({ ctx }: { ctx: Ctx }) {
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(coordinatorToday);
   const [dashboard, setDashboard] = useState<ScheduleDashboard | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -1317,13 +1346,18 @@ function ScheduleScreen({ ctx }: { ctx: Ctx }) {
 // Screen 4: Assign trips
 // =============================================================================
 function AssignStaffScreen({ ctx }: { ctx: Ctx }) {
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(coordinatorToday);
   const [dashboard, setDashboard] = useState<ScheduleDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [drivers, setDrivers] = useState<Record<string, number | undefined>>({});
   const [conductors, setConductors] = useState<Record<string, number | undefined>>({});
   const [buses, setBuses] = useState<Record<string, number | undefined>>({});
+  const [newShiftOpen, setNewShiftOpen] = useState(false);
+  const [assignmentQuery, setAssignmentQuery] = useState("");
+  const [assignmentRouteFilter, setAssignmentRouteFilter] = useState("all");
+  const [assignmentStatusFilter, setAssignmentStatusFilter] = useState("all");
+  const [deletingScheduleId, setDeletingScheduleId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1351,6 +1385,39 @@ function AssignStaffScreen({ ctx }: { ctx: Ctx }) {
   }, [date]);
 
   useEffect(() => { load(); }, [load]);
+
+  const filteredShifts = useMemo(() => {
+    const query = assignmentQuery.trim().toLocaleLowerCase("vi-VN");
+    return (dashboard?.shifts || []).filter((shift) => {
+      const scheduleId = shift.scheduleId;
+      const locked = ["RUNNING", "COMPLETED"].includes(String(shift.status || "").toUpperCase());
+      const complete = scheduleId
+        ? Boolean(drivers[scheduleId] && conductors[scheduleId] && buses[scheduleId])
+        : Boolean(shift.driverStaffId && shift.conductorStaffId && shift.busId);
+      const matchesRoute = assignmentRouteFilter === "all" || String(shift.routeId) === assignmentRouteFilter;
+      const matchesStatus = assignmentStatusFilter === "all"
+        || (assignmentStatusFilter === "complete" && complete && !locked)
+        || (assignmentStatusFilter === "pending" && !complete && !locked)
+        || (assignmentStatusFilter === "locked" && locked);
+      const searchText = [shift.routeName, shift.driverName, shift.conductorName, shift.licensePlate]
+        .filter(Boolean)
+        .join(" ")
+        .toLocaleLowerCase("vi-VN");
+      return matchesRoute && matchesStatus && (!query || searchText.includes(query));
+    });
+  }, [assignmentQuery, assignmentRouteFilter, assignmentStatusFilter, buses, conductors, dashboard?.shifts, drivers]);
+
+  const deleteShift = async () => {
+    if (deletingScheduleId == null) return;
+    try {
+      await operationsApi.deleteSchedule(deletingScheduleId, date);
+      toast.success("Đã xóa ca phân công");
+      setDeletingScheduleId(null);
+      load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể xóa ca phân công");
+    }
+  };
 
   const save = async (scheduleId: number) => {
     const driverId = drivers[scheduleId];
@@ -1397,20 +1464,67 @@ function AssignStaffScreen({ ctx }: { ctx: Ctx }) {
         title="Phân công chuyến xe"
         description=""
         icon={<BusIcon className="size-7" />}
-        actions={<DateField value={date} onChange={setDate} />}
+        actions={
+          <div className="flex items-center gap-2">
+            <DateField value={date} onChange={setDate} />
+            <ExpressiveButton variant="filled" size="sm" onClick={() => setNewShiftOpen(true)}>
+              <Plus className="size-4" />
+              Thêm ca
+            </ExpressiveButton>
+          </div>
+        }
       />
       {loading ? (
         <LoadingScreen />
       ) : !dashboard ? (
         <EmptyState icon={<BusIcon className="size-7" />} title="Không tải được dữ liệu phân công" />
       ) : dashboard.shifts.length === 0 ? (
-        <NewShiftCard dashboard={dashboard} date={date} onCreated={load} />
+        <EmptyState
+          icon={<Calendar className="size-7" />}
+          title="Chưa có ca phân công"
+          description={`Chưa có ca chạy nào vào ${formatDate(date)}.`}
+        />
       ) : (
+        <>
+          <ExpressiveCard variant="outlined" className="grid gap-3 p-3 sm:grid-cols-[minmax(0,1fr)_190px_190px] sm:items-center">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-on-surface-variant" />
+              <Input
+                value={assignmentQuery}
+                onChange={(event) => setAssignmentQuery(event.target.value)}
+                className="pl-9"
+                placeholder="Tìm tuyến, tài xế, phụ xe hoặc biển số"
+              />
+            </div>
+            <Select value={assignmentRouteFilter} onValueChange={setAssignmentRouteFilter}>
+              <SelectTrigger><SelectValue placeholder="Tất cả tuyến" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tất cả tuyến</SelectItem>
+                {dashboard.routes.map((route) => (
+                  <SelectItem key={route.routeId} value={String(route.routeId)}>{route.routeName}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={assignmentStatusFilter} onValueChange={setAssignmentStatusFilter}>
+              <SelectTrigger><SelectValue placeholder="Tất cả trạng thái" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tất cả trạng thái</SelectItem>
+                <SelectItem value="pending">Cần phân công</SelectItem>
+                <SelectItem value="complete">Đủ phân công</SelectItem>
+                <SelectItem value="locked">Đang chạy / đã xong</SelectItem>
+              </SelectContent>
+            </Select>
+          </ExpressiveCard>
+          <p className="text-xs text-on-surface-variant">Hiển thị {filteredShifts.length}/{dashboard.shifts.length} ca phân công.</p>
+          {filteredShifts.length === 0 ? (
+            <EmptyState
+              icon={<Filter className="size-7" />}
+              title="Không có ca phù hợp"
+              description="Đổi điều kiện lọc hoặc từ khóa tìm kiếm."
+            />
+          ) : (
         <StaggerGroup className="space-y-3 min-w-0">
-          <StaggerItem>
-            <NewShiftCard dashboard={dashboard} date={date} onCreated={load} compact />
-          </StaggerItem>
-          {dashboard.shifts.map((s, i) => {
+          {filteredShifts.map((s, i) => {
             const sid = s.scheduleId;
             const locked = ["RUNNING", "COMPLETED"].includes(String(s.status || "").toUpperCase());
             const hasDriver = sid ? Boolean(drivers[sid]) : Boolean(s.driverStaffId || s.driverName);
@@ -1481,17 +1595,29 @@ function AssignStaffScreen({ ctx }: { ctx: Ctx }) {
                       </Select>
                     </div>
                   </div>
-                  <div className="mt-3">
+                  <div className="mt-3 flex flex-wrap gap-2">
                     {sid && (
-                      <ExpressiveButton
-                        variant="filled"
-                        size="sm"
-                        onClick={() => save(sid)}
-                        disabled={saving[sid] || locked}
-                      >
-                        {saving[sid] ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
-                        Lưu phân công
-                      </ExpressiveButton>
+                      <>
+                        <ExpressiveButton
+                          variant="filled"
+                          size="sm"
+                          onClick={() => save(sid)}
+                          disabled={saving[sid] || locked}
+                        >
+                          {saving[sid] ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
+                          Lưu phân công
+                        </ExpressiveButton>
+                        <ExpressiveButton
+                          variant="outlined"
+                          size="sm"
+                          onClick={() => setDeletingScheduleId(sid)}
+                          disabled={locked}
+                          className="border-error/30 text-error hover:bg-error-container"
+                        >
+                          <Trash2 className="size-4" />
+                          Xóa ca
+                        </ExpressiveButton>
+                      </>
                     )}
                   </div>
                 </ExpressiveCard>
@@ -1499,6 +1625,38 @@ function AssignStaffScreen({ ctx }: { ctx: Ctx }) {
             );
           })}
         </StaggerGroup>
+          )}
+        </>
+      )}
+      <AlertDialog open={deletingScheduleId != null} onOpenChange={(open) => !open && setDeletingScheduleId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xóa ca phân công?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Ca này sẽ không còn hiển thị cho tài xế và phụ xe. Không thể hoàn tác.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Hủy</AlertDialogCancel>
+            <AlertDialogAction onClick={deleteShift} className="bg-error text-on-error hover:bg-error/90">
+              Xóa ca
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      {dashboard && (
+        <Dialog open={newShiftOpen} onOpenChange={setNewShiftOpen}>
+          <DialogContent className="max-w-5xl border-none bg-transparent p-0 shadow-none">
+            <NewShiftCard
+              dashboard={dashboard}
+              date={date}
+              onCreated={() => {
+                setNewShiftOpen(false);
+                load();
+              }}
+            />
+          </DialogContent>
+        </Dialog>
       )}
     </PageTransition>
   );
@@ -1530,12 +1688,10 @@ function NewShiftCard({
   dashboard,
   date,
   onCreated,
-  compact = false,
 }: {
   dashboard: ScheduleDashboard;
   date: string;
   onCreated: () => void;
-  compact?: boolean;
 }) {
   const [routeId, setRouteId] = useState("");
   const [departureTime, setDepartureTime] = useState("07:00");
@@ -1593,10 +1749,10 @@ function NewShiftCard({
   };
 
   return (
-    <ExpressiveCard variant="elevated" className="p-5 min-w-0">
+    <ExpressiveCard variant="elevated" className="min-w-0 border border-[#E1E8E1] bg-[#F7FAF7] p-5 sm:p-6">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
-          <p className="font-bold">{compact ? "Thêm ca phân công" : "Chưa có chuyến để phân công"}</p>
+          <p className="font-bold">Thêm ca phân công</p>
           <p className="text-xs text-on-surface-variant">Tạo ca chạy mới cho ngày {formatDate(date)}.</p>
         </div>
         <M3StatusPill label="Mới" tone="warning" />

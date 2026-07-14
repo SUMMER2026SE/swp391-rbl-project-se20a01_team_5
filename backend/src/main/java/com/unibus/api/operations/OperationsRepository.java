@@ -44,30 +44,30 @@ public class OperationsRepository {
     public List<ShiftView> findShifts(LocalDate serviceDate) {
         int weekday = serviceDate.getDayOfWeek().getValue();
         return jdbcTemplate.query("""
-                SELECT bs.schedule_id, t.trip_id, bs.route_id, r.route_name,
-                       bs.bus_id, b.license_plate, bs.driver_id, du.full_name AS driver_name,
-                       bs.conductor_id, cu.full_name AS conductor_name,
+                SELECT bs.schedule_id, t.trip_id, COALESCE(t.route_id, bs.route_id) AS route_id, r.route_name,
+                       COALESCE(t.bus_id, bs.bus_id) AS bus_id, b.license_plate,
+                       COALESCE(t.driver_id, bs.driver_id) AS driver_id, du.full_name AS driver_name,
+                       COALESCE(t.conductor_id, bs.conductor_id) AS conductor_id, cu.full_name AS conductor_name,
                        bs.weekday_number, bs.departure_time,
                        COALESCE(t.status, bs.status) AS status
                 FROM bus_schedules bs
-                JOIN routes r ON r.route_id = bs.route_id
-                LEFT JOIN buses b ON b.bus_id = bs.bus_id
-                LEFT JOIN drivers d ON d.driver_id = bs.driver_id
-                LEFT JOIN users du ON du.user_id = d.user_id
-                LEFT JOIN conductors c ON c.conductor_id = bs.conductor_id
-                LEFT JOIN users cu ON cu.user_id = c.user_id
                 LEFT JOIN LATERAL (
-                    SELECT trip_id, status
+                    SELECT trip_id, route_id, bus_id, driver_id, conductor_id, status
                     FROM trips
                     WHERE schedule_id = bs.schedule_id AND service_date = ?
                     ORDER BY trip_id DESC
                     LIMIT 1
                 ) t ON TRUE
+                JOIN routes r ON r.route_id = COALESCE(t.route_id, bs.route_id)
+                LEFT JOIN buses b ON b.bus_id = COALESCE(t.bus_id, bs.bus_id)
+                LEFT JOIN drivers d ON d.driver_id = COALESCE(t.driver_id, bs.driver_id)
+                LEFT JOIN users du ON du.user_id = d.user_id
+                LEFT JOIN conductors c ON c.conductor_id = COALESCE(t.conductor_id, bs.conductor_id)
+                LEFT JOIN users cu ON cu.user_id = c.user_id
                 WHERE bs.weekday_number = ?
                 ORDER BY bs.departure_time, r.route_name
                 """, (rs, rowNum) -> mapShift(rs), serviceDate, weekday);
     }
-
     public List<StaffOption> findStaff(String role) {
         if ("DRIVER".equals(role)) {
             return jdbcTemplate.query("""
@@ -140,8 +140,8 @@ public class OperationsRepository {
 
     public void ensureTrip(Integer scheduleId, LocalDate serviceDate) {
         jdbcTemplate.update("""
-                INSERT INTO trips(schedule_id, route_id, bus_id, driver_id, conductor_id, service_date)
-                SELECT schedule_id, route_id, bus_id, driver_id, conductor_id, ?
+                INSERT INTO trips(schedule_id, route_id, bus_id, driver_id, conductor_id, service_date, status)
+                SELECT schedule_id, route_id, bus_id, driver_id, conductor_id, ?, 'NOT_STARTED'
                 FROM bus_schedules bs
                 WHERE bs.schedule_id = ?
                   AND bs.bus_id IS NOT NULL
@@ -154,6 +154,21 @@ public class OperationsRepository {
                 """, serviceDate, scheduleId, serviceDate);
     }
 
+    public void syncPendingTrip(Integer scheduleId, LocalDate serviceDate) {
+        jdbcTemplate.update("""
+                UPDATE trips t
+                SET route_id = bs.route_id,
+                    bus_id = bs.bus_id,
+                    driver_id = bs.driver_id,
+                    conductor_id = bs.conductor_id,
+                    status = 'NOT_STARTED'
+                FROM bus_schedules bs
+                WHERE t.schedule_id = bs.schedule_id
+                  AND t.schedule_id = ?
+                  AND t.service_date = ?
+                  AND t.status IN ('NOT_STARTED', 'SCHEDULED')
+                """, scheduleId, serviceDate);
+    }
     public Integer staffIdForUser(Integer userId, String expectedRole) {
         String table = "DRIVER".equals(expectedRole) ? "drivers" : "conductors";
         String idColumn = "DRIVER".equals(expectedRole) ? "driver_id" : "conductor_id";
@@ -167,47 +182,20 @@ public class OperationsRepository {
 
     public List<DriverTripView> findDriverTrips(Integer driverId, LocalDate serviceDate) {
         return jdbcTemplate.query("""
-                SELECT schedule_id, trip_id, route_id, route_name, bus_id, license_plate,
-                       conductor_name, conductor_phone, service_date, departure_time,
-                       departed_at, ended_at, status
-                FROM (
-                    SELECT bs.schedule_id, t.trip_id, t.route_id, r.route_name,
-                           t.bus_id, b.license_plate, cu.full_name AS conductor_name, cu.phone_number AS conductor_phone,
-                           t.service_date, bs.departure_time, t.departed_at, t.ended_at, t.status
-                    FROM trips t
-                    LEFT JOIN bus_schedules bs ON bs.schedule_id = t.schedule_id
-                    JOIN routes r ON r.route_id = t.route_id
-                    LEFT JOIN buses b ON b.bus_id = t.bus_id
-                    LEFT JOIN conductors c ON c.conductor_id = COALESCE(t.conductor_id, bs.conductor_id)
-                    LEFT JOIN users cu ON cu.user_id = c.user_id
-                    WHERE t.driver_id = ?
-                      AND (t.service_date = ? OR t.status = 'RUNNING')
-
-                    UNION ALL
-
-                    SELECT bs.schedule_id, NULL AS trip_id, bs.route_id, r.route_name,
-                           bs.bus_id, b.license_plate, cu.full_name AS conductor_name, cu.phone_number AS conductor_phone,
-                           ?::date AS service_date, bs.departure_time, NULL AS departed_at, NULL AS ended_at,
-                           'NOT_CREATED' AS status
-                    FROM bus_schedules bs
-                    JOIN routes r ON r.route_id = bs.route_id
-                    LEFT JOIN buses b ON b.bus_id = bs.bus_id
-                    LEFT JOIN conductors c ON c.conductor_id = bs.conductor_id
-                    LEFT JOIN users cu ON cu.user_id = c.user_id
-                    WHERE bs.driver_id = ?
-                      AND bs.weekday_number = ?
-                      AND NOT EXISTS (
-                          SELECT 1
-                          FROM trips t
-                          WHERE t.schedule_id = bs.schedule_id
-                            AND t.service_date = ?
-                      )
-                ) driver_trips
-                ORDER BY departure_time NULLS LAST, route_name, trip_id
-                """, (rs, rowNum) -> mapDriverTrip(rs),
-                driverId, serviceDate, serviceDate, driverId, serviceDate.getDayOfWeek().getValue(), serviceDate);
+                SELECT bs.schedule_id, t.trip_id, t.route_id, r.route_name,
+                       t.bus_id, b.license_plate, cu.full_name AS conductor_name, cu.phone_number AS conductor_phone,
+                       t.service_date, bs.departure_time, t.departed_at, t.ended_at, t.status
+                FROM trips t
+                JOIN bus_schedules bs ON bs.schedule_id = t.schedule_id
+                JOIN routes r ON r.route_id = t.route_id
+                LEFT JOIN buses b ON b.bus_id = t.bus_id
+                LEFT JOIN conductors c ON c.conductor_id = t.conductor_id
+                LEFT JOIN users cu ON cu.user_id = c.user_id
+                WHERE t.driver_id = ?
+                  AND t.service_date = ?
+                ORDER BY bs.departure_time NULLS LAST, r.route_name, t.trip_id
+                """, (rs, rowNum) -> mapDriverTrip(rs), driverId, serviceDate);
     }
-
     public List<DriverTripView> findDriverTripHistory(Integer driverId, LocalDate fromDate, LocalDate toDate) {
         return jdbcTemplate.query("""
                 SELECT bs.schedule_id, t.trip_id, t.route_id, r.route_name,
@@ -747,10 +735,9 @@ public class OperationsRepository {
                     departed_at = CURRENT_TIMESTAMP,
                     ended_at = NULL
                 WHERE trip_id = ?
-                  AND status = 'NOT_STARTED'
+                  AND status IN ('NOT_STARTED', 'SCHEDULED')
                 """, tripId);
     }
-
     public int endTrip(Integer tripId) {
         return jdbcTemplate.update("""
                 UPDATE trips
