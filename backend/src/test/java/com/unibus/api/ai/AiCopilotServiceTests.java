@@ -229,6 +229,7 @@ class AiCopilotServiceTests {
                     university_id INTEGER,
                     active_from DATE,
                     active_until DATE,
+                    subsidy_enabled BOOLEAN DEFAULT TRUE NOT NULL,
                     status VARCHAR(20)
                 )
                 """);
@@ -324,8 +325,8 @@ class AiCopilotServiceTests {
         jdbcTemplate.update("INSERT INTO routes VALUES (200, 'R2', 'City Loop', '#beff50', 15.0, 45, 25, 'ACTIVE')");
         jdbcTemplate.update("INSERT INTO routes VALUES (300, 'R3', 'Cross Campus', '#ff8c5f', 10.0, 30, 15, 'ACTIVE')");
         jdbcTemplate.update("INSERT INTO routes VALUES (400, 'UB-DN-01', 'UniBus 01: Bách khoa - FPT', '#1565C0', 28.4, 58, 15, 'ACTIVE')");
-        jdbcTemplate.update("INSERT INTO route_universities VALUES (1, 100, 1, CURRENT_DATE - 1, NULL, 'ACTIVE')");
-        jdbcTemplate.update("INSERT INTO route_universities VALUES (2, 200, 1, CURRENT_DATE - 1, NULL, 'ACTIVE')");
+        jdbcTemplate.update("INSERT INTO route_universities(route_university_id, route_id, university_id, active_from, active_until, status) VALUES (1, 100, 1, CURRENT_DATE - 1, NULL, 'ACTIVE')");
+        jdbcTemplate.update("INSERT INTO route_universities(route_university_id, route_id, university_id, active_from, active_until, status) VALUES (2, 200, 1, CURRENT_DATE - 1, NULL, 'ACTIVE')");
         jdbcTemplate.update("INSERT INTO stops VALUES (10, 'S10', 'Ký túc xá', 'ACTIVE')");
         jdbcTemplate.update("INSERT INTO stops VALUES (20, 'S20', 'Cổng trường', 'ACTIVE')");
         jdbcTemplate.update("INSERT INTO stops VALUES (30, 'S30', 'Trung tâm', 'ACTIVE')");

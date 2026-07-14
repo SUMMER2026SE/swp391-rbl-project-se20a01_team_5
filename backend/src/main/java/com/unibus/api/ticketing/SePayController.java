@@ -1,7 +1,5 @@
 package com.unibus.api.ticketing;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.util.Map;
 
 import org.springframework.http.HttpStatus;
@@ -33,15 +31,17 @@ public class SePayController {
     public ApiResponse<Map<String, Object>> createOrder(
             @AuthenticationPrincipal CurrentUser currentUser,
             @RequestBody Map<String, Object> request) {
-        String ticketType = request.get("ticketType") == null ? null : String.valueOf(request.get("ticketType"));
-        if (ticketType == null || ticketType.isBlank()) {
-            ticketType = "monthly";
-        }
-        Integer routeId = parseInteger(request.get("routeId"), "routeId");
-        Integer boardingStopId = parseInteger(request.get("boardingStopId"), "boardingStopId");
-        Integer alightingStopId = parseInteger(request.get("alightingStopId"), "alightingStopId");
-        Map<String, Object> orderDetails = sePayService.createOrder(currentUser, ticketType, routeId, boardingStopId, alightingStopId);
+        Map<String, Object> orderDetails = sePayService.createOrder(currentUser, request);
         return ApiResponse.ok("Payment order created", orderDetails);
+    }
+
+    @PostMapping("/api/v1/students/me/payments/sepay/quote")
+    @PreAuthorize("hasRole('STUDENT')")
+    public ApiResponse<Map<String, Object>> quoteOrder(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @RequestBody Map<String, Object> request) {
+        Map<String, Object> quote = sePayService.quote(currentUser, request);
+        return ApiResponse.ok("Payment quote retrieved", quote);
     }
 
     @GetMapping("/api/v1/students/me/payments/sepay/order/{orderId}/status")
@@ -55,51 +55,20 @@ public class SePayController {
 
     @PostMapping({"/api/v1/payments/sepay/webhook", "/sepay_webhook.php"})
     public ResponseEntity<Map<String, Object>> handleWebhook(
-            @RequestHeader(name = "Authorization", required = false) String authorization,
+            @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestBody Map<String, Object> payload) {
-        if (!validWebhookAuthorization(authorization)) {
+        String expectedHeader = "Apikey " + sePayService.getWebhookApiKey();
+        if (authorization == null || !expectedHeader.equals(authorization)) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of("success", false, "message", "Invalid webhook API key"));
         }
         try {
-            Map<String, Object> result = sePayService.processWebhook(payload);
-            boolean processed = Boolean.TRUE.equals(result.get("processed"));
-            return ResponseEntity.ok(Map.of(
-                    "success", processed,
-                    "message", processed ? "Webhook processed successfully" : "Webhook received but no order was paid",
-                    "result", result));
+            sePayService.processWebhook(payload);
+            return ResponseEntity.ok(Map.of("success", true, "message", "Webhook processed successfully"));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("success", false, "message", "Error processing webhook: " + e.getMessage()));
         }
     }
 
-    private boolean validWebhookAuthorization(String authorization) {
-        String prefix = "Apikey ";
-        if (authorization == null || !authorization.regionMatches(true, 0, prefix, 0, prefix.length())) {
-            return false;
-        }
-        String expected = sePayService.getWebhookApiKey();
-        String provided = authorization.substring(prefix.length()).trim();
-        return expected != null
-                && !expected.isBlank()
-                && MessageDigest.isEqual(
-                        expected.getBytes(StandardCharsets.UTF_8),
-                        provided.getBytes(StandardCharsets.UTF_8));
-    }
-
-    private Integer parseInteger(Object rawValue, String fieldName) {
-        if (rawValue == null) {
-            return null;
-        }
-        String raw = String.valueOf(rawValue).trim();
-        if (raw.isBlank()) {
-            return null;
-        }
-        try {
-            return Integer.valueOf(raw);
-        } catch (NumberFormatException exception) {
-            throw new com.unibus.api.common.ApiException(HttpStatus.BAD_REQUEST, fieldName + " must be a number");
-        }
-    }
 }

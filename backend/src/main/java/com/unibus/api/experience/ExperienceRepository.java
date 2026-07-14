@@ -416,24 +416,58 @@ public class ExperienceRepository {
         if (status == null || status.isBlank()) {
             return jdbcTemplate.query("""
                     SELECT vr.violation_report_id, reporter.full_name AS reporter_name,
-                           reported.full_name AS reported_name, vr.content, vr.status, vr.submitted_at
+                           reported.full_name AS reported_name, vr.description AS content, vr.status, vr.created_at AS submitted_at
                     FROM violation_reports vr
                     JOIN users reporter ON reporter.user_id = vr.reported_by_user_id
                     JOIN users reported ON reported.user_id = vr.reported_user_id
-                    ORDER BY vr.submitted_at DESC, vr.violation_report_id DESC
+                    ORDER BY vr.created_at DESC, vr.violation_report_id DESC
                     LIMIT ?
                     """, (rs, rowNum) -> mapViolation(rs), limit);
         }
         return jdbcTemplate.query("""
                 SELECT vr.violation_report_id, reporter.full_name AS reporter_name,
-                       reported.full_name AS reported_name, vr.content, vr.status, vr.submitted_at
+                       reported.full_name AS reported_name, vr.description AS content, vr.status, vr.created_at AS submitted_at
                 FROM violation_reports vr
                 JOIN users reporter ON reporter.user_id = vr.reported_by_user_id
                 JOIN users reported ON reported.user_id = vr.reported_user_id
                 WHERE vr.status = ?
-                ORDER BY vr.submitted_at DESC, vr.violation_report_id DESC
+                ORDER BY vr.created_at DESC, vr.violation_report_id DESC
                 LIMIT ?
                 """, (rs, rowNum) -> mapViolation(rs), status, limit);
+    }
+
+    public List<ViolationTargetView> violationTargets(String keyword, int limit) {
+        String normalized = keyword == null ? "" : keyword.trim();
+        String like = "%" + normalized.toLowerCase() + "%";
+        if (normalized.isBlank()) {
+            return jdbcTemplate.query("""
+                    SELECT user_id, full_name, email, role, status
+                    FROM users
+                    WHERE status = 'ACTIVE'
+                      AND role IN ('STUDENT', 'DRIVER', 'CONDUCTOR', 'DISPATCHER')
+                    ORDER BY full_name, email
+                    LIMIT ?
+                    """, (rs, rowNum) -> new ViolationTargetView(
+                            rs.getInt("user_id"),
+                            rs.getString("full_name"),
+                            rs.getString("email"),
+                            rs.getString("role"),
+                            rs.getString("status")), limit);
+        }
+        return jdbcTemplate.query("""
+                SELECT user_id, full_name, email, role, status
+                FROM users
+                WHERE status = 'ACTIVE'
+                  AND role IN ('STUDENT', 'DRIVER', 'CONDUCTOR', 'DISPATCHER')
+                  AND (LOWER(full_name) LIKE ? OR LOWER(email) LIKE ? OR LOWER(role) LIKE ?)
+                ORDER BY full_name, email
+                LIMIT ?
+                """, (rs, rowNum) -> new ViolationTargetView(
+                        rs.getInt("user_id"),
+                        rs.getString("full_name"),
+                        rs.getString("email"),
+                        rs.getString("role"),
+                        rs.getString("status")), like, like, like, limit);
     }
 
     public List<ChatMessageCard> chatHistory(Integer userId) {
@@ -1407,10 +1441,12 @@ public class ExperienceRepository {
 
     public Long createViolation(Integer reportedByUserId, Integer reportedUserId, String category, String description) {
         return jdbcTemplate.queryForObject("""
-                INSERT INTO violation_reports (reported_by_user_id, reported_user_id, category, description, status, created_at)
-                VALUES (?, ?, ?, ?, 'REPORTED', CURRENT_TIMESTAMP)
+                INSERT INTO violation_reports (
+                    reported_by_user_id, reported_user_id, category, description, content, status, created_at, submitted_at
+                )
+                VALUES (?, ?, ?, ?, ?, 'OPEN', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 RETURNING violation_report_id
-                """, Long.class, reportedByUserId, reportedUserId, category, description);
+                """, Long.class, reportedByUserId, reportedUserId, category, description, description);
     }
 
     public boolean reviewViolation(Integer violationId, Integer reviewerUserId, String status, String actionTaken) {

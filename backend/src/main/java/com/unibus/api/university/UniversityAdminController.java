@@ -3,12 +3,16 @@ package com.unibus.api.university;
 import java.time.LocalDate;
 import java.util.List;
 
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -27,11 +31,18 @@ import com.unibus.api.university.UniversityDtos.DomainView;
 import com.unibus.api.university.UniversityDtos.ImportBatchView;
 import com.unibus.api.university.UniversityDtos.PaymentTransactionView;
 import com.unibus.api.university.UniversityDtos.ReconciliationView;
+import com.unibus.api.university.UniversityDtos.RosterImportPreviewView;
+import com.unibus.api.university.UniversityDtos.RosterImportConfirmRequest;
+import com.unibus.api.university.UniversityDtos.RosterImportConfirmView;
+import com.unibus.api.university.UniversityDtos.RosterImportCommitRequest;
 import com.unibus.api.university.UniversityDtos.RosterStudentView;
+import com.unibus.api.university.UniversityDtos.RouteUniversityView;
 import com.unibus.api.university.UniversityDtos.SubsidyPolicyView;
 import com.unibus.api.university.UniversityDtos.UniversityAdminView;
 import com.unibus.api.university.UniversityDtos.UniversityStatsView;
+import com.unibus.api.university.UniversityDtos.UpdateRouteSubsidyRequest;
 import com.unibus.api.university.UniversityDtos.UpdateStatusRequest;
+import com.unibus.api.university.UniversityDtos.UpdateUniversitySubsidyConfigRequest;
 
 import jakarta.validation.Valid;
 
@@ -93,9 +104,41 @@ public class UniversityAdminController {
     ApiResponse<List<RosterStudentView>> roster(
             @AuthenticationPrincipal CurrentUser currentUser,
             @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) String status) {
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) Long importBatchId) {
         Integer universityId = service.requireUniversityAdmin(currentUser).universityId();
-        return ApiResponse.ok("Roster retrieved", service.listRoster(universityId, keyword, status));
+        return ApiResponse.ok("Roster retrieved", service.listRoster(universityId, keyword, status, importBatchId));
+    }
+
+    @GetMapping("/roster/template")
+    ResponseEntity<byte[]> rosterTemplate(@AuthenticationPrincipal CurrentUser currentUser) {
+        Integer universityId = service.requireUniversityAdmin(currentUser).universityId();
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"uniadmin-roster-template.xlsx\"")
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(service.rosterTemplate(universityId));
+    }
+
+    @GetMapping("/roster/export")
+    ResponseEntity<byte[]> exportRoster(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "csv") String format) {
+        Integer universityId = service.requireUniversityAdmin(currentUser).universityId();
+        UniversityManagementService.RosterExportFile file = service.exportRoster(
+                currentUser,
+                universityId,
+                keyword,
+                status,
+                format);
+        MediaType contentType = file.fileName().endsWith(".xlsx")
+                ? MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                : MediaType.parseMediaType("text/csv; charset=utf-8");
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + file.fileName() + "\"")
+                .contentType(contentType)
+                .body(file.bytes());
     }
 
     @PostMapping("/roster/import")
@@ -106,16 +149,71 @@ public class UniversityAdminController {
         return ApiResponse.ok("Roster imported", service.importRoster(currentUser, universityId, file));
     }
 
+    @PostMapping("/roster/import/preview")
+    ApiResponse<RosterImportPreviewView> previewRosterImport(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @RequestPart("file") MultipartFile file) {
+        Integer universityId = service.requireUniversityAdmin(currentUser).universityId();
+        return ApiResponse.ok("Roster import preview generated", service.previewRosterImport(currentUser, universityId, file));
+    }
+
+    @GetMapping("/roster/import/preview/{previewToken}")
+    ApiResponse<RosterImportPreviewView> rosterImportPreview(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @PathVariable String previewToken) {
+        Integer universityId = service.requireUniversityAdmin(currentUser).universityId();
+        return ApiResponse.ok("Roster import preview retrieved",
+                service.getRosterImportPreview(currentUser, universityId, previewToken));
+    }
+
+    @PostMapping("/roster/import/confirm")
+    ApiResponse<RosterImportConfirmView> confirmRosterImport(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @Valid @RequestBody RosterImportConfirmRequest request) {
+        Integer universityId = service.requireUniversityAdmin(currentUser).universityId();
+        return ApiResponse.ok("Roster import confirmation calculated",
+                service.confirmRosterImport(currentUser, universityId, request));
+    }
+
+    @PostMapping("/roster/import/commit")
+    ApiResponse<ImportBatchView> commitRosterImport(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @Valid @RequestBody RosterImportCommitRequest request) {
+        Integer universityId = service.requireUniversityAdmin(currentUser).universityId();
+        return ApiResponse.ok("Roster import committed",
+                service.commitRosterImport(currentUser, universityId, request));
+    }
+
     @GetMapping("/roster/import")
     ApiResponse<List<ImportBatchView>> importBatches(@AuthenticationPrincipal CurrentUser currentUser) {
         Integer universityId = service.requireUniversityAdmin(currentUser).universityId();
         return ApiResponse.ok("Roster import batches retrieved", service.listImportBatches(universityId));
     }
 
+    @GetMapping("/roster/import/{importBatchId}")
+    ApiResponse<ImportBatchView> importBatch(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @PathVariable Long importBatchId) {
+        Integer universityId = service.requireUniversityAdmin(currentUser).universityId();
+        return ApiResponse.ok("Roster import batch retrieved", service.importBatch(universityId, importBatchId));
+    }
+
+    @GetMapping("/roster/import/{importBatchId}/report")
+    ResponseEntity<byte[]> importBatchReport(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @PathVariable Long importBatchId) {
+        Integer universityId = service.requireUniversityAdmin(currentUser).universityId();
+        UniversityManagementService.ImportReportFile file = service.importBatchReport(universityId, importBatchId);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + file.fileName() + "\"")
+                .contentType(MediaType.parseMediaType("text/csv; charset=utf-8"))
+                .body(file.bytes());
+    }
+
     @GetMapping("/subsidy-policies")
     ApiResponse<List<SubsidyPolicyView>> subsidyPolicies(@AuthenticationPrincipal CurrentUser currentUser) {
         Integer universityId = service.requireUniversityAdmin(currentUser).universityId();
-        return ApiResponse.ok("Subsidy policies retrieved", service.listSubsidyPolicies(universityId));
+        return ApiResponse.ok("Subsidy config retrieved", service.listCurrentSubsidyConfig(universityId));
     }
 
     @PostMapping("/subsidy-policies")
@@ -123,6 +221,27 @@ public class UniversityAdminController {
             @AuthenticationPrincipal CurrentUser currentUser,
             @Valid @RequestBody CreateScopedSubsidyPolicyRequest request) {
         return ApiResponse.ok("Subsidy policy created", service.createScopedSubsidyPolicy(currentUser, request));
+    }
+
+    @PutMapping({"/subsidy-policy", "/subsidy-policies"})
+    ApiResponse<SubsidyPolicyView> updateSubsidyConfig(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @Valid @RequestBody UpdateUniversitySubsidyConfigRequest request) {
+        return ApiResponse.ok("Subsidy config updated", service.updateScopedSubsidyConfig(currentUser, request));
+    }
+
+    @GetMapping("/route-subsidies")
+    ApiResponse<List<RouteUniversityView>> routeSubsidies(@AuthenticationPrincipal CurrentUser currentUser) {
+        return ApiResponse.ok("Route subsidies retrieved", service.listScopedRouteSubsidies(currentUser));
+    }
+
+    @PatchMapping("/route-subsidies/{routeUniversityId}")
+    ApiResponse<RouteUniversityView> updateRouteSubsidy(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @PathVariable Integer routeUniversityId,
+            @RequestBody UpdateRouteSubsidyRequest request) {
+        return ApiResponse.ok("Route subsidy updated",
+                service.updateScopedRouteSubsidy(currentUser, routeUniversityId, request));
     }
 
     @GetMapping("/stats")

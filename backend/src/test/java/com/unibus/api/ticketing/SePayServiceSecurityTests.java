@@ -5,6 +5,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.util.Optional;
+import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -27,7 +28,7 @@ class SePayServiceSecurityTests {
 
         assertThatThrownBy(() -> service.createOrder(
                 new CurrentUser(1, "student@unibus.local", UserRole.STUDENT, 1L),
-                "test", null, null, null))
+                Map.of("ticketType", "weekly")))
                 .isInstanceOf(ApiException.class)
                 .extracting(exception -> ((ApiException) exception).getStatus())
                 .isEqualTo(HttpStatus.BAD_REQUEST);

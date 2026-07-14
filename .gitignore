@@ -12,6 +12,7 @@ backend/backend-run*.log
 backend/uploads/
 frontend/frontend-run*.log
 .codex-tmp/
+.codex-logs/
 .codex/tmp/
 .codex-backend*.log
 .codex-*.log

@@ -9,6 +9,12 @@ const STUDENT_VERIFICATION_STATUS_KEY = "student_verification_status";
 
 type QueryValue = string | number | boolean | null | undefined;
 
+export type BlobDownload = {
+  blob: Blob;
+  contentType: string;
+  fileName?: string;
+};
+
 export type BackendRole =
   | "STUDENT"
   | "DRIVER"
@@ -127,7 +133,23 @@ async function request<T>(path: string, options: RequestInit = {}, retry = true)
   return (payload?.data ?? payload) as T;
 }
 
-async function requestBlob(path: string, retry = true): Promise<Blob> {
+function fileNameFromContentDisposition(value: string | null) {
+  if (!value) return undefined;
+  const utf8Match = value.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]);
+    } catch {
+      return utf8Match[1];
+    }
+  }
+  const quotedMatch = value.match(/filename="([^"]+)"/i);
+  if (quotedMatch?.[1]) return quotedMatch[1];
+  const plainMatch = value.match(/filename=([^;]+)/i);
+  return plainMatch?.[1]?.trim();
+}
+
+async function requestDownload(path: string, retry = true): Promise<BlobDownload> {
   const token = getAccessToken();
   const res = await fetch(`${API_BASE}${path}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -135,7 +157,7 @@ async function requestBlob(path: string, retry = true): Promise<Blob> {
 
   if (res.status === 401 && retry) {
     const ok = await tryRefresh();
-    if (ok) return requestBlob(path, false);
+    if (ok) return requestDownload(path, false);
     clearTokens();
   }
 
@@ -147,7 +169,17 @@ async function requestBlob(path: string, retry = true): Promise<Blob> {
       payload?.data
     );
   }
-  return res.blob();
+  const blob = await res.blob();
+  return {
+    blob,
+    contentType: res.headers.get("Content-Type") || blob.type || "",
+    fileName: fileNameFromContentDisposition(res.headers.get("Content-Disposition")),
+  };
+}
+
+async function requestBlob(path: string, retry = true): Promise<Blob> {
+  const download = await requestDownload(path, retry);
+  return download.blob;
 }
 
 let refreshPromise: Promise<boolean> | null = null;
@@ -185,6 +217,7 @@ export const apiFetch = {
     request<T>(path, { method: "DELETE", body: body === undefined ? undefined : JSON.stringify(body) }),
   form: <T>(path: string, formData: FormData) => request<T>(path, { method: "POST", body: formData }),
   blob: (path: string) => requestBlob(path),
+  download: (path: string) => requestDownload(path),
 };
 
 export interface TokenPair {
@@ -445,9 +478,11 @@ export interface JourneyTrackingSnapshotDTO {
   simulated?: boolean;
   vehicles?: {
     vehicleId: string;
+    tripId?: number;
     plateNumber?: string;
     routeId?: number;
     routeCode?: string;
+    driverName?: string;
     latitude?: number | string;
     longitude?: number | string;
     speedKmh?: number | string;
@@ -455,11 +490,8 @@ export interface JourneyTrackingSnapshotDTO {
     capacity?: number;
     nextStopId?: number;
     nextStopName?: string;
-    etaMinutes?: number;
     distanceMeters?: number;
-    tripId?: number;
-    driverName?: string;
-    simulated?: boolean;
+    etaMinutes?: number;
   }[];
   stopEtas?: {
     stopId: number;
@@ -555,11 +587,80 @@ export interface RegistrationDTO {
   monthlyPassExpiresOn?: string;
 }
 
+export type SePayTicketPeriod = "day" | "month";
+export type SePayOrderMode = "single-route" | "journey-combo";
+
+export interface SePayPaymentLegDTO {
+  routeId: number;
+  boardingStopId?: number;
+  alightingStopId?: number;
+  legOrder?: number;
+}
+
+export interface SePayOrderRequestDTO {
+  ticketType?: string;
+  ticketPeriod?: SePayTicketPeriod;
+  mode?: SePayOrderMode;
+  routeId?: number;
+  boardingStopId?: number;
+  alightingStopId?: number;
+  originLabel?: string;
+  destinationLabel?: string;
+  journeyOptionId?: string;
+  serviceDate?: string;
+  legs?: SePayPaymentLegDTO[];
+}
+
+export interface SePayOrderItemDTO {
+  routeId: number;
+  routeName?: string;
+  boardingStopId?: number;
+  boardingStopName?: string;
+  alightingStopId?: number;
+  alightingStopName?: string;
+  legOrder?: number;
+  originalAmount?: number | string;
+  subsidyAmount?: number | string;
+  finalAmount?: number | string;
+  subsidyApplied?: boolean;
+  subsidyStatus?: string;
+  subsidyNote?: string;
+  alreadyActive?: boolean;
+}
+
+export interface SePayQuoteDTO {
+  mode: SePayOrderMode;
+  ticketType?: string;
+  ticketPeriod: SePayTicketPeriod;
+  routeId?: number;
+  originLabel?: string;
+  destinationLabel?: string;
+  items?: SePayOrderItemDTO[];
+  originalAmount?: number | string;
+  subsidyAmount?: number | string;
+  finalAmount?: number | string;
+}
+
+export interface SePayOrderDTO extends SePayQuoteDTO {
+  orderId: number;
+  studentCode?: string;
+  routeName?: string;
+  qrUrl: string;
+  amount: number;
+  description: string;
+  bankCode?: string;
+  accountNo?: string;
+  accountName?: string;
+  total?: number | string;
+  status?: string;
+  paid?: boolean;
+  paidAt?: string;
+}
+
 export interface TicketView {
   ticketId: number;
   ticketType: string;
   routeId: number;
-  routeCode?: string;
   routeName: string;
   boardingStopName?: string;
   alightingStopName?: string;
@@ -687,6 +788,8 @@ export const studentApi = {
     apiFetch.put<RegistrationDTO>(`/students/me/route-registrations/${registrationId}`, data),
   cancelRegistration: (registrationId: number, reason?: string) =>
     apiFetch.delete<void>(`/students/me/route-registrations/${registrationId}`, reason ? { reason } : undefined),
+  ticketQuote: (routeId: number | string, ticketType?: string) =>
+    apiFetch.get<NonNullable<PassesDashboard["monthlyPassQuote"]>>("/students/me/tickets/quote", { routeId, ticketType }),
   tickets: () => apiFetch.get<PassesDashboard>("/students/me/tickets"),
   purchaseMonthlyPass: (method = "E_WALLET", routeId?: number) =>
     apiFetch.post<TicketView>("/students/me/tickets/monthly-pass", { method, routeId }),
@@ -722,12 +825,20 @@ export const studentApi = {
       }[];
     }>("/students/me/tickets/journey-monthly-pass", data),
   singleTripTickets: () => apiFetch.get<SingleTripTicketView[]>("/students/me/tickets/single-trip"),
-  ticketQuote: (routeId: number | string, ticketType = "MONTHLY") =>
-    apiFetch.get<PassesDashboard["monthlyPassQuote"]>("/students/me/tickets/quote", { routeId, ticketType }),
   payments: () => apiFetch.get<PaymentView[]>("/students/me/payments"),
-  createSePayOrder: (ticketType: string, routeId?: number, stops?: { boardingStopId?: number; alightingStopId?: number }) =>
-    apiFetch.post<{ orderId: number; routeId?: number; routeName?: string; qrUrl: string; amount: number; description: string; bankCode: string; accountNo: string; accountName: string }>("/students/me/payments/sepay/order", { ticketType, routeId, ...stops }),
-  getSePayOrderStatus: (orderId: number) => apiFetch.get<{ orderId: number; ticketType: string; routeId?: number; total: number; amount?: number; description?: string; qrUrl?: string; bankCode?: string; accountNo?: string; accountName?: string; status: string; paid: boolean; paidAt?: string }>(`/students/me/payments/sepay/order/${orderId}/status`),
+  quoteSePayOrder: (data: SePayOrderRequestDTO) =>
+    apiFetch.post<SePayQuoteDTO>("/students/me/payments/sepay/quote", data),
+  createSePayOrder: (
+    ticketTypeOrData: string | SePayOrderRequestDTO,
+    routeId?: number,
+    stopMetadata?: Pick<SePayOrderRequestDTO, "boardingStopId" | "alightingStopId">
+  ) => {
+    const data = typeof ticketTypeOrData === "string"
+      ? { ticketType: ticketTypeOrData, routeId, ...stopMetadata }
+      : ticketTypeOrData;
+    return apiFetch.post<SePayOrderDTO>("/students/me/payments/sepay/order", data);
+  },
+  getSePayOrderStatus: (orderId: number) => apiFetch.get<SePayOrderDTO>(`/students/me/payments/sepay/order/${orderId}/status`),
   travelHistory: (page = 0, size = 20) => apiFetch.get<TravelHistoryView[]>("/students/me/travel-history", { page, size }),
 };
 
@@ -785,16 +896,16 @@ export const feedbackApi = {
     apiFetch.patch<FeedbackView>(`/feedback/${feedbackId}/resolve`, { response }),
 };
 
-export const coordinatorLostItemApi = {
-  all: () => apiFetch.get<ExperienceLostItemCard[]>("/coordinator/lost-items"),
-  update: (lostItemId: number, data: { status: string; notes?: string }) =>
-    apiFetch.put<ExperienceLostItemCard>('/coordinator/lost-items/' + lostItemId, data),
-};
-
 export const coordinatorFeedbackApi = {
   all: (status?: string) => apiFetch.get<FeedbackView[]>("/coordinator/feedback", { status }),
   resolve: (feedbackId: number, response?: string) =>
     apiFetch.patch<FeedbackView>(`/coordinator/feedback/${feedbackId}/resolve`, { response }),
+};
+
+export const coordinatorLostItemApi = {
+  all: () => apiFetch.get<ExperienceLostItemCard[]>("/coordinator/lost-items"),
+  update: (lostItemId: number, data: { status: string; notes?: string }) =>
+    apiFetch.put<ExperienceLostItemCard>(`/coordinator/lost-items/${lostItemId}`, data),
 };
 
 export interface ExperienceStopCard {
@@ -1028,6 +1139,14 @@ export interface ExperienceIncidentCard {
   reportedAt?: string;
 }
 
+export interface ViolationTargetView {
+  userId: number;
+  fullName: string;
+  email: string;
+  role: string;
+  status: string;
+}
+
 export interface ExperienceDashboardStat {
   label: string;
   value: number | string;
@@ -1231,6 +1350,9 @@ export const experienceApi = {
     apiFetch.put<AdminStatsView["fares"][number]>(`/admin/fares/${fareId}`, data),
   complaints: (status?: string) => apiFetch.get<AdminStatsView["complaints"]>("/admin/complaints", { status }),
   violations: (status?: string) => apiFetch.get<AdminStatsView["violations"]>("/admin/violations", { status }),
+  violationTargets: (keyword?: string) => apiFetch.get<ViolationTargetView[]>("/admin/violation-targets", { keyword }),
+  createViolation: (data: { reportedUserId: number; category: string; description: string }) =>
+    apiFetch.post<{ violationId: number }>("/admin/violations", data),
 };
 
 export interface ContactThreadCard {
@@ -1271,11 +1393,12 @@ export interface TripStopView {
   stopId: number;
   stopName: string;
   stopOrder: number;
-  minutesFromPreviousStop?: number;
   stationDirection?: number;
+  minutesFromPreviousStop?: number;
   pathPoints?: string;
   latitude?: number | string;
   longitude?: number | string;
+  address?: string;
 }
 
 export interface DriverTripView {
@@ -1297,10 +1420,10 @@ export interface DriverTripView {
   stops?: TripStopView[];
 }
 
-export interface DriverTripOverviewDTO {
+export interface DriverTripOverview {
   nearestTrip?: DriverTripView | null;
-  upcomingTrips?: DriverTripView[];
-  historyTrips?: DriverTripView[];
+  upcomingTrips: DriverTripView[];
+  historyTrips: DriverTripView[];
 }
 
 export interface ConductorTicketView {
@@ -1374,7 +1497,6 @@ export interface LiveFleetVehicle {
 }
 
 export interface DriverContactView {
-  userId?: number | null;
   type: "COORDINATOR" | "EMERGENCY";
   name: string;
   role: string;
@@ -1384,8 +1506,8 @@ export interface DriverContactView {
 
 export const operationsApi = {
   driverTrips: (date?: string) => apiFetch.get<DriverTripView[]>("/driver/trips", { date }),
+  driverTripOverview: () => apiFetch.get<DriverTripOverview>("/driver/trips/overview"),
   driverContacts: () => apiFetch.get<DriverContactView[]>("/driver/contacts"),
-  driverTripOverview: () => apiFetch.get<DriverTripOverviewDTO>("/driver/trips/overview"),
   driverTripTracking: (tripId: number | string) =>
     apiFetch.get<JourneyTrackingSnapshotDTO>(`/tracking/trips/${encodeURIComponent(String(tripId))}`),
   startTrip: (tripId: number) => apiFetch.post<DriverTripView>(`/driver/trips/${tripId}/start`),
@@ -1524,15 +1646,79 @@ export interface ImportBatchView {
   successRows: number;
   errorRows: number;
   status: string;
+  importedByUserId?: number;
+  importedByName?: string;
+  mode?: string;
+  skippedRows?: number;
   createdAt?: string;
   completedAt?: string;
   errors?: ImportErrorView[];
 }
 
+export interface RosterImportPreviewErrorView {
+  rowNumber: number;
+  field?: string;
+  value?: string;
+  code: string;
+  message: string;
+  suggestion?: string;
+}
+
+export interface RosterImportPreviewRowView {
+  rowNumber: number;
+  studentCode?: string;
+  fullName?: string;
+  email?: string;
+  faculty?: string;
+  academicYear?: number;
+  status?: string;
+  valid: boolean;
+  existing: boolean;
+  duplicateInFile: boolean;
+  action?: "CREATE" | "SKIP_EXISTING" | "BLOCKED" | string;
+}
+
+export interface RosterImportPreviewView {
+  previewToken: string;
+  fileName: string;
+  fileSize: number;
+  totalRows: number;
+  validRows: number;
+  errorRows: number;
+  duplicateRows: number;
+  createRows: number;
+  existingRows: number;
+  skippedRows: number;
+  expiresAt?: string;
+  previewRows: RosterImportPreviewRowView[];
+  errors: RosterImportPreviewErrorView[];
+  structuralErrors: RosterImportPreviewErrorView[];
+}
+
+export interface RosterImportConfirmView {
+  previewToken: string;
+  mode: "ADD_NEW_ONLY" | string;
+  totalRows: number;
+  createRows: number;
+  updateRows: number;
+  skippedExistingRows: number;
+  errorRows: number;
+  skippedRows: number;
+  importableRows: number;
+  canConfirm: boolean;
+  confirmLabel: string;
+  warnings: string[];
+  affectedRows: RosterImportPreviewRowView[];
+}
+
 export interface RouteUniversityView {
   routeUniversityId: number;
   routeId: number;
+  routeCode?: string;
   routeName: string;
+  routeStartStop?: string;
+  routeEndStop?: string;
+  routeStatus?: string;
   universityId: number;
   universityName: string;
   campusId?: number;
@@ -1540,6 +1726,7 @@ export interface RouteUniversityView {
   activeFrom?: string;
   activeUntil?: string;
   status: string;
+  subsidyEnabled?: boolean;
 }
 
 export type SubsidyType = "PERCENTAGE" | "FIXED_AMOUNT";
@@ -1557,6 +1744,7 @@ export interface SubsidyPolicyView {
   activeFrom?: string;
   activeUntil?: string;
   status: string;
+  updatedAt?: string;
 }
 
 export interface UniversityStatsView {
@@ -1704,16 +1892,37 @@ export const universityApi = {
     apiFetch.post<CampusView>("/university-admin/campuses", data),
   domains: () => apiFetch.get<DomainView[]>("/university-admin/domains"),
   createDomain: (data: { domain: string; status?: string }) => apiFetch.post<DomainView>("/university-admin/domains", data),
-  roster: (params?: { keyword?: string; status?: string }) => apiFetch.get<RosterStudentView[]>("/university-admin/roster", params),
+  roster: (params?: { keyword?: string; status?: string; importBatchId?: number }) => apiFetch.get<RosterStudentView[]>("/university-admin/roster", params),
+  rosterTemplate: () => apiFetch.download("/university-admin/roster/template"),
+  rosterExportCsv: (params?: { keyword?: string; status?: string }) =>
+    apiFetch.download(`/university-admin/roster/export${buildQuery({ ...params, format: "csv" })}`),
+  rosterExportXlsx: (params?: { keyword?: string; status?: string }) =>
+    apiFetch.download(`/university-admin/roster/export${buildQuery({ ...params, format: "xlsx" })}`),
+  previewRosterImport: (file: File) => {
+    const form = new FormData();
+    form.set("file", file);
+    return apiFetch.form<RosterImportPreviewView>("/university-admin/roster/import/preview", form);
+  },
+  confirmRosterImport: (data: { previewToken: string; mode?: "ADD_NEW_ONLY" }) =>
+    apiFetch.post<RosterImportConfirmView>("/university-admin/roster/import/confirm", data),
+  commitRosterImport: (data: { previewToken: string; mode?: "ADD_NEW_ONLY"; idempotencyKey?: string }) =>
+    apiFetch.post<ImportBatchView>("/university-admin/roster/import/commit", data),
   importRoster: (file: File) => {
     const form = new FormData();
     form.set("file", file);
     return apiFetch.form<ImportBatchView>("/university-admin/roster/import", form);
   },
   importBatches: () => apiFetch.get<ImportBatchView[]>("/university-admin/roster/import"),
+  importBatch: (importBatchId: number) => apiFetch.get<ImportBatchView>(`/university-admin/roster/import/${importBatchId}`),
+  importBatchReport: (importBatchId: number) => apiFetch.download(`/university-admin/roster/import/${importBatchId}/report`),
   subsidyPolicies: () => apiFetch.get<SubsidyPolicyView[]>("/university-admin/subsidy-policies"),
-  createSubsidyPolicy: (data: { campusId?: number; policyName: string; subsidyType: SubsidyType; value: number; maxAmount?: number; activeFrom?: string; activeUntil?: string; status?: string }) =>
+  createSubsidyPolicy: (data: { policyName: string; subsidyType: SubsidyType; value: number; status: "ACTIVE" | "INACTIVE" }) =>
     apiFetch.post<SubsidyPolicyView>("/university-admin/subsidy-policies", data),
+  updateSubsidyConfig: (data: { value: number; status: "ACTIVE" | "INACTIVE"; subsidyType?: SubsidyType }) =>
+    apiFetch.put<SubsidyPolicyView>("/university-admin/subsidy-policy", data),
+  routeSubsidies: () => apiFetch.get<RouteUniversityView[]>("/university-admin/route-subsidies"),
+  updateRouteSubsidy: (routeUniversityId: number, data: { subsidyEnabled: boolean }) =>
+    apiFetch.patch<RouteUniversityView>(`/university-admin/route-subsidies/${routeUniversityId}`, data),
   stats: () => apiFetch.get<UniversityStatsView>("/university-admin/stats"),
   reconciliation: (params?: { from?: string; to?: string }) => apiFetch.get<ReconciliationView>("/university-admin/reconciliation", params),
   paymentTransactions: () => apiFetch.get<PaymentTransactionView[]>("/university-admin/payment-transactions"),
@@ -1808,3 +2017,4 @@ export const api = {
   driverDispatch: driverDispatchApi,
   conductor: conductorApi,
 };
+

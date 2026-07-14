@@ -87,7 +87,8 @@ export function AppShell({
       : nav[0]);
   const isStudentFindPage = role === "student" && activeId === "stu-find";
   const isAdminConsole = role === "admin";
-  const sidebarWidth = 288;
+  const isUniversityAdminConsole = role === "university_admin";
+  const sidebarWidth = isUniversityAdminConsole ? 304 : 288;
   const sidebarVisible = !sidebarCollapsed || sidebarPreviewOpen;
   const showSidebarHoverEdge = isStudentFindPage && sidebarCollapsed && !sidebarPreviewOpen;
   const [scrolled, setScrolled] = useState(false);
@@ -177,7 +178,7 @@ export function AppShell({
 
   const SidebarContent = (
     <div className="flex h-full flex-col bg-surface-container-low">
-      <div className={cn("px-5 pt-6 pb-4", isAdminConsole && "px-4 py-3 border-b border-outline-variant/60")}>
+      <div className={cn("px-5 pt-6 pb-4", isAdminConsole && "px-4 py-3 border-b border-outline-variant/60", isUniversityAdminConsole && "px-7 pt-7 pb-5")}>
         <button
           type="button"
           onClick={() => goTo(nav[0].id)}
@@ -189,28 +190,29 @@ export function AppShell({
             width={64}
             height={64}
             loading="eager"
-            className={cn("h-12 w-auto shrink-0 object-contain", isAdminConsole && "h-9")}
+            className={cn("h-12 w-auto shrink-0 object-contain", isAdminConsole && "h-9", isUniversityAdminConsole && "h-[52px]")}
           />
           <div className="min-w-0">
-            <p className={cn("text-xl font-bold tracking-tight text-on-surface", isAdminConsole && "text-base")}>
+            <p className={cn("text-xl font-bold tracking-tight text-on-surface", isAdminConsole && "text-base", isUniversityAdminConsole && "text-[23px]")}>
               {isAdminConsole ? "UniBus Admin" : "UniBus"}
             </p>
-            <p className="truncate text-[11px] text-on-surface-variant">{ROLE_LABELS[role]}</p>
+            <p className={cn("truncate text-[11px] text-on-surface-variant", isUniversityAdminConsole && "mt-0.5 text-sm")}>{ROLE_LABELS[role]}</p>
           </div>
         </button>
       </div>
 
-      <nav className={cn("flex-1 overflow-y-auto px-3 pb-4 scrollbar-soft", isAdminConsole && "px-2 py-3")}>
-        <div className={cn("space-y-5", isAdminConsole && "space-y-3")}>
+      <nav className={cn("flex-1 overflow-y-auto px-3 pb-4 scrollbar-soft", isAdminConsole && "px-2 py-3", isUniversityAdminConsole && "px-4 pb-5")}>
+        <div className={cn("space-y-5", isAdminConsole && "space-y-3", isUniversityAdminConsole && "space-y-6")}>
           {groups.map(([group, items]) => (
             <div key={group}>
               <p className={cn(
                 "px-4 mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant/70",
-                isAdminConsole && "px-3 mb-1 text-[10px]"
+                isAdminConsole && "px-3 mb-1 text-[10px]",
+                isUniversityAdminConsole && "px-3 mb-2.5 text-[12px] tracking-[0.16em]"
               )}>
                 {group}
               </p>
-              <div className="space-y-0.5">
+              <div className={cn("space-y-0.5", isUniversityAdminConsole && "space-y-1.5")}>
                 {items.map((item) => {
                   const active = item.id === activeId;
                   const badge = item.id === notificationsNavId && unread ? String(unread) : item.badge;
@@ -221,9 +223,12 @@ export function AppShell({
                       className={cn(
                         "group relative flex min-h-11 w-full min-w-0 items-center gap-3 px-4 py-2.5 text-sm font-medium transition-colors",
                         isAdminConsole ? "min-h-11 rounded-xl px-4 py-2.5 text-sm" : "rounded-2xl",
+                        isUniversityAdminConsole && "min-h-[52px] rounded-[22px] px-4 py-2.5 text-[15px] font-semibold",
                         active
                           ? isAdminConsole ? "text-on-primary" : "text-[#beff50]"
-                          : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
+                          : isUniversityAdminConsole
+                            ? "text-on-surface-variant hover:bg-surface-container hover:text-on-surface"
+                            : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
                       )}
                     >
                       {active && (
@@ -233,7 +238,17 @@ export function AppShell({
                           transition={{ type: "spring", stiffness: 400, damping: 32 }}
                         />
                       )}
-                      <item.icon className={cn("relative size-5 shrink-0", active ? isAdminConsole ? "text-on-primary" : "text-[#beff50]" : "text-on-surface-variant group-hover:text-on-surface")} />
+                      <span className={cn(
+                        "relative flex shrink-0 items-center justify-center",
+                        isUniversityAdminConsole ? "size-8 rounded-2xl" : "size-5",
+                        isUniversityAdminConsole && !active && "bg-surface-container-high/70 text-on-surface-variant group-hover:bg-surface-container-high group-hover:text-on-surface",
+                        active && isUniversityAdminConsole && "text-[#beff50]",
+                      )}>
+                        <item.icon className={cn(
+                          "shrink-0 size-5",
+                          active ? isAdminConsole ? "text-on-primary" : "text-[#beff50]" : "text-on-surface-variant group-hover:text-on-surface",
+                        )} />
+                      </span>
                       <span className="relative min-w-0 flex-1 truncate text-left">{item.label}</span>
                       {badge && (
                         <span className={cn("relative inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[10px] font-bold",
@@ -300,8 +315,9 @@ export function AppShell({
       <div
         className={cn(
           "flex min-h-screen min-w-0 flex-1 flex-col transition-[margin] duration-300",
-          sidebarCollapsed ? "lg:ml-0" : "lg:ml-72",
+          sidebarCollapsed ? "lg:ml-0" : "lg:ml-[var(--sidebar-width)]",
         )}
+        style={{ "--sidebar-width": `${sidebarWidth}px` } as React.CSSProperties}
       >
         <motion.header
           animate={{
@@ -370,7 +386,12 @@ export function AppShell({
           <div className="flex-1" />
 
           <motion.button
-            className="relative flex size-10 shrink-0 items-center justify-center rounded-xl text-[#111111] transition-colors hover:text-[#2C2C27] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#beff50] focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+            className={cn(
+              "relative flex size-10 shrink-0 items-center justify-center rounded-xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
+              isAdminConsole
+                ? "text-on-surface-variant hover:text-on-surface focus-visible:ring-primary"
+                : "text-[#111111] hover:text-[#2C2C27] focus-visible:ring-[#beff50]"
+            )}
             whileHover={{ scale: 1.04, backgroundColor: "rgba(190,255,80,0.16)" }}
             whileTap={{ scale: 0.94, backgroundColor: "rgba(190,255,80,0.32)" }}
             transition={{ type: "spring", stiffness: 520, damping: 28 }}
@@ -414,7 +435,10 @@ export function AppShell({
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold text-on-surface">{profile?.fullName || "Tài khoản UniBus"}</p>
                   <p className="truncate text-xs text-on-surface-variant">{profile?.email || ROLE_LABELS[role]}</p>
-                  <span className="inline-flex mt-1 items-center gap-1 h-5 px-2 rounded-full bg-[#beff50] text-[#14140f] text-[10px] font-bold">
+                  <span className={cn(
+                    "inline-flex mt-1 items-center gap-1 h-5 px-2 rounded-full text-[10px] font-bold",
+                    isAdminConsole ? "bg-primary text-on-primary" : "bg-[#beff50] text-[#14140f]"
+                  )}>
                     <School className="size-2.5" />
                     {ROLE_LABELS[role]}
                   </span>

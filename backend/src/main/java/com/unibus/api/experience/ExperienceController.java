@@ -203,6 +203,12 @@ public class ExperienceController {
         return ApiResponse.ok("Violations retrieved", service.violations(status));
     }
 
+    @GetMapping("/admin/violation-targets")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'ADMIN')")
+    ApiResponse<List<ViolationTargetView>> violationTargets(@RequestParam(required = false) String keyword) {
+        return ApiResponse.ok("Violation targets retrieved", service.violationTargets(keyword));
+    }
+
     @PostMapping("/admin/violations")
     @PreAuthorize("hasAnyRole('CONDUCTOR', 'DISPATCHER', 'ADMIN')")
     ApiResponse<Map<String, Object>> submitViolation(
