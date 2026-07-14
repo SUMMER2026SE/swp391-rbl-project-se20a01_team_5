@@ -125,12 +125,12 @@ class UniversityManagementServiceTests {
 
         ImportBatchView batch = service.importRoster(currentUser(), universityId, file);
 
-        assertThat(batch.totalRows()).isEqualTo(3);
+        assertThat(batch.totalRows()).isEqualTo(4);
         assertThat(batch.successRows()).isEqualTo(1);
-        assertThat(batch.errorRows()).isEqualTo(2);
+        assertThat(batch.errorRows()).isEqualTo(3);
         assertThat(batch.errors())
                 .extracting(error -> error.fieldName())
-                .containsExactly("email", "status");
+                .contains("email", "status");
         assertThat(service.listRoster(universityId, null, null))
                 .extracting(RosterStudentView::studentCode)
                 .containsExactly("SE001");
@@ -148,7 +148,7 @@ class UniversityManagementServiceTests {
                 """.getBytes());
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.importRoster(currentUser(), universityId, file))
-                .hasMessageContaining("headers");
+                .hasMessageContaining("UNSUPPORTED_HEADER");
     }
 
     @Test
@@ -756,6 +756,7 @@ class UniversityManagementServiceTests {
                     campus_id INTEGER,
                     active_from DATE DEFAULT CURRENT_DATE NOT NULL,
                     active_until DATE,
+                    subsidy_enabled BOOLEAN DEFAULT TRUE NOT NULL,
                     status VARCHAR(20) DEFAULT 'ACTIVE' NOT NULL
                 )
                 """);

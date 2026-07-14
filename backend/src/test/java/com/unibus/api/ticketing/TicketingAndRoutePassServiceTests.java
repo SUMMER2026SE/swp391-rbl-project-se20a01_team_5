@@ -324,6 +324,7 @@ class TicketingAndRoutePassServiceTests {
                     campus_id INTEGER,
                     active_from DATE NOT NULL,
                     active_until DATE,
+                    subsidy_enabled BOOLEAN DEFAULT TRUE NOT NULL,
                     status VARCHAR(20) DEFAULT 'ACTIVE' NOT NULL
                 )
                 """);

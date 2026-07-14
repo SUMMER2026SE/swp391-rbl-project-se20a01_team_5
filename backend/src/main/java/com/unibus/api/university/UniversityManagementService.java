@@ -861,13 +861,16 @@ public class UniversityManagementService {
             return;
         }
         String email = normalizeEmail(user.getEmail());
-        repository.findActiveRosterByEmail(email).ifPresent(roster -> {
+        Optional<RosterMatch> rosterMatch = repository.findActiveRosterByEmail(email);
+        if (rosterMatch.isPresent()) {
+            RosterMatch roster = rosterMatch.get();
             if (repository.studentCodeBelongsToOtherUser(roster.studentCode(), user.getId())) {
                 return;
             }
             repository.upsertStudentFromRoster(user.getId(), roster);
             repository.matchRosterToUser(roster.rosterId(), user.getId());
-        });
+            return;
+        }
         applyDomainUniversityLink(user);
     }
 
