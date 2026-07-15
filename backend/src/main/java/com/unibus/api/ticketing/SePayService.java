@@ -942,28 +942,44 @@ public class SePayService {
     }
 
     private Integer createSingleTicketFromOrder(String studentCode, Map<String, Object> item) {
+        return insertSingleTicketFromOrder(studentCode, item, hasColumns("single_trip_tickets",
+                "original_fare_amount", "subsidy_amount", "final_fare_amount", "subsidy_policy_id"));
+    }
+
+    private Integer insertSingleTicketFromOrder(String studentCode, Map<String, Object> item, boolean withSubsidyFields) {
         String qrCode = "UB-SINGLE-" + UUID.randomUUID();
         OffsetDateTime expiresAt = LocalDate.now().atTime(23, 59, 59).atOffset(ZoneOffset.UTC);
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update(connection -> {
             PreparedStatement statement = connection.prepareStatement(
-                    """
-                    INSERT INTO single_trip_tickets(student_code, route_id, boarding_stop_id, alighting_stop_id,
-                                                    fare_amount, original_fare_amount, subsidy_amount,
-                                                    final_fare_amount, subsidy_policy_id, qr_code, expires_at, status)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, 'UNUSED')
-                    """,
+                    withSubsidyFields
+                            ? """
+                              INSERT INTO single_trip_tickets(student_code, route_id, boarding_stop_id, alighting_stop_id,
+                                                              fare_amount, original_fare_amount, subsidy_amount,
+                                                              final_fare_amount, subsidy_policy_id, qr_code, expires_at, status)
+                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, 'UNUSED')
+                              """
+                            : """
+                              INSERT INTO single_trip_tickets(student_code, route_id, boarding_stop_id, alighting_stop_id,
+                                                              fare_amount, qr_code, expires_at, status)
+                              VALUES (?, ?, ?, ?, ?, ?, ?, 'UNUSED')
+                              """,
                     new String[] { "single_trip_ticket_id" });
             statement.setString(1, studentCode);
             statement.setInt(2, intValue(item.get("routeId")));
             setNullableInt(statement, 3, intValue(item.get("boardingStopId")));
             setNullableInt(statement, 4, intValue(item.get("alightingStopId")));
             statement.setBigDecimal(5, decimalValue(item.get("finalAmount")));
-            statement.setBigDecimal(6, decimalValue(item.get("originalAmount")));
-            statement.setBigDecimal(7, decimalValue(item.get("subsidyAmount")));
-            statement.setBigDecimal(8, decimalValue(item.get("finalAmount")));
-            statement.setString(9, qrCode);
-            statement.setTimestamp(10, java.sql.Timestamp.from(expiresAt.toInstant()));
+            if (withSubsidyFields) {
+                statement.setBigDecimal(6, decimalValue(item.get("originalAmount")));
+                statement.setBigDecimal(7, decimalValue(item.get("subsidyAmount")));
+                statement.setBigDecimal(8, decimalValue(item.get("finalAmount")));
+                statement.setString(9, qrCode);
+                statement.setTimestamp(10, java.sql.Timestamp.from(expiresAt.toInstant()));
+            } else {
+                statement.setString(6, qrCode);
+                statement.setTimestamp(7, java.sql.Timestamp.from(expiresAt.toInstant()));
+            }
             return statement;
         }, keyHolder);
         Number key = keyHolder.getKey();
@@ -1005,10 +1021,37 @@ public class SePayService {
         }, payKeyHolder);
         Number payId = payKeyHolder.getKey();
         if (payId != null) {
-            jdbcTemplate.update(
-                    "INSERT INTO invoices(payment_id, student_code, description, amount, original_amount, subsidy_amount, final_amount) SELECT ?, student_code, 'Day bus ticket paid via SePay', final_fare_amount, original_fare_amount, subsidy_amount, final_fare_amount FROM single_trip_tickets WHERE single_trip_ticket_id = ?",
-                    payId.intValue(), ticketId);
+            if (hasColumns("single_trip_tickets", "original_fare_amount", "subsidy_amount", "final_fare_amount")
+                    && hasColumns("invoices", "original_amount", "subsidy_amount", "final_amount")) {
+                jdbcTemplate.update(
+                        "INSERT INTO invoices(payment_id, student_code, description, amount, original_amount, subsidy_amount, final_amount) SELECT ?, student_code, 'Day bus ticket paid via SePay', final_fare_amount, original_fare_amount, subsidy_amount, final_fare_amount FROM single_trip_tickets WHERE single_trip_ticket_id = ?",
+                        payId.intValue(), ticketId);
+            } else if (hasColumns("invoices", "original_amount", "subsidy_amount", "final_amount")) {
+                jdbcTemplate.update(
+                        "INSERT INTO invoices(payment_id, student_code, description, amount, original_amount, subsidy_amount, final_amount) SELECT ?, student_code, 'Day bus ticket paid via SePay', fare_amount, fare_amount, 0, fare_amount FROM single_trip_tickets WHERE single_trip_ticket_id = ?",
+                        payId.intValue(), ticketId);
+            } else {
+                jdbcTemplate.update(
+                        "INSERT INTO invoices(payment_id, student_code, description, amount) SELECT ?, student_code, 'Day bus ticket paid via SePay', fare_amount FROM single_trip_tickets WHERE single_trip_ticket_id = ?",
+                        payId.intValue(), ticketId);
+            }
         }
+    }
+
+    private boolean hasColumns(String tableName, String... columnNames) {
+        StringBuilder placeholders = new StringBuilder();
+        List<Object> arguments = new ArrayList<>();
+        arguments.add(tableName.toLowerCase());
+        for (String columnName : columnNames) {
+            if (!placeholders.isEmpty()) placeholders.append(", ");
+            placeholders.append('?');
+            arguments.add(columnName.toLowerCase());
+        }
+        Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns WHERE LOWER(table_name) = ? AND LOWER(column_name) IN ("
+                        + placeholders + ")",
+                Integer.class, arguments.toArray());
+        return count != null && count == columnNames.length;
     }
 
     private void setNullableInt(PreparedStatement statement, int index, Integer value) throws java.sql.SQLException {
