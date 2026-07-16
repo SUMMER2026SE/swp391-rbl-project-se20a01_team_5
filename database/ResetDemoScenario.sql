@@ -1155,7 +1155,7 @@ BEGIN
         END IF;
 
         UPDATE subsidy_policies
-        SET campus_id = v_main_campus_id,
+        SET campus_id = CASE WHEN v_school.code = 'DTU' THEN NULL ELSE v_main_campus_id END,
             policy_name = 'DEMO_BASELINE: ' || v_school.code || ' active subsidy',
             subsidy_type = 'PERCENTAGE',
             value = v_school.subsidy_percent,
@@ -1174,7 +1174,7 @@ BEGIN
         );
         IF NOT FOUND THEN
             INSERT INTO subsidy_policies (university_id, campus_id, policy_name, subsidy_type, value, max_amount, active_from, active_until, status, created_at, updated_at)
-            SELECT university_id, v_main_campus_id, 'DEMO_BASELINE: ' || v_school.code || ' active subsidy', 'PERCENTAGE', v_school.subsidy_percent, v_school.max_amount, DATE '2026-01-01', DATE '2026-12-31', 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+            SELECT university_id, CASE WHEN v_school.code = 'DTU' THEN NULL ELSE v_main_campus_id END, 'DEMO_BASELINE: ' || v_school.code || ' active subsidy', 'PERCENTAGE', v_school.subsidy_percent, v_school.max_amount, DATE '2026-01-01', DATE '2026-12-31', 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
             FROM universities WHERE code = v_school.code;
         END IF;
 
