@@ -24,7 +24,7 @@ Mật khẩu chung của account demo: `Password123!`.
 
 ### 1. Sinh viên Duy Tân — điểm mở đầu
 
-Account: `student.supported@unibus.local`
+Account chính để show dữ liệu: `student.monthly@unibus.local`
 
 Show theo thứ tự:
 
@@ -37,6 +37,8 @@ Show theo thứ tự:
 7. Theo dõi xe: xem xe, trạm và timeline.
 8. Lịch sử chuyến: mở một chuyến, đánh giá hoặc báo mất đồ.
 9. Thông báo và hóa đơn: giao dịch mới nhất nằm trên cùng, không có trạng thái chờ vô nghĩa.
+
+Dùng `student.supported@unibus.local` riêng cho flow sinh viên mới: tìm tuyến, chatbot, đăng ký và mua vé lần đầu.
 
 Dữ liệu phụ để show trạng thái khác:
 
