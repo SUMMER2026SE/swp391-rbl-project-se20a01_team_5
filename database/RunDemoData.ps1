@@ -1,7 +1,9 @@
 param(
     [ValidateSet('Seed', 'Reset', 'Audit', 'All')]
     [string]$Mode = 'Audit',
-    [string]$AuthFile = (Join-Path $PSScriptRoot '..\dbauth.txt')
+    [string]$AuthFile = (Join-Path $PSScriptRoot '..\dbauth.txt'),
+    [switch]$AllowProduction,
+    [string]$ConfirmPhrase
 )
 
 $ErrorActionPreference = 'Stop'
@@ -25,11 +27,21 @@ function Read-UniBusDbAuth {
     return $auth
 }
 
+
+function Assert-UniBusTarget {
+    param([hashtable]$Auth)
+    $endpoint = $Auth['endpoint'].Replace('jdbc:postgresql://', '').Split('/')[0].Split(':')[0]
+    if ($Auth['initialdb'] -ne 'unibus') { throw "Refusing target database '$($Auth['initialdb'])'; expected 'unibus'." }
+    if ($endpoint.EndsWith('.rds.amazonaws.com') -and -not $AllowProduction) {
+        throw 'Production RDS detected. Re-run with -AllowProduction after confirming a current snapshot exists.'
+    }
+}
+
 function Get-SqlFileForMode {
     param([string]$CurrentMode)
     switch ($CurrentMode) {
         'Seed' { return (Join-Path $PSScriptRoot 'SeedDemoDataUntilAugust.sql') }
-        'Reset' { return (Join-Path $PSScriptRoot 'ResetDemoScenario.sql') }
+        'Reset' { return (Join-Path $PSScriptRoot 'SeedDemoDataUntilAugust.sql') }
         'Audit' { return (Join-Path $PSScriptRoot 'AuditDemoDataUntilAugust.sql') }
         default { throw "Unsupported mode $CurrentMode" }
     }
@@ -60,6 +72,11 @@ function Invoke-WithPythonPsycopg2 {
         '            if cur.description:'
         '                columns = [desc[0] for desc in cur.description]'
         '                rows = cur.fetchall()'
+        '                if mode == "Audit" and "status" in columns:'
+        '                    status_index = columns.index("status")'
+        '                    if any(str(row[status_index]).upper() == "FAIL" for row in rows):'
+        '                        print("AUDIT_CONTAINS_FAIL", file=sys.stderr)'
+        '                        sys.exit(2)'
         '                widths = [len(str(col)) for col in columns]'
         '                for row in rows:'
         '                    for index, value in enumerate(row): widths[index] = max(widths[index], len("" if value is None else str(value)))'
@@ -117,18 +134,20 @@ function Invoke-DemoSql {
 
 function Confirm-DemoMutation {
     param([string]$RequestedMode, [hashtable]$Auth)
-    $requiredPhrase = if ($RequestedMode -eq 'Reset') { 'RESET DEMO' } else { 'SEED DEMO' }
+    $isProduction = $Auth['endpoint'] -like '*.rds.amazonaws.com*'
+    $requiredPhrase = if ($isProduction) { 'SEED DEMO PRODUCTION' } elseif ($RequestedMode -eq 'Reset') { 'RESET DEMO' } else { 'SEED DEMO' }
     if ($RequestedMode -eq 'All') {
         Write-Host "Mode All means: run Seed, then Audit. It does not run Reset."
     }
     Write-Host "This will modify the target database. Password is not printed."
-    $confirmation = Read-Host "Type '$requiredPhrase' to continue"
+    $confirmation = if ($ConfirmPhrase) { $ConfirmPhrase } else { Read-Host "Type '$requiredPhrase' to continue" }
     if ($confirmation -ne $requiredPhrase) {
         throw "Confirmation mismatch. Aborted without running $RequestedMode."
     }
 }
 
 $auth = Read-UniBusDbAuth -Path $AuthFile
+Assert-UniBusTarget -Auth $auth
 Write-Host "Target database: host=$($auth['endpoint']); port=$($auth['port']); database=$($auth['initialdb']); user=$($auth['username'])"
 if ($Mode -in @('Seed', 'Reset', 'All')) {
     Confirm-DemoMutation -RequestedMode $Mode -Auth $auth

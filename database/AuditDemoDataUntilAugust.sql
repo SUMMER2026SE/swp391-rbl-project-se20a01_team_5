@@ -1,4 +1,4 @@
-﻿-- Demo coverage audit.
+-- Demo coverage audit.
 -- Returns one readable result set with PASS/WARN/FAIL rows.
 
 SET TIME ZONE 'Asia/Ho_Chi_Minh';
@@ -415,6 +415,31 @@ ticket_status AS (
       AND status = 'ACTIVE'
       AND qr_code LIKE 'DEMO-%'
 ),
+support_workflow_status AS (
+    SELECT 'support_workflow' AS section, 'student feedback baseline' AS subject,
+           CASE WHEN count(*) >= 2 THEN 'PASS' ELSE 'FAIL' END AS status,
+           concat('feedback_rows=', count(*), '; statuses=', COALESCE(string_agg(DISTINCT status, ', ' ORDER BY status), 'none')) AS detail
+    FROM feedback
+    WHERE student_code IN (SELECT student_code FROM demo_students)
+    UNION ALL
+    SELECT 'support_workflow', 'lost item baseline',
+           CASE WHEN count(*) >= 2 THEN 'PASS' ELSE 'FAIL' END,
+           concat('lost_items=', count(*), '; statuses=', COALESCE(string_agg(DISTINCT status, ', ' ORDER BY status), 'none'))
+    FROM lost_item_reports
+    WHERE reported_by_user_id IN (SELECT user_id FROM demo_students)
+    UNION ALL
+    SELECT 'support_workflow', 'conductor incident baseline',
+           CASE WHEN count(*) >= 2 THEN 'PASS' ELSE 'FAIL' END,
+           concat('incidents=', count(*), '; statuses=', COALESCE(string_agg(DISTINCT status, ', ' ORDER BY status), 'none'))
+    FROM incidents
+    WHERE conductor_id IN (SELECT c.conductor_id FROM conductors c JOIN users u ON u.user_id = c.user_id WHERE u.email LIKE 'conductor.%@unibus.local' OR u.email = 'conductor.demo@unibus.local')
+    UNION ALL
+    SELECT 'support_workflow', 'role notification baseline',
+           CASE WHEN count(*) >= 8 THEN 'PASS' ELSE 'FAIL' END,
+           concat('notifications=', count(*), '; recipients=', count(DISTINCT recipient_user_id))
+    FROM notifications
+    WHERE recipient_user_id IN (SELECT user_id FROM users WHERE email IN (SELECT email FROM demo_accounts))
+),
 uniadmin_visibility AS (
     SELECT
         'university_admin' AS section,
@@ -636,6 +661,7 @@ UNION ALL SELECT * FROM schedule_weekday_status
 UNION ALL SELECT * FROM fleet_status
 UNION ALL SELECT * FROM trip_coverage
 UNION ALL SELECT * FROM ticket_status
+UNION ALL SELECT * FROM support_workflow_status
 UNION ALL SELECT * FROM uniadmin_visibility
 UNION ALL SELECT * FROM domain_status
 UNION ALL SELECT * FROM integrity_status
