@@ -325,6 +325,9 @@ public class JourneyPlannerService {
                 }
             }
             JourneyLeg busLeg = busLeg("bus-" + (++legIndex), segment, rollingDepartAt);
+            if (busLeg == null) {
+                return null;
+            }
             legs.add(busLeg);
             polylines.add(new MapPolyline(busLeg.legId(), "BUS", busLeg.colorHex(), busLeg.shape()));
             allStops.addAll(busLeg.stops());
@@ -384,9 +387,12 @@ public class JourneyPlannerService {
     }
 
     private JourneyLeg busLeg(String legId, Segment segment, OffsetDateTime departAt) {
-        int wait = waitMinutes(segment.line(), departAt);
+        OffsetDateTime nextDeparture = nextDeparture(segment.line(), departAt);
+        if (nextDeparture == null) {
+            return null;
+        }
+        int wait = (int) Duration.between(departAt, nextDeparture).toMinutes();
         int ride = segment.durationMinutes();
-        OffsetDateTime nextDeparture = departAt.plusMinutes(wait);
         OffsetDateTime arrival = nextDeparture.plusMinutes(ride);
         List<JourneyStop> stops = new ArrayList<>();
         int hopCount = Math.max(1, segment.toIndex() - segment.fromIndex());
@@ -524,12 +530,26 @@ public class JourneyPlannerService {
         return walkMeters <= 1_500 ? "MEDIUM" : "LOW";
     }
 
-    private int waitMinutes(RouteLine line, OffsetDateTime departAt) {
-        LocalTime now = departAt.atZoneSameInstant(VIETNAM_ZONE).toLocalTime();
+    private OffsetDateTime nextDeparture(RouteLine line, OffsetDateTime requestedAt) {
+        Optional<LocalTime> firstTrip = line.firstTrip();
+        Optional<LocalTime> lastTrip = line.lastTrip();
+        if (firstTrip.isEmpty() || lastTrip.isEmpty()) {
+            return requestedAt.plusMinutes(Math.max(1, line.frequencyMin() == null ? 15 : line.frequencyMin()));
+        }
+        var localDate = requestedAt.atZoneSameInstant(VIETNAM_ZONE).toLocalDate();
+        var first = localDate.atTime(firstTrip.get()).atZone(VIETNAM_ZONE).toOffsetDateTime();
+        var last = localDate.atTime(lastTrip.get()).atZone(VIETNAM_ZONE).toOffsetDateTime();
+        if (requestedAt.isAfter(last)) {
+            return null;
+        }
+        if (!requestedAt.isAfter(first)) {
+            return first;
+        }
         int headway = line.frequencyMin() == null || line.frequencyMin() <= 0 ? 15 : line.frequencyMin();
-        int simulatedMinute = now.getHour() * 60 + now.getMinute();
-        int remainder = simulatedMinute % headway;
-        return remainder == 0 ? 1 : headway - remainder;
+        long elapsed = Duration.between(first, requestedAt).toMinutes();
+        long intervals = (elapsed + headway - 1) / headway;
+        OffsetDateTime next = first.plusMinutes(intervals * headway);
+        return next.isAfter(last) ? null : next;
     }
 
     private Segment segment(RouteLine line, Integer fromStopId, Integer toStopId) {

@@ -87,7 +87,6 @@ public class TransportService {
                   AND s.status = 'ACTIVE'
                   AND s.latitude IS NOT NULL
                   AND s.longitude IS NOT NULL
-                  AND COALESCE(r.is_interregional, false) = false
                   AND (
                       r.external_source = 'BUSMAP_DN'
                       OR NOT EXISTS (
