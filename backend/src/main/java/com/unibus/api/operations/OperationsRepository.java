@@ -488,7 +488,7 @@ public class OperationsRepository {
                 JOIN users sender ON sender.user_id = m.sender_user_id
                 JOIN users recipient ON recipient.user_id = m.recipient_user_id
                 WHERE (m.sender_user_id = ? OR m.recipient_user_id = ?)
-                  AND (? IS NULL OR m.trip_id = ?)
+                  AND (?::integer IS NULL OR m.trip_id = ?)
                 ORDER BY m.sent_at DESC, m.message_id DESC
                 LIMIT ?
                 """, (rs, rowNum) -> mapInternalMessage(rs), conductorUserId, conductorUserId, tripId, tripId, limit);

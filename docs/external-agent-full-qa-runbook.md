@@ -1,4 +1,4 @@
-﻿# UniBus External Agent Full-Role QA Runbook
+# UniBus External Agent Full-Role QA Runbook
 
 Tài liệu này giao cho ChatGPT Agent/QA Agent bên ngoài kiểm thử UniBus như người dùng thật. Agent ưu tiên thao tác qua CloudFront; terminal, API và live RDS chỉ dùng cho preflight, xác minh và cleanup.
 
@@ -27,10 +27,10 @@ Nếu Agent chỉ có browser, vẫn chạy toàn bộ black-box UI. Bước ter
 ### Environment mặc định
 
 ```text
-App: https://d8xawk4fn4vfd.cloudfront.net
-API: https://d8xawk4fn4vfd.cloudfront.net/api/v1
+App: https://app.fudabus.store
+API: https://app.fudabus.store/api/v1
 SePay simulator: https://my.sepay.vn/testmode/transaction/simulate
-Webhook: https://d8xawk4fn4vfd.cloudfront.net/api/v1/payments/sepay/webhook
+Webhook: https://app.fudabus.store/api/v1/payments/sepay/webhook
 Local frontend: http://localhost:3000
 Local backend: http://localhost:8080
 ```
@@ -429,7 +429,7 @@ $env:SEPAY_WEBHOOK_API_KEY = '<provided-separately>'
 powershell -NoProfile -ExecutionPolicy Bypass -File database\CompleteDemoSePayWebhook.ps1 `
   -OrderId <ORDER_ID> `
   -Amount <EXACT_AMOUNT> `
-  -BackendUrl 'https://d8xawk4fn4vfd.cloudfront.net'
+  -BackendUrl 'https://app.fudabus.store'
 ```
 
 Không ghi key thật vào report/history.
@@ -656,7 +656,7 @@ UI/network evidence ưu tiên. Terminal chỉ để xác minh.
 ### Login helper
 
 ```powershell
-$ApiBase = 'https://d8xawk4fn4vfd.cloudfront.net/api/v1'
+$ApiBase = 'https://app.fudabus.store/api/v1'
 $Login = Invoke-RestMethod -Method Post -Uri "$ApiBase/auth/login" `
   -ContentType 'application/json' `
   -Body (@{
@@ -688,7 +688,7 @@ Không in token vào report.
 Webhook negative sample:
 
 ```powershell
-$Webhook = 'https://d8xawk4fn4vfd.cloudfront.net/api/v1/payments/sepay/webhook'
+$Webhook = 'https://app.fudabus.store/api/v1/payments/sepay/webhook'
 $Payload = @{ id = 999999001; transferAmount = 5000; content = 'DH0' } | ConvertTo-Json
 
 # Expected 401

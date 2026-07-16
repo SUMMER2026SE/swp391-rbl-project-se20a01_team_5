@@ -1,4 +1,4 @@
-﻿-- Reset demo scenario to a ready-to-demo state until 2026-08-31.
+-- Reset demo scenario to a ready-to-demo state until 2026-08-31.
 -- This intentionally recreates demo-owned dynamic rows instead of only cleaning them up.
 -- It keeps the scenario ready: trips, registrations, tickets, orders, transactions and travel history.
 -- Login password for created demo accounts: Password123!
@@ -6,6 +6,8 @@
 SET TIME ZONE 'Asia/Ho_Chi_Minh';
 
 BEGIN;
+
+SELECT pg_advisory_xact_lock(hashtext('unibus-demo-baseline-v2'));
 
 DO $$
 DECLARE
@@ -61,7 +63,7 @@ DECLARE
     ];
 BEGIN
     IF CURRENT_DATE > v_end_date THEN
-        RAISE NOTICE 'Demo end date % is already past current date %. Only account/master data will remain meaningful.', v_end_date, CURRENT_DATE;
+        RAISE EXCEPTION 'Demo baseline expired on %, current date is %. Update the scenario before seeding.', v_end_date, CURRENT_DATE;
     END IF;
 
     INSERT INTO users (email, password_hash, full_name, phone_number, role, status, email_verified_at, student_verification_status, created_at, updated_at)
