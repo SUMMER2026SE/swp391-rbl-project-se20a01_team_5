@@ -1322,15 +1322,20 @@ public class ExperienceRepository {
     public void createDriverRating(Integer studentUserId, Integer tripId, Integer driverId,
             Integer starRating, String comment) {
         jdbcTemplate.update("""
-                INSERT INTO driver_ratings (driver_id, student_user_id, trip_id, star_rating, comment)
-                VALUES (?, ?, ?, ?, ?)
-                """, driverId, studentUserId, tripId, starRating, comment);
+                INSERT INTO driver_ratings (student_code, driver_id, trip_id, stars, comment)
+                SELECT student_code, ?, ?, ?, ?
+                FROM students
+                WHERE user_id = ?
+                """, driverId, tripId, starRating, comment, studentUserId);
     }
 
     public boolean existsDriverRating(Integer studentUserId, Integer tripId) {
-        Long c = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM driver_ratings WHERE student_user_id = ? AND trip_id = ?",
-                Long.class, studentUserId, tripId);
+        Long c = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM driver_ratings dr
+                JOIN students s ON s.student_code = dr.student_code
+                WHERE s.user_id = ? AND dr.trip_id = ?
+                """, Long.class, studentUserId, tripId);
         return c != null && c > 0;
     }
 
@@ -1341,13 +1346,14 @@ public class ExperienceRepository {
 
     public List<DriverRatingCard> driverRatings(Integer driverId, int limit) {
         return jdbcTemplate.query("""
-                SELECT dr.rating_id, dr.driver_id, dr.student_user_id, dr.trip_id,
-                       dr.star_rating, dr.comment, dr.created_at,
+                SELECT dr.driver_rating_id AS rating_id, dr.driver_id, s.user_id AS student_user_id, dr.trip_id,
+                       dr.stars AS star_rating, dr.comment, dr.rated_at AS created_at,
                        u.full_name AS student_name
                 FROM driver_ratings dr
-                LEFT JOIN users u ON u.user_id = dr.student_user_id
+                JOIN students s ON s.student_code = dr.student_code
+                JOIN users u ON u.user_id = s.user_id
                 WHERE dr.driver_id = ?
-                ORDER BY dr.created_at DESC
+                ORDER BY dr.rated_at DESC
                 LIMIT ?
                 """, (rs, rowNum) -> new DriverRatingCard(
                         rs.getLong("rating_id"),
@@ -1362,7 +1368,7 @@ public class ExperienceRepository {
 
     public Optional<DriverRatingSummary> driverRatingSummary(Integer driverId) {
         return jdbcTemplate.query("""
-                SELECT AVG(star_rating) AS avg_rating, COUNT(*) AS total
+                SELECT AVG(stars) AS avg_rating, COUNT(*) AS total
                 FROM driver_ratings
                 WHERE driver_id = ?
                 """, rs -> {
@@ -1392,10 +1398,13 @@ public class ExperienceRepository {
 
     public Long createComplaint(Integer submittedByUserId, String subject, String description, String category) {
         return jdbcTemplate.queryForObject("""
-                INSERT INTO complaints (submitted_by_user_id, subject, description, category, status, created_at)
-                VALUES (?, ?, ?, ?, 'OPEN', CURRENT_TIMESTAMP)
+                INSERT INTO complaints (
+                    submitted_by_user_id, title, content, subject, description, category,
+                    status, submitted_at, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, 'OPEN', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 RETURNING complaint_id
-                """, Long.class, submittedByUserId, subject, description, category);
+                """, Long.class, submittedByUserId, subject, description, subject, description, category);
     }
 
     public List<ComplaintCard> complaintsByStatus(String status, int limit) {
