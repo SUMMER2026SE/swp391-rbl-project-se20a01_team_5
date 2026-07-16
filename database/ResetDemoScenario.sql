@@ -1,4 +1,4 @@
--- Reset demo scenario to a ready-to-demo state until 2026-08-31.
+﻿-- Reset demo scenario to a ready-to-demo state until 2026-08-31.
 -- This intentionally recreates demo-owned dynamic rows instead of only cleaning them up.
 -- It keeps the scenario ready: trips, registrations, tickets, orders, transactions and travel history.
 -- Login password for created demo accounts: Password123!
@@ -20,6 +20,7 @@ DECLARE
     v_alighting_supported_id integer;
     v_boarding_full_id integer;
     v_alighting_full_id integer;
+    v_full_direction integer;
     v_bus_id integer;
     v_driver_user_id integer;
     v_conductor_user_id integer;
@@ -414,8 +415,15 @@ BEGIN
     WHERE rs.route_id = v_route_supported_id
     ORDER BY CASE WHEN rs.stop_id = 751 OR lower(st.stop_name) = lower('10 Lý Thái Tổ') THEN 0 ELSE 1 END, rs.stop_order DESC
     LIMIT 1;
-    SELECT rs.stop_id INTO v_boarding_full_id FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id WHERE rs.route_id = v_route_full_id ORDER BY rs.stop_order ASC LIMIT 1;
-    SELECT rs.stop_id INTO v_alighting_full_id FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id WHERE rs.route_id = v_route_full_id ORDER BY rs.stop_order DESC LIMIT 1;
+    SELECT rs.station_direction INTO v_full_direction
+    FROM route_stops rs
+    WHERE rs.route_id = v_route_full_id
+    GROUP BY rs.station_direction
+    HAVING count(DISTINCT rs.stop_id) >= 2
+    ORDER BY count(*) DESC, rs.station_direction
+    LIMIT 1;
+    SELECT rs.stop_id INTO v_boarding_full_id FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id WHERE rs.route_id = v_route_full_id AND rs.station_direction = v_full_direction ORDER BY rs.stop_order ASC LIMIT 1;
+    SELECT rs.stop_id INTO v_alighting_full_id FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id WHERE rs.route_id = v_route_full_id AND rs.station_direction = v_full_direction AND rs.stop_id <> v_boarding_full_id ORDER BY rs.stop_order DESC LIMIT 1;
     IF v_boarding_supported_id IS NULL OR v_alighting_supported_id IS NULL OR v_boarding_supported_id = v_alighting_supported_id THEN
         RAISE EXCEPTION 'Supported demo route % does not have enough route stops.', v_route_supported_id;
     END IF;
@@ -930,7 +938,7 @@ BEGIN
 
     FOR v_school IN
         SELECT * FROM (VALUES
-            ('DTU', 8, ARRAY['Công nghệ thông tin','Kỹ thuật phần mềm','Du lịch','Tài chính','Logistics']::text[]),
+            ('DTU', 7, ARRAY['Công nghệ thông tin','Kỹ thuật phần mềm','Du lịch','Tài chính','Logistics']::text[]),
             ('UTE', 1, ARRAY['Công nghệ thông tin','Cơ khí','Điện - Điện tử','Xây dựng','Công nghệ ô tô']::text[]),
             ('VKU', 1, ARRAY['Công nghệ thông tin','Khoa học dữ liệu','Trí tuệ nhân tạo','Thiết kế số','Quản trị kinh doanh']::text[]),
             ('FPTDN', 1, ARRAY['Kỹ thuật phần mềm','Trí tuệ nhân tạo','An toàn thông tin','Kinh doanh số','Thiết kế mỹ thuật số']::text[])
@@ -1147,7 +1155,7 @@ BEGIN
         END IF;
 
         UPDATE subsidy_policies
-        SET campus_id = v_main_campus_id,
+        SET campus_id = CASE WHEN v_school.code = 'DTU' THEN NULL ELSE v_main_campus_id END,
             policy_name = 'DEMO_BASELINE: ' || v_school.code || ' active subsidy',
             subsidy_type = 'PERCENTAGE',
             value = v_school.subsidy_percent,
@@ -1166,7 +1174,7 @@ BEGIN
         );
         IF NOT FOUND THEN
             INSERT INTO subsidy_policies (university_id, campus_id, policy_name, subsidy_type, value, max_amount, active_from, active_until, status, created_at, updated_at)
-            SELECT university_id, v_main_campus_id, 'DEMO_BASELINE: ' || v_school.code || ' active subsidy', 'PERCENTAGE', v_school.subsidy_percent, v_school.max_amount, DATE '2026-01-01', DATE '2026-12-31', 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+            SELECT university_id, CASE WHEN v_school.code = 'DTU' THEN NULL ELSE v_main_campus_id END, 'DEMO_BASELINE: ' || v_school.code || ' active subsidy', 'PERCENTAGE', v_school.subsidy_percent, v_school.max_amount, DATE '2026-01-01', DATE '2026-12-31', 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
             FROM universities WHERE code = v_school.code;
         END IF;
 
