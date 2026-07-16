@@ -1,4 +1,4 @@
--- Demo coverage audit.
+﻿-- Demo coverage audit.
 -- Returns one readable result set with PASS/WARN/FAIL rows.
 
 SET TIME ZONE 'Asia/Ho_Chi_Minh';
@@ -6,12 +6,12 @@ SET TIME ZONE 'Asia/Ho_Chi_Minh';
 WITH params AS (
     SELECT CURRENT_DATE AS today, DATE '2026-08-31' AS end_date
 ),
-expected_universities(code, minimum_roster, minimum_login_students, minimum_admins) AS (
+expected_universities(code, minimum_roster, minimum_login_students, minimum_admins, minimum_orders, minimum_monthly_passes, minimum_single_tickets, minimum_invoices) AS (
     VALUES
-        ('DTU', 15, 6, 2),
-        ('UTE', 15, 4, 2),
-        ('VKU', 15, 4, 2),
-        ('FPTDN', 15, 4, 2)
+        ('DTU', 15, 6, 2, 2, 3, 1, 2),
+        ('UTE', 15, 4, 2, 12, 3, 3, 4),
+        ('VKU', 15, 4, 2, 12, 3, 3, 4),
+        ('FPTDN', 15, 4, 2, 12, 3, 3, 4)
 ),
 expected_staff(email, expected_role) AS (
     VALUES
@@ -121,20 +121,20 @@ university_density AS (
              AND counts.roster >= eu.minimum_roster
              AND counts.login_students >= eu.minimum_login_students
              AND counts.admins >= eu.minimum_admins
-             AND counts.orders >= 12
-             AND counts.monthly_passes >= 3
-             AND counts.single_tickets >= 3
-             AND counts.invoices >= 4
+             AND counts.orders >= eu.minimum_orders
+             AND counts.monthly_passes >= eu.minimum_monthly_passes
+             AND counts.single_tickets >= eu.minimum_single_tickets
+             AND counts.invoices >= eu.minimum_invoices
             THEN 'PASS' ELSE 'FAIL'
         END AS status,
         concat(
             'roster=', counts.roster, '/', eu.minimum_roster,
             ', login_students=', counts.login_students, '/', eu.minimum_login_students,
             ', admins=', counts.admins, '/', eu.minimum_admins,
-            ', orders=', counts.orders, '/12',
-            ', monthly_passes=', counts.monthly_passes, '/3',
-            ', single_tickets=', counts.single_tickets, '/3',
-            ', invoices=', counts.invoices, '/4',
+            ', orders=', counts.orders, '/', eu.minimum_orders,
+            ', monthly_passes=', counts.monthly_passes, '/', eu.minimum_monthly_passes,
+            ', single_tickets=', counts.single_tickets, '/', eu.minimum_single_tickets,
+            ', invoices=', counts.invoices, '/', eu.minimum_invoices,
             ', notifications=', counts.notifications
         ) AS detail
     FROM expected_universities eu

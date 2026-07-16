@@ -11,4 +11,4 @@ WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar
 
 EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+ENTRYPOINT ["sh", "-c", "if [ -n \"$GOOGLE_APPLICATION_CREDENTIALS_JSON\" ]; then printf %s \"$GOOGLE_APPLICATION_CREDENTIALS_JSON\" > /tmp/google-vision.json; export GOOGLE_APPLICATION_CREDENTIALS=/tmp/google-vision.json; fi; exec java -jar /app/app.jar"]
