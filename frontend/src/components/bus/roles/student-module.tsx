@@ -5607,8 +5607,7 @@ function AIScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => v
 // =============================================================================
 const CHATBOT_SUGGESTIONS: Array<{ message: string; context?: Record<string, unknown> }> = [
   {
-    message: "Từ FPT Đà Nẵng đến Đại học Duy Tân, ưu tiên tuyến được trợ giá",
-    context: { boardingStopId: 729, alightingStopId: 751 },
+    message: "Từ FPT Đà Nẵng đến Đại học Duy Tân 254 Nguyễn Văn Linh, ưu tiên tuyến được trợ giá",
   },
   { message: "So sánh vé lượt và vé tháng sau trợ giá" },
   { message: "Cho biết chuyến gần nhất và các trạm chính" },

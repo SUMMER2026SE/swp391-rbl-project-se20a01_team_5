@@ -44,7 +44,7 @@ public class JourneyPlannerService {
     private static final ZoneId VIETNAM_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
     private static final int NEAR_STOP_RADIUS_M = 1_700;
     private static final int MAX_ACCESS_WALK_M = 1_600;
-    private static final int MAX_TOTAL_WALK_M = 2_700;
+    private static final int MAX_TOTAL_WALK_M = 3_200;
     private static final int TRANSFER_WALK_RADIUS_M = 300;
     private static final int PREFERRED_TOTAL_WALK_M = 1_800;
     private static final int MAX_OPTIONS = 4;

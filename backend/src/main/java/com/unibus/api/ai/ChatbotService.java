@@ -1,6 +1,9 @@
 package com.unibus.api.ai;
 
+import java.math.BigDecimal;
 import java.text.Normalizer;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -9,6 +12,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,11 +37,21 @@ import com.unibus.api.ai.AiKnowledgeRepository.RegistrationSnapshot;
 import com.unibus.api.ai.AiKnowledgeRepository.StudentContext;
 import com.unibus.api.ai.AiKnowledgeRepository.TicketSnapshot;
 import com.unibus.api.ai.AiLlmService.AiPrompt;
+import com.unibus.api.security.CurrentUser;
+import com.unibus.api.transport.JourneyPlannerService;
+import com.unibus.api.transport.PlaceService;
+import com.unibus.api.transport.dto.TransportDtos.JourneyOption;
+import com.unibus.api.transport.dto.TransportDtos.JourneySearchRequest;
+import com.unibus.api.transport.dto.TransportDtos.PlacePoint;
+import com.unibus.api.transport.dto.TransportDtos.PlaceSuggestion;
+import com.unibus.api.user.model.UserRole;
 
 @Service
 public class ChatbotService {
 
     private static final Logger log = LoggerFactory.getLogger(ChatbotService.class);
+    private static final Pattern ROUTE_ENDPOINTS = Pattern.compile("(?iu)\\b(?:từ|tu)\\s+(.+?)\\s+(?:đến|den)\\s+(.+)");
+    private static final ZoneId VIETNAM_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
 
     private static final String SYSTEM_PROMPT = """
             Bạn là UniBus AI Copilot cho sinh viên.
@@ -57,6 +72,8 @@ public class ChatbotService {
     private final AiLlmService llmService;
     private final IntentRouter intentRouter;
     private final FastReplyService fastReplyService;
+    private final PlaceService placeService;
+    private final JourneyPlannerService journeyPlannerService;
 
     public ChatbotService(
             JdbcTemplate jdbcTemplate,
@@ -64,7 +81,9 @@ public class ChatbotService {
             RouteSuggestionService routeSuggestionService,
             AiLlmService llmService,
             IntentRouter intentRouter,
-            FastReplyService fastReplyService) {
+            FastReplyService fastReplyService,
+            PlaceService placeService,
+            JourneyPlannerService journeyPlannerService) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = new ObjectMapper();
         this.knowledgeRepository = knowledgeRepository;
@@ -72,6 +91,8 @@ public class ChatbotService {
         this.llmService = llmService;
         this.intentRouter = intentRouter;
         this.fastReplyService = fastReplyService;
+        this.placeService = placeService;
+        this.journeyPlannerService = journeyPlannerService;
     }
 
     @Transactional
@@ -87,6 +108,9 @@ public class ChatbotService {
     private ChatResponse runConversation(Integer userId, ChatRequest request, StreamSink sink) {
         String userMessage = request.message() == null ? "" : request.message().trim();
         AiIntent advisoryType = intentRouter.detect(userMessage);
+        List<RouteSuggestionCard> journeyRoutes = advisoryType == AiIntent.ROUTE_SUGGESTION
+                ? journeyRouteSuggestions(userId, userMessage, request)
+                : List.of();
         sink.emit("assistant.started", streamEvent("assistant.started", null, null, null,
                 advisoryType, List.of(), List.of(), List.of(), List.of(), null, null));
 
@@ -112,8 +136,10 @@ public class ChatbotService {
             return response;
         }
 
-        RouteSuggestionRequest routeRequest = routeRequestFromChat(userId, request, advisoryType);
-        if (shouldClarifyRouteRequest(advisoryType, routeRequest, userMessage)) {
+        RouteSuggestionRequest routeRequest = journeyRoutes.isEmpty()
+                ? routeRequestFromChat(userId, request, advisoryType)
+                : new RouteSuggestionRequest(null, null, null, preferences(request), userMessage, null);
+        if (journeyRoutes.isEmpty() && shouldClarifyRouteRequest(advisoryType, routeRequest, userMessage)) {
             String message = routeClarificationMessage(routeRequest);
             String sessionId = UUID.randomUUID().toString();
             sink.emit("fast_reply", streamEvent("fast_reply", message, null,
@@ -142,7 +168,9 @@ public class ChatbotService {
         toolCompleted(sink, traceEvents, profileTimer, "Tìm thấy " + nullToBlank(student.universityName()));
 
         List<RouteSuggestionCard> routeSuggestions = List.of();
-        if (shouldLoadRoutes(advisoryType, routeRequest, userMessage)) {
+        if (!journeyRoutes.isEmpty()) {
+            routeSuggestions = journeyRoutes;
+        } else if (shouldLoadRoutes(advisoryType, routeRequest, userMessage)) {
             ToolTimer routeTimer = toolStarted(sink, traceEvents, "route_suggestions", "Tuyến, trạm và lịch chạy", "Tìm tuyến phù hợp từ dữ liệu UniBus");
             routeSuggestions = routeSuggestionService.suggest(userId, routeRequest).stream().limit(3).toList();
             toolCompleted(sink, traceEvents, routeTimer, routeSuggestions.size() + " tuyến phù hợp");
@@ -205,6 +233,105 @@ public class ChatbotService {
                 sessionId,
                 traceEvents,
                 providerStatus);
+    }
+
+    private List<RouteSuggestionCard> journeyRouteSuggestions(Integer userId, String message, ChatRequest chatRequest) {
+        RouteEndpoints endpoints = routeEndpoints(message);
+        if (endpoints == null) {
+            return List.of();
+        }
+        try {
+            PlacePoint origin = resolveRoutePoint(endpoints.origin());
+            PlacePoint destination = resolveRoutePoint(endpoints.destination());
+            if (origin == null || destination == null) {
+                return List.of();
+            }
+            CurrentUser currentUser = new CurrentUser(userId, "", UserRole.STUDENT, null);
+            List<JourneyOption> journeys = journeyPlannerService.search(currentUser,
+                    new JourneySearchRequest(origin, destination, 2, null));
+            if (journeys.isEmpty()) {
+                OffsetDateTime tomorrowMorning = OffsetDateTime.now(VIETNAM_ZONE)
+                        .plusDays(1)
+                        .withHour(7)
+                        .withMinute(0)
+                        .withSecond(0)
+                        .withNano(0);
+                journeys = journeyPlannerService.search(currentUser,
+                        new JourneySearchRequest(origin, destination, 2, tomorrowMorning));
+            }
+            if (journeys.isEmpty()) {
+                return List.of();
+            }
+            Map<Integer, RouteSuggestionCard> cards = routeSuggestionService.suggest(userId,
+                    new RouteSuggestionRequest(null, null, null, preferences(chatRequest), message, null))
+                    .stream()
+                    .collect(java.util.stream.Collectors.toMap(
+                            RouteSuggestionCard::routeId,
+                            card -> card,
+                            (left, right) -> left,
+                            LinkedHashMap::new));
+            return journeys.getFirst().legs().stream()
+                    .filter(leg -> "BUS".equalsIgnoreCase(leg.mode()) && leg.routeId() != null)
+                    .map(leg -> cards.get(leg.routeId()))
+                    .filter(java.util.Objects::nonNull)
+                    .distinct()
+                    .toList();
+        } catch (RuntimeException exception) {
+            log.debug("Unable to resolve chatbot journey route", exception);
+        }
+        return List.of();
+    }
+
+    private RouteEndpoints routeEndpoints(String message) {
+        Matcher matcher = ROUTE_ENDPOINTS.matcher(message == null ? "" : message);
+        if (!matcher.find()) {
+            return null;
+        }
+        String origin = expandUniversityAbbreviation(matcher.group(1).trim());
+        String destination = expandUniversityAbbreviation(matcher.group(2)
+                .split("(?iu)\\s*(?:,|;|\\bnên\\b|\\bnen\\b|\\bưu tiên\\b|\\buu tien\\b)", 2)[0]
+                .trim());
+        return origin.isBlank() || destination.isBlank() ? null : new RouteEndpoints(origin, destination);
+    }
+
+    private String expandUniversityAbbreviation(String value) {
+        return value.replaceAll("(?iu)(^|\\s)(?:đh|dh)(?=\\s)", "$1Đại học");
+    }
+
+    private PlacePoint placePoint(PlaceSuggestion place) {
+        return place.stopId() == null
+                ? new PlacePoint(place.id(), null, place.label(), place.latitude(), place.longitude())
+                : new PlacePoint(null, place.stopId(), place.label(), null, null);
+    }
+
+    private PlacePoint resolveRoutePoint(String query) {
+        String normalized = normalizeSearchText(query);
+        // ponytail: demo campus aliases avoid external geocoder latency; move coordinates to a campus catalog when one exists.
+        if (normalized.contains("fpt") && normalized.contains("da nang")) {
+            return new PlacePoint("campus:fpt-danang", null, "Trường Đại học FPT Đà Nẵng",
+                    BigDecimal.valueOf(15.9674834), BigDecimal.valueOf(108.2603613));
+        }
+        if (normalized.contains("duy tan") && normalized.contains("nguyen van linh")) {
+            return new PlacePoint("campus:dtu-nguyen-van-linh", null, "Đại học Duy Tân 254 Nguyễn Văn Linh",
+                    BigDecimal.valueOf(16.0600568), BigDecimal.valueOf(108.2096704));
+        }
+        return placeService.search(query, null, null, 1).stream()
+                .filter(this::isUsablePlace)
+                .findFirst()
+                .map(this::placePoint)
+                .orElse(null);
+    }
+
+    private boolean isUsablePlace(PlaceSuggestion place) {
+        return place.stopId() != null || (place.latitude() != null && place.longitude() != null);
+    }
+
+    private List<String> preferences(ChatRequest request) {
+        Object value = request.context() == null ? null : request.context().get("preferences");
+        return value instanceof List<?> list ? list.stream().map(String::valueOf).toList() : List.of();
+    }
+
+    private record RouteEndpoints(String origin, String destination) {
     }
 
     private boolean shouldUseToolAssistedAnswer(

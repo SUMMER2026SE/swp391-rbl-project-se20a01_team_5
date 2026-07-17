@@ -15,6 +15,8 @@ import com.unibus.api.ai.AiDtos.ChatRequest;
 import com.unibus.api.ai.AiDtos.ChatResponse;
 import com.unibus.api.ai.AiDtos.RouteSuggestionRequest;
 import com.unibus.api.ai.AiLlmService.LlmResult;
+import com.unibus.api.transport.JourneyPlannerService;
+import com.unibus.api.transport.PlaceService;
 
 class AiCopilotServiceTests {
 
@@ -45,7 +47,9 @@ class AiCopilotServiceTests {
                 routeSuggestionService,
                 fakeLlm,
                 intentRouter,
-                fastReplyService);
+                fastReplyService,
+                org.mockito.Mockito.mock(PlaceService.class),
+                org.mockito.Mockito.mock(JourneyPlannerService.class));
     }
 
     @Test
@@ -114,6 +118,18 @@ class AiCopilotServiceTests {
                 "Tôi đang ở Đại học FPT Đà Nẵng và muốn đến Đại học Duy Tân");
 
         assertThat(pair).isNull();
+    }
+
+    @Test
+    void chatParsesUniversityRouteEndpointsWithoutPreferenceSuffix() throws Exception {
+        var routeEndpoints = ChatbotService.class.getDeclaredMethod("routeEndpoints", String.class);
+        routeEndpoints.setAccessible(true);
+
+        Object endpoints = routeEndpoints.invoke(chatbotService,
+                "Từ đại học FPT Đà Nẵng đến đh Duy Tân Nguyễn Văn Linh, ưu tiên tuyến được trợ giá");
+
+        assertThat(endpoints.toString()).contains("đại học FPT Đà Nẵng", "Đại học Duy Tân Nguyễn Văn Linh");
+        assertThat(endpoints.toString()).doesNotContain("ưu tiên");
     }
 
     @Test
