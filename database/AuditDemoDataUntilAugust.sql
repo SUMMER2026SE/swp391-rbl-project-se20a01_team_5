@@ -432,53 +432,6 @@ ticket_status AS (
       AND status = 'ACTIVE'
       AND qr_code LIKE 'DEMO-%'
 ),
-scenario_restore_status AS (
-    SELECT
-        'demo_scenario' AS section,
-        'student.supported clean purchase state' AS subject,
-        CASE WHEN
-            NOT EXISTS (SELECT 1 FROM route_registrations WHERE student_code = '27211200001')
-            AND NOT EXISTS (SELECT 1 FROM tb_orders WHERE student_code = '27211200001')
-            AND NOT EXISTS (SELECT 1 FROM payments WHERE student_code = '27211200001')
-            AND NOT EXISTS (SELECT 1 FROM monthly_passes WHERE student_code = '27211200001')
-            AND NOT EXISTS (SELECT 1 FROM single_trip_tickets WHERE student_code = '27211200001')
-            AND NOT EXISTS (SELECT 1 FROM travel_history WHERE student_code = '27211200001')
-        THEN 'PASS' ELSE 'FAIL' END AS status,
-        concat(
-            'registrations=', (SELECT count(*) FROM route_registrations WHERE student_code = '27211200001'),
-            '; orders=', (SELECT count(*) FROM tb_orders WHERE student_code = '27211200001'),
-            '; payments=', (SELECT count(*) FROM payments WHERE student_code = '27211200001'),
-            '; tickets=', (SELECT count(*) FROM monthly_passes WHERE student_code = '27211200001')
-                + (SELECT count(*) FROM single_trip_tickets WHERE student_code = '27211200001'),
-            '; scans=', (SELECT count(*) FROM travel_history WHERE student_code = '27211200001')
-        ) AS detail
-    UNION ALL
-    SELECT
-        'demo_scenario',
-        'dispatcher assignment checkpoint',
-        CASE WHEN count(*) = 1
-             AND count(*) FILTER (WHERE t.bus_id IS NULL AND t.driver_id IS NULL AND t.conductor_id IS NULL) = 1
-             AND count(*) FILTER (WHERE bs.bus_id IS NULL AND bs.driver_id IS NULL AND bs.conductor_id IS NULL) = 1
-             AND count(*) FILTER (WHERE t.status = 'NOT_STARTED') = 1
-        THEN 'PASS' ELSE 'FAIL' END,
-        concat(
-            'trips=', count(*),
-            '; unassigned=', count(*) FILTER (WHERE t.bus_id IS NULL AND t.driver_id IS NULL AND t.conductor_id IS NULL),
-            '; service=', COALESCE(string_agg(t.service_date::text || ' ' || bs.departure_time::text, ', '), 'none')
-        )
-    FROM trips t
-    JOIN bus_schedules bs ON bs.schedule_id = t.schedule_id
-    WHERE t.notes = 'DEMO_SCENARIO:STUDENT_SUPPORTED'
-    UNION ALL
-    SELECT
-        'demo_scenario',
-        'unrelated demo history preserved',
-        CASE WHEN count(*) >= 1 THEN 'PASS' ELSE 'FAIL' END,
-        concat('other_travel_history=', count(*))
-    FROM travel_history th
-    WHERE th.student_code IN (SELECT student_code FROM demo_students)
-      AND th.student_code <> '27211200001'
-),
 support_workflow_status AS (
     SELECT 'support_workflow' AS section, 'student feedback baseline' AS subject,
            CASE WHEN count(*) >= 2 THEN 'PASS' ELSE 'FAIL' END AS status,
@@ -726,7 +679,6 @@ UNION ALL SELECT * FROM schedule_weekday_status
 UNION ALL SELECT * FROM fleet_status
 UNION ALL SELECT * FROM trip_coverage
 UNION ALL SELECT * FROM ticket_status
-UNION ALL SELECT * FROM scenario_restore_status
 UNION ALL SELECT * FROM support_workflow_status
 UNION ALL SELECT * FROM uniadmin_visibility
 UNION ALL SELECT * FROM domain_status

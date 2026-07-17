@@ -7,7 +7,7 @@
 - Chạy lệnh từ thư mục gốc repository bằng Windows PowerShell.
 - `database\RunDemoData.ps1` đọc kết nối từ `dbauth.txt` và thao tác trên **live RDS được cấu hình trong file đó**, không phải database local.
 - Trước khi chạy, luôn đọc dòng `Target database: ...` để chắc chắn đúng host/database.
-- `Audit` chỉ đọc dữ liệu. `Seed`, `Reset`, `All` có thay đổi dữ liệu live.
+- Script reset dữ liệu diễn tập chính rồi tự audit; không có chế độ seed hoặc tạo trip giả.
 - Không commit hoặc gửi công khai `dbauth.txt`, `SEPAY_WEBHOOK_API_KEY`, JWT secret hay AWS credentials.
 - Không dùng các script `*Stable*` cũ. Bộ script dưới đây là nguồn dữ liệu demo duy nhất.
 
@@ -16,57 +16,21 @@ Yêu cầu máy có một trong hai lựa chọn:
 - Python + `psycopg2`; hoặc
 - PostgreSQL `psql` trong `PATH`.
 
-## 2. Lệnh quản lý dữ liệu demo
-
-### Audit — kiểm tra read-only
+## 2. Reset và audit bằng một file
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File database\RunDemoData.ps1 -Mode Audit
+powershell -NoProfile -ExecutionPolicy Bypass -File database\RunDemoData.ps1
 ```
 
-Dùng trước mỗi buổi demo. Lệnh không yêu cầu xác nhận và không sửa dữ liệu.
+Script tự reset luồng diễn tập chính rồi audit ngay trong cùng một transaction. Lệnh yêu cầu `RESET DEMO` hoặc `RESET DEMO PRODUCTION` khi chạy trên RDS.
 
-### Seed — bổ sung/chuẩn hóa baseline
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File database\RunDemoData.ps1 -Mode Seed
-```
-
-Runner yêu cầu nhập chính xác:
-
-```text
-SEED DEMO
-```
-
-Seed dùng khi baseline thiếu tài khoản, vé, chuyến, phân công hoặc dữ liệu của DTU, UTE, VKU, FPT Đà Nẵng.
-
-### Reset — trả về kịch bản chuẩn
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File database\RunDemoData.ps1 -Mode Reset
-```
-
-Runner yêu cầu nhập chính xác:
-
-```text
-RESET DEMO
-```
-
-Reset dùng sau khi team đã thanh toán, quét vé, đổi trạng thái chuyến hoặc tạo dữ liệu test.
-
-### All — Restore rồi Audit
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File database\RunDemoData.ps1 -Mode All
-```
-
-`All` chạy `Reset` rồi `Audit`: xóa dữ liệu phát sinh thuộc tập demo, tái tạo baseline chuẩn và kiểm tra toàn bộ assertion. Lệnh yêu cầu `RESET DEMO`.
-
-Checkpoint sau `All`:
+Checkpoint sau khi chạy:
 
 - `student.supported@unibus.local` không còn đăng ký tuyến, order, payment, vé hoặc lịch sử quét.
-- Có đúng một trip `DEMO_SCENARIO:STUDENT_SUPPORTED`, trạng thái `NOT_STARTED`, chưa có xe/tài xế/phụ xe.
-- Dispatcher phải phân công trip đó trước khi Driver và Conductor nhìn thấy chuyến.
+- Script không tạo trip hoặc tuyến giả.
+- Sinh viên tìm từ khu vực FPT Đà Nẵng đến Duy Tân 254 Nguyễn Văn Linh; planner có thể trả nhiều phương án, gồm cả liên tuyến.
+- Sau khi sinh viên mua vé, Dispatcher tạo ca và phân công xe/tài xế/phụ xe cho từng tuyến cần trình diễn.
+- Driver và Conductor chỉ thấy những chuyến vừa được Dispatcher phân công.
 - Lịch sử của các account demo khác được giữ để các dashboard vẫn có dữ liệu.
 - Admin và University Admin trở về baseline dựng sẵn; dữ liệu mới của luồng chính chỉ xuất hiện sau khi sinh viên mua vé và các role vận hành thao tác.
 
@@ -78,7 +42,7 @@ Mật khẩu chung: `Password123!`
 
 | Kịch bản | Tài khoản | MSSV |
 | --- | --- | --- |
-| DTU được trợ giá, có vé tháng | `student.supported@unibus.local` | `27211200001` |
+| DTU được trợ giá, bắt đầu luồng mới | `student.supported@unibus.local` | `27211200001` |
 | DTU mua giá thường | `student.fullprice@unibus.local` | `27212100002` |
 | DTU có vé tháng | `student.monthly@unibus.local` | `27211200003` |
 | DTU có vé lượt | `student.day@unibus.local` | `27217100004` |
@@ -239,8 +203,7 @@ Admin hệ thống:
 Nếu buổi tập có thay đổi dữ liệu:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File database\RunDemoData.ps1 -Mode Reset
-powershell -NoProfile -ExecutionPolicy Bypass -File database\RunDemoData.ps1 -Mode Audit
+powershell -NoProfile -ExecutionPolicy Bypass -File database\RunDemoData.ps1
 ```
 
 Chỉ kết thúc khi Audit pass. Nếu Audit fail, ghi lại lỗi và sửa dữ liệu/script; không che lỗi bằng mock frontend.

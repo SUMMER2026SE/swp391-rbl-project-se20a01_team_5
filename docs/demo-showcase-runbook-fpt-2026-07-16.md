@@ -12,7 +12,7 @@ Demo một hành trình liên vai trò, trong đó sinh viên chính thuộc **T
 4. Từ repository root chạy:
 
 ```powershell
-.\database\RunDemoData.ps1 -Mode All -AuthFile .\dbauth.txt -AllowProduction -ConfirmPhrase "RESET DEMO PRODUCTION"
+.\database\RunDemoData.ps1 -AuthFile .\dbauth.txt -AllowProduction -ConfirmPhrase "RESET DEMO PRODUCTION"
 ```
 
 5. Không bắt đầu demo nếu Audit có `FAIL`.
@@ -25,14 +25,15 @@ Mật khẩu chung của account demo: `Password123!`.
 Luồng chính dùng một checkpoint xuyên role:
 
 ```text
-student.supported mua vé
-→ dispatcher.demo phân xe + tài xế + phụ xe cho chuyến đang chờ
+student.supported tìm từ khu vực FPT đến Duy Tân 254 Nguyễn Văn Linh và mua vé
+→ dispatcher.demo tạo ca thật cho một hoặc nhiều tuyến đã mua
+→ dispatcher.demo phân xe + tài xế + phụ xe
 → tài xế nhận và bắt đầu chuyến
 → phụ xe nhận chuyến và quét vé
 → dữ liệu mới xuất hiện ở University Admin và System Admin
 ```
 
-Sau `Mode All`, `student.supported` không có đăng ký tuyến, đơn hàng, vé, thanh toán hoặc lịch sử quét. Chuyến có marker `DEMO_SCENARIO:STUDENT_SUPPORTED` ở trạng thái `NOT_STARTED` và chưa được phân công. Các account khác vẫn giữ dữ liệu lịch sử baseline để dashboard không bị trống.
+Sau khi chạy script, `student.supported` không có đăng ký tuyến, đơn hàng, vé, thanh toán hoặc lịch sử quét. Script không tạo trip và không ép tuyến; planner tự trả các phương án thật đến Duy Tân 254 Nguyễn Văn Linh, gồm cả liên tuyến nếu phù hợp. Các account khác vẫn giữ dữ liệu lịch sử baseline để dashboard không bị trống.
 
 ### 1. Sinh viên Duy Tân — điểm mở đầu
 
@@ -41,8 +42,8 @@ Account chính để show dữ liệu: `student.monthly@unibus.local`
 Show theo thứ tự:
 
 1. Dashboard: thông tin trường Duy Tân; chưa có vé hoặc giao dịch của luồng chính.
-2. Chatbot AI: hỏi “Từ Đại học Duy Tân đi tuyến nào phù hợp?” và mở CTA được gợi ý.
-3. Tìm đường: chọn điểm đi/đến, giải thích giờ hoạt động thật; ngoài giờ phải báo hết chuyến thay vì tạo chuyến giả.
+2. Chatbot AI hoặc Tìm đường: chọn điểm đi gần FPT Đà Nẵng và điểm đến Duy Tân 254 Nguyễn Văn Linh.
+3. Chọn hành trình thật; một hoặc nhiều tuyến đều hợp lệ. Mua vé theo từng tuyến mà hệ thống trả về.
 4. Tra cứu tuyến: xác nhận các tuyến 01, 06, 09 xuất hiện và xem danh sách trạm/bản đồ.
 5. Thanh toán: so sánh `Giá vé`, `Trường hỗ trợ`, `Sinh viên trả`; chọn điểm lên/xuống cho vé lượt nhưng không gọi là giá theo chặng.
 6. Vé của tôi: mở vé tháng/QR; đổi sang vé lượt còn hạn nếu cần.
@@ -81,8 +82,8 @@ Account: `dispatcher.demo@unibus.local`
 Show:
 
 1. Dashboard vận hành hôm nay.
-2. Mở chuyến đang chờ của tuyến `student.supported` vừa mua vé.
-3. Phân xe, tài xế và phụ xe cho chuyến này.
+2. Xem tuyến hoặc các tuyến sinh viên vừa mua.
+3. Tạo ca chạy thật và phân xe, tài xế, phụ xe cho từng tuyến cần trình diễn.
 4. Theo dõi nhiều xe trên cùng bản đồ, đồng bộ phong cách tracking phía sinh viên.
 5. Quản lý tuyến/trạm ở mức read-only trong demo chính.
 6. Sự cố, phản hồi và thông báo liên vai trò.
@@ -132,16 +133,10 @@ Show:
 Chạy lại baseline bất kỳ lúc nào:
 
 ```powershell
-.\database\RunDemoData.ps1 -Mode All -AuthFile .\dbauth.txt -AllowProduction -ConfirmPhrase "RESET DEMO PRODUCTION"
+.\database\RunDemoData.ps1 -AuthFile .\dbauth.txt -AllowProduction -ConfirmPhrase "RESET DEMO PRODUCTION"
 ```
 
-`All` xóa dữ liệu phát sinh thuộc tập demo, tái tạo baseline chuẩn rồi audit; chạy nhiều lần không nhân bản dữ liệu.
-
-```powershell
-.\database\RunDemoData.ps1 -Mode Audit -AuthFile .\dbauth.txt
-```
-
-Không kết thúc buổi tập nếu Audit có `FAIL`.
+Script xóa dữ liệu phát sinh của luồng diễn tập chính và các ca gần đây do `dispatcher.demo` tạo, sau đó audit ngay trong cùng lần chạy. Chạy nhiều lần không nhân bản dữ liệu. Không kết thúc buổi tập nếu script báo `FAIL`.
 
 ## Integration ngoài và phương án dự phòng
 
