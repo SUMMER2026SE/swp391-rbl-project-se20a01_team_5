@@ -207,15 +207,28 @@ function optionBadges(option: JourneyOptionDTO) {
     }));
 }
 
-function resultWindow(option: JourneyOptionDTO) {
-  const busLegs = optionBusLegs(option);
-  const timedLegs = option.legs.filter((leg) => leg.nextDepartureAt || leg.estimatedArrivalAt);
-  const firstTimedLeg = timedLegs[0];
-  const lastTimedLeg = timedLegs[timedLegs.length - 1];
-  return {
-    departure: timeLabel(firstTimedLeg?.nextDepartureAt || busLegs[0]?.nextDepartureAt),
-    arrival: timeLabel(lastTimedLeg?.estimatedArrivalAt || busLegs[busLegs.length - 1]?.estimatedArrivalAt),
-  };
+function nextDepartureLabel(option: JourneyOptionDTO) {
+  const value = optionBusLegs(option)[0]?.nextDepartureAt;
+  if (!value) return "Đang cập nhật";
+  const departure = new Date(value);
+  if (Number.isNaN(departure.getTime())) return timeLabel(value);
+  const dateFormatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const today = dateFormatter.format(new Date());
+  const tomorrow = dateFormatter.format(new Date(Date.now() + 86_400_000));
+  const departureDay = dateFormatter.format(departure);
+  const time = departure.toLocaleTimeString("vi-VN", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  if (departureDay === today) return time;
+  if (departureDay === tomorrow) return `${time} ngày mai`;
+  return `${time} · ${departure.toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit" })}`;
 }
 
 function normalizeJourneyResults(options: JourneyOptionDTO[]) {
@@ -889,10 +902,8 @@ function JourneyResultCard({
   subsidized: boolean;
 }) {
   const badges = optionBadges(option);
-  const window = resultWindow(option);
+  const nextDeparture = nextDepartureLabel(option);
   const walkMinutes = Math.max(1, Math.round(numeric(option.summary.walkMinutes)));
-  const waitMinutes = Math.max(0, Math.round(numeric(option.summary.waitMinutes)));
-  const waitText = waitMinutes <= 1 ? "Xe sắp tới" : `Chờ ${waitMinutes} phút`;
   const transferText = option.summary.transferCount
     ? `${option.summary.transferCount} lần chuyển`
     : "Đi thẳng";
@@ -962,7 +973,7 @@ function JourneyResultCard({
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-medium text-on-surface-variant">
             <span className="inline-flex items-center gap-1.5 tabular-nums">
               <Clock3 className="size-3.5 shrink-0" />
-              {window.departure} - {window.arrival}
+              Chuyến kế tiếp · {nextDeparture}
             </span>
             <span className="inline-flex items-center gap-1.5">
               <Route className="size-3.5 shrink-0" />
@@ -971,10 +982,6 @@ function JourneyResultCard({
             <span className="inline-flex items-center gap-1.5">
               <Footprints className="size-3.5 shrink-0" />
               Đi bộ {walkMinutes} phút
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <RefreshCw className="size-3.5 shrink-0" />
-              {waitText}
             </span>
           </div>
         </div>
@@ -1026,12 +1033,11 @@ function JourneyPlanDetailPanel({
 }) {
   const busLegs = optionBusLegs(option);
   const badges = optionBadges(option);
-  const window = resultWindow(option);
+  const nextDeparture = nextDepartureLabel(option);
   const action = option.primaryAction;
   const transferCount = option.summary.transferCount || Math.max(0, badges.length - 1);
   const fareLabel = transferCount || badges.length > 1 ? "Tổng vé lượt tham khảo" : "Vé lượt tham khảo";
   const walkMinutes = Math.max(1, Math.round(numeric(option.summary.walkMinutes)));
-  const waitMinutes = Math.max(0, Math.round(numeric(option.summary.waitMinutes)));
   const subsidized = action?.subsidyEligible ?? busLegs.some((leg) => leg.universityLinked);
   const availabilityTitle = action?.enabled
     ? subsidized
@@ -1073,7 +1079,7 @@ function JourneyPlanDetailPanel({
                 ))}
               </div>
               <h2 className="mt-2 text-lg font-semibold tabular-nums text-[#111111]">
-                {window.departure} → {window.arrival}
+                Chuyến kế tiếp · {nextDeparture}
               </h2>
             </div>
             <div className="shrink-0 text-right">
@@ -1092,7 +1098,7 @@ function JourneyPlanDetailPanel({
       <div className="min-h-0 flex-1 overflow-y-auto p-5 scrollbar-soft">
         <div className="grid grid-cols-3 gap-2">
           <MiniStat icon={Footprints} label="Đi bộ" value={`${walkMinutes} phút`} tone="green" />
-          <MiniStat icon={RefreshCw} label="Chờ xe" value={`${waitMinutes} phút`} tone="orange" />
+          <MiniStat icon={Clock3} label="Khởi hành" value={nextDeparture} tone="orange" />
           <MiniStat icon={BusFront} label="Bus" value={`${busLegs.length || 1} tuyến`} tone="blue" />
         </div>
 

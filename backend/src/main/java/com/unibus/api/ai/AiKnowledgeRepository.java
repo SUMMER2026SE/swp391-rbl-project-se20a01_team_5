@@ -6,6 +6,7 @@ import java.sql.Time;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
@@ -15,6 +16,8 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public class AiKnowledgeRepository {
+
+    private static final ZoneId VIETNAM_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -157,8 +160,28 @@ public class AiKnowledgeRepository {
     }
 
     public List<String> departureTimes(Integer routeId, LocalTime preferredDepartureTime) {
-        int weekday = LocalDate.now().getDayOfWeek().getValue();
-        List<LocalTime> times = jdbcTemplate.query("""
+        LocalDate today = LocalDate.now(VIETNAM_ZONE);
+        LocalTime floor = preferredDepartureTime == null ? LocalTime.now(VIETNAM_ZONE) : preferredDepartureTime;
+        List<LocalTime> todayTimes = departureTimes(routeId, today.getDayOfWeek().getValue());
+        List<String> upcoming = todayTimes.stream()
+                .filter(time -> !time.isBefore(floor))
+                .limit(3)
+                .map(this::timeLabel)
+                .toList();
+        if (!upcoming.isEmpty()) return upcoming;
+        for (int dayOffset = 1; dayOffset <= 7; dayOffset++) {
+            LocalDate date = today.plusDays(dayOffset);
+            List<LocalTime> times = departureTimes(routeId, date.getDayOfWeek().getValue());
+            if (!times.isEmpty()) {
+                String suffix = dayOffset == 1 ? " ngày mai" : " " + date.getDayOfMonth() + "/" + date.getMonthValue();
+                return times.stream().limit(3).map(time -> timeLabel(time) + suffix).toList();
+            }
+        }
+        return List.of();
+    }
+
+    private List<LocalTime> departureTimes(Integer routeId, int weekday) {
+        return jdbcTemplate.query("""
                 SELECT departure_time
                 FROM bus_schedules
                 WHERE route_id = ?
@@ -171,19 +194,10 @@ public class AiKnowledgeRepository {
                 }, routeId, weekday).stream()
                 .filter(time -> time != null)
                 .toList();
-        LocalTime floor = preferredDepartureTime == null ? LocalTime.now() : preferredDepartureTime;
-        List<String> upcoming = times.stream()
-                .filter(time -> !time.isBefore(floor))
-                .limit(3)
-                .map(time -> time.toString().substring(0, 5))
-                .toList();
-        if (!upcoming.isEmpty()) {
-            return upcoming;
-        }
-        return times.stream()
-                .limit(3)
-                .map(time -> time.toString().substring(0, 5))
-                .toList();
+    }
+
+    private String timeLabel(LocalTime time) {
+        return time.toString().substring(0, 5);
     }
 
     private List<AiDtos.RouteStopCard> routeStops(Integer routeId) {

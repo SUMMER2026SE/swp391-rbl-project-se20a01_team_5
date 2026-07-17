@@ -111,11 +111,10 @@ class AiCopilotServiceTests {
         stopMentions.setAccessible(true);
         var mentions = (java.util.List<?>) stopMentions.invoke(chatbotService, "Tôi đang ở Đại học FPT Đà Nẵng và muốn đến Đại học Duy Tân");
         var compatiblePair = ChatbotService.class.getDeclaredMethod(
-                "firstRouteCompatiblePair", Integer.class, java.util.List.class, String.class, java.util.List.class, String.class);
+                "firstRouteCompatiblePair", java.util.List.class);
         compatiblePair.setAccessible(true);
 
-        Object pair = compatiblePair.invoke(chatbotService, 1, mentions, null, java.util.List.of("fast", "cheap"),
-                "Tôi đang ở Đại học FPT Đà Nẵng và muốn đến Đại học Duy Tân");
+        Object pair = compatiblePair.invoke(chatbotService, mentions);
 
         assertThat(pair).isNull();
     }
@@ -130,6 +129,48 @@ class AiCopilotServiceTests {
 
         assertThat(endpoints.toString()).contains("đại học FPT Đà Nẵng", "Đại học Duy Tân Nguyễn Văn Linh");
         assertThat(endpoints.toString()).doesNotContain("ưu tiên");
+    }
+
+    @Test
+    void chatParsesNaturalCurrentLocationQuestion() throws Exception {
+        var routeEndpoints = ChatbotService.class.getDeclaredMethod("routeEndpoints", String.class);
+        routeEndpoints.setAccessible(true);
+
+        Object endpoints = routeEndpoints.invoke(chatbotService,
+                "Tôi đang ở trường FPT, muốn qua Bách khoa thì đi sao?");
+
+        assertThat(endpoints.toString()).contains("trường FPT", "Bách khoa");
+    }
+
+    @Test
+    void chatParsesNearCampusPointToPointQuestion() throws Exception {
+        var routeEndpoints = ChatbotService.class.getDeclaredMethod("routeEndpoints", String.class);
+        routeEndpoints.setAccessible(true);
+
+        Object endpoints = routeEndpoints.invoke(chatbotService,
+                "Gần Đại học FPT Đà Nẵng đi đến Đại học Duy Tân Nguyễn Văn Linh");
+
+        assertThat(endpoints.toString()).contains("Đại học FPT Đà Nẵng", "Đại học Duy Tân Nguyễn Văn Linh");
+    }
+
+    @Test
+    void chatParsesShortPointToPointQuestion() throws Exception {
+        var routeEndpoints = ChatbotService.class.getDeclaredMethod("routeEndpoints", String.class);
+        routeEndpoints.setAccessible(true);
+
+        Object endpoints = routeEndpoints.invoke(chatbotService, "FPT tới Duy Tân đi sao?");
+
+        assertThat(endpoints.toString()).contains("FPT", "Duy Tân");
+    }
+
+    @Test
+    void chatClarifiesAmbiguousDuyTanCampusInsteadOfGuessingStops() {
+        ChatResponse response = chatbotService.respond(1, new ChatRequest(
+                "Từ FPT đến Duy Tân đi xe nào?", Map.of()));
+
+        assertThat(response.mode()).isEqualTo("FAST_REPLY");
+        assertThat(response.message()).contains("254 Nguyễn Văn Linh", "cơ sở khác");
+        assertThat(response.routeSuggestions()).isEmpty();
     }
 
     @Test
@@ -158,6 +199,35 @@ class AiCopilotServiceTests {
                 Map.of()));
 
         assertThat(response.mode()).isEqualTo("ZAI");
+    }
+
+    @Test
+    void fareFollowUpUsesRouteFromConversationContext() {
+        ChatResponse response = chatbotService.respond(1, new ChatRequest(
+                "Còn vé lượt thì sao?", Map.of("routeId", 100)));
+
+        assertThat(response.advisoryType()).isEqualTo("FARE_LOOKUP");
+        assertThat(response.message()).contains("Vé lượt", "7.000", "Vé tháng", "Sinh viên trả");
+        assertThat(response.routeSuggestions()).extracting("routeId").containsExactly(100);
+    }
+
+    @Test
+    void scheduleFollowUpUsesRouteFromConversationContext() {
+        ChatResponse response = chatbotService.respond(1, new ChatRequest(
+                "Tuyến đó chuyến tiếp theo lúc mấy giờ?", Map.of("routeId", 100)));
+
+        assertThat(response.advisoryType()).isEqualTo("SCHEDULE_LOOKUP");
+        assertThat(response.message()).contains("R1", "Lịch gần nhất");
+        assertThat(response.routeSuggestions()).extracting("routeId").containsExactly(100);
+    }
+
+    @Test
+    void fareQuestionFindsRouteByDisplayedCode() {
+        ChatResponse response = chatbotService.respond(1, new ChatRequest(
+                "Vé lượt và vé tháng tuyến 1 giá bao nhiêu?", Map.of()));
+
+        assertThat(response.advisoryType()).isEqualTo("FARE_LOOKUP");
+        assertThat(response.routeSuggestions()).extracting("routeId").containsExactly(100);
     }
 
     @Test

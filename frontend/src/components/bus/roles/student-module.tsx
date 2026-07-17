@@ -3386,7 +3386,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
   const nextEta = journeyTracking?.stopEtas?.[0];
   const routeTitle = journeyTracking?.routeName || trackingContext?.routeName || selectedRoute?.name || "Tuyến đang theo dõi";
   const routeCode = journeyTracking?.routeCode || trackingContext?.routeCode || journeyTracking?.stopEtas?.[0]?.routeCode || selectedRoute?.code || "BUS";
-  const displayVehicles = journeyTracking?.vehicles || [];
+  const displayVehicles = useMemo(() => journeyTracking?.vehicles || [], [journeyTracking?.vehicles]);
   const selectedVehicle = displayVehicles.find((vehicle) => vehicle.vehicleId === selectedVehicleId) || displayVehicles[0];
   const collapsedVehicles = displayVehicles.filter((vehicle) => vehicle.vehicleId !== selectedVehicle?.vehicleId);
 
@@ -5753,8 +5753,8 @@ function AiRouteResultCard({
 }) {
   const stops = route.stops || [];
   const registerAction = route.actions?.find((action) => action.type === "REGISTER_ROUTE");
-  const boardingStopId = registerAction?.boardingStopId || stops[0]?.stopId;
-  const alightingStopId = registerAction?.alightingStopId || stops[stops.length - 1]?.stopId;
+  const boardingStopId = registerAction?.boardingStopId;
+  const alightingStopId = registerAction?.alightingStopId;
   const monthlyFare = route.finalFare ?? route.monthlyFare;
   const departure = route.nextDepartures?.[0];
   const meaningfulReasons = (route.reasons || [])
@@ -5927,6 +5927,7 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
       toolActive: false,
     };
     const historySnapshot = [...messages, userMsg];
+    const lastRoute = [...messages].reverse().find((message) => message.routeSuggestions?.length)?.routeSuggestions?.[0];
     setMessages((m) => [...m, userMsg, botDraft]);
     setInput("");
     setLoading(true);
@@ -5935,6 +5936,7 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
       message: userMsg.text,
       context: {
         preferences: ["fast", "cheap"],
+        ...(lastRoute?.routeId ? { routeId: lastRoute.routeId } : {}),
         ...extraContext,
         conversationHistory: historySnapshot.slice(-8).map((message) => ({
           role: message.role === "bot" ? "assistant" as const : "user" as const,

@@ -368,7 +368,7 @@ public class JourneyPlannerService {
                         first.line().routeId(), first.from().stop().stopId(), first.to().stop().stopId()),
                 new JourneyAction("DETAIL", "Xem các trạm", true, null,
                         first.line().routeId(), first.from().stop().stopId(), first.to().stop().stopId()));
-        int totalMinutes = Math.max(1, (int) Duration.between(journeyStartAt, rollingDepartAt).toMinutes());
+        int totalMinutes = totalTravelMinutes(totalWalkMinutes, totalBusMinutes, totalTransferMinutes);
         JourneySummary summary = new JourneySummary(
                 totalMinutes,
                 totalWalkMinutes,
@@ -384,6 +384,10 @@ public class JourneyPlannerService {
                 origin.label(), destination.label(), routeBadges.toString(), totalMinutes, totalWalkMeters));
         return new JourneyOption(optionId, summary, legs, routeBadges, registerAction, secondaryActions,
                 polylines, compactStops(allStops));
+    }
+
+    static int totalTravelMinutes(int walkMinutes, int busMinutes, int transferMinutes) {
+        return Math.max(1, walkMinutes + busMinutes + transferMinutes);
     }
 
     private JourneyLeg busLeg(String legId, Segment segment, OffsetDateTime departAt) {
