@@ -542,7 +542,7 @@ public class JourneyPlannerService {
         var first = localDate.atTime(firstTrip.get()).atZone(VIETNAM_ZONE).toOffsetDateTime();
         var last = localDate.atTime(lastTrip.get()).atZone(VIETNAM_ZONE).toOffsetDateTime();
         if (requestedAt.isAfter(last)) {
-            return null;
+            return first.plusDays(1);
         }
         if (!requestedAt.isAfter(first)) {
             return first;
@@ -551,7 +551,7 @@ public class JourneyPlannerService {
         long elapsed = Duration.between(first, requestedAt).toMinutes();
         long intervals = (elapsed + headway - 1) / headway;
         OffsetDateTime next = first.plusMinutes(intervals * headway);
-        return next.isAfter(last) ? null : next;
+        return next.isAfter(last) ? first.plusDays(1) : next;
     }
 
     private Segment segment(RouteLine line, Integer fromStopId, Integer toStopId) {
