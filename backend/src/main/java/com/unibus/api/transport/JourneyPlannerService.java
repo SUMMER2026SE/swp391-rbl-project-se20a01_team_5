@@ -44,7 +44,7 @@ public class JourneyPlannerService {
     private static final ZoneId VIETNAM_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
     private static final int NEAR_STOP_RADIUS_M = 1_700;
     private static final int MAX_ACCESS_WALK_M = 1_600;
-    private static final int MAX_TOTAL_WALK_M = 2_700;
+    private static final int MAX_TOTAL_WALK_M = 3_200;
     private static final int TRANSFER_WALK_RADIUS_M = 300;
     private static final int PREFERRED_TOTAL_WALK_M = 1_800;
     private static final int MAX_OPTIONS = 4;
@@ -368,7 +368,7 @@ public class JourneyPlannerService {
                         first.line().routeId(), first.from().stop().stopId(), first.to().stop().stopId()),
                 new JourneyAction("DETAIL", "Xem các trạm", true, null,
                         first.line().routeId(), first.from().stop().stopId(), first.to().stop().stopId()));
-        int totalMinutes = Math.max(1, (int) Duration.between(journeyStartAt, rollingDepartAt).toMinutes());
+        int totalMinutes = totalTravelMinutes(totalWalkMinutes, totalBusMinutes, totalTransferMinutes);
         JourneySummary summary = new JourneySummary(
                 totalMinutes,
                 totalWalkMinutes,
@@ -384,6 +384,10 @@ public class JourneyPlannerService {
                 origin.label(), destination.label(), routeBadges.toString(), totalMinutes, totalWalkMeters));
         return new JourneyOption(optionId, summary, legs, routeBadges, registerAction, secondaryActions,
                 polylines, compactStops(allStops));
+    }
+
+    static int totalTravelMinutes(int walkMinutes, int busMinutes, int transferMinutes) {
+        return Math.max(1, walkMinutes + busMinutes + transferMinutes);
     }
 
     private JourneyLeg busLeg(String legId, Segment segment, OffsetDateTime departAt) {
@@ -542,7 +546,7 @@ public class JourneyPlannerService {
         var first = localDate.atTime(firstTrip.get()).atZone(VIETNAM_ZONE).toOffsetDateTime();
         var last = localDate.atTime(lastTrip.get()).atZone(VIETNAM_ZONE).toOffsetDateTime();
         if (requestedAt.isAfter(last)) {
-            return null;
+            return first.plusDays(1);
         }
         if (!requestedAt.isAfter(first)) {
             return first;
@@ -551,7 +555,7 @@ public class JourneyPlannerService {
         long elapsed = Duration.between(first, requestedAt).toMinutes();
         long intervals = (elapsed + headway - 1) / headway;
         OffsetDateTime next = first.plusMinutes(intervals * headway);
-        return next.isAfter(last) ? null : next;
+        return next.isAfter(last) ? first.plusDays(1) : next;
     }
 
     private Segment segment(RouteLine line, Integer fromStopId, Integer toStopId) {

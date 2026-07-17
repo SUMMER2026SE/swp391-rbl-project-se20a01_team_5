@@ -12,7 +12,7 @@ Demo một hành trình liên vai trò, trong đó sinh viên chính thuộc **T
 4. Từ repository root chạy:
 
 ```powershell
-.\database\RunDemoData.ps1 -Mode All -AuthFile .\dbauth.txt -AllowProduction -ConfirmPhrase "SEED DEMO PRODUCTION"
+.\database\RunDemoData.ps1 -AuthFile .\dbauth.txt -AllowProduction -ConfirmPhrase "RESET DEMO PRODUCTION"
 ```
 
 5. Không bắt đầu demo nếu Audit có `FAIL`.
@@ -22,15 +22,28 @@ Mật khẩu chung của account demo: `Password123!`.
 
 ## Câu chuyện demo khuyến nghị
 
+Luồng chính dùng một checkpoint xuyên role:
+
+```text
+student.supported tìm từ khu vực FPT đến Duy Tân 254 Nguyễn Văn Linh và mua vé
+→ dispatcher.demo tạo ca thật cho một hoặc nhiều tuyến đã mua
+→ dispatcher.demo phân xe + tài xế + phụ xe
+→ tài xế nhận và bắt đầu chuyến
+→ phụ xe nhận chuyến và quét vé
+→ dữ liệu mới xuất hiện ở University Admin và System Admin
+```
+
+Sau khi chạy script, `student.supported` không có đăng ký tuyến, đơn hàng, vé, thanh toán hoặc lịch sử quét. Script không tạo trip và không ép tuyến; planner tự trả các phương án thật đến Duy Tân 254 Nguyễn Văn Linh, gồm cả liên tuyến nếu phù hợp. Các account khác vẫn giữ dữ liệu lịch sử baseline để dashboard không bị trống.
+
 ### 1. Sinh viên Duy Tân — điểm mở đầu
 
 Account chính để show dữ liệu: `student.monthly@unibus.local`
 
 Show theo thứ tự:
 
-1. Dashboard: thông tin trường Duy Tân, tuyến đang quan tâm, vé và thông báo.
-2. Chatbot AI: hỏi “Từ Đại học Duy Tân đi tuyến nào phù hợp?” và mở CTA được gợi ý.
-3. Tìm đường: chọn điểm đi/đến, giải thích giờ hoạt động thật; ngoài giờ phải báo hết chuyến thay vì tạo chuyến giả.
+1. Dashboard: thông tin trường Duy Tân; chưa có vé hoặc giao dịch của luồng chính.
+2. Chatbot AI hoặc Tìm đường: chọn điểm đi gần FPT Đà Nẵng và điểm đến Duy Tân 254 Nguyễn Văn Linh.
+3. Chọn hành trình thật; một hoặc nhiều tuyến đều hợp lệ. Mua vé theo từng tuyến mà hệ thống trả về.
 4. Tra cứu tuyến: xác nhận các tuyến 01, 06, 09 xuất hiện và xem danh sách trạm/bản đồ.
 5. Thanh toán: so sánh `Giá vé`, `Trường hỗ trợ`, `Sinh viên trả`; chọn điểm lên/xuống cho vé lượt nhưng không gọi là giá theo chặng.
 6. Vé của tôi: mở vé tháng/QR; đổi sang vé lượt còn hạn nếu cần.
@@ -69,10 +82,11 @@ Account: `dispatcher.demo@unibus.local`
 Show:
 
 1. Dashboard vận hành hôm nay.
-2. Lịch chạy và các chuyến có tài xế/phụ xe được phân công.
-3. Theo dõi nhiều xe trên cùng bản đồ, đồng bộ phong cách tracking phía sinh viên.
-4. Quản lý tuyến/trạm ở mức read-only trong demo chính.
-5. Sự cố, phản hồi và thông báo liên vai trò.
+2. Xem tuyến hoặc các tuyến sinh viên vừa mua.
+3. Tạo ca chạy thật và phân xe, tài xế, phụ xe cho từng tuyến cần trình diễn.
+4. Theo dõi nhiều xe trên cùng bản đồ, đồng bộ phong cách tracking phía sinh viên.
+5. Quản lý tuyến/trạm ở mức read-only trong demo chính.
+6. Sự cố, phản hồi và thông báo liên vai trò.
 
 Không chỉnh tuyến/trạm thật trong buổi demo trừ khi đã tập rollback.
 
@@ -82,7 +96,7 @@ Account: `driver.demo@unibus.local`
 
 Show:
 
-1. Tuyến/chuyến được phân công.
+1. Sau bước Dispatcher, tải lại để thấy tuyến/chuyến vừa được phân công.
 2. Lịch chạy rõ theo thời gian.
 3. Chuyến hiện tại và trạng thái bắt đầu/kết thúc.
 4. Lịch sử chuyến.
@@ -94,7 +108,7 @@ Account: `conductor.demo@unibus.local`
 
 Show:
 
-1. Chuyến được phân công; không tự chọn tuyến ngoài phân công.
+1. Sau bước Dispatcher, tải lại để thấy chuyến được phân công; không tự chọn tuyến ngoài phân công.
 2. Quét QR vé lượt hợp lệ.
 3. Quét lại cùng vé phải bị từ chối, không tạo travel history trùng.
 4. Quét vé tháng.
@@ -119,16 +133,10 @@ Show:
 Chạy lại baseline bất kỳ lúc nào:
 
 ```powershell
-.\database\RunDemoData.ps1 -Mode Reset -AuthFile .\dbauth.txt -AllowProduction -ConfirmPhrase "SEED DEMO PRODUCTION"
+.\database\RunDemoData.ps1 -AuthFile .\dbauth.txt -AllowProduction -ConfirmPhrase "RESET DEMO PRODUCTION"
 ```
 
-`Reset` và `Seed` cùng tái tạo baseline chuẩn; chạy nhiều lần không nhân bản dữ liệu. Sau mỗi lần tập:
-
-```powershell
-.\database\RunDemoData.ps1 -Mode Audit -AuthFile .\dbauth.txt
-```
-
-Không kết thúc buổi tập nếu Audit có `FAIL`.
+Script xóa dữ liệu phát sinh của luồng diễn tập chính và các ca gần đây do `dispatcher.demo` tạo, sau đó audit ngay trong cùng lần chạy. Chạy nhiều lần không nhân bản dữ liệu. Không kết thúc buổi tập nếu script báo `FAIL`.
 
 ## Integration ngoài và phương án dự phòng
 

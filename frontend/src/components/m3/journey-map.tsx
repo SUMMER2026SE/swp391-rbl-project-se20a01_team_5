@@ -308,7 +308,13 @@ export const JourneyMap = React.memo(function JourneyMap({
   const routeLayerRef = React.useRef<any>(null);
   const vehicleLayerRef = React.useRef<any>(null);
   const lastGeometryKeyRef = React.useRef("");
+  const cameraFrameRef = React.useRef(0);
+  const onSelectStopRef = React.useRef(onSelectStop);
+  const onSelectBusRef = React.useRef(onSelectBus);
   const [mapReadyToken, setMapReadyToken] = React.useState(0);
+
+  onSelectStopRef.current = onSelectStop;
+  onSelectBusRef.current = onSelectBus;
 
   const effectivePolylines = polylines.length ? polylines : walkPolylines;
 
@@ -316,6 +322,7 @@ export const JourneyMap = React.memo(function JourneyMap({
     let disposed = false;
     let resizeObserver: ResizeObserver | null = null;
     let resizeFrame = 0;
+    let initFrame = 0;
     let lastWidth = 0;
     let lastHeight = 0;
 
@@ -330,6 +337,7 @@ export const JourneyMap = React.memo(function JourneyMap({
         scrollWheelZoom: false,
         doubleClickZoom: true,
         dragging: true,
+        preferCanvas: true,
         zoomSnap: 0.5,
         wheelPxPerZoomLevel: 90,
       });
@@ -361,7 +369,8 @@ export const JourneyMap = React.memo(function JourneyMap({
       });
       resizeObserver.observe(containerRef.current);
 
-      window.requestAnimationFrame(() => {
+      initFrame = window.requestAnimationFrame(() => {
+        if (disposed || mapRef.current !== map || !containerRef.current?.isConnected) return;
         map.invalidateSize({ pan: false });
         setMapReadyToken((value) => value + 1);
       });
@@ -370,8 +379,11 @@ export const JourneyMap = React.memo(function JourneyMap({
     return () => {
       disposed = true;
       if (resizeFrame) window.cancelAnimationFrame(resizeFrame);
+      if (initFrame) window.cancelAnimationFrame(initFrame);
+      if (cameraFrameRef.current) window.cancelAnimationFrame(cameraFrameRef.current);
       resizeObserver?.disconnect();
       if (mapRef.current) {
+        mapRef.current.stop();
         mapRef.current.remove();
         mapRef.current = null;
       }
@@ -387,6 +399,8 @@ export const JourneyMap = React.memo(function JourneyMap({
     const L = leafletModule;
     if (!map || !routeLayer || !L || mapReadyToken === 0) return;
 
+    if (cameraFrameRef.current) window.cancelAnimationFrame(cameraFrameRef.current);
+    map.stop();
     routeLayer.clearLayers();
 
     const cleanStops = stops.filter((stop) => validPoint(stop));
@@ -463,7 +477,7 @@ export const JourneyMap = React.memo(function JourneyMap({
           <div class="unibus-map-popup__meta">${escapeHtml(stop.address || stop.code || "Đà Nẵng")}</div>
         </div>
       `);
-      marker.on("click", () => onSelectStop?.(stop.id));
+      marker.on("click", () => onSelectStopRef.current?.(stop.id));
     });
 
     extraMarkers.filter(validPoint).forEach((markerInfo) => {
@@ -494,7 +508,9 @@ export const JourneyMap = React.memo(function JourneyMap({
 
     if (fitOnStopsChange && !allPoints.length && lastGeometryKeyRef.current) {
       lastGeometryKeyRef.current = "";
-      window.requestAnimationFrame(() => {
+      cameraFrameRef.current = window.requestAnimationFrame(() => {
+        cameraFrameRef.current = 0;
+        if (mapRef.current !== map || !containerRef.current?.isConnected) return;
         map.stop();
         map.invalidateSize({ pan: false });
         map.setView([16.0544, 108.2022], 12, {
@@ -508,7 +524,9 @@ export const JourneyMap = React.memo(function JourneyMap({
     if (fitOnStopsChange && allPoints.length && geometryKey !== lastGeometryKeyRef.current) {
       lastGeometryKeyRef.current = geometryKey;
       const bounds = L.latLngBounds(allPoints.map((point) => [point.lat, point.lng]));
-      window.requestAnimationFrame(() => {
+      cameraFrameRef.current = window.requestAnimationFrame(() => {
+        cameraFrameRef.current = 0;
+        if (mapRef.current !== map || !containerRef.current?.isConnected) return;
         map.stop();
         map.invalidateSize({ pan: false });
         if (bounds.isValid()) {
@@ -522,6 +540,12 @@ export const JourneyMap = React.memo(function JourneyMap({
         }
       });
     }
+    return () => {
+      if (cameraFrameRef.current) {
+        window.cancelAnimationFrame(cameraFrameRef.current);
+        cameraFrameRef.current = 0;
+      }
+    };
   }, [
     animateCamera,
     allowFallbackPolyline,
@@ -532,7 +556,6 @@ export const JourneyMap = React.memo(function JourneyMap({
     mapReadyToken,
     nextStopIndex,
     originLabel,
-    onSelectStop,
     routeColor,
     stops,
     walkSegments,
@@ -561,9 +584,9 @@ export const JourneyMap = React.memo(function JourneyMap({
           ${bus.etaMinutes != null ? `<div class="unibus-map-popup__meta">Đến trạm sau ${Math.max(0, bus.etaMinutes)} phút</div>` : ""}
         </div>
       `);
-      marker.on("click", () => onSelectBus?.(bus.id));
+      marker.on("click", () => onSelectBusRef.current?.(bus.id));
     });
-  }, [buses, mapReadyToken, onSelectBus, routeColor]);
+  }, [buses, mapReadyToken, routeColor]);
 
   React.useEffect(() => {
     const map = mapRef.current;

@@ -1239,6 +1239,7 @@ type AssistantChatPayload = {
     alightingStopId?: number;
     preferredDepartureTime?: string;
     preferences?: string[];
+    routeId?: number;
     conversationHistory?: {
       role: "user" | "assistant";
       content: string;
