@@ -55,7 +55,8 @@ public class ConductorTripController {
     ApiResponse<TicketScanResult> scanTicket(
             @AuthenticationPrincipal CurrentUser currentUser,
             @Valid @RequestBody TicketScanRequest request) {
-        return ApiResponse.ok("Ticket scan completed", operationsService.scanTicket(currentUser, request));
+        TicketScanResult result = operationsService.scanTicket(currentUser, request);
+        return ApiResponse.ok(result.valid() ? "Ticket scan completed" : result.message(), result);
     }
 
     @GetMapping("/contact")

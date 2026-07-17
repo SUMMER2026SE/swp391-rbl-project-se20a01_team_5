@@ -271,7 +271,24 @@ today_trips AS (
     LEFT JOIN trips t ON (t.notes LIKE 'DEMO_DATA%' OR t.notes LIKE 'DEMO_FLEET%') AND t.service_date = p.today
     LEFT JOIN routes r ON r.route_id = t.route_id
 ),
-demo_assignment_status AS (
+demo_start_window AS (
+    SELECT
+        'operations' AS section,
+        'startable demo trip now' AS subject,
+        CASE WHEN count(*) >= 1 THEN 'PASS' ELSE 'FAIL' END AS status,
+        concat('startable_trips=', count(*), '; trip_ids=', COALESCE(string_agg(t.trip_id::text, ', ' ORDER BY t.trip_id), 'none')) AS detail
+    FROM trips t
+    JOIN bus_schedules bs ON bs.schedule_id = t.schedule_id
+    JOIN drivers d ON d.driver_id = t.driver_id
+    JOIN users driver_user ON driver_user.user_id = d.user_id
+    JOIN conductors c ON c.conductor_id = t.conductor_id
+    JOIN users conductor_user ON conductor_user.user_id = c.user_id
+    WHERE t.service_date = CURRENT_DATE
+      AND t.status = 'NOT_STARTED'
+      AND driver_user.email = 'driver.demo@unibus.local'
+      AND conductor_user.email = 'conductor.demo@unibus.local'
+      AND bs.departure_time BETWEEN LOCALTIME AND (LOCALTIME + INTERVAL '30 minutes')::time
+),demo_assignment_status AS (
     SELECT
         'operations' AS section,
         'demo crew assignment today' AS subject,
@@ -656,6 +673,7 @@ UNION ALL SELECT * FROM supported_route_status
 UNION ALL SELECT * FROM subsidy_status
 UNION ALL SELECT * FROM full_price_route_status
 UNION ALL SELECT * FROM today_trips
+UNION ALL SELECT * FROM demo_start_window
 UNION ALL SELECT * FROM demo_assignment_status
 UNION ALL SELECT * FROM schedule_weekday_status
 UNION ALL SELECT * FROM fleet_status

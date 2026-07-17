@@ -347,21 +347,21 @@ BEGIN
     IF v_route_supported_id IS NULL THEN
         SELECT route_id INTO v_route_supported_id
         FROM routes
-        WHERE route_code IN ('12', '01', '06')
+        WHERE route_code IN ('12', '03', '08')
           AND status = 'ACTIVE'
           AND COALESCE(external_source, '') = 'BUSMAP_DN'
           AND (SELECT count(*) FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id WHERE rs.route_id = routes.route_id) >= 2
-        ORDER BY CASE route_code WHEN '12' THEN 0 WHEN '01' THEN 1 WHEN '06' THEN 2 ELSE 3 END, route_id
+        ORDER BY CASE route_code WHEN '12' THEN 0 WHEN '03' THEN 1 WHEN '08' THEN 2 ELSE 3 END, route_id
         LIMIT 1;
     END IF;
 
     IF v_route_supported_id IS NULL THEN
-        RAISE EXCEPTION 'Không tìm thấy tuyến BUSMAP thật 16/12/01/06 đang hoạt động cho kịch bản trợ giá Duy Tân.';
+        RAISE EXCEPTION 'Không tìm thấy tuyến BUSMAP thật 16/12/03/08 đang hoạt động cho kịch bản trợ giá Duy Tân.';
     END IF;
 
     SELECT r.route_id INTO v_route_full_id
     FROM routes r
-    WHERE r.route_code IN ('02', '06')
+    WHERE r.route_code IN ('02', '08')
       AND r.status = 'ACTIVE'
       AND COALESCE(r.external_source, '') = 'BUSMAP_DN'
       AND (SELECT count(*) FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id WHERE rs.route_id = r.route_id) >= 2
@@ -375,7 +375,7 @@ BEGIN
             AND ru.active_from <= CURRENT_DATE
             AND (ru.active_until IS NULL OR ru.active_until >= CURRENT_DATE)
       )
-    ORDER BY CASE r.route_code WHEN '02' THEN 0 WHEN '06' THEN 1 ELSE 2 END, r.route_id
+    ORDER BY CASE r.route_code WHEN '02' THEN 0 WHEN '08' THEN 1 ELSE 2 END, r.route_id
     LIMIT 1;
 
     IF v_route_full_id IS NULL THEN
@@ -1040,10 +1040,10 @@ BEGIN
             (2, '12', 'driver.03.demo@unibus.local', 'conductor.03.demo@unibus.local', -10, true),
             (3, '02', 'driver.04.demo@unibus.local', 'conductor.04.demo@unibus.local', -5, true),
             (4, '12', 'driver.demo@unibus.local', 'conductor.demo@unibus.local', 10, false),
-            (5, '01', 'driver.05.demo@unibus.local', 'conductor.02.demo@unibus.local', 25, false),
+            (5, '04', 'driver.05.demo@unibus.local', 'conductor.02.demo@unibus.local', 25, false),
             (6, '03', 'driver.02.demo@unibus.local', 'conductor.03.demo@unibus.local', 40, false),
             (7, '05', 'driver.03.demo@unibus.local', 'conductor.04.demo@unibus.local', 55, false),
-            (8, '06', 'driver.04.demo@unibus.local', 'conductor.02.demo@unibus.local', 70, false),
+            (8, '08', 'driver.04.demo@unibus.local', 'conductor.02.demo@unibus.local', 70, false),
             (9, '07', 'driver.05.demo@unibus.local', 'conductor.03.demo@unibus.local', 85, false),
             (10, '16', 'driver.02.demo@unibus.local', 'conductor.04.demo@unibus.local', 100, false),
             (11, '12', 'driver.03.demo@unibus.local', 'conductor.02.demo@unibus.local', 115, false),
@@ -1084,10 +1084,10 @@ BEGIN
             (2, '12', 'driver.03.demo@unibus.local', 'conductor.03.demo@unibus.local', -10, true),
             (3, '02', 'driver.04.demo@unibus.local', 'conductor.04.demo@unibus.local', -5, true),
             (4, '12', 'driver.demo@unibus.local', 'conductor.demo@unibus.local', 10, false),
-            (5, '01', 'driver.05.demo@unibus.local', 'conductor.02.demo@unibus.local', 25, false),
+            (5, '04', 'driver.05.demo@unibus.local', 'conductor.02.demo@unibus.local', 25, false),
             (6, '03', 'driver.02.demo@unibus.local', 'conductor.03.demo@unibus.local', 40, false),
             (7, '05', 'driver.03.demo@unibus.local', 'conductor.04.demo@unibus.local', 55, false),
-            (8, '06', 'driver.04.demo@unibus.local', 'conductor.02.demo@unibus.local', 70, false),
+            (8, '08', 'driver.04.demo@unibus.local', 'conductor.02.demo@unibus.local', 70, false),
             (9, '07', 'driver.05.demo@unibus.local', 'conductor.03.demo@unibus.local', 85, false),
             (10, '16', 'driver.02.demo@unibus.local', 'conductor.04.demo@unibus.local', 100, false),
             (11, '12', 'driver.03.demo@unibus.local', 'conductor.02.demo@unibus.local', 115, false),
@@ -1195,7 +1195,7 @@ BEGIN
     FOR v_school IN
         SELECT * FROM (VALUES
             ('DTU', 'DTU_MAIN', '12'),
-            ('UTE', 'UTE_MAIN', '01'),
+            ('UTE', 'UTE_MAIN', '03'),
             ('VKU', 'VKU_MAIN', '16'),
             ('FPTDN', 'FPTDN_MAIN', '02')
         ) x(code, campus_code, secondary_route_code)

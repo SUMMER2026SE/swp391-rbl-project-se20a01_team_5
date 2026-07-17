@@ -26,12 +26,34 @@ WITH route_summary AS (
           GROUP BY route_id, station_direction, stop_order HAVING count(*) > 1) duplicate_rows
 ), fake_routes AS (
     SELECT count(*) AS fake_count FROM routes WHERE route_code LIKE 'UB-DN-%'
+), interregional_routes AS (
+    SELECT count(*) AS interregional_count FROM routes WHERE external_source = 'BUSMAP_DN' AND is_interregional
+), ordered_geometry AS (
+    SELECT r.route_code, rs.path_points, s.latitude, s.longitude,
+           lag(s.latitude) OVER route_order AS previous_latitude,
+           lag(s.longitude) OVER route_order AS previous_longitude
+    FROM route_stops rs
+    JOIN routes r ON r.route_id = rs.route_id
+    JOIN stops s ON s.stop_id = rs.stop_id
+    WHERE r.external_source = 'BUSMAP_DN'
+    WINDOW route_order AS (PARTITION BY rs.route_id, rs.station_direction ORDER BY rs.stop_order)
+), gross_geometry_mismatches AS (
+    SELECT count(*) AS mismatch_count
+    FROM ordered_geometry
+    WHERE previous_latitude IS NOT NULL
+      AND (
+          path_points IS NULL OR btrim(path_points) = ''
+          OR abs(split_part(split_part(path_points, ' ', 1), ',', 1)::numeric - previous_longitude) > 0.02
+          OR abs(split_part(split_part(path_points, ' ', 1), ',', 2)::numeric - previous_latitude) > 0.02
+          OR abs(split_part(regexp_replace(btrim(path_points), '^.* ', ''), ',', 1)::numeric - longitude) > 0.02
+          OR abs(split_part(regexp_replace(btrim(path_points), '^.* ', ''), ',', 2)::numeric - latitude) > 0.02
+      )
 )
 SELECT 'BUSMAP routes' AS subject,
-       CASE WHEN route_count = 25 AND active_route_count = 25 THEN 'PASS' ELSE 'FAIL' END AS status,
+       CASE WHEN route_count = 19 AND active_route_count = 19 THEN 'PASS' ELSE 'FAIL' END AS status,
        concat('routes=', route_count, '; active=', active_route_count) AS detail FROM route_summary
 UNION ALL SELECT 'BUSMAP route-stop coverage',
-       CASE WHEN link_count = 1165 AND covered_routes = 25 THEN 'PASS' ELSE 'FAIL' END,
+       CASE WHEN link_count = 837 AND covered_routes = 19 THEN 'PASS' ELSE 'FAIL' END,
        concat('links=', link_count, '; covered_routes=', covered_routes) FROM route_stop_summary
 UNION ALL SELECT 'valid routes', CASE WHEN invalid_count = 0 THEN 'PASS' ELSE 'FAIL' END,
        concat('invalid=', invalid_count) FROM invalid_routes
@@ -41,6 +63,10 @@ UNION ALL SELECT 'unique route stop order', CASE WHEN duplicate_count = 0 THEN '
        concat('duplicates=', duplicate_count) FROM duplicate_orders
 UNION ALL SELECT 'no fake UB-DN routes', CASE WHEN fake_count = 0 THEN 'PASS' ELSE 'FAIL' END,
        concat('fake_routes=', fake_count) FROM fake_routes
+UNION ALL SELECT 'no interregional routes', CASE WHEN interregional_count = 0 THEN 'PASS' ELSE 'FAIL' END,
+       concat('interregional_routes=', interregional_count) FROM interregional_routes
+UNION ALL SELECT 'route geometry alignment', CASE WHEN mismatch_count = 0 THEN 'PASS' ELSE 'FAIL' END,
+       concat('gross_mismatches=', mismatch_count) FROM gross_geometry_mismatches
 ORDER BY subject;
 
 DO $$
@@ -51,5 +77,7 @@ BEGIN
     IF EXISTS (SELECT 1 FROM routes WHERE route_code LIKE 'UB-DN-%') THEN
         RAISE EXCEPTION 'Fake UB-DN routes remain in recovered data.';
     END IF;
+    IF EXISTS (SELECT 1 FROM routes WHERE external_source = 'BUSMAP_DN' AND is_interregional) THEN
+        RAISE EXCEPTION 'Interregional routes remain in recovered data.';
+    END IF;
 END $$;
-
