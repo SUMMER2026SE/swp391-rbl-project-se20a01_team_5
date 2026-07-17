@@ -22,13 +22,25 @@ Mật khẩu chung của account demo: `Password123!`.
 
 ## Câu chuyện demo khuyến nghị
 
+Luồng chính dùng một checkpoint xuyên role:
+
+```text
+student.supported mua vé
+→ dispatcher.demo phân xe + tài xế + phụ xe cho chuyến đang chờ
+→ tài xế nhận và bắt đầu chuyến
+→ phụ xe nhận chuyến và quét vé
+→ dữ liệu mới xuất hiện ở University Admin và System Admin
+```
+
+Sau `Mode All`, `student.supported` không có đăng ký tuyến, đơn hàng, vé, thanh toán hoặc lịch sử quét. Chuyến có marker `DEMO_SCENARIO:STUDENT_SUPPORTED` ở trạng thái `NOT_STARTED` và chưa được phân công. Các account khác vẫn giữ dữ liệu lịch sử baseline để dashboard không bị trống.
+
 ### 1. Sinh viên Duy Tân — điểm mở đầu
 
 Account chính để show dữ liệu: `student.monthly@unibus.local`
 
 Show theo thứ tự:
 
-1. Dashboard: thông tin trường Duy Tân, tuyến đang quan tâm, vé và thông báo.
+1. Dashboard: thông tin trường Duy Tân; chưa có vé hoặc giao dịch của luồng chính.
 2. Chatbot AI: hỏi “Từ Đại học Duy Tân đi tuyến nào phù hợp?” và mở CTA được gợi ý.
 3. Tìm đường: chọn điểm đi/đến, giải thích giờ hoạt động thật; ngoài giờ phải báo hết chuyến thay vì tạo chuyến giả.
 4. Tra cứu tuyến: xác nhận các tuyến 01, 06, 09 xuất hiện và xem danh sách trạm/bản đồ.
@@ -69,10 +81,11 @@ Account: `dispatcher.demo@unibus.local`
 Show:
 
 1. Dashboard vận hành hôm nay.
-2. Lịch chạy và các chuyến có tài xế/phụ xe được phân công.
-3. Theo dõi nhiều xe trên cùng bản đồ, đồng bộ phong cách tracking phía sinh viên.
-4. Quản lý tuyến/trạm ở mức read-only trong demo chính.
-5. Sự cố, phản hồi và thông báo liên vai trò.
+2. Mở chuyến đang chờ của tuyến `student.supported` vừa mua vé.
+3. Phân xe, tài xế và phụ xe cho chuyến này.
+4. Theo dõi nhiều xe trên cùng bản đồ, đồng bộ phong cách tracking phía sinh viên.
+5. Quản lý tuyến/trạm ở mức read-only trong demo chính.
+6. Sự cố, phản hồi và thông báo liên vai trò.
 
 Không chỉnh tuyến/trạm thật trong buổi demo trừ khi đã tập rollback.
 
@@ -82,7 +95,7 @@ Account: `driver.demo@unibus.local`
 
 Show:
 
-1. Tuyến/chuyến được phân công.
+1. Sau bước Dispatcher, tải lại để thấy tuyến/chuyến vừa được phân công.
 2. Lịch chạy rõ theo thời gian.
 3. Chuyến hiện tại và trạng thái bắt đầu/kết thúc.
 4. Lịch sử chuyến.
@@ -94,7 +107,7 @@ Account: `conductor.demo@unibus.local`
 
 Show:
 
-1. Chuyến được phân công; không tự chọn tuyến ngoài phân công.
+1. Sau bước Dispatcher, tải lại để thấy chuyến được phân công; không tự chọn tuyến ngoài phân công.
 2. Quét QR vé lượt hợp lệ.
 3. Quét lại cùng vé phải bị từ chối, không tạo travel history trùng.
 4. Quét vé tháng.

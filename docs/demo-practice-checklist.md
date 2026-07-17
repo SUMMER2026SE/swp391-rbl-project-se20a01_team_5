@@ -62,6 +62,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File database\RunDemoData.ps1 -Mo
 
 `All` chạy `Reset` rồi `Audit`: xóa dữ liệu phát sinh thuộc tập demo, tái tạo baseline chuẩn và kiểm tra toàn bộ assertion. Lệnh yêu cầu `RESET DEMO`.
 
+Checkpoint sau `All`:
+
+- `student.supported@unibus.local` không còn đăng ký tuyến, order, payment, vé hoặc lịch sử quét.
+- Có đúng một trip `DEMO_SCENARIO:STUDENT_SUPPORTED`, trạng thái `NOT_STARTED`, chưa có xe/tài xế/phụ xe.
+- Dispatcher phải phân công trip đó trước khi Driver và Conductor nhìn thấy chuyến.
+- Lịch sử của các account demo khác được giữ để các dashboard vẫn có dữ liệu.
+- Admin và University Admin trở về baseline dựng sẵn; dữ liệu mới của luồng chính chỉ xuất hiện sau khi sinh viên mua vé và các role vận hành thao tác.
+
 ## 3. Tài khoản demo
 
 Mật khẩu chung: `Password123!`
