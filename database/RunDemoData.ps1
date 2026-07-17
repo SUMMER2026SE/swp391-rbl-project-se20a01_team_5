@@ -41,7 +41,7 @@ function Get-SqlFileForMode {
     param([string]$CurrentMode)
     switch ($CurrentMode) {
         'Seed' { return (Join-Path $PSScriptRoot 'SeedDemoDataUntilAugust.sql') }
-        'Reset' { return (Join-Path $PSScriptRoot 'SeedDemoDataUntilAugust.sql') }
+        'Reset' { return (Join-Path $PSScriptRoot 'ResetDemoScenario.sql') }
         'Audit' { return (Join-Path $PSScriptRoot 'AuditDemoDataUntilAugust.sql') }
         default { throw "Unsupported mode $CurrentMode" }
     }
@@ -135,9 +135,12 @@ function Invoke-DemoSql {
 function Confirm-DemoMutation {
     param([string]$RequestedMode, [hashtable]$Auth)
     $isProduction = $Auth['endpoint'] -like '*.rds.amazonaws.com*'
-    $requiredPhrase = if ($isProduction) { 'SEED DEMO PRODUCTION' } elseif ($RequestedMode -eq 'Reset') { 'RESET DEMO' } else { 'SEED DEMO' }
+    $isReset = $RequestedMode -in @('Reset', 'All')
+    $requiredPhrase = if ($isProduction) {
+        if ($isReset) { 'RESET DEMO PRODUCTION' } else { 'SEED DEMO PRODUCTION' }
+    } elseif ($isReset) { 'RESET DEMO' } else { 'SEED DEMO' }
     if ($RequestedMode -eq 'All') {
-        Write-Host "Mode All means: run Seed, then Audit. It does not run Reset."
+        Write-Host "Mode All means: restore the demo baseline, then audit it."
     }
     Write-Host "This will modify the target database. Password is not printed."
     $confirmation = if ($ConfirmPhrase) { $ConfirmPhrase } else { Read-Host "Type '$requiredPhrase' to continue" }
@@ -154,5 +157,5 @@ if ($Mode -in @('Seed', 'Reset', 'All')) {
 } elseif ($Mode -eq 'Audit') {
     Write-Host 'Mode Audit is read-only and does not require confirmation.'
 }
-$modes = if ($Mode -eq 'All') { @('Seed', 'Audit') } else { @($Mode) }
+$modes = if ($Mode -eq 'All') { @('Reset', 'Audit') } else { @($Mode) }
 foreach ($currentMode in $modes) { Invoke-DemoSql -CurrentMode $currentMode }

@@ -12,7 +12,7 @@ Demo một hành trình liên vai trò, trong đó sinh viên chính thuộc **T
 4. Từ repository root chạy:
 
 ```powershell
-.\database\RunDemoData.ps1 -Mode All -AuthFile .\dbauth.txt -AllowProduction -ConfirmPhrase "SEED DEMO PRODUCTION"
+.\database\RunDemoData.ps1 -Mode All -AuthFile .\dbauth.txt -AllowProduction -ConfirmPhrase "RESET DEMO PRODUCTION"
 ```
 
 5. Không bắt đầu demo nếu Audit có `FAIL`.
@@ -119,10 +119,10 @@ Show:
 Chạy lại baseline bất kỳ lúc nào:
 
 ```powershell
-.\database\RunDemoData.ps1 -Mode Reset -AuthFile .\dbauth.txt -AllowProduction -ConfirmPhrase "SEED DEMO PRODUCTION"
+.\database\RunDemoData.ps1 -Mode All -AuthFile .\dbauth.txt -AllowProduction -ConfirmPhrase "RESET DEMO PRODUCTION"
 ```
 
-`Reset` và `Seed` cùng tái tạo baseline chuẩn; chạy nhiều lần không nhân bản dữ liệu. Sau mỗi lần tập:
+`All` xóa dữ liệu phát sinh thuộc tập demo, tái tạo baseline chuẩn rồi audit; chạy nhiều lần không nhân bản dữ liệu.
 
 ```powershell
 .\database\RunDemoData.ps1 -Mode Audit -AuthFile .\dbauth.txt

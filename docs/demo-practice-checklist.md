@@ -54,13 +54,13 @@ RESET DEMO
 
 Reset dùng sau khi team đã thanh toán, quét vé, đổi trạng thái chuyến hoặc tạo dữ liệu test.
 
-### All — Seed rồi Audit
+### All — Restore rồi Audit
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File database\RunDemoData.ps1 -Mode All
 ```
 
-`All` chạy `Seed` rồi `Audit`; **không chạy Reset**. Lệnh yêu cầu `SEED DEMO`.
+`All` chạy `Reset` rồi `Audit`: xóa dữ liệu phát sinh thuộc tập demo, tái tạo baseline chuẩn và kiểm tra toàn bộ assertion. Lệnh yêu cầu `RESET DEMO`.
 
 ## 3. Tài khoản demo
 
