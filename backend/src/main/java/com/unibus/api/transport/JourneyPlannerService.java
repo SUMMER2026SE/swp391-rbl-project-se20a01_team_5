@@ -466,9 +466,11 @@ public class JourneyPlannerService {
 
     private JourneyAction primaryAction(List<Segment> busSegments) {
         Segment first = busSegments.get(0);
+        boolean subsidized = first.line().universityLinked();
+        String message = subsidized ? "Tuyến được trường của bạn hỗ trợ." : "Tuyến này chưa có trợ giá từ trường của bạn.";
         return new JourneyAction("REGISTER_ROUTE", "Đăng ký tuyến " + first.line().routeCode(), true,
-                first.line().universityLinked() ? null : "Tuyến này chưa có trợ giá từ trường của bạn.",
-                first.line().routeId(), first.from().stop().stopId(), first.to().stop().stopId());
+                subsidized ? null : message, first.line().routeId(), first.from().stop().stopId(), first.to().stop().stopId(),
+                subsidized, subsidized, true, subsidized ? "SUBSIDIZED" : "FULL_PRICE", message);
     }
 
     private List<JourneyStop> compactStops(List<JourneyStop> stops) {

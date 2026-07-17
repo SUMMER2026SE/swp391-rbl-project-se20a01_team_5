@@ -11,7 +11,6 @@ import {
   CircleDot,
   Clock3,
   Coins,
-  CreditCard,
   Crosshair,
   Footprints,
   Info,
@@ -21,7 +20,7 @@ import {
   RefreshCw,
   Route,
   Search,
-  TicketCheck,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -614,7 +613,10 @@ function RouteDetailPanel({
     : [{ direction: preview.direction, stopCount: preview.stops?.length || 0 }];
   const activeDirectionIndex = directions.findIndex((item) => item.direction === preview.direction);
   const activeColor = directionAccentColor(activeDirectionIndex);
-  const canRegister = (preview.stops?.length || 0) >= 2;
+  const routeStops = preview.stops || [];
+  const visibleRouteStops = routeStops.length > 12 ? [...routeStops.slice(0, 6), ...routeStops.slice(-6)] : routeStops;
+  const hiddenRouteStopCount = routeStops.length - visibleRouteStops.length;
+  const canRegister = routeStops.length >= 2;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -685,31 +687,30 @@ function RouteDetailPanel({
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 scrollbar-soft">
         {infoTab === "stops" ? (
           <div className="space-y-0">
-            {(preview.stops || []).map((stop, index, array) => (
-              <div key={`${stop.stopId}-${index}`} className="grid grid-cols-[28px_minmax(0,1fr)] gap-3">
-                <div className="flex flex-col items-center">
-                  <span
-                    className={cn(
-                      "mt-1 size-3 rounded-full border-2 bg-surface",
-                      index === 0 || index === array.length - 1 ? "" : "border-outline",
-                    )}
-                    style={index === 0 || index === array.length - 1 ? { borderColor: activeColor } : undefined}
-                  />
-                  {index < array.length - 1 ? <span className="mt-1 h-9 w-px bg-outline-variant" /> : null}
-                </div>
-                <div className={cn("pb-4", index === array.length - 1 && "pb-0")}>
-                  <div className="flex items-baseline gap-2">
-                    <span className="w-11 shrink-0 text-xs font-bold tabular-nums text-on-surface-variant">
-                      {stop.etaMinutes != null ? `${stop.etaMinutes}'` : "--"}
-                    </span>
-                    <p className="min-w-0 text-sm font-medium leading-5 text-on-surface">{stop.stopName}</p>
+            {visibleRouteStops.map((stop, index) => {
+              const originalIndex = routeStops.indexOf(stop);
+              const isFirst = originalIndex === 0;
+              const isLast = originalIndex === routeStops.length - 1;
+              const showGap = hiddenRouteStopCount > 0 && index === 6;
+              return (
+                <React.Fragment key={`${stop.stopId}-${originalIndex}`}>
+                  {showGap ? <div className="mb-4 ml-7 rounded-lg bg-surface-container-low px-3 py-2 text-center text-xs font-bold text-on-surface-variant">{hiddenRouteStopCount} trạm ở giữa</div> : null}
+                  <div className="grid grid-cols-[28px_minmax(0,1fr)] gap-3">
+                    <div className="flex flex-col items-center">
+                      <span className={cn("mt-1 size-3 rounded-full border-2 bg-surface", isFirst || isLast ? "" : "border-outline")} style={isFirst || isLast ? { borderColor: activeColor } : undefined} />
+                      {!isLast ? <span className="mt-1 h-9 w-px bg-outline-variant" /> : null}
+                    </div>
+                    <div className={cn("pb-4", isLast && "pb-0")}>
+                      <div className="flex items-baseline gap-2">
+                        <span className="w-11 shrink-0 text-xs font-bold tabular-nums text-on-surface-variant">{stop.etaMinutes != null ? `${stop.etaMinutes}'` : "--"}</span>
+                        <p className="min-w-0 text-sm font-medium leading-5 text-on-surface">{stop.stopName}</p>
+                      </div>
+                      {stop.address ? <p className="ml-13 mt-0.5 line-clamp-1 text-xs text-on-surface-variant">{stop.address}</p> : null}
+                    </div>
                   </div>
-                  {stop.address ? (
-                    <p className="ml-13 mt-0.5 line-clamp-1 text-xs text-on-surface-variant">{stop.address}</p>
-                  ) : null}
-                </div>
-              </div>
-            ))}
+                </React.Fragment>
+              );
+            })}
           </div>
         ) : (
           <div className="space-y-3">
@@ -845,26 +846,28 @@ function RouteSequence({ option, compact = false }: { option: JourneyOptionDTO; 
 function LegStopsPreview({ leg }: { leg: JourneyLegDTO }) {
   const stops = leg.stops || [];
   if (!stops.length) return null;
+  const visibleStops = stops.length > 10 ? [...stops.slice(0, 5), ...stops.slice(-5)] : stops;
+  const hiddenStopCount = stops.length - visibleStops.length;
 
   return (
     <div className="mt-3 border-t border-outline-variant/70 pt-3">
       <div className="space-y-0">
-        {stops.map((stop, index, array) => (
-          <div key={`${leg.legId}-${stop.stopId}-${index}`} className="grid grid-cols-[22px_minmax(0,1fr)] gap-2">
-            <div className="flex flex-col items-center">
-              <span
-                className={cn(
-                  "mt-1 size-2.5 rounded-full border bg-surface",
-                  index === 0 || index === array.length - 1 ? "border-on-surface" : "border-outline",
-                )}
-              />
-              {index < array.length - 1 ? <span className="mt-1 h-5 w-px bg-outline-variant" /> : null}
-            </div>
-            <p className="min-w-0 pb-2 text-xs leading-5 text-on-surface-variant">
-              <span className="font-medium text-on-surface">{stop.stopName}</span>
-            </p>
-          </div>
-        ))}
+        {visibleStops.map((stop, index) => {
+          const originalIndex = stops.indexOf(stop);
+          const showGap = hiddenStopCount > 0 && index === 5;
+          return (
+            <React.Fragment key={`${leg.legId}-${stop.stopId}-${originalIndex}`}>
+              {showGap ? <p className="pb-2 pl-[30px] text-xs font-semibold text-on-surface-variant">{hiddenStopCount} trạm ở giữa</p> : null}
+              <div className="grid grid-cols-[22px_minmax(0,1fr)] gap-2">
+                <div className="flex flex-col items-center">
+                  <span className={cn("mt-1 size-2.5 rounded-full border bg-surface", originalIndex === 0 || originalIndex === stops.length - 1 ? "border-on-surface" : "border-outline")} />
+                  {originalIndex < stops.length - 1 ? <span className="mt-1 h-5 w-px bg-outline-variant" /> : null}
+                </div>
+                <p className="min-w-0 pb-2 text-xs leading-5 text-on-surface-variant"><span className="font-medium text-on-surface">{stop.stopName}</span></p>
+              </div>
+            </React.Fragment>
+          );
+        })}
       </div>
     </div>
   );
@@ -876,12 +879,14 @@ function JourneyResultCard({
   selected,
   onSelect,
   onDetails,
+  subsidized,
 }: {
   option: JourneyOptionDTO;
   index: number;
   selected: boolean;
   onSelect: () => void;
   onDetails: () => void;
+  subsidized: boolean;
 }) {
   const badges = optionBadges(option);
   const window = resultWindow(option);
@@ -909,11 +914,22 @@ function JourneyResultCard({
       aria-selected={selected}
       className={cn(
         "state-layer relative w-full cursor-pointer overflow-hidden rounded-xl border bg-surface px-4 py-3 text-left transition-[background-color,border-color,box-shadow,transform] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-on-surface/20",
-        selected
-          ? "border-on-surface/20 bg-surface-container-low"
-          : "border-outline-variant/70 hover:border-outline/70 hover:bg-surface-container-low",
+        subsidized
+          ? "border-[#B8E963] bg-white shadow-[0_0_0_1px_rgba(189,253,79,0.16),0_0_14px_rgba(160,225,48,0.16)] hover:border-[#A9DE45] hover:shadow-[0_0_0_1px_rgba(189,253,79,0.22),0_0_20px_rgba(160,225,48,0.23)]"
+          : selected
+            ? "border-on-surface/20 bg-surface-container-low"
+            : "border-outline-variant/70 hover:border-outline/70 hover:bg-surface-container-low",
       )}
     >
+      {subsidized ? (
+        <>
+          <span aria-hidden className="pointer-events-none absolute -bottom-20 -right-12 size-48 rounded-full bg-[#BDFD4F]/10 blur-3xl" />
+          <span className="absolute right-3 top-3 z-10 inline-flex items-center gap-1 text-[10px] font-bold text-[#557C12]">
+            <Sparkles className="size-3 text-[#8FCF18]" />
+            Được trợ giá
+          </span>
+        </>
+      ) : null}
       {selected ? (
         <motion.span
           layoutId="selected-journey-accent"
@@ -963,7 +979,7 @@ function JourneyResultCard({
           </div>
         </div>
 
-        <div className="flex shrink-0 flex-col items-end gap-2 text-right">
+        <div className={cn("flex shrink-0 flex-col items-end gap-2 text-right", subsidized && "pt-7")}>
           <div>
             <p className="text-[11px] font-semibold leading-none text-on-surface-variant">Tổng</p>
             <p className="mt-1 whitespace-nowrap text-lg font-bold tabular-nums leading-none text-on-surface">
@@ -987,6 +1003,16 @@ function JourneyResultCard({
   );
 }
 
+function MiniStat({ icon: Icon, label, value, tone }: { icon: React.ElementType; label: string; value: string; tone: "green" | "orange" | "blue" }) {
+  const styles = { green: "bg-[#E8F8E8] text-[#168A3A]", orange: "bg-[#FFF2DC] text-[#B46A00]", blue: "bg-[#E9F0FF] text-[#144FCC]" }[tone];
+  return (
+    <div aria-label={`${label}: ${value}`} className="flex min-w-0 items-center gap-2 rounded-xl bg-[#FAF8F2] px-2.5 py-2 ring-1 ring-[#111111]/7">
+      <span className={cn("grid size-7 shrink-0 place-items-center rounded-full", styles)}><Icon className="size-3.5" /></span>
+      <p className="min-w-0 truncate text-xs font-semibold text-[#111111]">{value}</p>
+    </div>
+  );
+}
+
 function JourneyPlanDetailPanel({
   option,
   registering,
@@ -996,72 +1022,108 @@ function JourneyPlanDetailPanel({
   option: JourneyOptionDTO;
   registering: boolean;
   onBack: () => void;
-  onRegister: (ticketPeriod: "day" | "month") => void;
+  onRegister: () => void;
 }) {
   const busLegs = optionBusLegs(option);
+  const badges = optionBadges(option);
   const window = resultWindow(option);
   const action = option.primaryAction;
-  const isCombo = busLegs.length > 1;
-  const canBuy = paymentLegs(option).length > 0;
+  const transferCount = option.summary.transferCount || Math.max(0, badges.length - 1);
+  const fareLabel = transferCount || badges.length > 1 ? "Tổng vé lượt tham khảo" : "Vé lượt tham khảo";
+  const walkMinutes = Math.max(1, Math.round(numeric(option.summary.walkMinutes)));
+  const waitMinutes = Math.max(0, Math.round(numeric(option.summary.waitMinutes)));
+  const subsidized = action?.subsidyEligible ?? busLegs.some((leg) => leg.universityLinked);
+  const availabilityTitle = action?.enabled
+    ? subsidized
+      ? "Được trường hỗ trợ phí"
+      : "Không được trường hỗ trợ phí"
+    : "Không thể đăng ký tuyến này";
+  const availabilityBody = action?.enabled
+    ? subsidized
+      ? "Có thể đăng ký và mua vé."
+      : "Có thể mua vé giá thường."
+    : action?.availabilityMessage || action?.reason || "Tuyến hiện chưa đủ điều kiện đăng ký.";
+  const alertTone = action?.enabled
+    ? subsidized
+      ? "border-[#1F9D55]/20 bg-[#ECFDF3] text-[#146C3A]"
+      : "border-[#F59E0B]/25 bg-[#FFF7E8] text-[#92400E]"
+    : "border-[#EF4444]/20 bg-[#FEF2F2] text-[#991B1B]";
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="border-b border-outline-variant px-4 py-3">
+    <div className="flex min-h-0 flex-1 flex-col bg-[#FAF8F2]">
+      <div className="border-b border-[#111111]/10 bg-white/80 px-5 py-3">
         <button
           type="button"
           onClick={onBack}
-          className="mb-3 inline-flex h-9 cursor-pointer items-center gap-2 rounded-md px-1 text-sm font-bold text-on-surface-variant transition-colors hover:text-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className="mb-2 inline-flex h-8 cursor-pointer items-center gap-2 rounded-full px-2 text-sm font-semibold text-[#6B6B6B] transition-colors hover:bg-[#F8F6EF] hover:text-[#111111] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
           <ArrowLeft className="size-4" />
           Kết quả tìm đường
         </button>
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h2 className="text-lg font-bold tabular-nums text-on-surface">
-              {window.departure} - {window.arrival}
-            </h2>
-            <p className="mt-1 text-sm font-medium text-on-surface-variant">
-              {option.summary.transferCount
-                ? `${option.summary.transferCount} lần chuyển tuyến`
-                : "Đi thẳng, không chuyển tuyến"}
-            </p>
+        <div className="rounded-[18px] border border-[#111111]/10 bg-white px-4 py-3 shadow-[0_10px_22px_rgba(17,17,17,0.05)]">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 items-center gap-2 overflow-x-auto scrollbar-soft">
+                {badges.map((badge, badgeIndex) => (
+                  <React.Fragment key={`${option.optionId}-detail-${badge.routeId}`}>
+                    <span className="inline-flex h-6 min-w-9 shrink-0 items-center justify-center rounded-full px-2.5 text-xs font-semibold text-white" style={{ backgroundColor: badge.colorHex || "#144FCC" }}>
+                      {badge.routeCode || badge.routeId}
+                    </span>
+                    {badgeIndex < badges.length - 1 ? <ArrowRight className="size-3.5 shrink-0 text-[#6B6B6B]" /> : null}
+                  </React.Fragment>
+                ))}
+              </div>
+              <h2 className="mt-2 text-lg font-semibold tabular-nums text-[#111111]">
+                {window.departure} → {window.arrival}
+              </h2>
+            </div>
+            <div className="shrink-0 text-right">
+              <p className="text-xs font-medium text-[#6B6B6B]">Thời gian</p>
+              <p className="text-sm font-semibold tabular-nums text-[#111111]">{durationLabel(option.summary.totalMinutes)}</p>
+              <p className="mt-0.5 text-xs text-[#6B6B6B]">{transferCount ? `${transferCount} lần chuyển` : "Đi thẳng"}</p>
+            </div>
           </div>
-          <div className="shrink-0 text-right">
-            <p className="text-xl font-bold tabular-nums text-on-surface">{option.summary.totalMinutes} phút</p>
-            <p className="mt-0.5 text-sm font-semibold text-on-surface">{moneyLabel(option.summary.singleFare)}</p>
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#6B6B6B]">
+            <span><span className="font-semibold text-[#111111]">{fareLabel}:</span> {moneyLabel(option.summary.singleFare)}</span>
+            {option.summary.monthlyFare != null ? <span><span className="font-semibold text-[#111111]">Vé tháng:</span> {moneyLabel(option.summary.monthlyFare)}/tháng</span> : null}
           </div>
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4 scrollbar-soft">
+      <div className="min-h-0 flex-1 overflow-y-auto p-5 scrollbar-soft">
         <div className="grid grid-cols-3 gap-2">
-          <InfoPill label="Đi bộ" value={`${Math.max(1, Math.round(numeric(option.summary.walkMinutes)))} phút`} />
-          <InfoPill label="Chờ xe" value={`${option.summary.waitMinutes || 0} phút`} />
-          <InfoPill label="Bus" value={`${busLegs.length} tuyến`} />
+          <MiniStat icon={Footprints} label="Đi bộ" value={`${walkMinutes} phút`} tone="green" />
+          <MiniStat icon={RefreshCw} label="Chờ xe" value={`${waitMinutes} phút`} tone="orange" />
+          <MiniStat icon={BusFront} label="Bus" value={`${busLegs.length || 1} tuyến`} tone="blue" />
         </div>
 
-        <div className="mt-4">
-          <p className="mb-2 text-xs font-bold uppercase text-on-surface-variant">Các bước di chuyển</p>
+        <div className={cn("mt-4 rounded-[20px] border px-4 py-3", alertTone)}>
+          <p className="text-sm font-semibold">{availabilityTitle}</p>
+          <p className="mt-1 text-xs leading-5 opacity-90">{availabilityBody}</p>
+        </div>
+
+        <div className="mt-5">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[#6B6B6B]">Chi tiết cách đi</p>
           <RouteSequence option={option} />
         </div>
 
-        <div className="mt-4 space-y-2">
-          <p className="text-xs font-bold uppercase text-on-surface-variant">Điểm lên/xuống</p>
+        <div className="mt-5 space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6B6B6B]">Các trạm đi qua</p>
           {busLegs.map((leg) => (
-            <div key={`${option.optionId}-${leg.legId}`} className="rounded-lg border border-outline-variant bg-surface px-3 py-3">
+            <div key={`${option.optionId}-${leg.legId}`} className="rounded-[20px] border border-[#111111]/10 bg-white px-4 py-4 shadow-[0_10px_24px_rgba(17,17,17,0.04)]">
               <div className="flex items-center gap-2">
                 <span
-                  className="inline-flex h-7 min-w-10 items-center justify-center rounded-full px-2 text-xs font-bold text-white"
+                  className="inline-flex h-7 min-w-10 items-center justify-center rounded-full px-2 text-xs font-semibold text-white"
                   style={{ backgroundColor: leg.colorHex || STUDENT_GREEN }}
                 >
                   {leg.routeCode || "BUS"}
                 </span>
-                <span className="min-w-0 truncate text-sm font-semibold text-on-surface">
+                <span className="min-w-0 truncate text-sm font-semibold text-[#111111]">
                   {leg.routeName || `Tuyến ${leg.routeCode}`}
                 </span>
               </div>
-              <p className="mt-2 text-xs leading-5 text-on-surface-variant">
-                Lên tại <strong className="text-on-surface">{leg.fromStopName || "trạm đầu"}</strong>, xuống tại{" "}
-                <strong className="text-on-surface">{leg.toStopName || "trạm cuối"}</strong>.
+              <p className="mt-2 text-xs leading-5 text-[#6B6B6B]">
+                Lên tại <strong className="font-semibold text-[#111111]">{leg.fromStopName || "trạm đầu"}</strong>, xuống tại{" "}
+                <strong className="font-semibold text-[#111111]">{leg.toStopName || "trạm cuối"}</strong>.
               </p>
               <LegStopsPreview leg={leg} />
             </div>
@@ -1069,31 +1131,16 @@ function JourneyPlanDetailPanel({
         </div>
       </div>
 
-      <div className="border-t border-outline-variant bg-surface px-4 py-3">
-        {action?.reason ? (
-          <p className="mb-2 text-xs font-semibold text-on-surface-variant">{action.reason}</p>
-        ) : null}
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <button
-            type="button"
-            onClick={() => onRegister("day")}
-            disabled={registering || !canBuy}
-            className="inline-flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-outline-variant bg-surface px-5 text-sm font-bold text-on-surface transition-[opacity,transform] hover:bg-surface-container-low active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45"
-          >
-            {registering ? <RefreshCw className="size-4 animate-spin" /> : <TicketCheck className="size-4" />}
-            {isCombo ? "Combo vé ngày" : "Vé ngày tuyến này"}
-          </button>
-          <button
-            type="button"
-            onClick={() => onRegister("month")}
-            disabled={registering || !canBuy}
-            className="inline-flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-xl px-5 text-sm font-bold transition-[opacity,transform] hover:opacity-90 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45"
-            style={{ backgroundColor: STUDENT_INK, color: STUDENT_LIME }}
-          >
-            {registering ? <RefreshCw className="size-4 animate-spin" /> : <CreditCard className="size-4" />}
-            {isCombo ? "Combo vé tháng" : "Vé tháng tuyến này"}
-          </button>
-        </div>
+      <div className="shrink-0 border-t border-[#111111]/10 bg-white/90 px-5 py-4">
+        <button
+          type="button"
+          onClick={onRegister}
+          disabled={registering || !action?.enabled}
+          className="inline-flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-[#111111] px-5 text-sm font-semibold text-[#BDFD4F] transition-all hover:bg-[#222222] hover:shadow-[0_0_0_4px_rgba(189,253,79,0.18)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45"
+        >
+          {registering ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+          Đăng ký tuyến & chọn vé
+        </button>
       </div>
     </div>
   );
@@ -1143,6 +1190,7 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
     () => journeys.filter((item) => item?.optionId && Array.isArray(item.legs)),
     [journeys],
   );
+  const featuredSubsidizedJourneyId = safeJourneys.find((option) => optionBusLegs(option).some((leg) => leg.universityLinked))?.optionId;
   const selectedJourney = safeJourneys.find((item) => item.optionId === selectedId) || safeJourneys[0] || null;
 
   useEffect(() => {
@@ -1166,6 +1214,34 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (routesLoading || !routes.length) return;
+    const routeId = window.sessionStorage.getItem("unibus:assistant:route-preview");
+    const rawContext = window.sessionStorage.getItem("unibus:assistant:route-preview-context");
+    if (!routeId && !rawContext) return;
+
+    let routeCode = "";
+    try {
+      routeCode = rawContext ? String(JSON.parse(rawContext)?.routeCode || "") : "";
+    } catch {
+      routeCode = "";
+    }
+
+    const matched = routes.find((route) =>
+      String(route.routeId) === routeId
+      || (!!routeCode && String(route.routeCode || "").toLowerCase() === routeCode.toLowerCase()),
+    );
+    window.sessionStorage.removeItem("unibus:assistant:route-preview");
+    window.sessionStorage.removeItem("unibus:assistant:route-preview-context");
+    if (!matched) return;
+
+    setActiveTab("lookup");
+    setSelectedRoute(matched);
+    setRouteDirection(matched.directions?.[0] ?? 0);
+    setRoutePreview(null);
+    setRouteActionError("");
+  }, [routes, routesLoading]);
 
   useEffect(() => {
     if (!selectedRoute) {
@@ -1638,7 +1714,7 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
                   option={selectedJourney}
                   registering={registering}
                   onBack={() => setShowJourneyDetail(false)}
-                  onRegister={(ticketPeriod) => void registerSelected(ticketPeriod)}
+                  onRegister={() => void registerSelected("month")}
                 />
               </motion.div>
             ) : (
@@ -1754,6 +1830,7 @@ export function JourneyPlannerDesktop({ ctx, onNavigate }: JourneyPlannerDesktop
                           setSelectedId(option.optionId);
                           setShowJourneyDetail(true);
                         }}
+                        subsidized={option.optionId === featuredSubsidizedJourneyId}
                       />
                     ))
                   ) : (

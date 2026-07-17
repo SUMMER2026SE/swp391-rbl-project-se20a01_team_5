@@ -16,6 +16,12 @@ public class IntentRouter {
         if (containsAny(normalized, "khong can tim tuyen", "khong can tra tuyen")) {
             return AiIntent.OTHER;
         }
+        if (isGeneralAdvisory(normalized) && containsAny(normalized, "khong can", "uu nhuoc diem", "tom tat", "dong vai")) {
+            return AiIntent.OTHER;
+        }
+        if (containsAny(normalized, "thanh toan", "sepay", "qr", "mua ve")) {
+            return AiIntent.PAYMENT_LOOKUP;
+        }
         if (containsAny(normalized, "tuyen", "duong", "di toi", "di den", "goi y", "nhanh", "re")
                 || (normalized.contains("di tu") && normalized.contains("den"))) {
             return AiIntent.ROUTE_SUGGESTION;
@@ -28,9 +34,6 @@ public class IntentRouter {
         }
         if (containsAny(normalized, "lich", "may gio", "eta", "chuyen")) {
             return AiIntent.SCHEDULE_LOOKUP;
-        }
-        if (containsAny(normalized, "thanh toan", "sepay", "qr", "mua ve")) {
-            return AiIntent.PAYMENT_LOOKUP;
         }
         if (containsAny(normalized, "xac minh", "truong cua toi", "mssv")) {
             return AiIntent.VERIFICATION;

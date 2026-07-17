@@ -11,6 +11,7 @@ case "${RECOVERY_MODE:-}" in
     $PSQL -f /recovery/OfficialUniversityMasterData.sql
     $PSQL -f /recovery/OfficialDanangTransportData.sql
     $PSQL -f /recovery/NormalizeRecoveredTransportData.sql
+    $PSQL -f /recovery/RepairRecoveredRouteGeometry.sql
     $PSQL -f /recovery/AuditRecoveredTransportData.sql
     $PSQL -f /recovery/SeedDemoDataUntilAugust.sql
     $PSQL -f /recovery/AuditDemoDataUntilAugust.sql | tee /tmp/demo-audit.log

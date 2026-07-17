@@ -23,4 +23,8 @@ SET route_name = 'Tuyến 02 (Bến xe Trung tâm - Đại học Việt Hàn)'
 WHERE route_code = '02'
   AND external_source = 'BUSMAP_DN';
 
+DELETE FROM routes
+WHERE external_source = 'BUSMAP_DN'
+  AND is_interregional = TRUE;
+
 COMMIT;

@@ -7,8 +7,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
 import java.sql.PreparedStatement;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -37,6 +39,8 @@ import com.unibus.api.university.SubsidyService;
 
 @Service
 public class SePayService {
+
+    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
 
     private final JdbcTemplate jdbcTemplate;
     private final TicketingRepository ticketingRepository;
@@ -90,6 +94,7 @@ public class SePayService {
         String studentCode = studentCode(currentUser);
         PaymentRequest paymentRequest = paymentRequest(request);
         List<OrderLine> lines = quoteLines(currentUser, studentCode, paymentRequest);
+        paymentRequest = resolveStopLabels(paymentRequest, lines);
         return quoteResponse(paymentRequest, lines);
     }
 
@@ -98,14 +103,15 @@ public class SePayService {
         String studentCode = studentCode(currentUser);
         PaymentRequest paymentRequest = paymentRequest(request);
         List<OrderLine> lines = quoteLines(currentUser, studentCode, paymentRequest);
+        PaymentRequest resolvedRequest = resolveStopLabels(paymentRequest, lines);
         BigDecimal amount = sumFinal(lines);
         if (amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "No payable tickets in this order");
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Bạn đã có vé còn hiệu lực cho toàn bộ hành trình");
         }
 
-        Integer routeId = paymentRequest.routeId();
+        Integer routeId = resolvedRequest.routeId();
         Integer orderRouteId = routeId == null && !lines.isEmpty() ? lines.get(0).routeId() : routeId;
-        String ticketType = paymentRequest.ticketType();
+        String ticketType = resolvedRequest.ticketType();
         List<Map<String, Object>> existingOrders = jdbcTemplate.queryForList(
                 """
                 SELECT id, total
@@ -119,7 +125,7 @@ public class SePayService {
                 ORDER BY created_at DESC
                 LIMIT 1
                 """,
-                studentCode, ticketType, orderRouteId, paymentRequest.mode(), paymentRequest.ticketPeriod());
+                studentCode, ticketType, orderRouteId, resolvedRequest.mode(), resolvedRequest.ticketPeriod());
 
         if (!existingOrders.isEmpty()) {
             Map<String, Object> existing = existingOrders.get(0);
@@ -129,12 +135,12 @@ public class SePayService {
                 String description = "DH" + orderId;
                 String qrUrl = String.format("https://qr.sepay.vn/img?bank=%s&acc=%s&template=%s&amount=%s&des=%s",
                         bankCode, accountNo, qrTemplate, amount.toPlainString(), description);
-                return orderResponse(orderId, studentCode, paymentRequest, lines, amount, description, qrUrl);
+                return orderResponse(orderId, studentCode, resolvedRequest, lines, amount, description, qrUrl);
             }
         }
 
         KeyHolder keyHolder = new GeneratedKeyHolder();
-        String legsJson = legsJson(paymentRequest, lines);
+        String legsJson = legsJson(resolvedRequest, lines);
         BigDecimal originalAmount = sumOriginal(lines);
         BigDecimal subsidyAmount = sumSubsidy(lines);
         jdbcTemplate.update(connection -> {
@@ -152,11 +158,11 @@ public class SePayService {
             statement.setString(2, ticketType);
             statement.setInt(3, orderRouteId);
             statement.setBigDecimal(4, amount);
-            statement.setString(5, "month".equals(paymentRequest.ticketPeriod()) ? "Vé tháng UniBus" : "Vé ngày UniBus");
-            statement.setString(6, paymentRequest.mode());
-            statement.setString(7, paymentRequest.ticketPeriod());
-            statement.setString(8, paymentRequest.originLabel());
-            statement.setString(9, paymentRequest.destinationLabel());
+            statement.setString(5, "month".equals(resolvedRequest.ticketPeriod()) ? "Vé tháng UniBus" : "Vé ngày UniBus");
+            statement.setString(6, resolvedRequest.mode());
+            statement.setString(7, resolvedRequest.ticketPeriod());
+            statement.setString(8, resolvedRequest.originLabel());
+            statement.setString(9, resolvedRequest.destinationLabel());
             statement.setString(10, legsJson);
             statement.setBigDecimal(11, originalAmount);
             statement.setBigDecimal(12, subsidyAmount);
@@ -174,7 +180,7 @@ public class SePayService {
         String qrUrl = String.format("https://qr.sepay.vn/img?bank=%s&acc=%s&template=%s&amount=%s&des=%s",
                 bankCode, accountNo, qrTemplate, amount.toPlainString(), description);
 
-        return orderResponse(orderId, studentCode, paymentRequest, lines, amount, description, qrUrl);
+        return orderResponse(orderId, studentCode, resolvedRequest, lines, amount, description, qrUrl);
     }
 
     private Map<String, Object> createTestOrder(CurrentUser currentUser) {
@@ -327,26 +333,33 @@ public class SePayService {
             if (leg.routeId() == null || !seenRoutes.add(leg.routeId())) {
                 continue;
             }
+            boolean monthly = "month".equals(request.ticketPeriod());
             Optional<ApprovedRegistration> registration = ticketingRepository.approvedRegistration(studentCode, leg.routeId());
+            if (monthly && registration.isEmpty()) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Cần đăng ký tuyến được duyệt trước khi mua vé tháng");
+            }
             String routeName = registration.map(ApprovedRegistration::routeName).orElseGet(() -> routeName(leg.routeId()));
-            Integer boardingStopId = leg.boardingStopId() == null
+            Integer boardingStopId = monthly && leg.boardingStopId() == null
                     ? registration.map(ApprovedRegistration::boardingRouteStopId).orElse(null)
                     : leg.boardingStopId();
-            Integer alightingStopId = leg.alightingStopId() == null
+            Integer alightingStopId = monthly && leg.alightingStopId() == null
                     ? registration.map(ApprovedRegistration::alightingRouteStopId).orElse(null)
                     : leg.alightingStopId();
             if (boardingStopId == null || alightingStopId == null) {
-                throw new ApiException(HttpStatus.BAD_REQUEST, "Boarding and alighting stops are required");
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Vui lòng chọn điểm lên và điểm xuống cho vé lượt");
             }
-            BigDecimal baseFare = "month".equals(request.ticketPeriod())
+            if (!monthly) {
+                validateSingleStopPair(leg.routeId(), boardingStopId, alightingStopId);
+            }
+            BigDecimal baseFare = monthly
                     ? ticketingRepository.monthlyFare(leg.routeId())
                     : ticketingRepository.singleFare(leg.routeId());
             if (baseFare.compareTo(BigDecimal.ZERO) <= 0) {
                 throw new ApiException(HttpStatus.BAD_REQUEST, "Route does not have a fare configured");
             }
             MonthlyPassQuote quote = subsidyService.quoteFor(currentUser, leg.routeId(), routeName, baseFare, serviceDate);
-            ensureStudentCanBuy(quote);
-            boolean active = "month".equals(request.ticketPeriod())
+            if (monthly) ensureStudentCanBuy(quote);
+            boolean active = monthly
                     && ticketingRepository.activeMonthlyPass(studentCode, leg.routeId(), year, month).isPresent();
             lines.add(new OrderLine(
                     leg.routeId(),
@@ -378,6 +391,36 @@ public class SePayService {
         }
     }
 
+    void validateSingleStopPair(Integer routeId, Integer boardingStopId, Integer alightingStopId) {
+        Integer matches = jdbcTemplate.queryForObject("""
+                SELECT count(*)
+                FROM route_stops boarding
+                JOIN route_stops alighting
+                  ON alighting.route_id = boarding.route_id
+                 AND alighting.station_direction = boarding.station_direction
+                JOIN routes route ON route.route_id = boarding.route_id
+                WHERE boarding.route_id = ?
+                  AND boarding.stop_id = ?
+                  AND alighting.stop_id = ?
+                  AND boarding.stop_order < alighting.stop_order
+                  AND upper(route.status) = 'ACTIVE'
+                """, Integer.class, routeId, boardingStopId, alightingStopId);
+        if (matches == null || matches == 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Điểm lên/xuống không hợp lệ cho tuyến đã chọn");
+        }
+    }
+
+    OffsetDateTime singleTicketExpiry(Instant now) {
+        return now.atZone(BUSINESS_ZONE).toLocalDate().atTime(23, 59, 59).atZone(BUSINESS_ZONE).toOffsetDateTime();
+    }
+
+    private PaymentRequest resolveStopLabels(PaymentRequest request, List<OrderLine> lines) {
+        if (lines.size() != 1) return request;
+        OrderLine line = lines.get(0);
+        String origin = "Điểm đi".equals(request.originLabel()) ? line.boardingStopName() : request.originLabel();
+        String destination = "Điểm đến".equals(request.destinationLabel()) ? line.alightingStopName() : request.destinationLabel();
+        return new PaymentRequest(request.mode(), request.ticketPeriod(), request.ticketType(), request.routeId(), origin, destination, request.serviceDate(), request.legs());
+    }
     private String stopName(Integer stopId, String fallback) {
         if (stopId == null) return fallback;
         List<String> names = jdbcTemplate.queryForList("SELECT stop_name FROM stops WHERE stop_id = ?", String.class, stopId);
@@ -948,7 +991,7 @@ public class SePayService {
 
     private Integer insertSingleTicketFromOrder(String studentCode, Map<String, Object> item, boolean withSubsidyFields) {
         String qrCode = "UB-SINGLE-" + UUID.randomUUID();
-        OffsetDateTime expiresAt = LocalDate.now().atTime(23, 59, 59).atOffset(ZoneOffset.UTC);
+        OffsetDateTime expiresAt = singleTicketExpiry(Instant.now());
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update(connection -> {
             PreparedStatement statement = connection.prepareStatement(
