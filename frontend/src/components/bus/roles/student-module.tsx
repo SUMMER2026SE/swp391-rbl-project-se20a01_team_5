@@ -6247,7 +6247,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
   const [journeyPaymentContext, setJourneyPaymentContext] = useState<SePayOrderRequestDTO | null>(null);
   const [journeyQuote, setJourneyQuote] = useState<SePayQuoteDTO | null>(null);
 
-  const journeyLegs = journeyPaymentContext?.mode === "journey-combo" ? journeyPaymentContext.legs || [] : [];
+  const journeyLegs = journeyPaymentContext?.legs || [];
   const isJourneyCombo = journeyLegs.length > 1;
   const journeyRouteLabel = journeyLegs.map((leg) => {
     const route = ctx.routes.find((item: any) => Number(item.id ?? item.routeId) === Number(leg.routeId));
@@ -6307,17 +6307,19 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
         const fallbackStop = ctx.stops.find((stop: any) => Number(stop.id ?? stop.stopId) === stopId);
         const name = entry?.stopName ?? entry?.name ?? fallbackStop?.name ?? fallbackStop?.stopName ?? `Trạm ${index + 1}`;
         const order = Number(entry?.stopOrder ?? entry?.order ?? index);
-        return { id: String(stopId), stopId, name, order };
+        return { id: String(stopId), stopId, name, order, direction: Number(entry?.stationDirection ?? 0) };
       })
       .filter(Boolean)
-      .sort((left: any, right: any) => left.order - right.order) as { id: string; stopId: number; name: string; order: number }[];
-    return Array.from(new Map(stops.map((stop) => [stop.id, stop])).values());
+      .sort((left: any, right: any) => left.direction - right.direction || left.order - right.order) as { id: string; stopId: number; name: string; order: number; direction: number }[];
+    return stops;
   }, [ctx.stops, paymentRouteDetail, selectedRoute]);
-  const hasSelectableRouteStops = paymentRouteStops.length >= 2;
+  const hasSelectableRouteStops = new Set(paymentRouteStops.map((stop) => stop.id)).size >= 2;
   const isValidStopPair = useCallback((boardingId: string, alightingId: string) => {
-    const boardingOrder = paymentRouteStops.find((stop) => stop.id === boardingId)?.order;
-    const alightingOrder = paymentRouteStops.find((stop) => stop.id === alightingId)?.order;
-    return boardingOrder != null && alightingOrder != null && boardingOrder < alightingOrder;
+    return paymentRouteStops.some((boarding) => boarding.id === boardingId && paymentRouteStops.some((alighting) => (
+      alighting.id === alightingId
+      && alighting.direction === boarding.direction
+      && alighting.order > boarding.order
+    )));
   }, [paymentRouteStops]);
   const firstPublicRouteId = String(ctx.routes[0]?.id ?? ctx.routes[0]?.routeId ?? "");
 
@@ -6332,7 +6334,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
     if (!raw) return;
     try {
       const parsed = JSON.parse(raw) as SePayOrderRequestDTO;
-      if (parsed.mode !== "journey-combo" || (parsed.legs?.length || 0) < 2) return;
+      if (!(parsed.legs?.length || 0)) return;
       setJourneyPaymentContext(parsed);
       setTicketKind(parsed.ticketPeriod === "day" ? "SINGLE" : "MONTHLY");
       setSelectedRouteId(String(parsed.legs?.[0]?.routeId || ""));
@@ -6427,18 +6429,26 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
 
   useEffect(() => {
     if (ticketKind !== "SINGLE") return;
+    const contextLeg = journeyPaymentContext?.legs?.find((leg) => String(leg.routeId) === selectedRouteId);
+    if (contextLeg?.boardingStopId && contextLeg?.alightingStopId) {
+      setSingleBoardingStopId(String(contextLeg.boardingStopId));
+      setSingleAlightingStopId(String(contextLeg.alightingStopId));
+      return;
+    }
     const routeStopIds = paymentRouteStops.map((stop) => stop.id);
     const registrationBoarding = selectedRegistration?.boardingStopId == null ? "" : String(selectedRegistration.boardingStopId);
     const registrationAlighting = selectedRegistration?.alightingStopId == null ? "" : String(selectedRegistration.alightingStopId);
     let nextBoarding = routeStopIds.includes(registrationBoarding) ? registrationBoarding : paymentRouteStops[0]?.id ?? registrationBoarding;
     let nextAlighting = routeStopIds.includes(registrationAlighting) ? registrationAlighting : paymentRouteStops[paymentRouteStops.length - 1]?.id ?? registrationAlighting;
     if (hasSelectableRouteStops && !isValidStopPair(nextBoarding, nextAlighting)) {
-      nextBoarding = paymentRouteStops[0]?.id ?? "";
-      nextAlighting = paymentRouteStops[paymentRouteStops.length - 1]?.id ?? "";
+      const boarding = paymentRouteStops.find((stop) => paymentRouteStops.some((candidate) => candidate.direction === stop.direction && candidate.order > stop.order));
+      const alighting = boarding && [...paymentRouteStops].reverse().find((stop) => stop.direction === boarding.direction && stop.order > boarding.order);
+      nextBoarding = boarding?.id ?? "";
+      nextAlighting = alighting?.id ?? "";
     }
     setSingleBoardingStopId(nextBoarding || "");
     setSingleAlightingStopId(nextAlighting || "");
-  }, [hasSelectableRouteStops, isValidStopPair, paymentRouteStops, selectedRegistration?.boardingStopId, selectedRegistration?.alightingStopId, selectedRouteId, ticketKind]);
+  }, [hasSelectableRouteStops, isValidStopPair, journeyPaymentContext, paymentRouteStops, selectedRegistration?.boardingStopId, selectedRegistration?.alightingStopId, selectedRouteId, ticketKind]);
   useEffect(() => {
     let cancelled = false;
     setPaymentRouteDetail(null);
@@ -6492,14 +6502,14 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
       const stopMetadata = kind === "SINGLE" && hasSelectableRouteStops && isValidStopPair(singleBoardingStopId, singleAlightingStopId)
         ? { boardingStopId: Number(singleBoardingStopId), alightingStopId: Number(singleAlightingStopId) }
         : undefined;
-      const order = isJourneyCombo && journeyPaymentContext
+      const order = journeyPaymentContext
         ? await studentApi.createSePayOrder({
             ...journeyPaymentContext,
             ticketType: kind,
             ticketPeriod: kind === "MONTHLY" ? "month" : "day",
           })
         : await studentApi.createSePayOrder(kind, Number(selectedRouteId), stopMetadata);
-      if (isJourneyCombo) localStorage.removeItem("unibus.studentPaymentContext.v1");
+      if (journeyPaymentContext) localStorage.removeItem("unibus.studentPaymentContext.v1");
       const pollToken = paymentPollTokenRef.current + 1;
       paymentPollTokenRef.current = pollToken;
       paymentSettledRef.current = false;
@@ -6533,7 +6543,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
     } finally {
       setPurchasing(false);
     }
-  }, [canBuySingle, hasSelectableRouteStops, isJourneyCombo, isValidStopPair, journeyPaymentContext, refreshPaymentData, selectedRouteId, singleAlightingStopId, singleBoardingStopId, ticketKind]);
+  }, [canBuySingle, hasSelectableRouteStops, isValidStopPair, journeyPaymentContext, refreshPaymentData, selectedRouteId, singleAlightingStopId, singleBoardingStopId, ticketKind]);
 
   const copyAccount = async () => {
     if (!sepayOrder?.accountNo) return;

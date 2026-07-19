@@ -147,6 +147,16 @@ class StudentIteration1ServiceTests {
    }
 
    @Test
+   void routeSelectionRejectsStopsFromDifferentDirections() {
+      Stop oppositeDirectionStop = this.saveStop("Opposite direction");
+      this.saveRouteStop(this.route, oppositeDirectionStop, 3, 1);
+
+      Assertions.assertThatThrownBy(() -> this.transportService.requireValidSelection(
+            this.currentUser, this.route.getId(), this.boarding.getId(), oppositeDirectionStop.getId()))
+            .isInstanceOf(ApiException.class);
+   }
+
+   @Test
    void readsTravelHistoryFromOperationalTablesAndReturnsNoEtaRows() {
       LocalDate serviceDate = this.jdbcTemplate.queryForObject("SELECT CURRENT_DATE", LocalDate.class);
       this.jdbcTemplate.update("INSERT INTO trips(trip_id, route_id, bus_id, service_date, status) VALUES (?, ?, ?, ?, ?)", new Object[]{11, this.route.getId(), 25, serviceDate, "RUNNING"});
@@ -173,10 +183,15 @@ class StudentIteration1ServiceTests {
    }
 
    private void saveRouteStop(BusRoute targetRoute, Stop stop, int order) {
+      this.saveRouteStop(targetRoute, stop, order, 0);
+   }
+
+   private void saveRouteStop(BusRoute targetRoute, Stop stop, int order, int direction) {
       RouteStop routeStop = new RouteStop();
       routeStop.setRoute(targetRoute);
       routeStop.setStop(stop);
       routeStop.setStopOrder(order);
+      routeStop.setStationDirection(direction);
       this.routeStopRepository.save(routeStop);
    }
 
