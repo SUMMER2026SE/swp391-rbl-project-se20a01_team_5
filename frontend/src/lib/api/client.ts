@@ -308,6 +308,7 @@ export interface RouteSuggestionDTO {
     stopCode?: string;
     stopName: string;
     stopOrder: number;
+    stationDirection?: number;
     minutesFromPreviousStop?: number;
     longitude?: number | string;
     latitude?: number | string;

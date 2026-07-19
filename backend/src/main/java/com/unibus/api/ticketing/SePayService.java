@@ -827,8 +827,7 @@ public class SePayService {
             }
         } else if ("single".equalsIgnoreCase(ticketType)) {
             String qrCode = "UB-SINGLE-" + UUID.randomUUID();
-            LocalDate now = LocalDate.now();
-            OffsetDateTime expiresAt = now.atTime(23, 59, 59).atOffset(ZoneOffset.UTC); // valid until end of day
+            OffsetDateTime expiresAt = singleTicketExpiry(Instant.now());
 
             // Find route registrations approved
             List<Map<String, Object>> registrations = jdbcTemplate.queryForList(
