@@ -416,8 +416,14 @@ public class OperationsRepository {
                     UNION ALL
                     SELECT u.user_id, u.full_name, 'DISPATCHER' AS role, u.phone_number, 1 AS primary_order
                     FROM users u
-                    WHERE u.role = 'DISPATCHER'
-                      AND u.status = 'ACTIVE'
+                    WHERE u.user_id = (
+                        SELECT dispatcher.user_id
+                        FROM users dispatcher
+                        WHERE dispatcher.role = 'DISPATCHER'
+                          AND dispatcher.status = 'ACTIVE'
+                        ORDER BY dispatcher.user_id
+                        LIMIT 1
+                    )
                 ) contacts
                 ORDER BY primary_order, full_name
                 """, (rs, rowNum) -> new ContactPersonView(
@@ -750,6 +756,26 @@ public class OperationsRepository {
                 """, tripId);
     }
 
+    public int completeSimulatedTripsPastGracePeriod() {
+        return jdbcTemplate.update("""
+                UPDATE trips t
+                SET status = 'COMPLETED',
+                    ended_at = CURRENT_TIMESTAMP
+                FROM bus_schedules bs
+                WHERE t.schedule_id = bs.schedule_id
+                  AND t.status = 'RUNNING'
+                  AND t.departed_at IS NOT NULL
+                  AND t.ended_at IS NULL
+                  AND CURRENT_TIMESTAMP >= (
+                      CASE
+                          WHEN (t.service_date + COALESCE(bs.end_time, bs.departure_time + INTERVAL '90 minutes')) > t.departed_at
+                              THEN t.service_date + COALESCE(bs.end_time, bs.departure_time + INTERVAL '90 minutes')
+                          ELSE t.service_date + COALESCE(bs.end_time, bs.departure_time + INTERVAL '90 minutes') + INTERVAL '1 day'
+                      END
+                  ) + INTERVAL '2 minutes'
+                """);
+    }
+
     public List<TripStopView> findTripStopsBySchedule(Integer scheduleId) {
         if (scheduleId == null) {
             return List.of();
@@ -849,6 +875,7 @@ public class OperationsRepository {
                 departure == null ? "" : departure.toString(),
                 rs.getString("status"));
     }
+
 
     private DriverTripView mapDriverTrip(ResultSet rs) throws SQLException {
         return mapDriverTrip(rs, true);

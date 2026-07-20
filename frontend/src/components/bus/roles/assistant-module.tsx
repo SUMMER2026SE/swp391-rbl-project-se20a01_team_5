@@ -547,6 +547,9 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
   const lastScanRef = useRef<{ code: string; at: number } | null>(null);
   const validConductorTrips = useMemo(() => ctx.conductorTrips.filter((trip) => isTripInScanWindow(trip)), [ctx.conductorTrips]);
   const hasConductorTrips = ctx.conductorTrips.length > 0;
+  const blockedConductorTrips = useMemo(() => ctx.conductorTrips.map((trip) => ({ trip, reason: scanBlockReason(trip) })).filter((item) => item.reason), [ctx.conductorTrips]);
+  const hasInvalidConductorTrips = blockedConductorTrips.length > 0;
+  const firstScanBlockReason = blockedConductorTrips[0]?.reason || null;
   const preferredTrip = validConductorTrips.find((trip) => isRunningTrip(trip)) || validConductorTrips[0] || null;
   const selectedTrip = validConductorTrips.find((trip) => Number(trip.tripId) === Number(tripId)) || preferredTrip;
 
@@ -558,9 +561,9 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
     }
     const stillOpen = validConductorTrips.some((trip) => Number(trip.tripId) === Number(tripId));
     if (!tripId || !stillOpen) {
-      setTripId(preferredTrip?.tripId ?? null);
+      setTripId(validConductorTrips[0].tripId);
     }
-  }, [preferredTrip, tripId, validConductorTrips]);
+  }, [validConductorTrips, tripId]);
 
   const loadTickets = useCallback(async () => {
     if (!tripId) return;
@@ -583,6 +586,17 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
     if (normalized === "MONTHLY" || normalized === "JOURNEY_MONTHLY") return "Vé tháng";
     return kind || "—";
   };
+
+  const ticketStatusLabel = (status?: string) => {
+    switch (String(status || "").toUpperCase()) {
+      case "ACTIVE": return "Đang hiệu lực";
+      case "UNUSED": return "Chưa sử dụng";
+      case "USED": return "Đã sử dụng";
+      case "EXPIRED": return "Hết hạn";
+      default: return status || "—";
+    }
+  };
+
 
   const filteredTickets = useMemo(() => {
     const rows = tickets || [];
@@ -867,7 +881,7 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
                   </div>
                   <div className="text-right shrink-0">
                     <p className="text-[10px] text-on-surface-variant">{formatDateTime(t.lastScannedAt)}</p>
-                    <M3StatusPill label={ticketStatusLabel(t.status)} tone={t.status === "VALID" || t.status === "ACTIVE" ? "success" : "warning"} />
+                    <M3StatusPill label={t.status} tone={t.status === "VALID" || t.status === "ACTIVE" ? "success" : "warning"} />
                   </div>
                 </div>
               </ExpressiveCard>
@@ -883,6 +897,36 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
 // Screen 3: Monthly — list of monthly pass holders on this trip
 // =============================================================================
 function AssistantMonthly({ ctx }: { ctx: Ctx }) {
+  const [tickets, setTickets] = useState<ConductorTicketView[] | null>(null);
+  const tripId = Number(
+    ctx.activeTrip?.tripId
+      ?? ctx.conductorTrips.find((trip) => isRunningTrip(trip))?.tripId
+      ?? 0,
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!tripId) {
+      setTickets([]);
+      return () => { cancelled = true; };
+    }
+
+    setTickets(null);
+    operationsApi.conductorTickets(tripId)
+      .then((rows) => {
+        if (cancelled) return;
+        setTickets(rows.filter((ticket) => {
+          const kind = String(ticket.ticketKind || "").toUpperCase();
+          return kind === "MONTHLY" || kind === "JOURNEY_MONTHLY";
+        }));
+      })
+      .catch(() => {
+        if (!cancelled) setTickets([]);
+      });
+
+    return () => { cancelled = true; };
+  }, [tripId]);
+
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
@@ -890,7 +934,11 @@ function AssistantMonthly({ ctx }: { ctx: Ctx }) {
         description="Danh sách vé tháng có hiệu lực trên chuyến."
         icon={<TicketCheck className="size-7" />}
       />
-      {ctx.tickets.length === 0 ? (
+      {tickets === null ? (
+        <div className="flex min-h-40 items-center justify-center">
+          <RefreshCw className="size-6 animate-spin text-primary" />
+        </div>
+      ) : tickets.length === 0 ? (
         <EmptyState
           icon={<TicketCheck className="size-7" />}
           title="Không có vé tháng"
@@ -898,7 +946,7 @@ function AssistantMonthly({ ctx }: { ctx: Ctx }) {
         />
       ) : (
         <StaggerGroup className="space-y-3 min-w-0">
-          {ctx.tickets.map((t) => (
+          {tickets.map((t) => (
             <StaggerItem key={t.ticketId}>
               <ExpressiveCard variant="elevated" className="p-4 min-w-0">
                 <div className="flex items-center gap-3 min-w-0">
@@ -912,7 +960,7 @@ function AssistantMonthly({ ctx }: { ctx: Ctx }) {
                       Hiệu lực: {formatDate(t.validFrom)} → {formatDate(t.expiresAt)}
                     </p>
                   </div>
-                  <M3StatusPill label={ticketStatusLabel(t.status)} tone={t.status === "ACTIVE" || t.status === "VALID" ? "success" : "warning"} />
+                  <M3StatusPill label={t.status} tone={t.status === "ACTIVE" || t.status === "VALID" ? "success" : "warning"} />
                 </div>
               </ExpressiveCard>
             </StaggerItem>
@@ -1160,7 +1208,14 @@ function AssistantContact({ ctx }: { ctx: Ctx }) {
   const loadContact = useCallback(async () => {
     try {
       const data = await conductorApi.contact();
-      setContact(data);
+      setContact((current) => {
+        if (!current || current.activeTripId !== data.activeTripId) return data;
+        const messagesById = new Map(
+          current.messages.map((item) => [item.messageId, item]),
+        );
+        data.messages.forEach((item) => messagesById.set(item.messageId, item));
+        return { ...data, messages: [...messagesById.values()] };
+      });
     } catch (err: any) {
       toast.error(err.message || "Không tải được liên hệ phụ xe");
     } finally {
@@ -1190,10 +1245,18 @@ function AssistantContact({ ctx }: { ctx: Ctx }) {
     if (!message.trim() || sending || !selectedRecipient) return;
     try {
       setSending(true);
-      await conductorApi.sendMessage({
+      const sentMessage = await conductorApi.sendMessage({
         tripId: contact?.activeTripId,
         recipientType,
         content: message.trim(),
+      });
+      setContact((current) => {
+        if (!current) return current;
+        const messagesById = new Map(
+          current.messages.map((item) => [item.messageId, item]),
+        );
+        messagesById.set(sentMessage.messageId, sentMessage);
+        return { ...current, messages: [...messagesById.values()] };
       });
       setMessage("");
       await loadContact();
@@ -1379,16 +1442,12 @@ function AssistantContact({ ctx }: { ctx: Ctx }) {
 // Screen 7: History
 // =============================================================================
 function AssistantHistory({ ctx }: { ctx: Ctx }) {
-  const trips = useMemo(() => {
-    const uniqueTrips = new Map<string, any>();
-    ctx.trips
+  const trips = useMemo(
+    () => [...ctx.conductorTrips]
       .filter((trip) => ["COMPLETED", "CANCELLED"].includes(String(trip.status || "").toUpperCase()))
-      .forEach((trip) => uniqueTrips.set(
-        [trip.serviceDate || trip.date, trip.routeId, trip.departureTime || trip.departTime].join("-"),
-        trip
-      ));
-    return [...uniqueTrips.values()].sort((a, b) => tripSortTime(b) - tripSortTime(a));
-  }, [ctx.trips]);
+      .sort((a, b) => tripSortTime(b) - tripSortTime(a)),
+    [ctx.conductorTrips]
+  );
   const completedCount = trips.filter((trip) => String(trip.status || "").toUpperCase() === "COMPLETED").length;
 
   return (

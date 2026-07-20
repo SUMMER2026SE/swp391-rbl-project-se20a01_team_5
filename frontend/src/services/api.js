@@ -1,4 +1,4 @@
-﻿import { apiFetch } from '@/lib/api/client';
+import { apiFetch } from '@/lib/api/client';
 
 export const travelApi = {
   getHistory({ page = 0, size = 20 } = {}) {

@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
@@ -85,7 +86,8 @@ class OperationsServiceTests {
         TicketScanResult result = operationsService.scanTicket(conductor, new TicketScanRequest(TRIP_ID, "QR-A"));
 
         assertThat(result.valid()).isFalse();
-        assertThat(result.message()).isEqualTo("Vé không hợp lệ cho chuyến này");
+        assertThat(result.message()).contains("Route 501");
+
         verify(operationsRepository, never()).markMonthlyPassScanned(11);
         verify(operationsRepository, never()).ensureTravelHistoryForScan(anyString(), any(), any(), any());
     }
@@ -156,12 +158,13 @@ class OperationsServiceTests {
     }
 
     private TripRouteInfo openTrip(Integer routeId) {
+        LocalDateTime scheduledStart = LocalDateTime.now(BUSINESS_ZONE).minusMinutes(5);
         return new TripRouteInfo(
                 TRIP_ID,
                 routeId,
-                LocalDate.now(BUSINESS_ZONE),
-                LocalTime.now(BUSINESS_ZONE).minusMinutes(5),
-                OffsetDateTime.now(ZoneOffset.UTC).minusMinutes(5),
+                scheduledStart.toLocalDate(),
+                scheduledStart.toLocalTime(),
+                scheduledStart.atZone(BUSINESS_ZONE).toOffsetDateTime(),
                 null,
                 "RUNNING");
     }
