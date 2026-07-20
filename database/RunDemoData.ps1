@@ -96,6 +96,11 @@ BEGIN
     DELETE FROM tb_orders WHERE student_code = v_student_code;
     DELETE FROM route_registrations WHERE student_code = v_student_code;
     DELETE FROM ai_chat_history WHERE user_id = v_student_user_id;
+
+    INSERT INTO notifications (recipient_user_id, sender_user_id, title, content, notification_type, is_read, sent_at)
+    VALUES (v_student_user_id, v_dispatcher_user_id, 'Đã tìm thấy đồ thất lạc',
+            'Cặp của bạn đã được tìm thấy. Mở mục Đồ thất lạc để xem chi tiết.',
+            'ALERT', false, CURRENT_TIMESTAMP);
 END
 $reset$;
 
@@ -119,6 +124,12 @@ WITH checks AS (
     SELECT 'student history is limited to one checkpoint', CASE WHEN count(*) <= 1 THEN 'PASS' ELSE 'FAIL' END
     FROM travel_history
     WHERE student_code = '27211200001'
+    UNION ALL
+    SELECT 'student baseline notification is ready', CASE WHEN count(*) = 1 THEN 'PASS' ELSE 'FAIL' END
+    FROM notifications
+    WHERE recipient_user_id = (SELECT user_id FROM users WHERE email = 'student.supported@unibus.local')
+      AND title = 'Đã tìm thấy đồ thất lạc'
+      AND notification_type = 'ALERT'
     UNION ALL
     SELECT 'real FPT and DTU route data remains available',
            CASE WHEN EXISTS (SELECT 1 FROM stops WHERE stop_id IN (38,84) AND latitude IS NOT NULL AND longitude IS NOT NULL)
