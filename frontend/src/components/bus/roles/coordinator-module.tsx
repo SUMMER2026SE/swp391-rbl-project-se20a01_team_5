@@ -1355,10 +1355,12 @@ function AssignStaffScreen({ ctx }: { ctx: Ctx }) {
   const [conductors, setConductors] = useState<Record<string, number | undefined>>({});
   const [buses, setBuses] = useState<Record<string, number | undefined>>({});
   const [newShiftOpen, setNewShiftOpen] = useState(false);
+
   const [assignmentQuery, setAssignmentQuery] = useState("");
   const [assignmentRouteFilter, setAssignmentRouteFilter] = useState("all");
   const [assignmentStatusFilter, setAssignmentStatusFilter] = useState("all");
   const [deletingScheduleId, setDeletingScheduleId] = useState<number | null>(null);
+
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1651,6 +1653,7 @@ function AssignStaffScreen({ ctx }: { ctx: Ctx }) {
             <NewShiftCard
               dashboard={dashboard}
               date={date}
+              initialRouteId={null}
               onCreated={() => {
                 setNewShiftOpen(false);
                 load();
@@ -1688,10 +1691,12 @@ function formatTime24(hour: string, minute: string, period: string) {
 function NewShiftCard({
   dashboard,
   date,
+  initialRouteId,
   onCreated,
 }: {
   dashboard: ScheduleDashboard;
   date: string;
+  initialRouteId: number | null;
   onCreated: () => void;
 }) {
   const [routeId, setRouteId] = useState("");
@@ -1701,6 +1706,10 @@ function NewShiftCard({
   const [busId, setBusId] = useState("");
   const [saving, setSaving] = useState(false);
   const timeParts = parseTime12(departureTime);
+
+  useEffect(() => {
+    setRouteId(initialRouteId == null ? "" : String(initialRouteId));
+  }, [initialRouteId]);
 
   const setTimePart = (part: "hour" | "minute" | "period", value: string) => {
     setDepartureTime(formatTime24(
@@ -2264,6 +2273,10 @@ function StopAddDialog({ routeId, onClose, onAdded }: { routeId: number; onClose
 // =============================================================================
 function ByUniversityScreen({ onNavigate }: { onNavigate: (id: string) => void }) {
   const [selectedUniversityId, setSelectedUniversityId] = useState<number | null>(null);
+  const [assignmentRouteId, setAssignmentRouteId] = useState<number | null>(null);
+  const [assignmentDashboard, setAssignmentDashboard] = useState<ScheduleDashboard | null>(null);
+  const [assignmentOpen, setAssignmentOpen] = useState(false);
+  const [assignmentLoading, setAssignmentLoading] = useState(false);
   const metrics = useApi<CoordinatorUniversityMetric[]>(
     () => experienceApi.coordinatorByUniversity(),
     undefined,
@@ -2302,13 +2315,27 @@ function ByUniversityScreen({ onNavigate }: { onNavigate: (id: string) => void }
 
   const routeStatus = (route: CoordinatorUniversityRouteMetric) => {
     const demand = Math.max(route.activeMonthlyPasses, route.registeredStudents);
-    if (route.tripsToday === 0) return { label: "Cần tạo chuyến", tone: "error" as const };
+    if (route.tripsToday === 0) return { label: "Cần phân công", tone: "error" as const };
     if (route.tripsToday > 0 && route.runningTrips === 0) return { label: "Chưa chạy", tone: "warning" as const };
     if (demand > route.tripsToday * 40) return { label: "Có nguy cơ quá tải", tone: "warning" as const };
     if (!route.assignedDrivers || !route.assignedConductors) return { label: "Thiếu nhân sự", tone: "warning" as const };
     return { label: "Ổn định", tone: "success" as const };
   };
   const routesNeedingAction = routes.filter((route) => routeStatus(route).tone !== "success").length;
+
+  const openAssignment = async (routeId: number) => {
+    setAssignmentLoading(true);
+    try {
+      const dashboard = await operationsApi.scheduleDashboard(coordinatorToday());
+      setAssignmentRouteId(routeId);
+      setAssignmentDashboard(dashboard);
+      setAssignmentOpen(true);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể mở form phân công");
+    } finally {
+      setAssignmentLoading(false);
+    }
+  };
 
   return (
     <PageTransition className="space-y-6 min-w-0">
@@ -2419,7 +2446,7 @@ function ByUniversityScreen({ onNavigate }: { onNavigate: (id: string) => void }
                           <Calendar className="size-4" />
                           Lịch
                         </ExpressiveButton>
-                        <ExpressiveButton variant="tonal" size="sm" onClick={() => onNavigate("crd-assign")}>
+                        <ExpressiveButton variant="tonal" size="sm" onClick={() => openAssignment(route.routeId)} disabled={assignmentLoading}>
                           <UserCog className="size-4" />
                           Phân công
                         </ExpressiveButton>
@@ -2435,6 +2462,22 @@ function ByUniversityScreen({ onNavigate }: { onNavigate: (id: string) => void }
             </div>
           )}
         </div>
+      )}
+      {assignmentDashboard && (
+        <Dialog open={assignmentOpen} onOpenChange={setAssignmentOpen}>
+          <DialogContent className="max-w-5xl border-none bg-transparent p-0 shadow-none">
+            <NewShiftCard
+              dashboard={assignmentDashboard}
+              date={coordinatorToday()}
+              initialRouteId={assignmentRouteId}
+              onCreated={() => {
+                setAssignmentOpen(false);
+                metrics.reload();
+                routeMetrics.reload();
+              }}
+            />
+          </DialogContent>
+        </Dialog>
       )}
     </PageTransition>
   );

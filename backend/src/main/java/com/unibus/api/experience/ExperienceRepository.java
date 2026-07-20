@@ -935,7 +935,9 @@ public class ExperienceRepository {
                 LEFT JOIN route_universities ru ON ru.university_id = u.university_id
                     AND ru.status = 'ACTIVE'
                 LEFT JOIN routes r ON r.route_id = ru.route_id
-                LEFT JOIN trips t ON t.route_id = ru.route_id
+                LEFT JOIN bus_schedules bs ON bs.route_id = ru.route_id
+                    AND bs.weekday_number = EXTRACT(ISODOW FROM CURRENT_DATE)
+                LEFT JOIN trips t ON t.schedule_id = bs.schedule_id
                     AND t.service_date = CURRENT_DATE
                 LEFT JOIN students s ON s.university_id = u.university_id
                 WHERE u.status = 'ACTIVE'
@@ -965,6 +967,8 @@ public class ExperienceRepository {
                        COUNT(DISTINCT t.conductor_id) FILTER (WHERE t.conductor_id IS NOT NULL) AS assigned_conductors
                 FROM route_universities ru
                 JOIN routes r ON r.route_id = ru.route_id
+                LEFT JOIN bus_schedules bs ON bs.route_id = ru.route_id
+                    AND bs.weekday_number = EXTRACT(ISODOW FROM CURRENT_DATE)
                 LEFT JOIN students s ON s.university_id = ru.university_id
                 LEFT JOIN route_registrations rr ON rr.student_code = s.student_code
                     AND rr.route_id = ru.route_id
@@ -973,7 +977,7 @@ public class ExperienceRepository {
                     AND mp.route_id = ru.route_id
                     AND mp.status = 'ACTIVE'
                     AND mp.expires_on >= CURRENT_DATE
-                LEFT JOIN trips t ON t.route_id = ru.route_id
+                LEFT JOIN trips t ON t.schedule_id = bs.schedule_id
                     AND t.service_date = CURRENT_DATE
                 WHERE ru.university_id = ?
                   AND ru.status = 'ACTIVE'
