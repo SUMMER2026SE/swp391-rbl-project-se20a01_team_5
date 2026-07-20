@@ -33,7 +33,7 @@ student.supported tìm từ khu vực FPT đến Duy Tân 254 Nguyễn Văn Linh
 → dữ liệu mới xuất hiện ở University Admin và System Admin
 ```
 
-Sau khi chạy script, `student.supported` không có đăng ký tuyến, đơn hàng, vé, thanh toán hoặc lịch sử quét. Script không tạo trip và không ép tuyến; planner tự trả các phương án thật đến Duy Tân 254 Nguyễn Văn Linh, gồm cả liên tuyến nếu phù hợp. Các account khác vẫn giữ dữ liệu lịch sử baseline để dashboard không bị trống.
+Sau khi chạy script, `student.supported` không có đăng ký tuyến, đơn hàng, vé hoặc thanh toán; tối đa một chuyến lịch sử cũ nhất được giữ làm checkpoint UI. Script không tạo trip và không ép tuyến; planner tự trả các phương án thật đến Duy Tân 254 Nguyễn Văn Linh, gồm cả liên tuyến nếu phù hợp. Các account khác vẫn giữ dữ liệu lịch sử baseline để dashboard không bị trống.
 
 ### 1. Sinh viên Duy Tân — điểm mở đầu
 

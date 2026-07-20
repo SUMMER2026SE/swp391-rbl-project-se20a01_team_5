@@ -26,7 +26,7 @@ Script tự reset luồng diễn tập chính rồi audit ngay trong cùng một
 
 Checkpoint sau khi chạy:
 
-- `student.supported@unibus.local` không còn đăng ký tuyến, order, payment, vé hoặc lịch sử quét.
+- `student.supported@unibus.local` không còn đăng ký tuyến, order, payment hoặc vé; script giữ lại tối đa một chuyến lịch sử cũ nhất làm checkpoint UI.
 - Script không tạo trip hoặc tuyến giả.
 - Sinh viên tìm từ khu vực FPT Đà Nẵng đến Duy Tân 254 Nguyễn Văn Linh; planner có thể trả nhiều phương án, gồm cả liên tuyến.
 - Sau khi sinh viên mua vé, Dispatcher tạo ca và phân công xe/tài xế/phụ xe cho từng tuyến cần trình diễn.

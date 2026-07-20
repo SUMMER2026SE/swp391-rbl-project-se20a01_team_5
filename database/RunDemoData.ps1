@@ -46,6 +46,7 @@ DECLARE
     v_student_user_id integer;
     v_dispatcher_user_id integer;
     v_schedule_ids integer[];
+    v_preserved_history_id integer;
 BEGIN
     SELECT user_id INTO STRICT v_student_user_id FROM users WHERE email = 'student.supported@unibus.local';
     SELECT user_id INTO STRICT v_dispatcher_user_id FROM users WHERE email = 'dispatcher.demo@unibus.local';
@@ -56,13 +57,25 @@ BEGIN
     WHERE bs.assigned_by_user_id = v_dispatcher_user_id
       AND (t.service_date >= CURRENT_DATE - 1 OR (t.trip_id IS NULL AND bs.assigned_at >= CURRENT_TIMESTAMP - INTERVAL '2 days'));
 
+    SELECT th.travel_history_id INTO v_preserved_history_id
+    FROM travel_history th
+    WHERE th.student_code = v_student_code
+      AND th.trip_id NOT IN (
+          SELECT trip_id FROM trips
+          WHERE schedule_id = ANY(COALESCE(v_schedule_ids, ARRAY[]::integer[]))
+      )
+    ORDER BY th.boarded_at NULLS LAST, th.travel_history_id
+    LIMIT 1;
+
     DELETE FROM vehicle_locations WHERE trip_id IN (SELECT trip_id FROM trips WHERE schedule_id = ANY(COALESCE(v_schedule_ids, ARRAY[]::integer[])));
     DELETE FROM internal_messages WHERE trip_id IN (SELECT trip_id FROM trips WHERE schedule_id = ANY(COALESCE(v_schedule_ids, ARRAY[]::integer[])));
     DELETE FROM feedback WHERE trip_id IN (SELECT trip_id FROM trips WHERE schedule_id = ANY(COALESCE(v_schedule_ids, ARRAY[]::integer[])));
     DELETE FROM incidents WHERE trip_id IN (SELECT trip_id FROM trips WHERE schedule_id = ANY(COALESCE(v_schedule_ids, ARRAY[]::integer[])));
     DELETE FROM driver_ratings WHERE trip_id IN (SELECT trip_id FROM trips WHERE schedule_id = ANY(COALESCE(v_schedule_ids, ARRAY[]::integer[])));
     DELETE FROM lost_item_reports WHERE trip_id IN (SELECT trip_id FROM trips WHERE schedule_id = ANY(COALESCE(v_schedule_ids, ARRAY[]::integer[])));
-    DELETE FROM travel_history WHERE trip_id IN (SELECT trip_id FROM trips WHERE schedule_id = ANY(COALESCE(v_schedule_ids, ARRAY[]::integer[])));
+    DELETE FROM travel_history
+    WHERE trip_id IN (SELECT trip_id FROM trips WHERE schedule_id = ANY(COALESCE(v_schedule_ids, ARRAY[]::integer[])))
+      AND travel_history_id IS DISTINCT FROM v_preserved_history_id;
     UPDATE single_trip_tickets SET used_on_trip_id = NULL, scanned_by_conductor_id = NULL
     WHERE used_on_trip_id IN (SELECT trip_id FROM trips WHERE schedule_id = ANY(COALESCE(v_schedule_ids, ARRAY[]::integer[])));
     DELETE FROM trips WHERE schedule_id = ANY(COALESCE(v_schedule_ids, ARRAY[]::integer[]));
@@ -72,7 +85,9 @@ BEGIN
     DELETE FROM lost_item_reports WHERE reported_by_user_id = v_student_user_id;
     DELETE FROM feedback WHERE student_code = v_student_code;
     DELETE FROM driver_ratings WHERE student_code = v_student_code;
-    DELETE FROM travel_history WHERE student_code = v_student_code;
+    DELETE FROM travel_history
+    WHERE student_code = v_student_code
+      AND travel_history_id IS DISTINCT FROM v_preserved_history_id;
     DELETE FROM invoices WHERE student_code = v_student_code;
     DELETE FROM payments WHERE student_code = v_student_code;
     DELETE FROM monthly_passes WHERE student_code = v_student_code;
@@ -93,7 +108,6 @@ WITH checks AS (
                  AND NOT EXISTS (SELECT 1 FROM payments WHERE student_code = '27211200001')
                  AND NOT EXISTS (SELECT 1 FROM monthly_passes WHERE student_code = '27211200001')
                  AND NOT EXISTS (SELECT 1 FROM single_trip_tickets WHERE student_code = '27211200001')
-                 AND NOT EXISTS (SELECT 1 FROM travel_history WHERE student_code = '27211200001')
            THEN 'PASS' ELSE 'FAIL' END AS status
     UNION ALL
     SELECT 'recent dispatcher rehearsal shifts removed', CASE WHEN count(*) = 0 THEN 'PASS' ELSE 'FAIL' END
@@ -101,6 +115,10 @@ WITH checks AS (
     JOIN users u ON u.user_id = bs.assigned_by_user_id
     WHERE u.email = 'dispatcher.demo@unibus.local'
       AND (t.service_date >= CURRENT_DATE - 1 OR (t.trip_id IS NULL AND bs.assigned_at >= CURRENT_TIMESTAMP - INTERVAL '2 days'))
+    UNION ALL
+    SELECT 'student history is limited to one checkpoint', CASE WHEN count(*) <= 1 THEN 'PASS' ELSE 'FAIL' END
+    FROM travel_history
+    WHERE student_code = '27211200001'
     UNION ALL
     SELECT 'real FPT and DTU route data remains available',
            CASE WHEN EXISTS (SELECT 1 FROM stops WHERE stop_id IN (38,84) AND latitude IS NOT NULL AND longitude IS NOT NULL)
