@@ -97,9 +97,15 @@ BEGIN
     DELETE FROM route_registrations WHERE student_code = v_student_code;
     DELETE FROM ai_chat_history WHERE user_id = v_student_user_id;
 
+    INSERT INTO lost_item_reports (reported_by_user_id, trip_id, item_description, reported_at, status, notes, assisted_by_user_id)
+    SELECT v_student_user_id, th.trip_id, 'Tai nghe', th.boarded_at + INTERVAL '30 minutes',
+           'FOUND', 'Đã tìm thấy tại khu vực ghế cuối xe.', v_dispatcher_user_id
+    FROM travel_history th
+    WHERE th.travel_history_id = v_preserved_history_id;
+
     INSERT INTO notifications (recipient_user_id, sender_user_id, title, content, notification_type, is_read, sent_at)
     VALUES (v_student_user_id, v_dispatcher_user_id, 'Đã tìm thấy đồ thất lạc',
-            'Cặp của bạn đã được tìm thấy. Mở mục Đồ thất lạc để xem chi tiết.',
+            'Tai nghe của bạn đã được tìm thấy. Mở mục Đồ thất lạc để xem chi tiết.',
             'ALERT', false, CURRENT_TIMESTAMP);
 END
 $reset$;
@@ -124,6 +130,13 @@ WITH checks AS (
     SELECT 'student history is limited to one checkpoint', CASE WHEN count(*) <= 1 THEN 'PASS' ELSE 'FAIL' END
     FROM travel_history
     WHERE student_code = '27211200001'
+    UNION ALL
+    SELECT 'student baseline lost item is ready', CASE WHEN count(*) = 1 THEN 'PASS' ELSE 'FAIL' END
+    FROM lost_item_reports
+    WHERE reported_by_user_id = (SELECT user_id FROM users WHERE email = 'student.supported@unibus.local')
+      AND trip_id = 1450
+      AND item_description = 'Tai nghe'
+      AND status = 'FOUND'
     UNION ALL
     SELECT 'student baseline notification is ready', CASE WHEN count(*) = 1 THEN 'PASS' ELSE 'FAIL' END
     FROM notifications
