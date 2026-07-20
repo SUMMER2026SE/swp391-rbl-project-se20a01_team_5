@@ -6,6 +6,7 @@ import java.sql.Time;
 import java.sql.Timestamp;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -875,6 +876,7 @@ public class OperationsRepository {
                 departure == null ? "" : departure.toString(),
                 rs.getString("status"));
     }
+
 
     private DriverTripView mapDriverTrip(ResultSet rs) throws SQLException {
         return mapDriverTrip(rs, true);

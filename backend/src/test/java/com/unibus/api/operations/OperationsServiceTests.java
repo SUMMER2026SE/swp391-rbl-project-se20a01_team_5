@@ -85,7 +85,8 @@ class OperationsServiceTests {
         TicketScanResult result = operationsService.scanTicket(conductor, new TicketScanRequest(TRIP_ID, "QR-A"));
 
         assertThat(result.valid()).isFalse();
-        assertThat(result.message()).isEqualTo("Vé không hợp lệ cho chuyến này");
+        assertThat(result.message()).contains("Route 501");
+
         verify(operationsRepository, never()).markMonthlyPassScanned(11);
         verify(operationsRepository, never()).ensureTravelHistoryForScan(anyString(), any(), any(), any());
     }

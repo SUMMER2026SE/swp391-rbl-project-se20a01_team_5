@@ -547,6 +547,9 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
   const lastScanRef = useRef<{ code: string; at: number } | null>(null);
   const validConductorTrips = useMemo(() => ctx.conductorTrips.filter((trip) => isTripInScanWindow(trip)), [ctx.conductorTrips]);
   const hasConductorTrips = ctx.conductorTrips.length > 0;
+  const blockedConductorTrips = useMemo(() => ctx.conductorTrips.map((trip) => ({ trip, reason: scanBlockReason(trip) })).filter((item) => item.reason), [ctx.conductorTrips]);
+  const hasInvalidConductorTrips = blockedConductorTrips.length > 0;
+  const firstScanBlockReason = blockedConductorTrips[0]?.reason || null;
   const preferredTrip = validConductorTrips.find((trip) => isRunningTrip(trip)) || validConductorTrips[0] || null;
   const selectedTrip = validConductorTrips.find((trip) => Number(trip.tripId) === Number(tripId)) || preferredTrip;
 
@@ -558,9 +561,9 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
     }
     const stillOpen = validConductorTrips.some((trip) => Number(trip.tripId) === Number(tripId));
     if (!tripId || !stillOpen) {
-      setTripId(preferredTrip?.tripId ?? null);
+      setTripId(validConductorTrips[0].tripId);
     }
-  }, [preferredTrip, tripId, validConductorTrips]);
+  }, [validConductorTrips, tripId]);
 
   const loadTickets = useCallback(async () => {
     if (!tripId) return;
@@ -583,6 +586,17 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
     if (normalized === "MONTHLY" || normalized === "JOURNEY_MONTHLY") return "Vé tháng";
     return kind || "—";
   };
+
+  const ticketStatusLabel = (status?: string) => {
+    switch (String(status || "").toUpperCase()) {
+      case "ACTIVE": return "Đang hiệu lực";
+      case "UNUSED": return "Chưa sử dụng";
+      case "USED": return "Đã sử dụng";
+      case "EXPIRED": return "Hết hạn";
+      default: return status || "—";
+    }
+  };
+
 
   const filteredTickets = useMemo(() => {
     const rows = tickets || [];
@@ -867,7 +881,7 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
                   </div>
                   <div className="text-right shrink-0">
                     <p className="text-[10px] text-on-surface-variant">{formatDateTime(t.lastScannedAt)}</p>
-                    <M3StatusPill label={ticketStatusLabel(t.status)} tone={t.status === "VALID" || t.status === "ACTIVE" ? "success" : "warning"} />
+                    <M3StatusPill label={t.status} tone={t.status === "VALID" || t.status === "ACTIVE" ? "success" : "warning"} />
                   </div>
                 </div>
               </ExpressiveCard>
@@ -946,7 +960,7 @@ function AssistantMonthly({ ctx }: { ctx: Ctx }) {
                       Hiệu lực: {formatDate(t.validFrom)} → {formatDate(t.expiresAt)}
                     </p>
                   </div>
-                  <M3StatusPill label={ticketStatusLabel(t.status)} tone={t.status === "ACTIVE" || t.status === "VALID" ? "success" : "warning"} />
+                  <M3StatusPill label={t.status} tone={t.status === "ACTIVE" || t.status === "VALID" ? "success" : "warning"} />
                 </div>
               </ExpressiveCard>
             </StaggerItem>
@@ -1428,16 +1442,12 @@ function AssistantContact({ ctx }: { ctx: Ctx }) {
 // Screen 7: History
 // =============================================================================
 function AssistantHistory({ ctx }: { ctx: Ctx }) {
-  const trips = useMemo(() => {
-    const uniqueTrips = new Map<string, any>();
-    ctx.trips
+  const trips = useMemo(
+    () => [...ctx.conductorTrips]
       .filter((trip) => ["COMPLETED", "CANCELLED"].includes(String(trip.status || "").toUpperCase()))
-      .forEach((trip) => uniqueTrips.set(
-        [trip.serviceDate || trip.date, trip.routeId, trip.departureTime || trip.departTime].join("-"),
-        trip
-      ));
-    return [...uniqueTrips.values()].sort((a, b) => tripSortTime(b) - tripSortTime(a));
-  }, [ctx.trips]);
+      .sort((a, b) => tripSortTime(b) - tripSortTime(a)),
+    [ctx.conductorTrips]
+  );
   const completedCount = trips.filter((trip) => String(trip.status || "").toUpperCase() === "COMPLETED").length;
 
   return (

@@ -1177,22 +1177,20 @@ function DriverActiveTrip({
 
   const runningTrip = trips?.find(isActiveDriverTrip) ?? null;
   const sortedTrips = useMemo(() => sortDriverTrips(trips ?? []), [trips]);
-  const startableTrips = useMemo(() => {
+  const candidateTrips = useMemo(() => {
     return sortedTrips.filter((trip) => {
       const status = trip.status?.toUpperCase();
-      return trip.tripId != null && (
-        status !== "RUNNING" && status !== "COMPLETED" && status !== "CANCELLED" &&
-        !isDriverTripExpired(trip, renderedAt)
-      );
+      return status !== "RUNNING" && status !== "COMPLETED" && status !== "CANCELLED"
+        && !isDriverTripExpired(trip, renderedAt);
     });
   }, [renderedAt, sortedTrips]);
   const nextTrip = runningTrip
-    ?? startableTrips.find((trip) => canStartDriverTrip(trip))
-    ?? startableTrips.find((trip) => {
+    ?? candidateTrips.find((trip) => canStartDriverTrip(trip))
+    ?? candidateTrips.find((trip) => {
       if (!trip.serviceDate || !trip.departureTime) return false;
       return (driverTripScheduledAt(trip) ?? 0) > renderedAt;
     })
-    ?? startableTrips[0]
+    ?? candidateTrips[0]
     ?? null;
   const elapsed = useElapsed(runningTrip?.departedAt);
   const activeVehicle = syncedVehicleForTrip(trackingSnapshot, runningTrip);

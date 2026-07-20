@@ -508,6 +508,7 @@ export const JourneyMap = React.memo(function JourneyMap({
 
     if (fitOnStopsChange && !allPoints.length && lastGeometryKeyRef.current) {
       lastGeometryKeyRef.current = "";
+      if (cameraFrameRef.current) window.cancelAnimationFrame(cameraFrameRef.current);
       cameraFrameRef.current = window.requestAnimationFrame(() => {
         cameraFrameRef.current = 0;
         if (mapRef.current !== map || !containerRef.current?.isConnected) return;
@@ -524,6 +525,7 @@ export const JourneyMap = React.memo(function JourneyMap({
     if (fitOnStopsChange && allPoints.length && geometryKey !== lastGeometryKeyRef.current) {
       lastGeometryKeyRef.current = geometryKey;
       const bounds = L.latLngBounds(allPoints.map((point) => [point.lat, point.lng]));
+      if (cameraFrameRef.current) window.cancelAnimationFrame(cameraFrameRef.current);
       cameraFrameRef.current = window.requestAnimationFrame(() => {
         cameraFrameRef.current = 0;
         if (mapRef.current !== map || !containerRef.current?.isConnected) return;
