@@ -12,6 +12,7 @@ import com.unibus.api.admin.AdminUserDtos.UpdateUserStatusRequest;
 import com.unibus.api.admin.AdminUserDtos.UserView;
 import com.unibus.api.common.ApiException;
 import com.unibus.api.notification.EmailService;
+import com.unibus.api.security.CurrentUser;
 
 @Service
 public class AdminUserService {
@@ -46,9 +47,16 @@ public class AdminUserService {
     }
 
     @Transactional
-    public UserView updateStatus(Integer userId, UpdateUserStatusRequest request) {
+    public UserView updateStatus(CurrentUser actor, Integer userId, UpdateUserStatusRequest request) {
         UserView previous = get(userId);
         UserView updated = adminUserRepository.updateStatus(userId, request.status(), request.lockReason());
+        adminUserRepository.audit(
+                actor.userId(),
+                "USER_STATUS_UPDATE",
+                "users",
+                updated.userId(),
+                "SUCCESS",
+                updated.email() + " -> " + updated.status());
         // REQ-ADM-001 AC2: Email thông báo gửi đến người dùng khi lock/unlock.
         if ("LOCKED".equals(request.status())) {
             emailService.sendAccountLockNotice(updated.email(), updated.fullName(), request.lockReason());
@@ -59,7 +67,7 @@ public class AdminUserService {
     }
 
     @Transactional
-    public UserView create(CreateStaffUserRequest request) {
+    public UserView create(CurrentUser actor, CreateStaffUserRequest request) {
         String email = request.email().trim().toLowerCase();
         if (adminUserRepository.existsByEmail(email)) {
             throw new ApiException(HttpStatus.CONFLICT, "Email is already registered");
@@ -73,7 +81,7 @@ public class AdminUserService {
         if (("CONDUCTOR".equals(role) || "DISPATCHER".equals(role)) && employeeCode == null) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Staff requires employee code");
         }
-        return adminUserRepository.createUser(
+        UserView created = adminUserRepository.createUser(
                 email,
                 passwordEncoder.encode(request.password()),
                 request.fullName().trim(),
@@ -81,6 +89,14 @@ public class AdminUserService {
                 role,
                 employeeCode,
                 licenseNumber);
+        adminUserRepository.audit(
+                actor.userId(),
+                "USER_CREATE",
+                "users",
+                created.userId(),
+                "SUCCESS",
+                created.email() + " · " + created.role());
+        return created;
     }
 
     private String blankToNull(String value) {

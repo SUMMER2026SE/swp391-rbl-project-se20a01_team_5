@@ -1086,3 +1086,224 @@ Backend:
 - `UPDATE_EXISTING` chua bat vi chua co permission/whitelist field update ro rang.
 - Roster model hien chua co campus field va faculty dang la text, nen chua validate campus/faculty catalog that.
 - Backend test can chay lai tren moi truong co Maven truoc khi merge main.
+
+---
+
+## 22. Cap nhat Admin/UniAdmin va fallback OCR xac minh sinh vien
+
+Ngay cap nhat: 2026-07-21
+
+### 22.1. Pham vi
+
+Ghi nhan cac thay doi moi cho khu vuc Admin he thong, UniAdmin va luong xac minh sinh vien trong moi truong demo.
+
+Trong dot nay, muc tieu chinh la:
+
+- Hoan thien cac thao tac xoa du lieu quan tri can dung khi demo.
+- Lam ro nhat ky Admin chi phuc vu Admin he thong.
+- Cai thien UI danh sach truong doi tac.
+- Hoan thien trang vi pham voi trang thai da dong.
+- Cho phep flow xac minh sinh vien tiep tuc hoat dong khi Google Vision OCR bi loi do dich vu ngoai.
+
+### 22.2. Admin he thong da thay doi
+
+- Them/xu ly xoa admin truong:
+  - Admin co the xoa tai khoan admin truong khoi danh sach quan tri.
+  - Backend bo sung endpoint xoa theo `universityAdminId`.
+  - Frontend hien nut xoa trong danh sach Admin truong va reload lai danh sach sau khi xoa.
+- Them/xu ly xoa truong dai hoc:
+  - Admin co the xoa truong doi tac khi du lieu demo/test can don dep.
+  - Backend xu ly cac rang buoc lien quan truoc khi xoa.
+  - Frontend them nut xoa tren card truong.
+- Them/xu ly xoa tuyen duoc gan khoi truong:
+  - Co the xoa tung lien ket `route_universities`.
+  - Co the xoa tat ca tuyen dang gan cua mot truong khi can reset/demo.
+  - Sau khi xoa, danh sach lien ket va thong ke duoc reload.
+- Sua danh sach truong cho tham my hon:
+  - Card truong gon hon, can doi hon.
+  - Thong tin ma truong/domain/co so/sinh vien duoc sap xep ro rang hon.
+  - Nut hanh dong dat dung vi tri, tranh lam layout roi.
+- Sua nhat ky Admin:
+  - Doi muc nhat ky thanh `Nhat ky Admin`.
+  - Chi hien cac hoat dong cua Admin he thong.
+  - Khong dua hoat dong cua UniAdmin vao man nhat ky Admin.
+  - Backend/filter uu tien actor role `ADMIN`; frontend cung map nhan va bo loc theo scope phu hop.
+- Sua text/so luong mot so man Admin:
+  - Chinh lai cac text bi loi encoding/hien thieu chu.
+  - So luong tai khoan/sinh vien/truong hien theo du lieu thuc te sau filter.
+  - Trai nghiem toast loi duoc lam ro hon, dac biet khi backend dang chay ban cu chua co endpoint moi.
+- Them close vi pham:
+  - Admin co the xu ly xong va dong mot vi pham.
+  - Trang thai vi pham bo sung `CLOSED`.
+  - Man canh bao/vi pham rut gon ve 2 nhom nghiep vu:
+    - dang mo;
+    - da dong.
+
+### 22.3. UniAdmin da thay doi lien quan reset/demo
+
+- Them xoa co so cho UniAdmin:
+  - Endpoint: `DELETE /api/v1/university-admin/campuses/{campusId}`.
+  - Chi duoc xoa co so thuoc dung truong cua UniAdmin hien tai.
+  - Khi xoa, cac lien ket phu thuoc nhu `route_universities.campus_id` va `subsidy_policies.campus_id` duoc dua ve `NULL`.
+  - Ghi audit `CAMPUS_DELETE`.
+- Them xoa domain email cho UniAdmin:
+  - Endpoint: `DELETE /api/v1/university-admin/domains/{domainId}`.
+  - Chi duoc xoa domain thuoc dung truong cua UniAdmin hien tai.
+  - Ghi audit `DOMAIN_DELETE`.
+- Tao script reset UniAdmin demo:
+  - `database/ResetUniAdminDemoLocalState.ps1`
+  - `database/ResetUniAdminDemoLocalState.sql`
+  - Muc dich: dua `uniadmin.demo@unibus.local` ve trang thai DTU demo sach.
+  - Reset lai campus/domain/roster co ban.
+  - Xoa cac sinh vien import loi trong demo:
+    - `asjaakkaka` / `DDDDDD22`
+    - `aaaaaa` / `DE111111`
+    - `nguyen tan martin` / `DE201222`
+- Cach chay script reset:
+
+```powershell
+.\database\ResetUniAdminDemoLocalState.ps1
+```
+
+Nhap xac nhan:
+
+```text
+RESET UNIADMIN DEMO
+```
+
+Hoac chay nhanh khong hoi:
+
+```powershell
+.\database\ResetUniAdminDemoLocalState.ps1 -Yes
+```
+
+### 22.4. OCR fallback cho luong xac minh sinh vien
+
+Da cap nhat backend de luong xac minh sinh vien khong bi chan khi Google Vision OCR loi tren moi truong demo.
+
+File thay doi:
+
+- `backend/src/main/java/com/unibus/api/student/GoogleVisionStudentCardOcrService.java`
+- `backend/src/main/resources/application.properties`
+- `backend/src/main/resources/application-local.properties`
+
+Noi dung cau hinh moi:
+
+```properties
+app.ocr.fail-open-on-error=${OCR_FAIL_OPEN_ON_ERROR:true}
+```
+
+Khi `OCR_FAIL_OPEN_ON_ERROR=true`, neu Google Vision gap cac loi ben ngoai nhu:
+
+- loi 5xx tu Google Vision;
+- credential missing/khong doc duoc credential;
+- billing chua bat;
+- quota exceeded;
+- API unavailable;
+
+backend se khong tra loi `503` cho frontend nua.
+
+Thay vao do, backend fallback bang du lieu nguoi dung da nhap:
+
+- `fullName` lay theo gia tri expected;
+- `studentCode` lay theo gia tri expected;
+- `university` lay theo gia tri expected;
+- `ocrRawText` ghi ly do OCR loi;
+- `ocrConfidenceScore = 0`.
+
+Ho so xac minh van duoc tao voi trang thai:
+
+```text
+PENDING_REVIEW
+```
+
+Admin se duyet thu cong tren man xac minh sinh vien.
+
+### 22.5. Ly do thay doi OCR
+
+Google Vision tren web demo dang co kha nang loi billing:
+
+```text
+This API method requires billing to be enabled
+```
+
+Neu khong co fallback, sinh vien khong gui duoc ho so xac minh va demo flow bi dung tai buoc upload the sinh vien.
+
+Thay doi nay giup demo/UAT van chay duoc trong truong hop dich vu OCR ben ngoai loi, trong khi van giu duong chay OCR that khi Google Vision hoat dong binh thuong.
+
+### 22.6. Anh huong va cau hinh moi truong
+
+- Khong tat OCR hoan toan.
+- Neu Google Vision thanh cong, he thong van dung ket qua OCR that.
+- Chi fallback khi OCR loi va `OCR_FAIL_OPEN_ON_ERROR=true`.
+- Phu hop demo/UAT.
+- Neu moi truong production muon strict OCR, set:
+
+```properties
+OCR_FAIL_OPEN_ON_ERROR=false
+```
+
+Khi do, loi OCR se duoc tra ve nhu loi that va frontend can hien thong bao loi cho nguoi dung.
+
+### 22.7. File code chinh da sua trong dot nay
+
+Admin/UniAdmin:
+
+- `frontend/src/components/bus/roles/admin-module.tsx`
+- `frontend/src/components/bus/roles/university-admin-module.tsx`
+- `frontend/src/lib/api/client.ts`
+- `backend/src/main/java/com/unibus/api/university/AdminUniversityController.java`
+- `backend/src/main/java/com/unibus/api/university/UniversityAdminController.java`
+- `backend/src/main/java/com/unibus/api/university/UniversityManagementService.java`
+- `backend/src/main/java/com/unibus/api/university/UniversityManagementRepository.java`
+- `backend/src/main/java/com/unibus/api/university/UniversityDtos.java`
+- `database/ResetUniAdminDemoLocalState.ps1`
+- `database/ResetUniAdminDemoLocalState.sql`
+
+OCR:
+
+- `backend/src/main/java/com/unibus/api/student/GoogleVisionStudentCardOcrService.java`
+- `backend/src/main/resources/application.properties`
+- `backend/src/main/resources/application-local.properties`
+
+### 22.8. Luu y test
+
+Admin:
+
+- Vao `Tai khoan & phan quyen`, kiem tra xoa Admin truong.
+- Vao `Truong doi tac`, kiem tra xoa truong va xoa tuyen duoc gan.
+- Vao `Nhat ky Admin`, xac nhan khong con hoat dong cua UniAdmin.
+- Vao `Vi pham`, close mot vi pham va kiem tra trang thai da dong.
+
+UniAdmin:
+
+- Vao `Thong tin truong & co so`, kiem tra xoa co so.
+- Vao `Domain email`, kiem tra xoa domain.
+- Chay script reset UniAdmin demo va refresh web de dam bao roster quay ve du lieu demo sach.
+
+OCR:
+
+- Set `OCR_FAIL_OPEN_ON_ERROR=true`.
+- Mo flow sinh vien gui xac minh.
+- Gia lap Google Vision loi billing/credential/API.
+- Ky vong: ho so van duoc tao `PENDING_REVIEW`, Admin co the duyet thu cong.
+
+### 22.9. Test da chay
+
+Frontend:
+
+```powershell
+cd frontend
+npx tsc --noEmit --pretty false
+npm run lint
+```
+
+Ket qua:
+
+- TypeScript check pass.
+- ESLint pass, con cac warning hook/a11y cu khong lien quan den thay doi nay.
+
+Backend:
+
+- Chua chay full Maven build trong terminal hien tai do moi truong may khong co Maven trong PATH va repo khong co wrapper `mvnw.cmd`.
+- Cac endpoint/backend thay doi can restart backend de co hieu luc khi test tren web.

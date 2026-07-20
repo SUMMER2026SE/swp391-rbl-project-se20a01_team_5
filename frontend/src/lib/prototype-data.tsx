@@ -762,8 +762,8 @@ export function useAdminPrototypeData() {
  * Admin LAZY data hooks — call these INSIDE specific screens.
  * Prevents 14 API calls on dashboard load.
  */
-export function useAdminUsers(params?: { role?: string; status?: string; search?: string }) {
-  return useApi(() => adminApi.users(params), undefined, [params?.role, params?.status, params?.search]);
+export function useAdminUsers(params?: { role?: string; status?: string; search?: string; page?: number; size?: number }) {
+  return useApi(() => adminApi.users(params), undefined, [params?.role, params?.status, params?.search, params?.page, params?.size]);
 }
 export function useAdminVerifications(status?: string) {
   return useApi(() => adminApi.verifications(status), undefined, [status]);

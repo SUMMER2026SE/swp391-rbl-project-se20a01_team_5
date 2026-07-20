@@ -8,6 +8,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -76,6 +77,15 @@ public class UniversityAdminController {
         return ApiResponse.ok("Campus created", service.createCampus(currentUser, universityId, request));
     }
 
+    @DeleteMapping("/campuses/{campusId}")
+    ApiResponse<Void> deleteCampus(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @PathVariable Integer campusId) {
+        Integer universityId = service.requireUniversityAdmin(currentUser).universityId();
+        service.deleteCampus(currentUser, universityId, campusId);
+        return ApiResponse.ok("Campus deleted", null);
+    }
+
     @GetMapping("/domains")
     ApiResponse<List<DomainView>> domains(@AuthenticationPrincipal CurrentUser currentUser) {
         Integer universityId = service.requireUniversityAdmin(currentUser).universityId();
@@ -98,6 +108,15 @@ public class UniversityAdminController {
         Integer universityId = service.requireUniversityAdmin(currentUser).universityId();
         return ApiResponse.ok("Domain status updated",
                 service.updateDomainStatus(currentUser, universityId, domainId, request.status()));
+    }
+
+    @DeleteMapping("/domains/{domainId}")
+    ApiResponse<Void> deleteDomain(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @PathVariable Integer domainId) {
+        Integer universityId = service.requireUniversityAdmin(currentUser).universityId();
+        service.deleteDomain(currentUser, universityId, domainId);
+        return ApiResponse.ok("Domain deleted", null);
     }
 
     @GetMapping("/roster")
@@ -206,7 +225,7 @@ public class UniversityAdminController {
         UniversityManagementService.ImportReportFile file = service.importBatchReport(universityId, importBatchId);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + file.fileName() + "\"")
-                .contentType(MediaType.parseMediaType("text/csv; charset=utf-8"))
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
                 .body(file.bytes());
     }
 

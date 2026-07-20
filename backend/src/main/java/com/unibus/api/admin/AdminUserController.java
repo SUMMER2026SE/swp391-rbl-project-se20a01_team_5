@@ -1,6 +1,7 @@
 package com.unibus.api.admin;
 
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -15,6 +16,7 @@ import com.unibus.api.admin.AdminUserDtos.PageResponse;
 import com.unibus.api.admin.AdminUserDtos.UpdateUserStatusRequest;
 import com.unibus.api.admin.AdminUserDtos.UserView;
 import com.unibus.api.common.ApiResponse;
+import com.unibus.api.security.CurrentUser;
 
 import jakarta.validation.Valid;
 
@@ -50,14 +52,17 @@ public class AdminUserController {
     @PutMapping("/{userId}/status")
     @PreAuthorize("hasRole('ADMIN')")
     ApiResponse<UserView> updateStatus(
+            @AuthenticationPrincipal CurrentUser currentUser,
             @PathVariable Integer userId,
             @Valid @RequestBody UpdateUserStatusRequest request) {
-        return ApiResponse.ok("User status updated", adminUserService.updateStatus(userId, request));
+        return ApiResponse.ok("User status updated", adminUserService.updateStatus(currentUser, userId, request));
     }
 
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
-    ApiResponse<UserView> create(@Valid @RequestBody CreateStaffUserRequest request) {
-        return ApiResponse.ok("User created", adminUserService.create(request));
+    ApiResponse<UserView> create(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @Valid @RequestBody CreateStaffUserRequest request) {
+        return ApiResponse.ok("User created", adminUserService.create(currentUser, request));
     }
 }

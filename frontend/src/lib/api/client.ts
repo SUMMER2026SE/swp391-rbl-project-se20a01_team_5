@@ -1355,6 +1355,8 @@ export const experienceApi = {
   violationTargets: (keyword?: string) => apiFetch.get<ViolationTargetView[]>("/admin/violation-targets", { keyword }),
   createViolation: (data: { reportedUserId: number; category: string; description: string }) =>
     apiFetch.post<{ violationId: number }>("/admin/violations", data),
+  reviewViolation: (violationId: number, data: { status: string; actionTaken?: string }) =>
+    apiFetch.patch<{ violationId: number }>(`/admin/violations/${violationId}`, data),
 };
 
 export interface ContactThreadCard {
@@ -1826,6 +1828,7 @@ export interface AuditLogView {
   auditLogId: number;
   performedByUserId: number;
   performerName?: string;
+  performerRole?: string;
   universityId?: number;
   universityName?: string;
   action: string;
@@ -1837,10 +1840,35 @@ export interface AuditLogView {
   performedAt?: string;
 }
 
+export type AdminUserList = AdminUserView[] & {
+  totalElements?: number;
+  totalPages?: number;
+  page?: number;
+  size?: number;
+};
+
 export const adminApi = {
-  users: async (params?: { role?: string; status?: string; search?: string }) => {
-    const res = await apiFetch.get<{ items: AdminUserView[] }>("/admin/users", { role: params?.role, status: params?.status, keyword: params?.search });
-    return res.items || [];
+  users: async (params?: { role?: string; status?: string; search?: string; page?: number; size?: number }) => {
+    const res = await apiFetch.get<{
+      items: AdminUserView[];
+      totalElements?: number;
+      totalItems?: number;
+      totalPages?: number;
+      page?: number;
+      size?: number;
+    }>("/admin/users", {
+      role: params?.role,
+      status: params?.status,
+      keyword: params?.search,
+      page: params?.page,
+      size: params?.size,
+    });
+    const items = (res.items || []) as AdminUserList;
+    items.totalElements = res.totalElements ?? res.totalItems ?? items.length;
+    items.totalPages = res.totalPages;
+    items.page = res.page;
+    items.size = res.size;
+    return items;
   },
   user: (userId: number) => apiFetch.get<AdminUserView>(`/admin/users/${userId}`),
   updateUserStatus: (userId: number, data: { status: "ACTIVE" | "LOCKED"; lockReason?: string }) =>
@@ -1865,6 +1893,7 @@ export const adminApi = {
     apiFetch.get<UniversityView[]>("/admin/universities", params),
   createUniversity: (data: { code: string; name: string; shortName?: string; contactEmail?: string; status?: string }) =>
     apiFetch.post<UniversityView>("/admin/universities", data),
+  deleteUniversity: (universityId: number) => apiFetch.delete<void>(`/admin/universities/${universityId}`),
   campuses: (universityId: number) => apiFetch.get<CampusView[]>(`/admin/universities/${universityId}/campuses`),
   createCampus: (universityId: number, data: { code: string; name: string; address?: string; latitude?: number; longitude?: number; status?: string }) =>
     apiFetch.post<CampusView>(`/admin/universities/${universityId}/campuses`, data),
@@ -1874,15 +1903,20 @@ export const adminApi = {
   universityAdmins: (universityId?: number) => apiFetch.get<UniversityAdminView[]>("/admin/university-admins", { universityId }),
   createUniversityAdmin: (data: { universityId: number; fullName: string; email: string; password: string; phoneNumber?: string; title?: string }) =>
     apiFetch.post<UniversityAdminView>("/admin/university-admins", data),
+  deleteUniversityAdmin: (universityAdminId: number) => apiFetch.delete<void>(`/admin/university-admins/${universityAdminId}`),
   routeUniversities: (universityId?: number) => apiFetch.get<RouteUniversityView[]>("/admin/route-universities", { universityId }),
   createRouteUniversity: (data: { routeId: number; universityId: number; campusId?: number; activeFrom?: string; activeUntil?: string; status?: string }) =>
     apiFetch.post<RouteUniversityView>("/admin/route-universities", data),
+  deleteRouteUniversity: (routeUniversityId: number) => apiFetch.delete<void>(`/admin/route-universities/${routeUniversityId}`),
+  deleteRouteUniversitiesForUniversity: (universityId: number) => apiFetch.delete<void>(`/admin/universities/${universityId}/route-universities`),
   subsidyPolicies: (universityId?: number) => apiFetch.get<SubsidyPolicyView[]>("/admin/subsidy-policies", { universityId }),
   createSubsidyPolicy: (data: { universityId: number; campusId?: number; policyName: string; subsidyType: string; value: number; maxAmount?: number; activeFrom?: string; activeUntil?: string; status?: string }) =>
     apiFetch.post<SubsidyPolicyView>("/admin/subsidy-policies", data),
   auditLogs: (params?: { universityId?: number; action?: string }) => apiFetch.get<AuditLogView[]>("/admin/audit-logs", params),
   auditReportExport: (data: { from?: string; to?: string; format?: string }) =>
     apiFetch.post<void>("/admin/audit-logs/report-export", data),
+  statsReportXlsx: (params?: { days?: number; from?: string; to?: string }) =>
+    apiFetch.download(`/admin/stats/export${buildQuery(params)}`),
   paymentTransactions: (params?: { universityId?: number }) => apiFetch.get<PaymentTransactionView[]>("/admin/payment-transactions", params),
 };
 
@@ -1892,8 +1926,10 @@ export const universityApi = {
   campuses: () => apiFetch.get<CampusView[]>("/university-admin/campuses"),
   createCampus: (data: { code: string; name: string; address?: string; latitude?: number; longitude?: number; status?: string }) =>
     apiFetch.post<CampusView>("/university-admin/campuses", data),
+  deleteCampus: (campusId: number) => apiFetch.delete<void>(`/university-admin/campuses/${campusId}`),
   domains: () => apiFetch.get<DomainView[]>("/university-admin/domains"),
   createDomain: (data: { domain: string; status?: string }) => apiFetch.post<DomainView>("/university-admin/domains", data),
+  deleteDomain: (domainId: number) => apiFetch.delete<void>(`/university-admin/domains/${domainId}`),
   roster: (params?: { keyword?: string; status?: string; importBatchId?: number }) => apiFetch.get<RosterStudentView[]>("/university-admin/roster", params),
   rosterTemplate: () => apiFetch.download("/university-admin/roster/template"),
   rosterExportCsv: (params?: { keyword?: string; status?: string }) =>

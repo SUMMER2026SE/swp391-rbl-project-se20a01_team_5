@@ -1486,6 +1486,16 @@ public class ExperienceRepository {
                 """, fareId, routeId, oldAmount, newAmount, effectiveFrom, adjustedByUserId, reason);
     }
 
+    public void audit(Integer performedByUserId, String action, String affectedTable,
+            Integer affectedRecordId, String result, String notes) {
+        jdbcTemplate.update("""
+                INSERT INTO audit_logs(performed_by_user_id, action, affected_table,
+                                       affected_record_id, result, notes)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """, performedByUserId, action, affectedTable,
+                affectedRecordId == null ? null : String.valueOf(affectedRecordId), result, notes);
+    }
+
     public List<java.util.Map<String, Object>> fareChangeHistory(Integer routeId) {
         return jdbcTemplate.queryForList("""
                 SELECT fc.fare_change_id, fc.fare_id, fc.route_id, fc.old_amount, fc.new_amount,
