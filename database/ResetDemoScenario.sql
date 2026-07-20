@@ -7,6 +7,8 @@ SET TIME ZONE 'Asia/Ho_Chi_Minh';
 
 BEGIN;
 
+SELECT pg_advisory_xact_lock(hashtext('unibus-demo-baseline-v2'));
+
 DO $$
 DECLARE
     v_end_date date := DATE '2026-08-31';
@@ -20,6 +22,7 @@ DECLARE
     v_alighting_supported_id integer;
     v_boarding_full_id integer;
     v_alighting_full_id integer;
+    v_full_direction integer;
     v_bus_id integer;
     v_driver_user_id integer;
     v_conductor_user_id integer;
@@ -60,7 +63,7 @@ DECLARE
     ];
 BEGIN
     IF CURRENT_DATE > v_end_date THEN
-        RAISE NOTICE 'Demo end date % is already past current date %. Only account/master data will remain meaningful.', v_end_date, CURRENT_DATE;
+        RAISE EXCEPTION 'Demo baseline expired on %, current date is %. Update the scenario before seeding.', v_end_date, CURRENT_DATE;
     END IF;
 
     INSERT INTO users (email, password_hash, full_name, phone_number, role, status, email_verified_at, student_verification_status, created_at, updated_at)
@@ -344,21 +347,21 @@ BEGIN
     IF v_route_supported_id IS NULL THEN
         SELECT route_id INTO v_route_supported_id
         FROM routes
-        WHERE route_code IN ('12', '01', '06')
+        WHERE route_code IN ('12', '03', '08')
           AND status = 'ACTIVE'
           AND COALESCE(external_source, '') = 'BUSMAP_DN'
           AND (SELECT count(*) FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id WHERE rs.route_id = routes.route_id) >= 2
-        ORDER BY CASE route_code WHEN '12' THEN 0 WHEN '01' THEN 1 WHEN '06' THEN 2 ELSE 3 END, route_id
+        ORDER BY CASE route_code WHEN '12' THEN 0 WHEN '03' THEN 1 WHEN '08' THEN 2 ELSE 3 END, route_id
         LIMIT 1;
     END IF;
 
     IF v_route_supported_id IS NULL THEN
-        RAISE EXCEPTION 'Không tìm thấy tuyến BUSMAP thật 16/12/01/06 đang hoạt động cho kịch bản trợ giá Duy Tân.';
+        RAISE EXCEPTION 'Không tìm thấy tuyến BUSMAP thật 16/12/03/08 đang hoạt động cho kịch bản trợ giá Duy Tân.';
     END IF;
 
     SELECT r.route_id INTO v_route_full_id
     FROM routes r
-    WHERE r.route_code IN ('02', '06')
+    WHERE r.route_code IN ('02', '08')
       AND r.status = 'ACTIVE'
       AND COALESCE(r.external_source, '') = 'BUSMAP_DN'
       AND (SELECT count(*) FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id WHERE rs.route_id = r.route_id) >= 2
@@ -372,7 +375,7 @@ BEGIN
             AND ru.active_from <= CURRENT_DATE
             AND (ru.active_until IS NULL OR ru.active_until >= CURRENT_DATE)
       )
-    ORDER BY CASE r.route_code WHEN '02' THEN 0 WHEN '06' THEN 1 ELSE 2 END, r.route_id
+    ORDER BY CASE r.route_code WHEN '02' THEN 0 WHEN '08' THEN 1 ELSE 2 END, r.route_id
     LIMIT 1;
 
     IF v_route_full_id IS NULL THEN
@@ -414,8 +417,15 @@ BEGIN
     WHERE rs.route_id = v_route_supported_id
     ORDER BY CASE WHEN rs.stop_id = 751 OR lower(st.stop_name) = lower('10 Lý Thái Tổ') THEN 0 ELSE 1 END, rs.stop_order DESC
     LIMIT 1;
-    SELECT rs.stop_id INTO v_boarding_full_id FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id WHERE rs.route_id = v_route_full_id ORDER BY rs.stop_order ASC LIMIT 1;
-    SELECT rs.stop_id INTO v_alighting_full_id FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id WHERE rs.route_id = v_route_full_id ORDER BY rs.stop_order DESC LIMIT 1;
+    SELECT rs.station_direction INTO v_full_direction
+    FROM route_stops rs
+    WHERE rs.route_id = v_route_full_id
+    GROUP BY rs.station_direction
+    HAVING count(DISTINCT rs.stop_id) >= 2
+    ORDER BY count(*) DESC, rs.station_direction
+    LIMIT 1;
+    SELECT rs.stop_id INTO v_boarding_full_id FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id WHERE rs.route_id = v_route_full_id AND rs.station_direction = v_full_direction ORDER BY rs.stop_order ASC LIMIT 1;
+    SELECT rs.stop_id INTO v_alighting_full_id FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id WHERE rs.route_id = v_route_full_id AND rs.station_direction = v_full_direction AND rs.stop_id <> v_boarding_full_id ORDER BY rs.stop_order DESC LIMIT 1;
     IF v_boarding_supported_id IS NULL OR v_alighting_supported_id IS NULL OR v_boarding_supported_id = v_alighting_supported_id THEN
         RAISE EXCEPTION 'Supported demo route % does not have enough route stops.', v_route_supported_id;
     END IF;
@@ -930,7 +940,7 @@ BEGIN
 
     FOR v_school IN
         SELECT * FROM (VALUES
-            ('DTU', 8, ARRAY['Công nghệ thông tin','Kỹ thuật phần mềm','Du lịch','Tài chính','Logistics']::text[]),
+            ('DTU', 7, ARRAY['Công nghệ thông tin','Kỹ thuật phần mềm','Du lịch','Tài chính','Logistics']::text[]),
             ('UTE', 1, ARRAY['Công nghệ thông tin','Cơ khí','Điện - Điện tử','Xây dựng','Công nghệ ô tô']::text[]),
             ('VKU', 1, ARRAY['Công nghệ thông tin','Khoa học dữ liệu','Trí tuệ nhân tạo','Thiết kế số','Quản trị kinh doanh']::text[]),
             ('FPTDN', 1, ARRAY['Kỹ thuật phần mềm','Trí tuệ nhân tạo','An toàn thông tin','Kinh doanh số','Thiết kế mỹ thuật số']::text[])
@@ -1030,10 +1040,10 @@ BEGIN
             (2, '12', 'driver.03.demo@unibus.local', 'conductor.03.demo@unibus.local', -10, true),
             (3, '02', 'driver.04.demo@unibus.local', 'conductor.04.demo@unibus.local', -5, true),
             (4, '12', 'driver.demo@unibus.local', 'conductor.demo@unibus.local', 10, false),
-            (5, '01', 'driver.05.demo@unibus.local', 'conductor.02.demo@unibus.local', 25, false),
+            (5, '04', 'driver.05.demo@unibus.local', 'conductor.02.demo@unibus.local', 25, false),
             (6, '03', 'driver.02.demo@unibus.local', 'conductor.03.demo@unibus.local', 40, false),
             (7, '05', 'driver.03.demo@unibus.local', 'conductor.04.demo@unibus.local', 55, false),
-            (8, '06', 'driver.04.demo@unibus.local', 'conductor.02.demo@unibus.local', 70, false),
+            (8, '08', 'driver.04.demo@unibus.local', 'conductor.02.demo@unibus.local', 70, false),
             (9, '07', 'driver.05.demo@unibus.local', 'conductor.03.demo@unibus.local', 85, false),
             (10, '16', 'driver.02.demo@unibus.local', 'conductor.04.demo@unibus.local', 100, false),
             (11, '12', 'driver.03.demo@unibus.local', 'conductor.02.demo@unibus.local', 115, false),
@@ -1074,10 +1084,10 @@ BEGIN
             (2, '12', 'driver.03.demo@unibus.local', 'conductor.03.demo@unibus.local', -10, true),
             (3, '02', 'driver.04.demo@unibus.local', 'conductor.04.demo@unibus.local', -5, true),
             (4, '12', 'driver.demo@unibus.local', 'conductor.demo@unibus.local', 10, false),
-            (5, '01', 'driver.05.demo@unibus.local', 'conductor.02.demo@unibus.local', 25, false),
+            (5, '04', 'driver.05.demo@unibus.local', 'conductor.02.demo@unibus.local', 25, false),
             (6, '03', 'driver.02.demo@unibus.local', 'conductor.03.demo@unibus.local', 40, false),
             (7, '05', 'driver.03.demo@unibus.local', 'conductor.04.demo@unibus.local', 55, false),
-            (8, '06', 'driver.04.demo@unibus.local', 'conductor.02.demo@unibus.local', 70, false),
+            (8, '08', 'driver.04.demo@unibus.local', 'conductor.02.demo@unibus.local', 70, false),
             (9, '07', 'driver.05.demo@unibus.local', 'conductor.03.demo@unibus.local', 85, false),
             (10, '16', 'driver.02.demo@unibus.local', 'conductor.04.demo@unibus.local', 100, false),
             (11, '12', 'driver.03.demo@unibus.local', 'conductor.02.demo@unibus.local', 115, false),
@@ -1147,7 +1157,7 @@ BEGIN
         END IF;
 
         UPDATE subsidy_policies
-        SET campus_id = v_main_campus_id,
+        SET campus_id = CASE WHEN v_school.code = 'DTU' THEN NULL ELSE v_main_campus_id END,
             policy_name = 'DEMO_BASELINE: ' || v_school.code || ' active subsidy',
             subsidy_type = 'PERCENTAGE',
             value = v_school.subsidy_percent,
@@ -1166,7 +1176,7 @@ BEGIN
         );
         IF NOT FOUND THEN
             INSERT INTO subsidy_policies (university_id, campus_id, policy_name, subsidy_type, value, max_amount, active_from, active_until, status, created_at, updated_at)
-            SELECT university_id, v_main_campus_id, 'DEMO_BASELINE: ' || v_school.code || ' active subsidy', 'PERCENTAGE', v_school.subsidy_percent, v_school.max_amount, DATE '2026-01-01', DATE '2026-12-31', 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+            SELECT university_id, CASE WHEN v_school.code = 'DTU' THEN NULL ELSE v_main_campus_id END, 'DEMO_BASELINE: ' || v_school.code || ' active subsidy', 'PERCENTAGE', v_school.subsidy_percent, v_school.max_amount, DATE '2026-01-01', DATE '2026-12-31', 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
             FROM universities WHERE code = v_school.code;
         END IF;
 
@@ -1185,7 +1195,7 @@ BEGIN
     FOR v_school IN
         SELECT * FROM (VALUES
             ('DTU', 'DTU_MAIN', '12'),
-            ('UTE', 'UTE_MAIN', '01'),
+            ('UTE', 'UTE_MAIN', '03'),
             ('VKU', 'VKU_MAIN', '16'),
             ('FPTDN', 'FPTDN_MAIN', '02')
         ) x(code, campus_code, secondary_route_code)

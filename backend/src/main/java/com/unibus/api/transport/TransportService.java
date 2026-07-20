@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Objects;
 import java.util.Set;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
@@ -87,7 +88,6 @@ public class TransportService {
                   AND s.status = 'ACTIVE'
                   AND s.latitude IS NOT NULL
                   AND s.longitude IS NOT NULL
-                  AND COALESCE(r.is_interregional, false) = false
                   AND (
                       r.external_source = 'BUSMAP_DN'
                       OR NOT EXISTS (
@@ -324,13 +324,18 @@ public class TransportService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Route is not active");
         }
         List<RouteStop> stops = routeStopRepository.findAllByRouteIdOrderByStopOrder(routeId);
-        RouteStop boarding = stops.stream().filter(item -> item.getStop().getId().equals(boardingStopId))
-                .findFirst().orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Boarding stop is not on route"));
-        RouteStop alighting = stops.stream().filter(item -> item.getStop().getId().equals(alightingStopId))
-                .filter(item -> item.getStopOrder() > boarding.getStopOrder())
-                .findFirst().orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST,
-                        "Alighting stop must be after boarding stop on route"));
-        return new RouteSelection(route, boarding.getStop(), alighting.getStop());
+        for (RouteStop boarding : stops) {
+            if (!boarding.getStop().getId().equals(boardingStopId)) continue;
+            Optional<RouteStop> alighting = stops.stream()
+                    .filter(item -> item.getStop().getId().equals(alightingStopId))
+                    .filter(item -> Objects.equals(item.getStationDirection(), boarding.getStationDirection()))
+                    .filter(item -> item.getStopOrder() > boarding.getStopOrder())
+                    .findFirst();
+            if (alighting.isPresent()) {
+                return new RouteSelection(route, boarding.getStop(), alighting.get().getStop());
+            }
+        }
+        throw new ApiException(HttpStatus.BAD_REQUEST, "Alighting stop must be after boarding stop on route");
     }
 
     private StopSummary toStopSummary(Stop stop, Set<Integer> linkedRouteIds) {
@@ -361,6 +366,7 @@ public class TransportService {
                         routeStop.getStop().getId(),
                         routeStop.getStop().getStopName(),
                         routeStop.getStopOrder(),
+                        routeStop.getStationDirection(),
                         routeStop.getMinutesFromPreviousStop(),
                         routeStop.getStop().getStopCode(),
                         routeStop.getStop().getLongitude(),

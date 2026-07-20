@@ -6,12 +6,12 @@ SET TIME ZONE 'Asia/Ho_Chi_Minh';
 WITH params AS (
     SELECT CURRENT_DATE AS today, DATE '2026-08-31' AS end_date
 ),
-expected_universities(code, minimum_roster, minimum_login_students, minimum_admins) AS (
+expected_universities(code, minimum_roster, minimum_login_students, minimum_admins, minimum_orders, minimum_monthly_passes, minimum_single_tickets, minimum_invoices) AS (
     VALUES
-        ('DTU', 15, 6, 2),
-        ('UTE', 15, 4, 2),
-        ('VKU', 15, 4, 2),
-        ('FPTDN', 15, 4, 2)
+        ('DTU', 15, 6, 2, 2, 3, 1, 2),
+        ('UTE', 15, 4, 2, 12, 3, 3, 4),
+        ('VKU', 15, 4, 2, 12, 3, 3, 4),
+        ('FPTDN', 15, 4, 2, 12, 3, 3, 4)
 ),
 expected_staff(email, expected_role) AS (
     VALUES
@@ -121,20 +121,20 @@ university_density AS (
              AND counts.roster >= eu.minimum_roster
              AND counts.login_students >= eu.minimum_login_students
              AND counts.admins >= eu.minimum_admins
-             AND counts.orders >= 12
-             AND counts.monthly_passes >= 3
-             AND counts.single_tickets >= 3
-             AND counts.invoices >= 4
+             AND counts.orders >= eu.minimum_orders
+             AND counts.monthly_passes >= eu.minimum_monthly_passes
+             AND counts.single_tickets >= eu.minimum_single_tickets
+             AND counts.invoices >= eu.minimum_invoices
             THEN 'PASS' ELSE 'FAIL'
         END AS status,
         concat(
             'roster=', counts.roster, '/', eu.minimum_roster,
             ', login_students=', counts.login_students, '/', eu.minimum_login_students,
             ', admins=', counts.admins, '/', eu.minimum_admins,
-            ', orders=', counts.orders, '/12',
-            ', monthly_passes=', counts.monthly_passes, '/3',
-            ', single_tickets=', counts.single_tickets, '/3',
-            ', invoices=', counts.invoices, '/4',
+            ', orders=', counts.orders, '/', eu.minimum_orders,
+            ', monthly_passes=', counts.monthly_passes, '/', eu.minimum_monthly_passes,
+            ', single_tickets=', counts.single_tickets, '/', eu.minimum_single_tickets,
+            ', invoices=', counts.invoices, '/', eu.minimum_invoices,
             ', notifications=', counts.notifications
         ) AS detail
     FROM expected_universities eu
@@ -271,7 +271,24 @@ today_trips AS (
     LEFT JOIN trips t ON (t.notes LIKE 'DEMO_DATA%' OR t.notes LIKE 'DEMO_FLEET%') AND t.service_date = p.today
     LEFT JOIN routes r ON r.route_id = t.route_id
 ),
-demo_assignment_status AS (
+demo_start_window AS (
+    SELECT
+        'operations' AS section,
+        'startable demo trip now' AS subject,
+        CASE WHEN count(*) >= 1 THEN 'PASS' ELSE 'FAIL' END AS status,
+        concat('startable_trips=', count(*), '; trip_ids=', COALESCE(string_agg(t.trip_id::text, ', ' ORDER BY t.trip_id), 'none')) AS detail
+    FROM trips t
+    JOIN bus_schedules bs ON bs.schedule_id = t.schedule_id
+    JOIN drivers d ON d.driver_id = t.driver_id
+    JOIN users driver_user ON driver_user.user_id = d.user_id
+    JOIN conductors c ON c.conductor_id = t.conductor_id
+    JOIN users conductor_user ON conductor_user.user_id = c.user_id
+    WHERE t.service_date = CURRENT_DATE
+      AND t.status = 'NOT_STARTED'
+      AND driver_user.email = 'driver.demo@unibus.local'
+      AND conductor_user.email = 'conductor.demo@unibus.local'
+      AND bs.departure_time BETWEEN LOCALTIME AND (LOCALTIME + INTERVAL '30 minutes')::time
+),demo_assignment_status AS (
     SELECT
         'operations' AS section,
         'demo crew assignment today' AS subject,
@@ -414,6 +431,31 @@ ticket_status AS (
     WHERE student_code IN (SELECT student_code FROM demo_students)
       AND status = 'ACTIVE'
       AND qr_code LIKE 'DEMO-%'
+),
+support_workflow_status AS (
+    SELECT 'support_workflow' AS section, 'student feedback baseline' AS subject,
+           CASE WHEN count(*) >= 2 THEN 'PASS' ELSE 'FAIL' END AS status,
+           concat('feedback_rows=', count(*), '; statuses=', COALESCE(string_agg(DISTINCT status, ', ' ORDER BY status), 'none')) AS detail
+    FROM feedback
+    WHERE student_code IN (SELECT student_code FROM demo_students)
+    UNION ALL
+    SELECT 'support_workflow', 'lost item baseline',
+           CASE WHEN count(*) >= 2 THEN 'PASS' ELSE 'FAIL' END,
+           concat('lost_items=', count(*), '; statuses=', COALESCE(string_agg(DISTINCT status, ', ' ORDER BY status), 'none'))
+    FROM lost_item_reports
+    WHERE reported_by_user_id IN (SELECT user_id FROM demo_students)
+    UNION ALL
+    SELECT 'support_workflow', 'conductor incident baseline',
+           CASE WHEN count(*) >= 2 THEN 'PASS' ELSE 'FAIL' END,
+           concat('incidents=', count(*), '; statuses=', COALESCE(string_agg(DISTINCT status, ', ' ORDER BY status), 'none'))
+    FROM incidents
+    WHERE conductor_id IN (SELECT c.conductor_id FROM conductors c JOIN users u ON u.user_id = c.user_id WHERE u.email LIKE 'conductor.%@unibus.local' OR u.email = 'conductor.demo@unibus.local')
+    UNION ALL
+    SELECT 'support_workflow', 'role notification baseline',
+           CASE WHEN count(*) >= 8 THEN 'PASS' ELSE 'FAIL' END,
+           concat('notifications=', count(*), '; recipients=', count(DISTINCT recipient_user_id))
+    FROM notifications
+    WHERE recipient_user_id IN (SELECT user_id FROM users WHERE email IN (SELECT email FROM demo_accounts))
 ),
 uniadmin_visibility AS (
     SELECT
@@ -631,11 +673,13 @@ UNION ALL SELECT * FROM supported_route_status
 UNION ALL SELECT * FROM subsidy_status
 UNION ALL SELECT * FROM full_price_route_status
 UNION ALL SELECT * FROM today_trips
+UNION ALL SELECT * FROM demo_start_window
 UNION ALL SELECT * FROM demo_assignment_status
 UNION ALL SELECT * FROM schedule_weekday_status
 UNION ALL SELECT * FROM fleet_status
 UNION ALL SELECT * FROM trip_coverage
 UNION ALL SELECT * FROM ticket_status
+UNION ALL SELECT * FROM support_workflow_status
 UNION ALL SELECT * FROM uniadmin_visibility
 UNION ALL SELECT * FROM domain_status
 UNION ALL SELECT * FROM integrity_status

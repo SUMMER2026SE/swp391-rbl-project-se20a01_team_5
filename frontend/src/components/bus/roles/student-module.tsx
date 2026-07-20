@@ -181,6 +181,8 @@ import {
   type ExperienceDashboardStat,
   type TravelHistoryView,
   type RegistrationDTO,
+  type SePayOrderRequestDTO,
+  type SePayQuoteDTO,
   type PaymentView,
   type SingleTripTicketView,
   type TicketView,
@@ -503,14 +505,20 @@ function VerticalTimeline({
   currentIndex?: number;
 }) {
   if (!stops.length) return null;
+  const visibleStops = stops.length > 12 ? [...stops.slice(0, 6), ...stops.slice(-6)] : stops;
+  const hiddenStopCount = stops.length - visibleStops.length;
   return (
     <div className="relative space-y-0">
       {/* vertical line */}
       <div className="absolute left-[7px] top-2 bottom-2 w-0.5 bg-outline-variant" />
-      {stops.map((s, i) => {
+      {visibleStops.map((s, visibleIndex) => {
+        const i = stops.indexOf(s);
         const isPassed = currentIndex != null && i < currentIndex;
         const isCurrent = currentIndex === i;
+        const showGap = hiddenStopCount > 0 && visibleIndex === 6;
         return (
+          <React.Fragment key={`${s.stopId || s.id || i}-${i}`}>
+            {showGap ? <div className="relative z-10 my-1 ml-6 rounded-lg bg-surface-container px-3 py-2 text-xs font-bold text-on-surface-variant">{hiddenStopCount} trạm ở giữa</div> : null}
           <div
             key={i}
             className={cn(
@@ -545,6 +553,7 @@ function VerticalTimeline({
               )}
             </div>
           </div>
+          </React.Fragment>
         );
       })}
     </div>
@@ -3186,7 +3195,7 @@ function FindRoutesScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
                     >
                       <summary className="cursor-pointer font-bold">Trạm dừng</summary>
                       <div className="mt-3 max-h-56 space-y-2 overflow-y-auto pr-1">
-                        {stops.map((stop: any, stopIdx: number) => (
+                        {stops.slice(0, 12).map((stop: any, stopIdx: number) => (
                           <button
                             key={`${route.id}-${stop.id}`}
                             type="button"
@@ -3203,6 +3212,7 @@ function FindRoutesScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: stri
                             </span>
                           </button>
                         ))}
+                        {stops.length > 12 ? <p className="pt-1 text-center text-xs font-bold text-on-surface-variant">{stops.length - 12} trạm khác</p> : null}
                       </div>
                     </details>}
                   </ExpressiveCard>
@@ -3376,7 +3386,7 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
   const nextEta = journeyTracking?.stopEtas?.[0];
   const routeTitle = journeyTracking?.routeName || trackingContext?.routeName || selectedRoute?.name || "Tuyến đang theo dõi";
   const routeCode = journeyTracking?.routeCode || trackingContext?.routeCode || journeyTracking?.stopEtas?.[0]?.routeCode || selectedRoute?.code || "BUS";
-  const displayVehicles = journeyTracking?.vehicles || [];
+  const displayVehicles = useMemo(() => journeyTracking?.vehicles || [], [journeyTracking?.vehicles]);
   const selectedVehicle = displayVehicles.find((vehicle) => vehicle.vehicleId === selectedVehicleId) || displayVehicles[0];
   const collapsedVehicles = displayVehicles.filter((vehicle) => vehicle.vehicleId !== selectedVehicle?.vehicleId);
 
@@ -3599,11 +3609,9 @@ function TrackingScreen({ ctx, compact = false, onNavigate }: { ctx: Ctx; compac
         const location = { lat: position.coords.latitude, lng: position.coords.longitude };
         setUserLocation(location);
         if (trackingStops.length) {
-          const closest = boardingStop
-            ? { stop: boardingStop }
-            : trackingStops
-              .map((stop) => ({ stop, meters: distanceMeters(location, { lat: stop.lat, lng: stop.lng }) }))
-              .sort((left, right) => left.meters - right.meters)[0];
+          const closest = trackingStops
+            .map((stop) => ({ stop, meters: distanceMeters(location, { lat: stop.lat, lng: stop.lng }) }))
+            .sort((left, right) => left.meters - right.meters)[0];
           if (closest?.stop?.id) {
             setSelectedStopId(closest.stop.id);
             setSelectedStopEtas(null);
@@ -5060,7 +5068,6 @@ function HistoryScreen({ ctx }: { ctx: Ctx }) {
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Lịch sử chuyến đi"
-        description="Chọn một chuyến để đánh giá hoặc báo mất đồ."
         icon={<History className="size-7" />}
       />
 
@@ -5599,8 +5606,7 @@ function AIScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => v
 // =============================================================================
 const CHATBOT_SUGGESTIONS: Array<{ message: string; context?: Record<string, unknown> }> = [
   {
-    message: "Từ FPT Đà Nẵng đến Đại học Duy Tân, ưu tiên tuyến được trợ giá",
-    context: { boardingStopId: 729, alightingStopId: 751 },
+    message: "Từ FPT Đà Nẵng đến Đại học Duy Tân 254 Nguyễn Văn Linh, ưu tiên tuyến được trợ giá",
   },
   { message: "So sánh vé lượt và vé tháng sau trợ giá" },
   { message: "Cho biết chuyến gần nhất và các trạm chính" },
@@ -5746,8 +5752,8 @@ function AiRouteResultCard({
 }) {
   const stops = route.stops || [];
   const registerAction = route.actions?.find((action) => action.type === "REGISTER_ROUTE");
-  const boardingStopId = registerAction?.boardingStopId || stops[0]?.stopId;
-  const alightingStopId = registerAction?.alightingStopId || stops[stops.length - 1]?.stopId;
+  const boardingStopId = registerAction?.boardingStopId;
+  const alightingStopId = registerAction?.alightingStopId;
   const monthlyFare = route.finalFare ?? route.monthlyFare;
   const departure = route.nextDepartures?.[0];
   const meaningfulReasons = (route.reasons || [])
@@ -5920,6 +5926,7 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
       toolActive: false,
     };
     const historySnapshot = [...messages, userMsg];
+    const lastRoute = [...messages].reverse().find((message) => message.routeSuggestions?.length)?.routeSuggestions?.[0];
     setMessages((m) => [...m, userMsg, botDraft]);
     setInput("");
     setLoading(true);
@@ -5928,6 +5935,7 @@ function ChatbotScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
       message: userMsg.text,
       context: {
         preferences: ["fast", "cheap"],
+        ...(lastRoute?.routeId ? { routeId: lastRoute.routeId } : {}),
         ...extraContext,
         conversationHistory: historySnapshot.slice(-8).map((message) => ({
           role: message.role === "bot" ? "assistant" as const : "user" as const,
@@ -6235,7 +6243,15 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
   const paymentSettledRef = useRef(false);
   const [paymentRouteDetail, setPaymentRouteDetail] = useState<RouteSuggestionDTO | null>(null);
   const [paymentQuote, setPaymentQuote] = useState<PassesDashboard["monthlyPassQuote"] | null>(null);
+  const [journeyPaymentContext, setJourneyPaymentContext] = useState<SePayOrderRequestDTO | null>(null);
+  const [journeyQuote, setJourneyQuote] = useState<SePayQuoteDTO | null>(null);
 
+  const journeyLegs = journeyPaymentContext?.legs || [];
+  const isJourneyCombo = journeyLegs.length > 1;
+  const journeyRouteLabel = journeyLegs.map((leg) => {
+    const route = ctx.routes.find((item: any) => Number(item.id ?? item.routeId) === Number(leg.routeId));
+    return route?.code ?? route?.routeCode ?? leg.routeId;
+  }).join(" → ");
   const passes = ctx.raw.passes?.data;
   const dashboardQuote = passes?.monthlyPassQuote;
   const selectedRegistration = registrations.find((item) => String(item.routeId) === selectedRouteId)
@@ -6251,7 +6267,10 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
     });
     return Array.from(byRoute.values());
   }, [registrations]);
-  const selectedRouteOption = selectableRegistrations.find((item) => String(item.routeId) === selectedRouteId) || selectedRegistration;
+  const selectableRouteOptions = ticketKind === "SINGLE"
+    ? ctx.routes.map((route: any) => ({ routeId: route.id ?? route.routeId, routeName: route.name ?? route.routeName ?? `Tuyến ${route.code ?? ""}` }))
+    : selectableRegistrations;
+  const selectedRouteOption = selectableRouteOptions.find((item: any) => String(item.routeId) === selectedRouteId) || selectedRegistration;
   const routeScopedDashboardQuote = dashboardQuote && String(dashboardQuote.routeId) === selectedRouteId ? dashboardQuote : null;
   const activeQuote = paymentQuote && String(paymentQuote.routeId) === selectedRouteId ? paymentQuote : routeScopedDashboardQuote;
   const singleFare = Number(paymentRouteDetail?.singleFare ?? selectedRoute?.singleFare ?? selectedRoute?.fare ?? 0);
@@ -6265,10 +6284,10 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
   const singleCalculatedFinal = Math.max(singleOriginal - singleSubsidy, 0);
   const singleFinal = Number(ticketKind === "SINGLE" ? activeQuote?.payableAmount ?? activeQuote?.finalFareAmount ?? (singleCalculatedFinal > 0 ? singleCalculatedFinal : singleFare) : singleFare);
   const ticketLabel = ticketKind === "SINGLE" ? "Vé lượt" : "Vé tháng";
-  const canBuySingle = Boolean(selectedRouteId && (selectedRegistration || pendingRegistration));
-  const currentOriginal = ticketKind === "SINGLE" ? singleOriginal : monthlyOriginal;
-  const currentSubsidy = ticketKind === "SINGLE" ? singleSubsidy : monthlySubsidy;
-  const currentFinal = ticketKind === "SINGLE" ? singleFinal : monthlyFinal;
+  const canBuySingle = Boolean(selectedRouteId);
+  const currentOriginal = isJourneyCombo ? Number(journeyQuote?.originalAmount ?? 0) : ticketKind === "SINGLE" ? singleOriginal : monthlyOriginal;
+  const currentSubsidy = isJourneyCombo ? Number(journeyQuote?.subsidyAmount ?? 0) : ticketKind === "SINGLE" ? singleSubsidy : monthlySubsidy;
+  const currentFinal = isJourneyCombo ? Number(journeyQuote?.finalAmount ?? 0) : ticketKind === "SINGLE" ? singleFinal : monthlyFinal;
   const currentPriceLabel = currentFinal > 0 ? formatVND(currentFinal) : "Theo giá hệ thống";
   const hasSchoolSubsidy = currentSubsidy > 0;
   const subsidyPercent = currentOriginal > 0 && hasSchoolSubsidy ? Math.round((currentSubsidy / currentOriginal) * 100) : 0;
@@ -6287,24 +6306,21 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
         const fallbackStop = ctx.stops.find((stop: any) => Number(stop.id ?? stop.stopId) === stopId);
         const name = entry?.stopName ?? entry?.name ?? fallbackStop?.name ?? fallbackStop?.stopName ?? `Trạm ${index + 1}`;
         const order = Number(entry?.stopOrder ?? entry?.order ?? index);
-        return { id: String(stopId), stopId, name, order };
+        return { id: String(stopId), stopId, name, order, direction: Number(entry?.stationDirection ?? 0) };
       })
       .filter(Boolean)
-      .sort((left: any, right: any) => left.order - right.order) as { id: string; stopId: number; name: string; order: number }[];
-    return Array.from(new Map(stops.map((stop) => [stop.id, stop])).values());
+      .sort((left: any, right: any) => left.direction - right.direction || left.order - right.order) as { id: string; stopId: number; name: string; order: number; direction: number }[];
+    return stops;
   }, [ctx.stops, paymentRouteDetail, selectedRoute]);
-  const boardingStopOrder = paymentRouteStops.find((stop) => stop.id === singleBoardingStopId)?.order;
-  const alightingStopOrder = paymentRouteStops.find((stop) => stop.id === singleAlightingStopId)?.order;
-  const hasSelectableRouteStops = paymentRouteStops.length >= 2;
+  const hasSelectableRouteStops = new Set(paymentRouteStops.map((stop) => stop.id)).size >= 2;
   const isValidStopPair = useCallback((boardingId: string, alightingId: string) => {
-    const boardingOrder = paymentRouteStops.find((stop) => stop.id === boardingId)?.order;
-    const alightingOrder = paymentRouteStops.find((stop) => stop.id === alightingId)?.order;
-    return boardingOrder != null && alightingOrder != null && boardingOrder < alightingOrder;
+    return paymentRouteStops.some((boarding) => boarding.id === boardingId && paymentRouteStops.some((alighting) => (
+      alighting.id === alightingId
+      && alighting.direction === boarding.direction
+      && alighting.order > boarding.order
+    )));
   }, [paymentRouteStops]);
-  const boardingOptions = paymentRouteStops.filter((stop) => alightingStopOrder == null || stop.order < alightingStopOrder);
-  const alightingOptions = paymentRouteStops.filter((stop) => boardingStopOrder == null || stop.order > boardingStopOrder);
-  const selectedBoardingStopName = displayStopLabel(paymentRouteStops.find((stop) => stop.id === singleBoardingStopId)?.name || selectedRegistration?.boardingStopName, "—");
-  const selectedAlightingStopName = displayStopLabel(paymentRouteStops.find((stop) => stop.id === singleAlightingStopId)?.name || selectedRegistration?.alightingStopName, "—");
+  const firstPublicRouteId = String(ctx.routes[0]?.id ?? ctx.routes[0]?.routeId ?? "");
 
   const refreshPaymentData = useCallback(async () => {
     await ctx.reload();
@@ -6313,11 +6329,44 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
   }, [ctx]);
 
   useEffect(() => {
+    const raw = localStorage.getItem("unibus.studentPaymentContext.v1");
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as SePayOrderRequestDTO;
+      if (!(parsed.legs?.length || 0)) return;
+      setJourneyPaymentContext(parsed);
+      setTicketKind(parsed.ticketPeriod === "day" ? "SINGLE" : "MONTHLY");
+      setSelectedRouteId(String(parsed.legs?.[0]?.routeId || ""));
+    } catch {
+      localStorage.removeItem("unibus.studentPaymentContext.v1");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isJourneyCombo || !journeyPaymentContext) {
+      setJourneyQuote(null);
+      return;
+    }
+    let cancelled = false;
+    studentApi.quoteSePayOrder({
+      ...journeyPaymentContext,
+      ticketType: ticketKind,
+      ticketPeriod: ticketKind === "MONTHLY" ? "month" : "day",
+    }).then((quote) => {
+      if (!cancelled) setJourneyQuote(quote);
+    }).catch(() => {
+      if (!cancelled) setJourneyQuote(null);
+    });
+    return () => { cancelled = true; };
+  }, [isJourneyCombo, journeyPaymentContext, ticketKind]);
+
+  useEffect(() => {
     let cancelled = false;
     studentApi.registrations()
       .then((list) => {
         if (cancelled) return;
         setRegistrations(list);
+        if (!list.length) setTicketKind("SINGLE");
         const preferred = localStorage.getItem("unibus.paymentRouteId");
         const pendingRaw = localStorage.getItem("unibus.pendingPaymentRegistration");
         let pending: RegistrationDTO | null = null;
@@ -6334,7 +6383,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
           setPendingRegistration(null);
           localStorage.removeItem("unibus.pendingPaymentRegistration");
         }
-        const firstRoute = preferred || list[0]?.routeId?.toString() || ctx.registration?.routeId?.toString() || "";
+        const firstRoute = preferred || list[0]?.routeId?.toString() || ctx.registration?.routeId?.toString() || firstPublicRouteId;
         setSelectedRouteId(firstRoute);
         if (!pending || !preferred || String(pending.routeId) !== preferred) {
           localStorage.removeItem("unibus.paymentRouteId");
@@ -6354,19 +6403,17 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
             }
           } catch { /* ignore */ }
         }
-        if (ctx.registration?.routeId) {
-          setSelectedRouteId(String(ctx.registration.routeId));
-        }
+        setSelectedRouteId(ctx.registration?.routeId ? String(ctx.registration.routeId) : firstPublicRouteId);
       });
     return () => {
       cancelled = true;
     };
-  }, [ctx.registration?.routeId]);
+  }, [ctx.registration?.routeId, firstPublicRouteId]);
 
   useEffect(() => {
     let cancelled = false;
     setPaymentQuote(null);
-    if (!selectedRouteId || !selectedRegistration) return;
+    if (!selectedRouteId || (ticketKind === "MONTHLY" && !selectedRegistration)) return;
     studentApi.ticketQuote(selectedRouteId, ticketKind)
       .then((quote) => {
         if (!cancelled) setPaymentQuote(quote ?? null);
@@ -6381,18 +6428,26 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
 
   useEffect(() => {
     if (ticketKind !== "SINGLE") return;
+    const contextLeg = journeyPaymentContext?.legs?.find((leg) => String(leg.routeId) === selectedRouteId);
+    if (contextLeg?.boardingStopId && contextLeg?.alightingStopId) {
+      setSingleBoardingStopId(String(contextLeg.boardingStopId));
+      setSingleAlightingStopId(String(contextLeg.alightingStopId));
+      return;
+    }
     const routeStopIds = paymentRouteStops.map((stop) => stop.id);
     const registrationBoarding = selectedRegistration?.boardingStopId == null ? "" : String(selectedRegistration.boardingStopId);
     const registrationAlighting = selectedRegistration?.alightingStopId == null ? "" : String(selectedRegistration.alightingStopId);
     let nextBoarding = routeStopIds.includes(registrationBoarding) ? registrationBoarding : paymentRouteStops[0]?.id ?? registrationBoarding;
     let nextAlighting = routeStopIds.includes(registrationAlighting) ? registrationAlighting : paymentRouteStops[paymentRouteStops.length - 1]?.id ?? registrationAlighting;
     if (hasSelectableRouteStops && !isValidStopPair(nextBoarding, nextAlighting)) {
-      nextBoarding = paymentRouteStops[0]?.id ?? "";
-      nextAlighting = paymentRouteStops[paymentRouteStops.length - 1]?.id ?? "";
+      const boarding = paymentRouteStops.find((stop) => paymentRouteStops.some((candidate) => candidate.direction === stop.direction && candidate.order > stop.order));
+      const alighting = boarding && [...paymentRouteStops].reverse().find((stop) => stop.direction === boarding.direction && stop.order > boarding.order);
+      nextBoarding = boarding?.id ?? "";
+      nextAlighting = alighting?.id ?? "";
     }
     setSingleBoardingStopId(nextBoarding || "");
     setSingleAlightingStopId(nextAlighting || "");
-  }, [hasSelectableRouteStops, isValidStopPair, paymentRouteStops, selectedRegistration?.boardingStopId, selectedRegistration?.alightingStopId, selectedRouteId, ticketKind]);
+  }, [hasSelectableRouteStops, isValidStopPair, journeyPaymentContext, paymentRouteStops, selectedRegistration?.boardingStopId, selectedRegistration?.alightingStopId, selectedRouteId, ticketKind]);
   useEffect(() => {
     let cancelled = false;
     setPaymentRouteDetail(null);
@@ -6446,7 +6501,14 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
       const stopMetadata = kind === "SINGLE" && hasSelectableRouteStops && isValidStopPair(singleBoardingStopId, singleAlightingStopId)
         ? { boardingStopId: Number(singleBoardingStopId), alightingStopId: Number(singleAlightingStopId) }
         : undefined;
-      const order = await studentApi.createSePayOrder(kind, Number(selectedRouteId), stopMetadata);
+      const order = journeyPaymentContext
+        ? await studentApi.createSePayOrder({
+            ...journeyPaymentContext,
+            ticketType: kind,
+            ticketPeriod: kind === "MONTHLY" ? "month" : "day",
+          })
+        : await studentApi.createSePayOrder(kind, Number(selectedRouteId), stopMetadata);
+      if (journeyPaymentContext) localStorage.removeItem("unibus.studentPaymentContext.v1");
       const pollToken = paymentPollTokenRef.current + 1;
       paymentPollTokenRef.current = pollToken;
       paymentSettledRef.current = false;
@@ -6480,7 +6542,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
     } finally {
       setPurchasing(false);
     }
-  }, [canBuySingle, hasSelectableRouteStops, isValidStopPair, refreshPaymentData, selectedRouteId, singleAlightingStopId, singleBoardingStopId, ticketKind]);
+  }, [canBuySingle, hasSelectableRouteStops, isValidStopPair, journeyPaymentContext, refreshPaymentData, selectedRouteId, singleAlightingStopId, singleBoardingStopId, ticketKind]);
 
   const copyAccount = async () => {
     if (!sepayOrder?.accountNo) return;
@@ -6533,9 +6595,15 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
               <TicketCheck className="size-5 text-[#111111]" />
               Đơn thanh toán
             </h3>
-            {selectedRegistration ? (
+            {selectedRouteOption ? (
               <div className="space-y-4 text-sm">
-                {selectableRegistrations.length > 1 && (
+                {isJourneyCombo ? (
+                  <div className="rounded-[18px] border border-[#D8CEB8] bg-[#F7F4EC] px-4 py-3">
+                    <p className="text-xs font-bold uppercase tracking-wide text-[#6F6A60]">Hành trình liên tuyến</p>
+                    <p className="mt-1 text-sm font-bold text-[#24251F]">{journeyRouteLabel}</p>
+                  </div>
+                ) : null}
+                {selectableRouteOptions.length > 1 && !isJourneyCombo && (
                   <div>
                     <Label className="text-xs font-bold text-[#6F6A60]">Chọn tuyến cần mua vé</Label>
                     <Select value={selectedRouteId} onValueChange={(value) => { setSelectedRouteId(value); setSepayOrder(null); setPaidStatus("idle"); setSecondsLeft(null); }}>
@@ -6553,11 +6621,11 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                         )}
                       </SelectTrigger>
                       <SelectContent className="rounded-[22px] border border-[#E1D8C8] bg-[#FFFEFA] p-2 shadow-[0_18px_46px_rgba(20,20,15,0.14)]">
-                        {selectableRegistrations.map((item) => {
+                        {selectableRouteOptions.map((item: any) => {
                           const selected = String(item.routeId) === selectedRouteId;
                           return (
                             <SelectItem
-                              key={item.registrationId}
+                              key={item.routeId}
                               value={String(item.routeId)}
                               textValue={compactRouteLabel(item)}
                               className={cn(
@@ -6616,53 +6684,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                   </div>
                 </div>
 
-                <Row label="Tuyến" value={compactRouteLabel(selectedRegistration) || selectedRoute?.name || selectedRoute?.routeName || "Tuyến đã chọn"} icon={<RouteIcon className="size-4" />} />
-                {ticketKind === "SINGLE" ? (
-                  <div className="space-y-3 rounded-[18px] border border-[#E7E0D2] bg-[#FFFEFA] p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-[#24251F]">Chọn điểm dự kiến cho vé lượt</p>
-                        <p className="mt-0.5 text-xs text-[#7A756B]">Dùng để hiển thị hành trình và hỗ trợ phụ xe kiểm tra vé.</p>
-                      </div>
-                    </div>
-                    {hasSelectableRouteStops ? (
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div>
-                          <Label className="text-xs font-bold">Điểm lên dự kiến</Label>
-                          <Select
-                            value={singleBoardingStopId}
-                            onValueChange={(value) => {
-                              const nextOrder = paymentRouteStops.find((stop) => stop.id === value)?.order;
-                              setSingleBoardingStopId(value);
-                              if (nextOrder != null && alightingStopOrder != null && nextOrder >= alightingStopOrder) {
-                                setSingleAlightingStopId("");
-                              }
-                            }}
-                          >
-                            <SelectTrigger className="mt-1.5 min-h-11 h-auto py-2 text-left [&>span]:whitespace-normal [&>span]:text-xs [&>span]:leading-4"><SelectValue placeholder="Chọn điểm lên" /></SelectTrigger>
-                            <SelectContent>
-                              {boardingOptions.map((stop) => <SelectItem key={stop.id} value={stop.id}>{stop.name}</SelectItem>)}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div>
-                          <Label className="text-xs font-bold">Điểm xuống dự kiến</Label>
-                          <Select value={singleAlightingStopId} onValueChange={setSingleAlightingStopId}>
-                            <SelectTrigger className="mt-1.5 min-h-11 h-auto py-2 text-left [&>span]:whitespace-normal [&>span]:text-xs [&>span]:leading-4"><SelectValue placeholder="Chọn điểm xuống" /></SelectTrigger>
-                            <SelectContent>
-                              {alightingOptions.map((stop) => <SelectItem key={stop.id} value={stop.id}>{stop.name}</SelectItem>)}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        <Row label="Điểm lên dự kiến" value={selectedBoardingStopName} icon={<MapPin className="size-4" />} />
-                        <Row label="Điểm xuống dự kiến" value={selectedAlightingStopName} icon={<MapPin className="size-4" />} />
-                      </div>
-                    )}
-                  </div>
-                ) : null}
+                <Row label="Tuyến" value={compactRouteLabel(selectedRouteOption) || selectedRoute?.name || selectedRoute?.routeName || "Tuyến đã chọn"} icon={<RouteIcon className="size-4" />} />
                 <Row label="Hiệu lực" value={ticketKind === "SINGLE" ? "Vé lượt trong ngày" : "Theo kỳ vé"} icon={<Calendar className="size-4" />} />
 
                 <div className="h-px bg-[#E7E0D2] my-2" />
@@ -6710,11 +6732,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                     )}
                   </AnimatePresence>
                   <Row label="Sinh viên trả" value={currentFinal ? formatVND(currentFinal) : "Chưa có giá"} icon={<Wallet className="size-4" />} />
-                  {ticketKind === "SINGLE" && !canBuySingle && (
-                    <p className="rounded-[14px] bg-warning-container/50 px-3 py-2 text-xs font-medium text-on-surface">
-                      Cần có tuyến đã đăng ký trước khi mua vé lượt.
-                    </p>
-                  )}
+
                 </div>
 
                 <motion.div
@@ -6744,7 +6762,7 @@ function PaymentScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string)
                     variant="filled"
                     className="w-full mt-2"
                     onClick={() => buy(ticketKind)}
-                    disabled={purchasing || !selectedRouteId || (ticketKind === "SINGLE" && (!canBuySingle || (hasSelectableRouteStops && !isValidStopPair(singleBoardingStopId, singleAlightingStopId))))}
+                    disabled={purchasing || !selectedRouteId || (ticketKind === "SINGLE" && !isJourneyCombo && (!canBuySingle || (hasSelectableRouteStops && !isValidStopPair(singleBoardingStopId, singleAlightingStopId))))}
                   >
                     {purchasing ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
                     Xác nhận

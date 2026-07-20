@@ -123,6 +123,93 @@ Fix lỗi Next.js 16 khi build trang `/student/payment/result` do page dùng
 
 ---
 
+# Changelog: Tự động kết thúc chuyến mô phỏng tại điểm đích
+
+## Tóm tắt
+- Thêm tác vụ nền tự động chuyển trip `RUNNING` sang `COMPLETED` sau khi xe mô phỏng đã đến đích và chờ đủ 2 phút.
+- Thời điểm đến đích được tính từ giờ khởi hành thực tế và tổng thời lượng lịch trình, bao gồm chuyến chạy qua nửa đêm.
+
+## Thay đổi
+- Bật scheduling cho backend và thêm `TripAutoCompletionService`.
+- Repository chỉ hoàn tất chuyến có lịch, đang `RUNNING`, đã có `departed_at` và đã vượt thời điểm đến đích cộng grace period.
+- Thêm cấu hình bật/tắt, chu kỳ quét và grace period để test không chạy scheduler ngoài ý muốn.
+- Thêm test cho truy vấn hoàn tất chuyến và service tự động hoàn tất.
+
+---
+
+# Changelog: Popup xác nhận bắt đầu chuyến của tài xế
+
+## Tóm tắt
+- Thay popup `window.confirm` của trình duyệt bằng `AlertDialog` đồng bộ với giao diện web.
+
+## Thay đổi
+- Popup hiển thị tuyến, giờ khởi hành và biển số trước khi xác nhận.
+- Khóa thao tác đóng/xác nhận trong lúc request bắt đầu chuyến đang chạy.
+- Giữ nguyên API và điều kiện nghiệp vụ bắt đầu chuyến hiện có.
+
+---
+
+# Changelog: Đồng bộ tin nhắn đã gửi phía phụ xe
+
+## Tóm tắt
+- Tin nhắn phụ xe vừa gửi được thêm ngay vào hội thoại thay vì phải chờ lần tải dữ liệu tiếp theo.
+
+## Thay đổi
+- Merge tin nhắn optimistic với dữ liệu poll theo `messageId` để không mất hoặc hiển thị trùng tin.
+- Đồng bộ người nhận điều phối viên với điều phối viên active mà danh bạ chuyến trả về.
+- Giữ poll định kỳ để nhận tin nhắn mới từ tài xế và điều phối viên.
+
+---
+
+# Changelog: Hiển thị đúng dữ liệu vé tháng phía phụ xe
+
+## Tóm tắt
+- Màn `Vé tháng` lấy dữ liệu chi tiết từ API vé theo chuyến đang chạy thay vì danh sách rút gọn của dashboard.
+
+## Thay đổi
+- Chỉ hiển thị vé `MONTHLY` và `JOURNEY_MONTHLY` thuộc chuyến đang chạy.
+- Hiển thị đúng tên/mã sinh viên, tuyến, ngày bắt đầu và ngày hết hạn từ database.
+- Thêm trạng thái loading trong lúc tải danh sách vé.
+- Database chỉ được đối chiếu bằng transaction read-only; không sửa dữ liệu.
+
+## Kiểm tra dữ liệu
+- Tuyến được đối chiếu có đúng 3 vé `ACTIVE`.
+- Hai vé có hiệu lực `01/07/2026 - 01/09/2026`.
+- Một vé có hiệu lực `01/07/2026 - 31/07/2026`.
+
+---
+
+# Changelog: Kiểm tra UTF-8 và cảnh báo Node.js
+
+## Kết quả
+- Toàn bộ file text được Git theo dõi và file code mới đều giải mã hợp lệ bằng UTF-8 strict.
+- Không phát hiện mojibake thật trong source; hiện tượng ký tự sai khi dùng `Get-Content` là do code page PowerShell với file UTF-8 không BOM.
+- Cảnh báo `DEP0205 module.register()` đến từ `@tailwindcss/node@4.3.0` khi chạy Node.js 26, không phải code dự án.
+- CI chính thức dùng Node.js 22 nên không cần sửa `node_modules`; build trên Node.js 26 vẫn hoàn thành thành công dù có cảnh báo.
+
+---
+
+# Changelog: Ổn định test quét vé phụ xe khi chạy CI UTC
+
+## Tóm tắt
+- Giữ nguyên luồng quét vé của phụ xe và sửa test bị phụ thuộc thời điểm chạy gần nửa đêm theo múi giờ nghiệp vụ.
+
+## Nguyên nhân
+- Helper test tạo `serviceDate` bằng ngày hiện tại nhưng tạo `departureTime` bằng giờ hiện tại trừ 5 phút.
+- Trong 5 phút đầu ngày, giờ lùi về `23:xx` của ngày trước trong khi ngày vẫn là ngày mới.
+- CI hiểu chuyến còn gần 24 giờ mới khởi hành và trả `Chưa đến thời gian quét vé` trước khi chạy các assertion vé tháng/vé lượt.
+
+## Thay đổi
+- Tạo một `LocalDateTime` duy nhất trong `Asia/Ho_Chi_Minh`, lùi 5 phút rồi lấy cả ngày và giờ từ cùng giá trị.
+- Tạo `departedAt` từ chính thời điểm nghiệp vụ đó để dữ liệu test nhất quán giữa máy local và GitHub Actions UTC.
+- Dọn import thời gian bị trùng sau khi merge.
+
+## Kiểm tra
+- `OperationsServiceTests` với JVM timezone UTC: 5/5 tests đạt.
+- Backend full test với JVM timezone UTC: 125/125 tests đạt.
+
+---
+
 # Changelog: Luồng mua vé sinh viên theo tuyến và hành trình
 
 ## Tóm tắt
@@ -410,3 +497,280 @@ từ API thật để sau khi gửi có thể thấy lại trên UI.
 - Gửi báo mất đồ, quay lại danh sách phải thấy báo mất đồ vừa gửi.
 - `npm run lint` chạy qua, còn 3 warning cũ.
 - `npm run build` chạy qua.
+---
+
+# Changelog: Xóa chức năng "Trạm dừng" phía sinh viên
+
+Ghi lại log thay đổi. Đây là thay đổi có chủ đích, không phải lỗi.
+
+## Tóm tắt
+Loại bỏ chức năng "Trạm dừng" độc lập ở phía sinh viên. Sinh viên không còn màn hình
+tra cứu danh sách trạm riêng. Dữ liệu stop vẫn được giữ cho các luồng nghiệp vụ khác
+(điểm lên/xuống, tìm tuyến, theo dõi xe, vé, lịch sử chuyến). Chức năng quản lý trạm
+dừng phía điều phối viên (crd-stops) giữ nguyên.
+
+## Thay đổi gì
+- Xóa mục menu sinh viên `stu-stops` ("Trạm dừng") trong `frontend/src/components/bus/nav-config.ts`.
+- Xóa case render `stu-stops` khỏi `StudentModule`.
+- Xóa toàn bộ component `StopsScreen` của sinh viên trong
+  `frontend/src/components/bus/roles/student-module.tsx` (ô tìm kiếm trạm, thống kê tổng
+  trạm/tuyến/mái che, danh sách trạm cùng tuyến đi qua).
+- Cập nhật CTA "Xem tất cả" trên dashboard sinh viên: trỏ sang `stu-notifications`
+  thay vì màn hình trạm dừng đã xóa.
+
+## Lý do
+- Đơn giản hóa trải nghiệm phía sinh viên: không cần màn hình tra cứu trạm dừng độc lập.
+- Sinh viên vẫn thao tác với điểm lên/xuống trong các luồng cần thiết (đăng ký tuyến/vé,
+  tìm tuyến, tracking), nên việc bỏ màn hình riêng không làm mất chức năng cốt lõi.
+
+## Phạm vi không đụng tới
+- Không xóa API stop ở backend (`/stops`, `/routes/search`, `/routes/{id}/stops/{stopId}/eta`).
+- Không thay đổi chức năng quản lý trạm dừng phía điều phối viên.
+- Dữ liệu `ctx.stops` vẫn dùng cho tìm tuyến, chọn điểm lên/xuống, tracking, AI gợi ý tuyến.
+
+## Kiểm tra "xóa chưa sạch"
+- Không còn tham chiếu `stu-stops` trong `frontend/src`.
+- `StopsScreen` còn lại chỉ thuộc `coordinator-module.tsx` (hợp lệ).
+- Các import dùng chung (`MapPin`, `Search`, `ShieldCheck`, `PackageSearch`, `EmptyState`,
+  `Section`) vẫn còn usage khác nên không trở thành import thừa.
+
+## Lưu ý khi test
+- Vai trò sinh viên: menu không còn mục "Trạm dừng".
+- Dashboard sinh viên: CTA "Xem tất cả" không điều hướng tới màn hình đã xóa.
+- Các luồng vẫn cần dữ liệu trạm: tìm tuyến, đăng ký tuyến/vé, chọn điểm lên/xuống,
+  theo dõi xe/timeline, lịch sử chuyến (điểm lên/xuống).
+- Vai trò điều phối viên: màn hình quản lý "Trạm dừng" vẫn hoạt động.
+- Chạy build/lint frontend để bắt lỗi type/import tiềm ẩn.
+
+---
+
+# Changelog: Đồng bộ xe giả lập với chuyến tài xế đang chạy
+
+## Tóm tắt
+Cập nhật tracking để xe giả lập chỉ xuất hiện khi có chuyến tài xế đang `RUNNING`.
+Backend là nguồn dữ liệu chính cho vị trí xe, biển số, tài xế, tốc độ và trạm kế tiếp.
+
+## Thay đổi gì
+- Backend `JourneyTrackingService` không còn tự tạo xe `route-sim-*` cho tuyến không có chuyến đang chạy.
+- Tracking theo tuyến chỉ trả về xe gắn với `tripId` của chuyến tài xế đang chạy.
+- Tracking theo hành trình chỉ thêm xe khi route trong leg có trip đang `RUNNING`.
+- Xóa fallback tạo nhiều xe giả lập companion theo tuyến.
+- Driver `Lộ trình chuyến` chỉ hiển thị dropdown các chuyến đang `RUNNING`.
+- Student `Theo dõi xe` chỉ hiển thị vehicle có `tripId`, tránh hiện xe mô phỏng cũ nếu API/cache còn dữ liệu cũ.
+- Sửa mojibake nhãn `Tài xế` trong card thông tin xe của student tracking.
+
+## Lý do
+- Tránh việc student vẫn thấy xe giả lập không gắn tài xế.
+- Đảm bảo driver và student cùng nhìn một xe theo chuyến tài xế đang chạy.
+- Dropdown lộ trình của tài xế không bị lẫn chuyến chưa bắt đầu.
+
+## Lưu ý khi test
+- Restart backend sau khi pull code mới.
+- Khi chưa có trip `RUNNING`, student tracking không hiển thị xe giả lập.
+- Khi tài xế bấm `Bắt đầu chuyến`, student và driver phải thấy cùng xe/biển số/tài xế.
+- Driver `Lộ trình chuyến` chỉ có các chuyến đang chạy trong dropdown.
+
+## Kiểm tra đã chạy
+- `mvn -q -DskipTests compile`
+- `npx eslint src/components/bus/roles/student-module.tsx src/components/bus/roles/driver-module.tsx --quiet`
+- `npx tsc --noEmit`
+
+---
+
+# Changelog: Dieu chinh quet ve phu xe cho moi truong demo
+
+## Tom tat
+Cap nhat luong quet ve cua phu xe de phu hop demo: khi tai xe bat dau chuyen va phu xe
+co chuyen hop le duoc phan cong, phu xe co the quet ve ngay. Luong khong con bi khoa
+boi lech gio chay, thieu gio khoi hanh trong du lieu seed, hoac cua so 30 phut truoc / 3 gio sau.
+
+## Thay doi gi
+- Frontend phu xe hien thi trang thai quet mem hon: `Dang trong phien quet` va gio chay theo lich.
+- Them ly do cu the khi chuyen chua the quet: thieu ma chuyen, thieu ma tuyen, thieu ten tuyen,
+  chuyen da hoan thanh, da huy hoac chua duoc tao.
+- Backend chi chan quet voi chuyen o trang thai cuoi (`COMPLETED`, `CANCELLED`, `NOT_CREATED`).
+- Giu debounce chong quet trung QR lien tuc trong vai giay.
+- Giu lich su quet gan day de phu xe xem lai ve vua quet, trang thai va ly do fail.
+- Giu bo loc nhanh danh sach ve: tat ca, ve luot, ve thang, da quet, chua quet.
+- Khi ve sai tuyen, backend tra them tuyen dung cua ve de phu xe giai thich ro cho hanh khach.
+
+## Ly do
+- Demo thuong dung du lieu seed, gio he thong va lich chay co the khong khop tuyet doi.
+- Neu van khoa theo cua so gio production, nut quet de bi xam du tai xe da bat dau chuyen.
+- Muc tieu demo la the hien quy trinh nghiep vu day du: tai xe bat dau chuyen -> phu xe quet ve ->
+  xem ket qua va lich su quet, thay vi bi chan boi dieu kien thoi gian ky thuat.
+- Van giu chan cac chuyen da hoan thanh/huy/chua tao de tranh quet nham chuyen khong con hop le.
+
+## Luu y production
+- Logic hien tai co chu thich `ponytail` tai frontend/backend.
+- Khi len production nen khoi phuc kiem tra cua so thoi gian chat hon de giam gian lan ve.
+
+## Kiem tra
+- Phu xe co chuyen hop le: nut quet ve bat.
+- Chuyen thieu `tripId`, `routeId` hoac `routeName`: UI hien ly do cu the.
+- Chuyen `COMPLETED`, `CANCELLED`, `NOT_CREATED`: backend tu choi quet.
+- Khong con text mojibake/dau hoi trong cac chuoi vua sua.
+
+---
+
+# Changelog: Hop nhat luong van hanh tai xe
+
+## Tom tat
+Sua driver flow theo trip thuc te: chuyen chi RUNNING sau khi tai xe bam bat dau, tracking bam theo tripId,
+dong ho tinh tu departedAt, map nam trong Chuyen hien tai va lich su khong tai stops khong can thiet.
+
+## Backend
+- startTrip chi chap nhan NOT_STARTED, trong khoang 30 phut truoc den 60 phut sau gio lich.
+- Chan tai xe bat dau chuyen moi neu dang co chuyen RUNNING.
+- endTrip chi chap nhan RUNNING; khong con ket thuc NOT_STARTED/COMPLETED.
+- Them tracking endpoint theo tripId va xac minh chuyen thuoc tai xe.
+- History mapper khong goi findTripStopsBySchedule cho tung dong, loai N+1 query.
+
+## Frontend driver
+- Dong ho tinh tu departedAt, khong reset khi component remount.
+- Khong fallback vehicles[0]; khong co xe dung trip thi hien dau gach ngang.
+- Chuyen hien tai co map, xe dung trip, quick stats va 5 tram gan nhat.
+- Loai chuyen RUNNING khoi danh sach phan cong ben duoi.
+- Bo timeline ngang dai tren dashboard/chuyen hien tai.
+- Bo menu Tuyen duoc phan, Thong bao, Ho so ca nhan; notification/profile van truy cap tu top bar.
+- Rut gon lich su con ngay/tuyen/gio bat dau/gio ket thuc/tong thoi gian/trang thai.
+
+## Demo data
+- Khong seed san trip RUNNING.
+- Chuyen demo gan nhat duoc dat 10 phut sau thoi diem reset de co the bam bat dau khi demo.
+- SQL reset co dinh timezone Asia/Ho_Chi_Minh.
+
+## Kiem tra
+- Backend full tests.
+- Frontend eslint driver/nav/client.
+- Frontend tsc --noEmit.
+
+---
+
+# Changelog: Sua lich khoi hanh trip baseline tai xe
+
+## Tom tat
+- Gan cac trip `DEMO_DATA:BASELINE` co `schedule_id = NULL` vao `bus_schedules` theo slot gio demo.
+- Slot 1/2/3/4 tuong ung 06:30/09:00/14:00/17:30.
+- Man Chuyen hien tai uu tien chuyen co the bat dau, sau do den chuyen sap toi; khong uu tien chuyen da qua gio.
+- Nhan trang thai phan anh dung dieu kien: thieu lich, chua den gio, san sang hoac da qua gio.
+
+## Kiem tra
+- Trip 7211 da co schedule 763 va gio 17:30.
+- UI hien `CO THE BAT DAU LUC 17:30`; nut khoa dung vi chua vao cua so 30 phut.
+- ESLint va TypeScript chay qua.
+
+---
+
+# Changelog: Loc chuyen tai xe qua gio va don lich su demo
+
+## Tom tat
+- Driver overview bo cac trip/schedule chua chay da qua 60 phut sau gio khoi hanh.
+- Schedule template bi lo trong ngay se chuyen sang lan chay tuan tiep theo thay vi hien tren dashboard.
+- Driver dashboard chi dem cac trip hom nay con lien quan: running, completed/cancelled, thieu gio hoac chua qua cua so bat dau.
+- Chuan hoa trip demo 7141 ve NOT_STARTED va xoa ended_at sai.
+- Chuan hoa trip 2875 ve thoi luong 90 phut.
+
+## Kiem tra DB
+- Khong con trip COMPLETED thieu departed_at trong hai dong muc tieu.
+- Khong con trip tai xe demo dai hon 6 gio.
+- Chuyen 06:30/07:30/09:00 qua gio khong con nam trong dashboard/overview sap toi.
+
+---
+
+# Changelog: Lam gon man chuyen hien tai cua tai xe
+
+## Thay doi
+- Tieu de hien `Chuyen sap toi` khi chua bat dau, `Chuyen dang chay` khi trip da RUNNING.
+- Chuyen dang hien trong card chinh bi loai khoi danh sach phan cong ben duoi.
+- Truoc khi bat dau, nut phu mo `Lien he dieu phoi`.
+- Nut phu luon mo `Lien he dieu phoi`; tracking da nam truc tiep trong man chuyen hien tai.
+
+---
+
+# Changelog: Đồng bộ lại UI vận hành tài xế
+
+## Tóm tắt
+- Đưa các màn vận hành tài xế về cùng ngôn ngữ giao diện list/card của hệ thống.
+- Giữ nguyên nghiệp vụ chuyến, tracking, bản đồ, timeline và dữ liệu hiện có.
+
+## Thay đổi
+- `Chuyến hiện tại`: dùng card hệ thống, status pill, typography và nút dạng pill chuẩn.
+- Quick stats, bản đồ và danh sách trạm dùng surface token chung, giảm màu hard-code và trang trí dư thừa.
+- `Danh sách chuyến được phân công`: khôi phục timeline ngang UX gốc; card dạng list giống `Lịch trình`.
+- Thông tin phụ xe, điện thoại và số trạm chuyển về grid gọn, responsive 2/3 cột.
+- `Lịch sử`: chuyển card lớn có icon trang trí thành list card gọn, giữ đầy đủ giờ bắt đầu, kết thúc và tổng thời gian.
+- Giữ nguyên UI `Liên hệ điều phối` vì đây là màn nghiệp vụ riêng đã được thiết kế trước đó.
+
+## Kiểm tra
+- Backend: `mvn -B -ntp clean test` — 73 tests đạt.
+- Frontend: `npm ci`, `npm run lint`, `npm run build` đạt.
+- File thay đổi và `AGENTS.md` hợp lệ UTF-8, không có mojibake hoặc dấu `?` bất thường.
+- `git diff --check` đạt.
+
+---
+
+# Changelog: Can bang card chuyen dang chay tren dashboard tai xe
+
+## Thay doi
+- Khoi phuc padding responsive cho card chuyen dang chay trong `Lich hom nay`.
+- Giu nguyen mau lime, badge, CTA va bo cuc hien tai; chi sua spacing bi sat vien.
+
+---
+
+# Changelog: Hien thi chuyen qua gio trong lich tai xe
+
+## Thay doi
+- Chuyen chua bat dau qua 60 phut sau gio lich hien trang thai `Da qua gio chay`.
+- Card qua gio dung tone xam va duoc xep xuong cuoi danh sach lich trinh.
+- Chi thay doi hien thi frontend; khong sua status trong DB.
+
+---
+
+# Changelog: Khoi phuc visual pattern cu cua UI tai xe
+
+## Thay doi
+- Xay lai `Lich chay xe` bang truc tiep visual structure cua `CoordinatorScheduleScreen`.
+- Moi chuyen la mot row card phang: ten tuyen/gio, status pill, tai xe, phu xe va bien so.
+- Khong dung grid, timeline, icon xe, metadata chip hoac panel mo rong.
+- `Chuyen hien tai` dung tracking surface trang nhu student: thong tin chuyen, map, quick stats va action bar tach ro.
+- `Lich su` dung row record phang nhu dispatcher: route/status va ba cot bat dau, ket thuc, thoi luong.
+- Van giu logic moi: chuyen qua gio mau xam/xep cuoi, tracking theo trip va fallback dau gach ngang.
+
+---
+
+# Changelog: Đồng bộ giả lập xe theo chuyến đang chạy
+
+## Tóm tắt
+- Thêm `VehicleSimulationService` làm engine mô phỏng duy nhất cho student, dispatcher và driver.
+- Xe mô phỏng chỉ tồn tại khi trip có trạng thái `RUNNING`.
+- Vị trí, tốc độ, trạm kế và ETA được tính deterministic từ `tripId`, `departedAt` và lộ trình.
+
+## Thay đổi
+- Driver tracking lấy snapshot theo đúng `tripId`, không còn lấy xe mới nhất cùng tuyến.
+- Student route/journey tracking bỏ ưu tiên vị trí GPS cũ; dùng cùng engine của driver.
+- Dispatcher thêm endpoint tracking theo trip và poll mỗi 2 giây; bỏ fallback dựng xe trên polyline ở frontend.
+- Xe đến cuối tuyến đứng tại đích với tốc độ 0, không chạy vòng lại.
+- Chuẩn hóa chuyến chạy qua nửa đêm: nếu giờ kết thúc nhỏ hơn giờ bắt đầu thì cộng sang ngày kế tiếp.
+- Loại các trip RUNNING của tài khoản driver bị khóa (fleet simulator cũ) khỏi student/dispatcher tracking.
+- Dispatcher fleet vẫn giữ trip RUNNING từ ngày trước nếu chuyến chưa kết thúc.
+- Hướng mô phỏng luôn lấy theo trip/driver; boarding/alighting của student không được đảo chiều xe.
+- Fleet dashboard dispatcher dùng cùng snapshot mô phỏng nên tốc độ, tọa độ và marker không còn lấy GPS rỗng.
+- Thêm test xác nhận cùng trip/thời điểm cho cùng snapshot và xe dừng ở đích.
+
+---
+
+# Changelog: Resolve conflict PR 63 với main
+
+## Quyết định hợp nhất
+- Giữ `VehicleSimulationService` và tracking đồng bộ theo `tripId` của nhánh `TruongPhuc`.
+- Giữ UI driver, logic phụ xe và cảnh báo quét vé; nhận thêm nhãn trạng thái vé và ưu tiên trip `RUNNING` từ main.
+- Nhận lifecycle tài xế của main: timezone nghiệp vụ, row lock khi bắt đầu, kiểm tra trạng thái start/end và endpoint tracking dùng chung.
+- Lấy nguyên bản main cho `database/ResetDemoScenario.sql` và `database/SeedDemoDataUntilAugust.sql`.
+- Xóa test lifecycle cũ trùng phạm vi; dùng bộ `DriverOperationsServiceTests` đầy đủ hơn từ main.
+
+## Kiểm tra
+- Không còn conflict marker.
+- Backend `mvn -B -ntp clean test`: 81 tests đạt.
+- Frontend lint và build đạt; còn 5 hook warning cũ ở student module.
+- UTF-8/mojibake và `git diff --check` đạt.

@@ -739,7 +739,7 @@ function RegisterForm({
           </div>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="remail">Email trường</Label>
+          <Label htmlFor="remail">Email</Label>
           <div className="relative">
             <Mail className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant pointer-events-none" />
             <Input id="remail" type="email" placeholder="ten@duytan.edu.vn" className="pl-11 h-12 rounded-xl bg-surface-container-lowest border-outline-variant" value={email} onChange={(e) => { setEmail(e.target.value); setOtpSent(false); setOtp(""); }} />

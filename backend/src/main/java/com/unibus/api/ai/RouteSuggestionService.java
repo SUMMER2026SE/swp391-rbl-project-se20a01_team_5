@@ -7,6 +7,9 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.springframework.stereotype.Service;
 
@@ -19,6 +22,8 @@ import com.unibus.api.ai.AiKnowledgeRepository.StudentContext;
 
 @Service
 public class RouteSuggestionService {
+
+    private static final Pattern ROUTE_CODE = Pattern.compile("(?iu)\\btuyến\\s*0*([0-9]+)\\b");
 
     private final AiKnowledgeRepository knowledgeRepository;
 
@@ -41,6 +46,42 @@ public class RouteSuggestionService {
                         .thenComparing(RouteSuggestionCard::routeName))
                 .limit(5)
                 .toList();
+    }
+
+    public Optional<RouteSuggestionCard> findByRouteId(Integer userId, Integer routeId) {
+        if (routeId == null) {
+            return Optional.empty();
+        }
+        StudentContext student = knowledgeRepository.studentContext(userId);
+        RegistrationSnapshot registration = knowledgeRepository.currentRegistration(student.studentCode()).orElse(null);
+        return knowledgeRepository.candidateRoutes(student).stream()
+                .filter(route -> routeId.equals(route.routeId()))
+                .findFirst()
+                .map(route -> score(route, registration, null, null, null, new Preference(false, false, false)));
+    }
+
+    public Optional<RouteSuggestionCard> findByReference(Integer userId, Integer routeId, String message) {
+        Optional<RouteSuggestionCard> selected = findByRouteId(userId, routeId);
+        if (selected.isPresent()) {
+            return selected;
+        }
+        Matcher matcher = ROUTE_CODE.matcher(message == null ? "" : message);
+        if (!matcher.find()) {
+            return Optional.empty();
+        }
+        int requestedCode = Integer.parseInt(matcher.group(1));
+        StudentContext student = knowledgeRepository.studentContext(userId);
+        RegistrationSnapshot registration = knowledgeRepository.currentRegistration(student.studentCode()).orElse(null);
+        return knowledgeRepository.candidateRoutes(student).stream()
+                .filter(route -> numericRouteCode(route.routeCode()) == requestedCode)
+                .findFirst()
+                .map(route -> score(route, registration, null, null, null, new Preference(false, false, false)));
+    }
+
+    private int numericRouteCode(String value) {
+        if (value == null) return -1;
+        Matcher matcher = Pattern.compile("[0-9]+").matcher(value);
+        return matcher.find() ? Integer.parseInt(matcher.group()) : -1;
     }
 
     private RouteSuggestionCard score(

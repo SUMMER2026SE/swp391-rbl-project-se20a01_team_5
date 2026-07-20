@@ -308,6 +308,7 @@ export interface RouteSuggestionDTO {
     stopCode?: string;
     stopName: string;
     stopOrder: number;
+    stationDirection?: number;
     minutesFromPreviousStop?: number;
     longitude?: number | string;
     latitude?: number | string;
@@ -1239,6 +1240,7 @@ type AssistantChatPayload = {
     alightingStopId?: number;
     preferredDepartureTime?: string;
     preferences?: string[];
+    routeId?: number;
     conversationHistory?: {
       role: "user" | "assistant";
       content: string;

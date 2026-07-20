@@ -53,7 +53,7 @@ public class TicketingRepository {
                 LEFT JOIN stops als ON als.stop_id = rr.alighting_stop_id
                 WHERE rr.student_code = ?
                   AND rr.status = 'APPROVED'
-                  AND (? IS NULL OR rr.route_id = ?)
+                  AND (?::integer IS NULL OR rr.route_id = ?)
                 ORDER BY rr.approved_at DESC NULLS LAST, rr.registered_at DESC
                 LIMIT 1
                 """, (rs, rowNum) -> new ApprovedRegistration(
@@ -184,53 +184,30 @@ public class TicketingRepository {
     }
 
     public Optional<SingleTripTicketView> findSingleTripTicket(Integer ticketId) {
-        List<SingleTripTicketView> rows = jdbcTemplate.query("""
-                SELECT stt.single_trip_ticket_id, stt.student_code, stt.route_id, r.route_name,
-                       stt.boarding_stop_id, bs.stop_name AS boarding_stop_name,
-                       stt.alighting_stop_id, als.stop_name AS alighting_stop_name,
-                       stt.fare_amount, stt.original_fare_amount, stt.subsidy_amount, stt.final_fare_amount,
-                       stt.qr_code, stt.status, stt.purchased_at, stt.expires_at
-                FROM single_trip_tickets stt
-                JOIN routes r ON r.route_id = stt.route_id
-                LEFT JOIN stops bs ON bs.stop_id = stt.boarding_stop_id
-                LEFT JOIN stops als ON als.stop_id = stt.alighting_stop_id
-                WHERE stt.single_trip_ticket_id = ?
-                """, (rs, rowNum) -> new SingleTripTicketView(
-                        rs.getInt("single_trip_ticket_id"),
-                        rs.getString("student_code"),
-                        rs.getInt("route_id"),
-                        rs.getString("route_name"),
-                        (Integer) rs.getObject("boarding_stop_id"),
-                        rs.getString("boarding_stop_name"),
-                        (Integer) rs.getObject("alighting_stop_id"),
-                        rs.getString("alighting_stop_name"),
-                        rs.getBigDecimal("fare_amount"),
-                        rs.getBigDecimal("original_fare_amount"),
-                        rs.getBigDecimal("subsidy_amount"),
-                        rs.getBigDecimal("final_fare_amount"),
-                        rs.getString("qr_code"),
-                        rs.getString("status"),
-                        toOffsetDateTime(rs.getTimestamp("purchased_at")),
-                        toOffsetDateTime(rs.getTimestamp("expires_at"))),
-                ticketId);
-        return rows.stream().findFirst();
+        return querySingleTripTickets("WHERE stt.single_trip_ticket_id = ?", hasSingleTicketSubsidyColumns(), ticketId)
+                .stream().findFirst();
     }
 
     public List<SingleTripTicketView> findSingleTripTickets(String studentCode) {
+        String clause = "WHERE stt.student_code = ? ORDER BY stt.purchased_at DESC LIMIT 50";
+        return querySingleTripTickets(clause, hasSingleTicketSubsidyColumns(), studentCode);
+    }
+
+    private List<SingleTripTicketView> querySingleTripTickets(String clause, boolean withSubsidyFields, Object... arguments) {
+        String subsidyFields = withSubsidyFields
+                ? "stt.original_fare_amount, stt.subsidy_amount, stt.final_fare_amount"
+                : "stt.fare_amount AS original_fare_amount, 0 AS subsidy_amount, stt.fare_amount AS final_fare_amount";
         return jdbcTemplate.query("""
                 SELECT stt.single_trip_ticket_id, stt.student_code, stt.route_id, r.route_name,
                        stt.boarding_stop_id, bs.stop_name AS boarding_stop_name,
                        stt.alighting_stop_id, als.stop_name AS alighting_stop_name,
-                       stt.fare_amount, stt.original_fare_amount, stt.subsidy_amount, stt.final_fare_amount,
-                       stt.qr_code, stt.status, stt.purchased_at, stt.expires_at
+                       stt.fare_amount, %s, stt.qr_code, stt.status, stt.purchased_at, stt.expires_at
                 FROM single_trip_tickets stt
                 JOIN routes r ON r.route_id = stt.route_id
                 LEFT JOIN stops bs ON bs.stop_id = stt.boarding_stop_id
                 LEFT JOIN stops als ON als.stop_id = stt.alighting_stop_id
-                WHERE stt.student_code = ?
-                ORDER BY stt.purchased_at DESC
-                LIMIT 50
-                """, (rs, rowNum) -> new SingleTripTicketView(
+                %s
+                """.formatted(subsidyFields, clause), (rs, rowNum) -> new SingleTripTicketView(
                         rs.getInt("single_trip_ticket_id"),
                         rs.getString("student_code"),
                         rs.getInt("route_id"),
@@ -246,10 +223,18 @@ public class TicketingRepository {
                         rs.getString("qr_code"),
                         rs.getString("status"),
                         toOffsetDateTime(rs.getTimestamp("purchased_at")),
-                        toOffsetDateTime(rs.getTimestamp("expires_at"))),
-                studentCode);
+                        toOffsetDateTime(rs.getTimestamp("expires_at"))), arguments);
     }
 
+    private boolean hasSingleTicketSubsidyColumns() {
+        Integer count = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE LOWER(table_name) = 'single_trip_tickets'
+                  AND LOWER(column_name) IN ('original_fare_amount', 'subsidy_amount', 'final_fare_amount')
+                """, Integer.class);
+        return count != null && count == 3;
+    }
     public TicketView createMonthlyTicket(String studentCode, ApprovedRegistration registration, int year, int month,
             OffsetDateTime validFrom, OffsetDateTime expiresAt, MonthlyPassQuote quote) {
         String qrCode = "UB-MONTHLY-" + UUID.randomUUID();

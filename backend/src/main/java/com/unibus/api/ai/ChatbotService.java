@@ -1,6 +1,9 @@
 package com.unibus.api.ai;
 
+import java.math.BigDecimal;
 import java.text.Normalizer;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -9,6 +12,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,11 +37,27 @@ import com.unibus.api.ai.AiKnowledgeRepository.RegistrationSnapshot;
 import com.unibus.api.ai.AiKnowledgeRepository.StudentContext;
 import com.unibus.api.ai.AiKnowledgeRepository.TicketSnapshot;
 import com.unibus.api.ai.AiLlmService.AiPrompt;
+import com.unibus.api.security.CurrentUser;
+import com.unibus.api.transport.JourneyPlannerService;
+import com.unibus.api.transport.PlaceService;
+import com.unibus.api.transport.dto.TransportDtos.JourneyOption;
+import com.unibus.api.transport.dto.TransportDtos.JourneySearchRequest;
+import com.unibus.api.transport.dto.TransportDtos.PlacePoint;
+import com.unibus.api.transport.dto.TransportDtos.PlaceSuggestion;
+import com.unibus.api.user.model.UserRole;
 
 @Service
 public class ChatbotService {
 
     private static final Logger log = LoggerFactory.getLogger(ChatbotService.class);
+    private static final List<Pattern> ROUTE_CONNECTORS = List.of(
+            Pattern.compile("(?iu)\\s*,?\\s*(?:muốn|muon|cần|can)\\s+(?:đi\\s+|di\\s+)?(?:qua|đến|den|tới|toi|sang)\\s+"),
+            Pattern.compile("(?iu)\\s+(?:đi\\s+|di\\s+)?(?:đến|den|tới|toi|sang)\\s+"));
+    private static final Pattern ORIGIN_PREFIX = Pattern.compile(
+            "(?iu)^\\s*(?:(?:tôi|toi)\\s+)?(?:đi\\s+từ|di\\s+tu|đang\\s+ở|dang\\s+o|xuất\\s+phát\\s+(?:từ|ở)|xuat\\s+phat\\s+(?:tu|o)|từ|tu|ở|o|gần|gan)\\s+");
+    private static final Pattern DESTINATION_SUFFIX = Pattern.compile(
+            "(?iu)\\s*(?:,|;|\\?|!|nên\\b|nen\\b|ưu tiên\\b|uu tien\\b|đi xe\\b|di xe\\b|đi sao\\b|di sao\\b|thế nào\\b|the nao\\b).*$");
+    private static final ZoneId VIETNAM_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
 
     private static final String SYSTEM_PROMPT = """
             Bạn là UniBus AI Copilot cho sinh viên.
@@ -57,6 +78,8 @@ public class ChatbotService {
     private final AiLlmService llmService;
     private final IntentRouter intentRouter;
     private final FastReplyService fastReplyService;
+    private final PlaceService placeService;
+    private final JourneyPlannerService journeyPlannerService;
 
     public ChatbotService(
             JdbcTemplate jdbcTemplate,
@@ -64,7 +87,9 @@ public class ChatbotService {
             RouteSuggestionService routeSuggestionService,
             AiLlmService llmService,
             IntentRouter intentRouter,
-            FastReplyService fastReplyService) {
+            FastReplyService fastReplyService,
+            PlaceService placeService,
+            JourneyPlannerService journeyPlannerService) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = new ObjectMapper();
         this.knowledgeRepository = knowledgeRepository;
@@ -72,6 +97,8 @@ public class ChatbotService {
         this.llmService = llmService;
         this.intentRouter = intentRouter;
         this.fastReplyService = fastReplyService;
+        this.placeService = placeService;
+        this.journeyPlannerService = journeyPlannerService;
     }
 
     @Transactional
@@ -86,7 +113,18 @@ public class ChatbotService {
 
     private ChatResponse runConversation(Integer userId, ChatRequest request, StreamSink sink) {
         String userMessage = request.message() == null ? "" : request.message().trim();
-        AiIntent advisoryType = intentRouter.detect(userMessage);
+        AiIntent detectedType = intentRouter.detect(userMessage);
+        AiIntent advisoryType = detectedType == AiIntent.OTHER && hasStopPair(request.context())
+                ? AiIntent.ROUTE_SUGGESTION
+                : detectedType;
+        RouteEndpoints parsedEndpoints = advisoryType == AiIntent.ROUTE_SUGGESTION ? routeEndpoints(userMessage) : null;
+        if (parsedEndpoints != null && needsCampusClarification(parsedEndpoints)) {
+            return quickResponse(sink, advisoryType,
+                    "Bạn muốn đến Duy Tân 254 Nguyễn Văn Linh hay cơ sở khác?");
+        }
+        List<RouteSuggestionCard> journeyRoutes = advisoryType == AiIntent.ROUTE_SUGGESTION
+                ? journeyRouteSuggestions(userId, userMessage, request, parsedEndpoints)
+                : List.of();
         sink.emit("assistant.started", streamEvent("assistant.started", null, null, null,
                 advisoryType, List.of(), List.of(), List.of(), List.of(), null, null));
 
@@ -112,8 +150,10 @@ public class ChatbotService {
             return response;
         }
 
-        RouteSuggestionRequest routeRequest = routeRequestFromChat(userId, request, advisoryType);
-        if (shouldClarifyRouteRequest(advisoryType, routeRequest, userMessage)) {
+        RouteSuggestionRequest routeRequest = journeyRoutes.isEmpty()
+                ? routeRequestFromChat(userId, request, advisoryType)
+                : new RouteSuggestionRequest(null, null, null, preferences(request), userMessage, null);
+        if (journeyRoutes.isEmpty() && shouldClarifyRouteRequest(advisoryType, routeRequest, userMessage)) {
             String message = routeClarificationMessage(routeRequest);
             String sessionId = UUID.randomUUID().toString();
             sink.emit("fast_reply", streamEvent("fast_reply", message, null,
@@ -142,7 +182,12 @@ public class ChatbotService {
         toolCompleted(sink, traceEvents, profileTimer, "Tìm thấy " + nullToBlank(student.universityName()));
 
         List<RouteSuggestionCard> routeSuggestions = List.of();
-        if (shouldLoadRoutes(advisoryType, routeRequest, userMessage)) {
+        if (!journeyRoutes.isEmpty()) {
+            routeSuggestions = journeyRoutes;
+        } else if (advisoryType == AiIntent.FARE_LOOKUP || advisoryType == AiIntent.SCHEDULE_LOOKUP) {
+            routeSuggestions = routeSuggestionService.findByReference(userId,
+                    intValue(request.context() == null ? null : request.context().get("routeId")), userMessage).stream().toList();
+        } else if (shouldLoadRoutes(advisoryType, routeRequest, userMessage)) {
             ToolTimer routeTimer = toolStarted(sink, traceEvents, "route_suggestions", "Tuyến, trạm và lịch chạy", "Tìm tuyến phù hợp từ dữ liệu UniBus");
             routeSuggestions = routeSuggestionService.suggest(userId, routeRequest).stream().limit(3).toList();
             toolCompleted(sink, traceEvents, routeTimer, routeSuggestions.size() + " tuyến phù hợp");
@@ -205,6 +250,132 @@ public class ChatbotService {
                 sessionId,
                 traceEvents,
                 providerStatus);
+    }
+
+    private List<RouteSuggestionCard> journeyRouteSuggestions(
+            Integer userId, String message, ChatRequest chatRequest, RouteEndpoints endpoints) {
+        if (endpoints == null) {
+            return List.of();
+        }
+        try {
+            PlacePoint origin = resolveRoutePoint(endpoints.origin());
+            PlacePoint destination = resolveRoutePoint(endpoints.destination());
+            if (origin == null || destination == null) {
+                return List.of();
+            }
+            CurrentUser currentUser = new CurrentUser(userId, "", UserRole.STUDENT, null);
+            List<JourneyOption> journeys = journeyPlannerService.search(currentUser,
+                    new JourneySearchRequest(origin, destination, 2, null));
+            if (journeys.isEmpty()) {
+                OffsetDateTime tomorrowMorning = OffsetDateTime.now(VIETNAM_ZONE)
+                        .plusDays(1)
+                        .withHour(7)
+                        .withMinute(0)
+                        .withSecond(0)
+                        .withNano(0);
+                journeys = journeyPlannerService.search(currentUser,
+                        new JourneySearchRequest(origin, destination, 2, tomorrowMorning));
+            }
+            if (journeys.isEmpty()) {
+                return List.of();
+            }
+            Map<Integer, RouteSuggestionCard> cards = routeSuggestionService.suggest(userId,
+                    new RouteSuggestionRequest(null, null, null, preferences(chatRequest), message, null))
+                    .stream()
+                    .collect(java.util.stream.Collectors.toMap(
+                            RouteSuggestionCard::routeId,
+                            card -> card,
+                            (left, right) -> left,
+                            LinkedHashMap::new));
+            return journeys.getFirst().legs().stream()
+                    .filter(leg -> "BUS".equalsIgnoreCase(leg.mode()) && leg.routeId() != null)
+                    .map(leg -> cards.get(leg.routeId()))
+                    .filter(java.util.Objects::nonNull)
+                    .distinct()
+                    .toList();
+        } catch (RuntimeException exception) {
+            log.debug("Unable to resolve chatbot journey route", exception);
+        }
+        return List.of();
+    }
+
+    private RouteEndpoints routeEndpoints(String message) {
+        String text = message == null ? "" : message.trim();
+        for (Pattern connector : ROUTE_CONNECTORS) {
+            Matcher matcher = connector.matcher(text);
+            if (!matcher.find()) continue;
+            String origin = expandUniversityAbbreviation(
+                    ORIGIN_PREFIX.matcher(text.substring(0, matcher.start())).replaceFirst("").trim());
+            String destination = expandUniversityAbbreviation(
+                    DESTINATION_SUFFIX.matcher(text.substring(matcher.end())).replaceFirst("").trim());
+            if (!origin.isBlank() && !destination.isBlank()) {
+                return new RouteEndpoints(origin, destination);
+            }
+        }
+        return null;
+    }
+
+    private boolean needsCampusClarification(RouteEndpoints endpoints) {
+        String destination = normalizeSearchText(endpoints.destination());
+        // ponytail: one ambiguous campus today; replace with campus catalog aliases when that data exists.
+        return destination.equals("duy tan") || destination.equals("dai hoc duy tan")
+                || destination.matches("^(?:dai hoc )?duy tan (?:di xe|di sao).*$");
+    }
+
+    private ChatResponse quickResponse(StreamSink sink, AiIntent type, String message) {
+        String sessionId = UUID.randomUUID().toString();
+        ChatResponse response = new ChatResponse(message, "FAST_REPLY", type.name(), List.of(), List.of(), List.of(),
+                sessionId, List.of(), null);
+        sink.emit("fast_reply", streamEvent("fast_reply", message, null,
+                "FAST_REPLY", type, List.of(), List.of(), List.of(), List.of(), null, sessionId));
+        sink.emit("assistant.completed", streamEvent("assistant.completed", message, null,
+                "FAST_REPLY", type, List.of(), List.of(), List.of(), List.of(), null, sessionId));
+        return response;
+    }
+
+    private String expandUniversityAbbreviation(String value) {
+        return value.replaceAll("(?iu)(^|\\s)(?:đh|dh)(?=\\s)", "$1Đại học");
+    }
+
+    private PlacePoint placePoint(PlaceSuggestion place) {
+        return place.stopId() == null
+                ? new PlacePoint(place.id(), null, place.label(), place.latitude(), place.longitude())
+                : new PlacePoint(null, place.stopId(), place.label(), null, null);
+    }
+
+    private PlacePoint resolveRoutePoint(String query) {
+        String normalized = normalizeSearchText(query);
+        // ponytail: demo campus aliases avoid external geocoder latency; move coordinates to a campus catalog when one exists.
+        if (normalized.contains("fpt") && normalized.contains("da nang")) {
+            return new PlacePoint("campus:fpt-danang", null, "Trường Đại học FPT Đà Nẵng",
+                    BigDecimal.valueOf(15.9674834), BigDecimal.valueOf(108.2603613));
+        }
+        if (normalized.contains("duy tan") && normalized.contains("nguyen van linh")) {
+            return new PlacePoint("campus:dtu-nguyen-van-linh", null, "Đại học Duy Tân 254 Nguyễn Văn Linh",
+                    BigDecimal.valueOf(16.0600568), BigDecimal.valueOf(108.2096704));
+        }
+        return placeService.search(query, null, null, 1).stream()
+                .filter(this::isUsablePlace)
+                .findFirst()
+                .map(this::placePoint)
+                .orElse(null);
+    }
+
+    private boolean isUsablePlace(PlaceSuggestion place) {
+        return place.stopId() != null || (place.latitude() != null && place.longitude() != null);
+    }
+
+    private List<String> preferences(ChatRequest request) {
+        Object value = request.context() == null ? null : request.context().get("preferences");
+        return value instanceof List<?> list ? list.stream().map(String::valueOf).toList() : List.of();
+    }
+
+    private boolean hasStopPair(Map<String, Object> context) {
+        return context != null && intValue(context.get("boardingStopId")) != null
+                && intValue(context.get("alightingStopId")) != null;
+    }
+
+    private record RouteEndpoints(String origin, String destination) {
     }
 
     private boolean shouldUseToolAssistedAnswer(
@@ -276,7 +447,7 @@ public class ChatbotService {
         if (boardingStopId == null || alightingStopId == null) {
             List<StopMention> mentions = stopMentions(request.message());
             StopPair matchedPair = boardingStopId == null && alightingStopId == null
-                    ? firstRouteCompatiblePair(userId, mentions, preferredDepartureTime, preferences, request.message())
+                    ? firstRouteCompatiblePair(mentions)
                     : null;
             if (matchedPair != null) {
                 boardingStopId = matchedPair.boardingStopId();
@@ -306,36 +477,36 @@ public class ChatbotService {
                 advisoryType == AiIntent.FARE_LOOKUP ? "cheap" : null);
     }
 
-    private StopPair firstRouteCompatiblePair(
-            Integer userId,
-            List<StopMention> mentions,
-            String preferredDepartureTime,
-            List<String> preferences,
-            String message) {
+    private StopPair firstRouteCompatiblePair(List<StopMention> mentions) {
         if (mentions.size() < 2) {
             return null;
         }
         List<StopMention> limitedMentions = mentions.stream().limit(12).toList();
-        for (int originIndex = 0; originIndex < limitedMentions.size(); originIndex++) {
-            StopMention origin = limitedMentions.get(originIndex);
-            for (int destinationIndex = originIndex + 1; destinationIndex < limitedMentions.size(); destinationIndex++) {
-                StopMention destination = limitedMentions.get(destinationIndex);
-                if (origin.stopId().equals(destination.stopId()) || origin.index() == destination.index()) {
-                    continue;
-                }
-                RouteSuggestionRequest request = new RouteSuggestionRequest(
-                        origin.stopId(),
-                        destination.stopId(),
-                        preferredDepartureTime,
-                        preferences,
-                        message,
-                        null);
-                if (!routeSuggestionService.suggest(userId, request).isEmpty()) {
-                    return new StopPair(origin.stopId(), destination.stopId());
-                }
-            }
+        String values = String.join(", ", java.util.Collections.nCopies(limitedMentions.size(), "(?, ?, ?)"));
+        List<Object> parameters = new ArrayList<>();
+        for (int rank = 0; rank < limitedMentions.size(); rank++) {
+            StopMention mention = limitedMentions.get(rank);
+            parameters.add(mention.stopId());
+            parameters.add(rank);
+            parameters.add(mention.index());
         }
-        return null;
+        return jdbcTemplate.query("""
+                WITH mentioned(stop_id, mention_rank, mention_index) AS (VALUES %s)
+                SELECT origin.stop_id AS boarding_stop_id, destination.stop_id AS alighting_stop_id
+                FROM mentioned origin_mention
+                JOIN mentioned destination_mention
+                  ON destination_mention.mention_rank > origin_mention.mention_rank
+                 AND destination_mention.mention_index <> origin_mention.mention_index
+                JOIN route_stops origin ON origin.stop_id = origin_mention.stop_id
+                JOIN route_stops destination ON destination.route_id = origin.route_id
+                 AND destination.stop_id = destination_mention.stop_id
+                 AND destination.stop_order > origin.stop_order
+                JOIN routes route ON route.route_id = origin.route_id AND route.status = 'ACTIVE'
+                ORDER BY origin_mention.mention_rank, destination_mention.mention_rank
+                LIMIT 1
+                """.formatted(values), (rs, rowNum) -> new StopPair(
+                        rs.getInt("boarding_stop_id"), rs.getInt("alighting_stop_id")), parameters.toArray())
+                .stream().findFirst().orElse(null);
     }
 
     private List<StopMention> stopMentions(String message) {
@@ -490,32 +661,72 @@ public class ChatbotService {
         if (advisoryType == AiIntent.ROUTE_SUGGESTION) {
             RouteSuggestionCard top = routes.get(0);
             String departures = top.nextDepartures().isEmpty() ? "chưa có lịch gần nhất" : String.join(", ", top.nextDepartures());
-            String reasonText = top.reasons().isEmpty()
-                    ? ""
-                    : " Lý do: " + String.join(", ", top.reasons()) + ".";
-            return new LlmMessage("Mình gợi ý tuyến %s - %s.%s Vé tháng sau trợ giá khoảng %s VND, chuyến gần nhất: %s."
+            return new LlmMessage("Tuyến %s phù hợp nhất. Vé lượt %s · Vé tháng %s. Chuyến kế tiếp: %s."
                     .formatted(
                             nullToBlank(top.routeCode()),
-                            top.routeName(),
-                            reasonText,
-                            top.finalFare() == null ? "chưa có dữ liệu" : top.finalFare().toPlainString(),
+                            money(top.singleFare()),
+                            money(top.finalFare()),
                             departures), advisoryType);
         }
+        if (advisoryType == AiIntent.FARE_LOOKUP && !routes.isEmpty()) {
+            RouteSuggestionCard route = routes.getFirst();
+            return new LlmMessage("Tuyến %s: Vé lượt %s. Vé tháng %s. Trường hỗ trợ %s, Sinh viên trả %s."
+                    .formatted(nullToBlank(route.routeCode()), money(route.singleFare()), money(route.monthlyFare()),
+                            money(route.subsidyAmount()), money(route.finalFare())), advisoryType);
+        }
+        if (advisoryType == AiIntent.SCHEDULE_LOOKUP && !routes.isEmpty()) {
+            RouteSuggestionCard route = routes.getFirst();
+            String departures = route.nextDepartures().isEmpty()
+                    ? "chưa có lịch hoạt động"
+                    : String.join(", ", route.nextDepartures());
+            return new LlmMessage("Tuyến %s · Lịch gần nhất: %s."
+                    .formatted(nullToBlank(route.routeCode()), departures), advisoryType);
+        }
         if (advisoryType == AiIntent.PAYMENT_LOOKUP) {
+            String normalized = normalizeSearchText(userMessage);
+            if (containsAny(normalized, "lam the nao", "cach mua", "huong dan")) {
+                return new LlmMessage("Vào Thanh toán, chọn Vé lượt hoặc Vé tháng, chọn tuyến rồi quét QR SePay.", advisoryType);
+            }
             return new LlmMessage(activeTicket == null
-                    ? "Bạn chưa có vé tháng đang hoạt động. Hãy đăng ký tuyến trước, sau đó vào mục Mua vé tháng để tạo QR SePay."
+                    ? "Bạn chưa có vé đang sử dụng. Vào Thanh toán để chọn loại vé và tạo QR SePay."
                     : "Bạn đang có vé %s cho tuyến %s, trạng thái %s."
-                            .formatted(activeTicket.ticketType(), activeTicket.routeName(), activeTicket.status()), advisoryType);
+                            .formatted(ticketTypeLabel(activeTicket.ticketType()), activeTicket.routeName(),
+                                    ticketStatusLabel(activeTicket.status())), advisoryType);
         }
         if (advisoryType == AiIntent.VERIFICATION) {
-            return new LlmMessage("Trạng thái xác minh sinh viên của bạn hiện là %s, trường liên kết: %s."
-                    .formatted(nullToBlank(student.verificationStatus()), nullToBlank(student.universityName())), advisoryType);
+            return new LlmMessage("Bạn %s sinh viên tại %s."
+                    .formatted(verificationLabel(student.verificationStatus()), nullToBlank(student.universityName())), advisoryType);
+        }
+        if (advisoryType == AiIntent.HELP) {
+            return new LlmMessage("Cho mình điểm xuất phát và nơi bạn muốn đến.", advisoryType);
         }
         if (registration != null) {
             return new LlmMessage("Mình có thể hỗ trợ bạn tra tuyến, giá vé, lịch chạy và vé. Hiện bạn đang đăng ký tuyến %s - %s."
                     .formatted(nullToBlank(registration.routeCode()), registration.routeName()), advisoryType);
         }
         return new LlmMessage("Mình có thể giúp bạn gợi ý tuyến, tra giá vé, lịch xe, ETA và hướng dẫn mua vé SePay. Bạn hãy cho mình biết trạm lên, trạm xuống hoặc nơi bạn muốn đến nhé.", advisoryType);
+    }
+
+    private String ticketTypeLabel(String value) {
+        return "MONTHLY".equalsIgnoreCase(value) ? "Vé tháng"
+                : "SINGLE".equalsIgnoreCase(value) ? "Vé lượt" : nullToBlank(value);
+    }
+
+    private String money(BigDecimal value) {
+        if (value == null) {
+            return "chưa có dữ liệu";
+        }
+        return String.format(Locale.forLanguageTag("vi-VN"), "%,.0f đ", value);
+    }
+
+    private String ticketStatusLabel(String value) {
+        return "ACTIVE".equalsIgnoreCase(value) ? "Đang sử dụng"
+                : "UNUSED".equalsIgnoreCase(value) ? "Chưa sử dụng" : nullToBlank(value);
+    }
+
+    private String verificationLabel(String value) {
+        return "VERIFIED".equalsIgnoreCase(value) ? "đã được xác minh"
+                : "PENDING".equalsIgnoreCase(value) ? "đang chờ xác minh" : "chưa được xác minh";
     }
 
     private List<AiSource> sources(

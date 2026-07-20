@@ -7,6 +7,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -16,6 +18,7 @@ import com.unibus.api.common.ApiException;
 import com.unibus.api.payment.VNPayConfig;
 import com.unibus.api.security.CurrentUser;
 import com.unibus.api.ticketing.TicketingDtos.MonthlyPassQuote;
+import com.unibus.api.ticketing.TicketingRepository.SingleTripTicketView;
 import com.unibus.api.university.SubsidyService;
 import com.unibus.api.user.model.UserRole;
 
@@ -58,5 +61,25 @@ class TicketingServiceQuoteTests {
         assertThatThrownBy(() -> service.quote(currentUser, 58, "MONTHLY"))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("approved route registration");
+    }
+
+    @Test
+    void singleTicketListOnlyReturnsUnusedUnexpiredTickets() {
+        OffsetDateTime now = OffsetDateTime.now();
+        SingleTripTicketView active = singleTicket(1, "UNUSED", now.plusHours(1));
+        when(ticketingRepository.findSingleTripTickets("27211200001")).thenReturn(List.of(
+                active,
+                singleTicket(2, "USED", now.plusHours(1)),
+                singleTicket(3, "UNUSED", now.minusHours(1))));
+
+        assertThat(service.listSingleTripTickets(currentUser)).extracting(TicketingDtos.SingleTripTicketView::ticketId)
+                .containsExactly(1);
+    }
+
+    private SingleTripTicketView singleTicket(int id, String status, OffsetDateTime expiresAt) {
+        return new SingleTripTicketView(id, "27211200001", 13, "Tuyến 16", 603,
+                "E144 Trần Đại Nghĩa", 625, "10 Lý Thái Tổ", BigDecimal.valueOf(8000),
+                BigDecimal.valueOf(8000), BigDecimal.ZERO, BigDecimal.valueOf(8000), "QR-" + id,
+                status, OffsetDateTime.now().minusMinutes(5), expiresAt);
     }
 }

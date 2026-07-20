@@ -15,7 +15,7 @@ public final class TransportDtos {
          BigDecimal latitude, List<RouteReference> routes, String stopCode, boolean hasShelter) {
    }
 
-   public static record RouteStopSummary(Integer stopId, String stopName, Integer stopOrder,
+   public static record RouteStopSummary(Integer stopId, String stopName, Integer stopOrder, Integer stationDirection,
          Integer minutesFromPreviousStop, String stopCode, BigDecimal longitude, BigDecimal latitude,
          boolean hasShelter) {
    }

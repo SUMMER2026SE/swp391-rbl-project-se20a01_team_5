@@ -44,7 +44,7 @@ public class JourneyPlannerService {
     private static final ZoneId VIETNAM_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
     private static final int NEAR_STOP_RADIUS_M = 1_700;
     private static final int MAX_ACCESS_WALK_M = 1_600;
-    private static final int MAX_TOTAL_WALK_M = 2_700;
+    private static final int MAX_TOTAL_WALK_M = 3_200;
     private static final int TRANSFER_WALK_RADIUS_M = 300;
     private static final int PREFERRED_TOTAL_WALK_M = 1_800;
     private static final int MAX_OPTIONS = 4;
@@ -325,6 +325,9 @@ public class JourneyPlannerService {
                 }
             }
             JourneyLeg busLeg = busLeg("bus-" + (++legIndex), segment, rollingDepartAt);
+            if (busLeg == null) {
+                return null;
+            }
             legs.add(busLeg);
             polylines.add(new MapPolyline(busLeg.legId(), "BUS", busLeg.colorHex(), busLeg.shape()));
             allStops.addAll(busLeg.stops());
@@ -365,7 +368,7 @@ public class JourneyPlannerService {
                         first.line().routeId(), first.from().stop().stopId(), first.to().stop().stopId()),
                 new JourneyAction("DETAIL", "Xem các trạm", true, null,
                         first.line().routeId(), first.from().stop().stopId(), first.to().stop().stopId()));
-        int totalMinutes = Math.max(1, (int) Duration.between(journeyStartAt, rollingDepartAt).toMinutes());
+        int totalMinutes = totalTravelMinutes(totalWalkMinutes, totalBusMinutes, totalTransferMinutes);
         JourneySummary summary = new JourneySummary(
                 totalMinutes,
                 totalWalkMinutes,
@@ -383,10 +386,17 @@ public class JourneyPlannerService {
                 polylines, compactStops(allStops));
     }
 
+    static int totalTravelMinutes(int walkMinutes, int busMinutes, int transferMinutes) {
+        return Math.max(1, walkMinutes + busMinutes + transferMinutes);
+    }
+
     private JourneyLeg busLeg(String legId, Segment segment, OffsetDateTime departAt) {
-        int wait = waitMinutes(segment.line(), departAt);
+        OffsetDateTime nextDeparture = nextDeparture(segment.line(), departAt);
+        if (nextDeparture == null) {
+            return null;
+        }
+        int wait = (int) Duration.between(departAt, nextDeparture).toMinutes();
         int ride = segment.durationMinutes();
-        OffsetDateTime nextDeparture = departAt.plusMinutes(wait);
         OffsetDateTime arrival = nextDeparture.plusMinutes(ride);
         List<JourneyStop> stops = new ArrayList<>();
         int hopCount = Math.max(1, segment.toIndex() - segment.fromIndex());
@@ -460,9 +470,11 @@ public class JourneyPlannerService {
 
     private JourneyAction primaryAction(List<Segment> busSegments) {
         Segment first = busSegments.get(0);
+        boolean subsidized = first.line().universityLinked();
+        String message = subsidized ? "Tuyến được trường của bạn hỗ trợ." : "Tuyến này chưa có trợ giá từ trường của bạn.";
         return new JourneyAction("REGISTER_ROUTE", "Đăng ký tuyến " + first.line().routeCode(), true,
-                first.line().universityLinked() ? null : "Tuyến này chưa có trợ giá từ trường của bạn.",
-                first.line().routeId(), first.from().stop().stopId(), first.to().stop().stopId());
+                subsidized ? null : message, first.line().routeId(), first.from().stop().stopId(), first.to().stop().stopId(),
+                subsidized, subsidized, true, subsidized ? "SUBSIDIZED" : "FULL_PRICE", message);
     }
 
     private List<JourneyStop> compactStops(List<JourneyStop> stops) {
@@ -524,12 +536,26 @@ public class JourneyPlannerService {
         return walkMeters <= 1_500 ? "MEDIUM" : "LOW";
     }
 
-    private int waitMinutes(RouteLine line, OffsetDateTime departAt) {
-        LocalTime now = departAt.atZoneSameInstant(VIETNAM_ZONE).toLocalTime();
+    private OffsetDateTime nextDeparture(RouteLine line, OffsetDateTime requestedAt) {
+        Optional<LocalTime> firstTrip = line.firstTrip();
+        Optional<LocalTime> lastTrip = line.lastTrip();
+        if (firstTrip.isEmpty() || lastTrip.isEmpty()) {
+            return requestedAt.plusMinutes(Math.max(1, line.frequencyMin() == null ? 15 : line.frequencyMin()));
+        }
+        var localDate = requestedAt.atZoneSameInstant(VIETNAM_ZONE).toLocalDate();
+        var first = localDate.atTime(firstTrip.get()).atZone(VIETNAM_ZONE).toOffsetDateTime();
+        var last = localDate.atTime(lastTrip.get()).atZone(VIETNAM_ZONE).toOffsetDateTime();
+        if (requestedAt.isAfter(last)) {
+            return first.plusDays(1);
+        }
+        if (!requestedAt.isAfter(first)) {
+            return first;
+        }
         int headway = line.frequencyMin() == null || line.frequencyMin() <= 0 ? 15 : line.frequencyMin();
-        int simulatedMinute = now.getHour() * 60 + now.getMinute();
-        int remainder = simulatedMinute % headway;
-        return remainder == 0 ? 1 : headway - remainder;
+        long elapsed = Duration.between(first, requestedAt).toMinutes();
+        long intervals = (elapsed + headway - 1) / headway;
+        OffsetDateTime next = first.plusMinutes(intervals * headway);
+        return next.isAfter(last) ? first.plusDays(1) : next;
     }
 
     private Segment segment(RouteLine line, Integer fromStopId, Integer toStopId) {

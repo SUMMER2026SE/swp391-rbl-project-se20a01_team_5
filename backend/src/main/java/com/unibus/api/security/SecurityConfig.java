@@ -61,6 +61,8 @@ public class SecurityConfig {
                                 "/api/v1/payments/vnpay-return",
                                 "/api/v1/users/*/avatar",
                                 "/api/v1/payments/sepay/webhook",
+                                "/actuator/health",
+                                "/actuator/info",
                                 "/sepay_webhook.php",
                                 // WebSocket handshake endpoints - JWT is verified via query param in the WebSocketConfig
                                 "/ws/**",

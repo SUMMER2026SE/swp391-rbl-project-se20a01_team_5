@@ -3,6 +3,7 @@ package com.unibus.api.ticketing;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +34,8 @@ import com.unibus.api.university.SubsidyService;
 
 @Service
 public class TicketingService {
+
+    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
 
     private final TicketingRepository ticketingRepository;
     private final SubsidyService subsidyService;
@@ -195,7 +198,10 @@ public class TicketingService {
     @Transactional(readOnly = true)
     public List<SingleTripTicketView> listSingleTripTickets(CurrentUser currentUser) {
         String studentCode = requireStudentCode(currentUser);
+        OffsetDateTime now = OffsetDateTime.now(BUSINESS_ZONE);
         return ticketingRepository.findSingleTripTickets(studentCode).stream()
+                .filter(t -> "UNUSED".equalsIgnoreCase(t.status()))
+                .filter(t -> t.expiresAt() == null || t.expiresAt().isAfter(now))
                 .map(t -> new SingleTripTicketView(t.ticketId(), t.routeId(), t.routeName(),
                         t.boardingStopId(), t.boardingStopName(), t.alightingStopId(), t.alightingStopName(),
                         t.originalFareAmount(), t.subsidyAmount(), t.finalFareAmount(), t.qrCode(),

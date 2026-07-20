@@ -11,18 +11,17 @@ on:
 
 env:
   AWS_REGION: ap-southeast-1
-  AWS_ACCOUNT_ID: "432439355654"
-  AWS_ROLE_ARN: arn:aws:iam::432439355654:role/unibus-github-actions-deploy-role
+  AWS_ACCOUNT_ID: "766696030243"
+  AWS_ROLE_ARN: arn:aws:iam::766696030243:role/unibus-github-actions-deploy-role
   BACKEND_ECR_REPOSITORY: unibus-backend
   FRONTEND_ECR_REPOSITORY: unibus-frontend
-  ECS_CLUSTER: unibus-dev-cluster
-  ECS_SERVICE: unibus-dev-service
-  ECS_TASK_DEFINITION: unibus-dev
+  ECS_CLUSTER: unibus-prod
+  ECS_SERVICE: unibus-prod
+  ECS_TASK_DEFINITION: unibus-prod
   BACKEND_CONTAINER: backend
   FRONTEND_CONTAINER: frontend
   ECS_HEALTH_CHECK_GRACE_PERIOD_SECONDS: "180"
-  CLOUDFRONT_DISTRIBUTION_ID: E3UXOP9YII5ML8
-  CLOUDFRONT_DOMAIN: d8xawk4fn4vfd.cloudfront.net
+  APP_DOMAIN: app.fudabus.store
   NEXT_PUBLIC_GOOGLE_CLIENT_ID: 514047178254-t3vq0t83ad6vph9df3260bd3t0ll7ld6.apps.googleusercontent.com
   NEXT_PUBLIC_API_BASE_URL: /api/v1
 
@@ -219,18 +218,12 @@ jobs:
             echo "No stopped tasks found for service $ECS_SERVICE."
           fi
 
-      - name: Invalidate CloudFront
-        run: |
-          aws cloudfront create-invalidation \
-            --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" \
-            --paths "/*"
-
-      - name: Smoke test CloudFront
+      - name: Smoke test production domain
         shell: bash
         run: |
-          curl --fail --location --head "https://${CLOUDFRONT_DOMAIN}/"
+          curl --fail --location --head "https://${APP_DOMAIN}/"
           status="$(curl -s -o /tmp/unibus-login.json -w '%{http_code}' \
-            -X POST "https://${CLOUDFRONT_DOMAIN}/api/v1/auth/login" \
+            -X POST "https://${APP_DOMAIN}/api/v1/auth/login" \
             -H "Content-Type: application/json" \
-            --data '{"email":"driver.iter1@unibus.local","password":"wrong","device":"github-actions"}')"
+            --data '{"email":"driver.demo@unibus.local","password":"wrong","device":"github-actions"}')"
           test "$status" = "401"
