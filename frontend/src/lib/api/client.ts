@@ -149,9 +149,16 @@ function fileNameFromContentDisposition(value: string | null) {
   return plainMatch?.[1]?.trim();
 }
 
+function apiUrl(path: string) {
+  if (/^https?:\/\//i.test(path)) return path;
+  if (API_BASE && path === API_BASE) return path;
+  if (API_BASE && path.startsWith(`${API_BASE}/`)) return path;
+  return `${API_BASE}${path}`;
+}
+
 async function requestDownload(path: string, retry = true): Promise<BlobDownload> {
   const token = getAccessToken();
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(apiUrl(path), {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
 

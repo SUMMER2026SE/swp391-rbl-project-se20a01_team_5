@@ -2327,48 +2327,17 @@ function adminVerificationMeta(status?: string) {
   return meta[status || ""] || { label: status || "Không rõ", tone: "neutral" as const };
 }
 
-function normalizeCompare(value?: string | null) {
-  return (value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-function hasOcrMismatch(expected?: string | null, actual?: string | null) {
-  const a = normalizeCompare(expected);
-  const b = normalizeCompare(actual);
-  if (!a || !b) return false;
-  return !a.includes(b) && !b.includes(a);
-}
-
-function formatAdminConfidence(score?: number) {
-  if (score == null || Number.isNaN(score)) return "Chưa có";
-  const percent = score <= 1 ? score * 100 : score;
-  return `${Math.round(percent)}%`;
-}
-
 function ReviewField({
   label,
   submitted,
-  ocr,
 }: {
   label: string;
   submitted?: string | null;
-  ocr?: string | null;
 }) {
-  const mismatch = hasOcrMismatch(submitted, ocr);
   return (
     <div className="rounded-2xl bg-surface-container-low p-3 min-w-0">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] font-bold uppercase tracking-wide text-on-surface-variant">{label}</p>
-        {mismatch && <Badge variant="destructive" className="text-[10px]">Cần đối chiếu</Badge>}
-      </div>
+      <p className="text-[11px] font-bold uppercase tracking-wide text-on-surface-variant">{label}</p>
       <p className="mt-1 truncate text-sm font-bold text-on-surface">{submitted || "—"}</p>
-      <p className={cn("mt-1 truncate text-xs", mismatch ? "text-error" : "text-on-surface-variant")}>
-        Thông tin từ ảnh thẻ: {ocr || "—"}
-      </p>
     </div>
   );
 }
@@ -2485,13 +2454,12 @@ function VerificationsScreen({ ctx }: { ctx: Ctx }) {
                             Gửi lúc: {formatDateTime(item.submittedAt)}
                           </p>
                         </div>
-                        <M3StatusPill label={`Độ tin cậy ${formatAdminConfidence(item.ocrConfidenceScore)}`} tone="primary" />
                       </div>
 
                       <div className="grid gap-2 md:grid-cols-3">
-                        <ReviewField label="Họ tên" submitted={item.fullName} ocr={item.ocrFullName} />
-                        <ReviewField label="MSSV" submitted={item.studentCode} ocr={item.ocrStudentCode} />
-                        <ReviewField label="Trường" submitted={item.university} ocr={item.ocrUniversity} />
+                        <ReviewField label="Họ tên" submitted={item.fullName} />
+                        <ReviewField label="MSSV" submitted={item.studentCode} />
+                        <ReviewField label="Trường" submitted={item.university} />
                       </div>
 
                       {item.rejectionReason && (
