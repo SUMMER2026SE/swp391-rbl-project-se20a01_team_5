@@ -315,7 +315,7 @@ public class StudentVerificationService {
         User reviewer = verification.getReviewer();
         String cardImageUrl = verification.getCardImageUrl() == null
                 ? null
-                : "/api/v1/student-verifications/" + verification.getId() + "/card-image";
+                : "/student-verifications/" + verification.getId() + "/card-image";
         return new VerificationView(
                 verification.getId(),
                 user.getId(),

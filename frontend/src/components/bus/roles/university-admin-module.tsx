@@ -788,12 +788,20 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
       key: `route_${index}`,
       name: route.name,
       color: DETAIL_ROUTE_COLORS[index % DETAIL_ROUTE_COLORS.length],
-      base: Math.max(route.passes || 1, 1),
+      base: Math.max(route.passes || 0, 0),
     }));
+    const routeWeeklyValues = visibleRoutes.map((route) => {
+      const total = Math.max(0, Math.round(route.base));
+      const basePerWeek = weekCount ? Math.floor(total / weekCount) : 0;
+      const remainder = weekCount ? total % weekCount : 0;
+      return Array.from({ length: weekCount }, (_, weekIndex) =>
+        basePerWeek + (weekIndex >= weekCount - remainder ? 1 : 0),
+      );
+    });
     const weeks = Array.from({ length: weekCount }, (_, weekIndex) => {
       const row: Record<string, string | number> = { week: `Tuần ${weekIndex + 1}` };
       visibleRoutes.forEach((route, routeIndex) => {
-        row[route.key] = Math.max(0, Math.round((route.base / Math.max(weekCount, 1)) * (0.78 + weekIndex * 0.08 + routeIndex * 0.04)));
+        row[route.key] = routeWeeklyValues[routeIndex]?.[weekIndex] || 0;
       });
       return row;
     });

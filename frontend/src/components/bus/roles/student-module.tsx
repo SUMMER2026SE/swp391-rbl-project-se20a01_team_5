@@ -1413,79 +1413,6 @@ function verificationStatusCopy(status: string) {
   return copy[status] || copy.NOT_SUBMITTED;
 }
 
-function formatOcrConfidence(score?: number) {
-  if (score == null || Number.isNaN(score)) return "Chưa có";
-  const percent = score <= 1 ? score * 100 : score;
-  return `${Math.round(percent)}%`;
-}
-
-function FieldLine({ label, value }: { label: string; value?: string | number | null }) {
-  return (
-    <div className="rounded-2xl bg-surface-container-low p-3 min-w-0">
-      <p className="text-[11px] font-bold uppercase tracking-wide text-on-surface-variant">{label}</p>
-      <p className="mt-1 truncate text-sm font-semibold text-on-surface">{value || "—"}</p>
-    </div>
-  );
-}
-
-function OcrSummary({ verification }: { verification?: VerificationView | null }) {
-  if (!verification) return null;
-  const hasOcr =
-    !!verification.ocrFullName ||
-    !!verification.ocrStudentCode ||
-    !!verification.ocrUniversity ||
-    !!verification.ocrRawText ||
-    verification.ocrConfidenceScore != null;
-
-  if (!hasOcr) return null;
-
-  const confidence = verification.ocrConfidenceScore;
-  const confidencePercent = confidence == null ? null : (confidence <= 1 ? confidence * 100 : confidence);
-  const confidenceTone = confidencePercent == null ? "neutral" : confidencePercent >= 80 ? "success" : confidencePercent >= 60 ? "warning" : "error";
-
-  return (
-    <ExpressiveCard variant="elevated" className="p-5 min-w-0">
-      <div className="mb-4 flex items-center gap-3 min-w-0">
-        <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-[#c8a0ff] text-[#14140f]">
-          <Sparkles className="size-5" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h3 className="text-base font-bold">Thông tin đọc từ thẻ</h3>
-          <p className="text-xs text-on-surface-variant mt-0.5">Thông tin từ ảnh thẻ</p>
-        </div>
-      </div>
-
-      {/* Fields grid */}
-      <div className="grid gap-2 sm:grid-cols-3">
-        <FieldLine label="Họ tên trên thẻ" value={verification.ocrFullName} />
-        <FieldLine label="MSSV trên thẻ" value={verification.ocrStudentCode} />
-        <FieldLine label="Trường trên thẻ" value={verification.ocrUniversity} />
-      </div>
-
-      {(verification.ocrRawText || confidencePercent != null) && (
-        <details className="mt-3 group">
-          <summary className="cursor-pointer text-xs font-bold text-on-surface-variant hover:text-on-surface flex items-center gap-1.5 list-none">
-            <ChevronRight className="size-3.5 group-open:rotate-90 transition-transform" />
-            Xem chi tiết OCR
-          </summary>
-          <div className="mt-2 space-y-3 rounded-2xl border border-outline-variant/50 bg-surface-container-lowest p-3">
-            {confidencePercent != null && (
-              <div className="text-xs text-on-surface-variant">
-                Độ tin cậy: <span className="font-bold text-on-surface">{Math.round(confidencePercent)}%</span>
-              </div>
-            )}
-            {verification.ocrRawText && (
-              <p className="max-h-32 overflow-y-auto whitespace-pre-wrap text-xs text-on-surface-variant scrollbar-soft font-mono">
-                {verification.ocrRawText}
-              </p>
-            )}
-          </div>
-        </details>
-      )}
-    </ExpressiveCard>
-  );
-}
-
 function StudentCardPreview({
   verification,
   previewUrl,
@@ -1627,7 +1554,7 @@ function UniversityScreen({ ctx, onProfileRefresh }: { ctx: Ctx; onProfileRefres
       university.reload();
       ctx.reload();
       await onProfileRefresh?.();
-      toast.success("Đã gửi hồ sơ xác minh. OCR đã đọc ảnh và chuyển sang chờ duyệt.");
+      toast.success("Đã gửi hồ sơ xác minh và chuyển sang chờ duyệt.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Không thể gửi xác minh");
     } finally {
@@ -1690,8 +1617,6 @@ function UniversityScreen({ ctx, onProfileRefresh }: { ctx: Ctx; onProfileRefres
               </div>
             </ExpressiveCard>
           )}
-
-          {!isVerified && <OcrSummary verification={currentVerification} />}
 
           {canSubmit && (
             <ExpressiveCard variant="elevated" className="p-5 min-w-0">
