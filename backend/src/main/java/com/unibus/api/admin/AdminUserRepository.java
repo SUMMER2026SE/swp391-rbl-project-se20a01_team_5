@@ -146,6 +146,16 @@ public class AdminUserRepository {
         return findUser(userId).orElseThrow();
     }
 
+    public void audit(Integer performedByUserId, String action, String affectedTable,
+            Integer affectedRecordId, String result, String notes) {
+        jdbcTemplate.update("""
+                INSERT INTO audit_logs(performed_by_user_id, action, affected_table,
+                                       affected_record_id, result, notes)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """, performedByUserId, action, affectedTable,
+                affectedRecordId == null ? null : String.valueOf(affectedRecordId), result, notes);
+    }
+
     private String userQuery(String whereClause) {
         return """
                 SELECT u.user_id, u.email, u.full_name, u.phone_number, u.role, u.status, u.lock_reason,

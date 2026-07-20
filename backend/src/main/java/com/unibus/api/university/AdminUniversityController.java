@@ -5,6 +5,7 @@ import java.util.List;
 
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -69,6 +70,14 @@ public class AdminUniversityController {
         return ApiResponse.ok("University updated", service.updateUniversity(currentUser, universityId, request));
     }
 
+    @DeleteMapping("/universities/{universityId}")
+    ApiResponse<Void> deleteUniversity(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @PathVariable Integer universityId) {
+        service.deleteUniversity(currentUser, universityId);
+        return ApiResponse.ok("University deleted", null);
+    }
+
     @GetMapping("/universities/{universityId}/campuses")
     ApiResponse<List<CampusView>> listCampuses(@PathVariable Integer universityId) {
         return ApiResponse.ok("Campuses retrieved", service.listCampuses(universityId));
@@ -117,6 +126,14 @@ public class AdminUniversityController {
         return ApiResponse.ok("University admin created", service.createUniversityAdmin(currentUser, request));
     }
 
+    @DeleteMapping("/university-admins/{universityAdminId}")
+    ApiResponse<Void> deleteUniversityAdmin(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @PathVariable Integer universityAdminId) {
+        service.deleteUniversityAdmin(currentUser, universityAdminId);
+        return ApiResponse.ok("University admin deleted", null);
+    }
+
     @GetMapping("/route-universities")
     ApiResponse<List<RouteUniversityView>> listRouteUniversities(@RequestParam(required = false) Integer universityId) {
         return ApiResponse.ok("Route-university links retrieved", service.listRouteUniversities(universityId));
@@ -127,6 +144,22 @@ public class AdminUniversityController {
             @AuthenticationPrincipal CurrentUser currentUser,
             @Valid @RequestBody CreateRouteUniversityRequest request) {
         return ApiResponse.ok("Route-university link created", service.createRouteUniversity(currentUser, request));
+    }
+
+    @DeleteMapping("/route-universities/{routeUniversityId}")
+    ApiResponse<Void> deleteRouteUniversity(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @PathVariable Integer routeUniversityId) {
+        service.deleteRouteUniversity(currentUser, routeUniversityId);
+        return ApiResponse.ok("Route-university link deleted", null);
+    }
+
+    @DeleteMapping("/universities/{universityId}/route-universities")
+    ApiResponse<Void> deleteRouteUniversitiesForUniversity(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @PathVariable Integer universityId) {
+        service.deleteRouteUniversitiesForUniversity(currentUser, universityId);
+        return ApiResponse.ok("Route-university links deleted", null);
     }
 
     @GetMapping("/subsidy-policies")

@@ -134,6 +134,7 @@ import {
   useAdminUniAdmins,
   useAdminVerifications,
   useAdminPayments,
+  useAdminViolations,
   formatVND,
   formatDateTime,
   formatDate,
@@ -154,6 +155,7 @@ import {
   type SubsidyPolicyView,
   type ExperienceDashboardStat,
   type AdminStatsView,
+  type BlobDownload,
 } from "@/lib/api/client";
 import { ProtectedImage } from "@/components/bus/protected-image";
 
@@ -233,6 +235,9 @@ const auditActionLabel = (action?: string | null) => {
   if (normalized.includes("student_verification_approve")) return "Sinh viên được xác minh";
   if (normalized.includes("student_verification_rejected")) return "Từ chối hồ sơ xác minh";
   if (normalized.includes("student_verification_resubmission_required")) return "Yêu cầu bổ sung hồ sơ";
+  if (normalized.includes("user_status_update")) return "Cập nhật trạng thái tài khoản";
+  if (normalized.includes("user_create")) return "Tạo tài khoản nhân sự";
+  if (normalized.includes("fare_update")) return "Cập nhật giá vé";
   if (normalized.includes("admin_report_export")) return "Xuất báo cáo";
   if (normalized.includes("university_notification_send")) return "Gửi thông báo trường";
   if (normalized.includes("university_admin_create")) return "Tạo admin trường";
@@ -275,6 +280,50 @@ const hiddenAuditActions = new Set([
 const isVisibleAdminAudit = (action?: string | null) =>
   !hiddenAuditActions.has((action || "").trim().toUpperCase());
 
+const isSystemAdminAudit = (audit: AuditLogView, userRoleById?: Map<number, string>) => {
+  const role = (audit.performerRole || "").trim().toUpperCase();
+  const mappedRole = audit.performedByUserId ? (userRoleById?.get(audit.performedByUserId) || "").trim().toUpperCase() : "";
+  if (role) return role === "ADMIN";
+  if (mappedRole) return mappedRole === "ADMIN";
+  return false;
+};
+
+const importantAdminAuditActions = new Set([
+  "USER_CREATE",
+  "USER_STATUS_UPDATE",
+  "UNIVERSITY_CREATE",
+  "UNIVERSITY_UPDATE",
+  "UNIVERSITY_ADMIN_CREATE",
+  "CAMPUS_CREATE",
+  "DOMAIN_CREATE",
+  "DOMAIN_STATUS_UPDATE",
+  "ROUTE_UNIVERSITY_CREATE",
+  "ROUTE_SUBSIDY_TOGGLE",
+  "SUBSIDY_CONFIG_UPDATE",
+  "SUBSIDY_POLICY_CREATE",
+  "FARE_UPDATE",
+  "STUDENT_VERIFICATION_APPROVE",
+  "STUDENT_VERIFICATION_REJECTED",
+  "STUDENT_VERIFICATION_RESUBMISSION_REQUIRED",
+  "ROSTER_IMPORT",
+  "ROSTER_IMPORT_COMMIT",
+]);
+
+const isImportantAdminAudit = (action?: string | null) =>
+  importantAdminAuditActions.has((action || "").trim().toUpperCase());
+
+const isClosedViolationStatus = (status?: string | null) => {
+  const normalized = (status || "").trim().toUpperCase();
+  return normalized === "CLOSED" || normalized === "RESOLVED";
+};
+
+const violationStatusLabel = (status?: string | null) => {
+  const normalized = (status || "").trim().toUpperCase();
+  if (normalized === "CLOSED" || normalized === "RESOLVED") return "Đã đóng";
+  if (normalized === "IN_PROGRESS") return "Đang xử lý";
+  return "Đang mở";
+};
+
 type AdminReportPreset = "today" | "last7" | "month" | "custom";
 
 const toDateInputValue = (date: Date) => {
@@ -297,11 +346,6 @@ const monthStartValue = () => {
 
 const todayValue = () => toDateInputValue(new Date());
 
-const csvEscape = (value: unknown) => {
-  const text = value == null ? "" : String(value);
-  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-};
-
 const normalizeForFilter = (value?: string | number | null) =>
   String(value ?? "").trim().toLowerCase();
 
@@ -318,17 +362,126 @@ const isDateInRange = (value: string | undefined, from: string, to: string) => {
   return true;
 };
 
-const downloadCsv = (filename: string, rows: unknown[][]) => {
-  const csv = `\uFEFF${rows.map((row) => row.map(csvEscape).join(",")).join("\r\n")}`;
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
+const adminDeleteErrorMessage = (error: unknown, fallback: string) => {
+  const message = error instanceof Error ? error.message : "";
+  if (message.toLowerCase().includes("no static resource")) {
+    return "Backend đang chạy chưa có API xóa mới. Restart backend rồi thử lại.";
+  }
+  return message || fallback;
+};
+
+const downloadFile = (download: BlobDownload, fallbackFileName: string, allowedContentTypes: string[]) => {
+  const contentType = download.contentType.toLowerCase();
+  const validType = allowedContentTypes.some((type) => contentType.includes(type));
+  if (contentType.includes("application/json")) {
+    throw new Error("Invalid file response");
+  }
+  if (download.blob.size <= 0) {
+    throw new Error("Empty file response");
+  }
+  if (!validType) {
+    throw new Error(`Unsupported file response: ${contentType || "unknown"}`);
+  }
+  const url = URL.createObjectURL(download.blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = filename;
+  link.download = download.fileName || fallbackFileName;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+};
+
+const downloadBlobFile = (blob: Blob, fileName: string) => {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
+const xmlEscape = (value: unknown) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+
+const spreadsheetCell = (value: unknown, header = false) => {
+  const numeric = typeof value === "number" && Number.isFinite(value);
+  return `<Cell ss:StyleID="${header ? "Header" : numeric ? "Number" : "Text"}"><Data ss:Type="${numeric ? "Number" : "String"}">${xmlEscape(value)}</Data></Cell>`;
+};
+
+const spreadsheetRows = (rows: unknown[][]) =>
+  rows.map((row, rowIndex) => `<Row>${row.map((cell) => spreadsheetCell(cell, rowIndex === 0)).join("")}</Row>`).join("");
+
+const spreadsheetSheet = (name: string, rows: unknown[][]) => `
+  <Worksheet ss:Name="${xmlEscape(name)}">
+    <Table>${spreadsheetRows(rows)}</Table>
+    <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+      <FreezePanes/><FrozenNoSplit/><SplitHorizontal>1</SplitHorizontal><TopRowBottomPane>1</TopRowBottomPane>
+    </WorksheetOptions>
+  </Worksheet>`;
+
+const downloadAdminReportFallback = (
+  fileName: string,
+  range: { from: string; to: string },
+  statsRaw: AdminStatsView,
+  reportStats: ExperienceDashboardStat[],
+  totalTripsInRange: number,
+) => {
+  const summaryRows: unknown[][] = [
+    ["Bao cao tong quan UniBus", "", "", ""],
+    ["Tu ngay", range.from, "", ""],
+    ["Den ngay", range.to, "", ""],
+    ["Ngay xuat", todayValue(), "", ""],
+    [],
+    ["Nhom", "Chi so", "Gia tri", "Don vi"],
+    ...reportStats.map((item) => ["Tong quan", item.label, Number(item.value) || 0, item.unit || ""]),
+    ["Tong quan", "Chuyen trong ky", totalTripsInRange, "chuyen"],
+  ];
+  const dailyRows: unknown[][] = [
+    ["Ngay", "Thu", "Doanh thu", "So chuyen"],
+    ...statsRaw.revenueSeries.map((point) => [
+      point.date,
+      point.day,
+      Number(point.revenue) || 0,
+      statsRaw.tripsSeries.find((trip) => trip.date === point.date)?.trips || 0,
+    ]),
+  ];
+  const routeRows: unknown[][] = [
+    ["Ma tuyen", "Ten tuyen", "So chuyen", "Doanh thu"],
+    ...statsRaw.routeMetrics.map((route) => [
+      route.routeCode || "",
+      route.routeName,
+      route.trips,
+      Number(route.revenue) || 0,
+    ]),
+  ];
+  const roleRows: unknown[][] = [
+    ["Vai tro", "So luong"],
+    ...statsRaw.roleDistribution.map((role) => [role.role, role.value]),
+  ];
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+  <Styles>
+    <Style ss:ID="Header"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#1F4E78" ss:Pattern="Solid"/></Style>
+    <Style ss:ID="Number"><NumberFormat ss:Format="#,##0"/></Style>
+    <Style ss:ID="Text"/>
+  </Styles>
+  ${spreadsheetSheet("Tong quan", summaryRows)}
+  ${spreadsheetSheet("Doanh thu va chuyen", dailyRows)}
+  ${spreadsheetSheet("Tuyen xe", routeRows)}
+  ${spreadsheetSheet("Vai tro nguoi dung", roleRows)}
+</Workbook>`;
+  downloadBlobFile(new Blob([xml], { type: "application/vnd.ms-excel;charset=utf-8" }), fileName);
 };
 
 export function AdminModule({ activeId, onNavigate }: AdminModuleProps) {
@@ -387,17 +540,16 @@ export function AdminModule({ activeId, onNavigate }: AdminModuleProps) {
     case "adm-risk":
       return <RiskScreen ctx={ctx} />;
     case "adm-universities":
-      return <UniversitiesScreen ctx={ctx} />;
-    case "adm-uni-admins":
-      return <UniAdminsScreen ctx={ctx} />;
     case "adm-route-uni":
-      return <RouteUniScreen ctx={ctx} />;
+      return <SchoolsScreen ctx={ctx} />;
+    case "adm-uni-admins":
+      return <AccountsScreen ctx={ctx} />;
     case "adm-audit":
       return <AuditScreen ctx={ctx} />;
     case "adm-users":
-      return <UsersScreen ctx={ctx} />;
+      return <AccountsScreen ctx={ctx} />;
     case "adm-complaints":
-      return <ComplaintsScreen ctx={ctx} />;
+      return <ViolationsScreen ctx={ctx} />;
     case "adm-verifications":
       return <VerificationsScreen ctx={ctx} />;
     case "adm-violations":
@@ -469,10 +621,10 @@ const accountTabs: Array<{ id: AccountTab; label: string; icon: typeof Users }> 
 
 function AccountsScreen({ ctx }: { ctx: Ctx }) {
   const [activeTab, setActiveTab] = useState<AccountTab>("users");
-  const users = useAdminUsers();
+  const users = useAdminUsers({ page: 0, size: 500 });
   const uniAdmins = useAdminUniAdmins();
   const tabCounts: Record<AccountTab, number> = {
-    users: users.raw?.length ?? ctx.users.length,
+    users: users.raw?.totalElements ?? users.raw?.length ?? ctx.users.length,
     "uni-admins": uniAdmins.raw?.length ?? ctx.uniAdmins.length,
   };
 
@@ -695,6 +847,12 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const auditUsers = useAdminUsers({ page: 0, size: 500 });
+  const auditUserRoleById = useMemo(() => {
+    const map = new Map<number, string>();
+    (auditUsers.raw || []).forEach((user) => map.set(user.userId, user.role));
+    return map;
+  }, [auditUsers.raw]);
 
   const reportRange = useMemo(() => {
     const today = todayValue();
@@ -778,42 +936,54 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
 
   const exportReport = async () => {
     if (!statsRaw) {
-      toast.error("Chưa có dữ liệu báo cáo để xuất");
+      toast.error("Chua co du lieu bao cao de xuat");
       return;
     }
     setExporting(true);
     try {
-      const rows: unknown[][] = [
-        ["Khoảng thời gian", reportRange.from, reportRange.to],
-        [],
-        ["Nhóm", "Chỉ số", "Giá trị", "Đơn vị"],
-        ...reportStats.map((item) => ["Tổng quan", item.label, item.value, item.unit || ""]),
-        ["Tổng quan", "Chuyến trong kỳ", totalTripsInRange, "chuyến"],
-        [],
-        ["Ngày", "Doanh thu", "Số chuyến"],
-        ...revenueData.map((point) => [
-          point.date,
-          point.revenue,
-          statsRaw.tripsSeries.find((trip) => trip.date === point.date)?.trips || 0,
-        ]),
-      ];
-      downloadCsv(`admin-report-${reportRange.from}-to-${reportRange.to}.csv`, rows);
-      await adminApi.auditReportExport({ from: reportRange.from, to: reportRange.to, format: "CSV" });
-      ctx.reload();
-      toast.success("Đã xuất báo cáo");
+      let fallbackExport = false;
+      const fallbackFileName = `bao-cao-admin-${reportRange.from}-to-${reportRange.to}.xls`;
+      try {
+        const file = await adminApi.statsReportXlsx({ from: reportRange.from, to: reportRange.to });
+        downloadFile(file, `bao-cao-admin-${reportRange.from}-to-${reportRange.to}.xlsx`, [
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "application/octet-stream",
+        ]);
+      } catch (downloadError) {
+        console.warn("Admin XLSX endpoint is unavailable, using browser export fallback", downloadError);
+        fallbackExport = true;
+        downloadAdminReportFallback(
+          fallbackFileName,
+          { from: reportRange.from, to: reportRange.to },
+          statsRaw,
+          reportStats,
+          totalTripsInRange,
+        );
+      }
+      try {
+        await adminApi.auditReportExport({ from: reportRange.from, to: reportRange.to, format: fallbackExport ? "XLS_FALLBACK" : "XLSX" });
+        ctx.reload();
+      } catch (auditError) {
+        console.warn("Failed to write report export audit log", auditError);
+        toast.warning("File da xuat, nhung chua ghi duoc nhat ky xuat bao cao.");
+      }
+      toast.success(fallbackExport ? "Da xuat file Excel tam thoi. Restart backend de dung ban XLSX day du." : "Da xuat bao cao");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Không thể xuất hoặc ghi nhật ký báo cáo");
+      toast.error(e instanceof Error ? e.message : "Khong the xuat bao cao");
     } finally {
       setExporting(false);
     }
   };
-
   // Activities (derive from recent audit logs)
   const activities = useMemo(() => {
-    return ctx.audits.slice(0, 8).map((a) => {
+    return ctx.audits.filter((audit) => isSystemAdminAudit(audit, auditUserRoleById) && isVisibleAdminAudit(audit.action) && isImportantAdminAudit(audit.action)).slice(0, 8).map((a) => {
       const action = (a.action || "").toLowerCase();
       let icon = Info, tint = "bg-surface-container-high text-on-surface-variant";
-      if (action.includes("create") || action.includes("register")) {
+      if (action.includes("fare")) {
+        icon = Tag; tint = "bg-secondary-container text-on-secondary-container";
+      } else if (action.includes("user_status") || action.includes("lock")) {
+        icon = Lock; tint = "bg-error-container text-error-container";
+      } else if (action.includes("create") || action.includes("register")) {
         icon = UserPlus; tint = "bg-primary-container text-on-primary-container";
       } else if (action.includes("lock") || action.includes("reject")) {
         icon = Lock; tint = "bg-error-container text-error-container";
@@ -833,15 +1003,15 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
         time: a.performedAt ? formatDateTime(a.performedAt) : "",
       };
     });
-  }, [ctx.audits]);
+  }, [auditUserRoleById, ctx.audits]);
 
   // Warnings panel
+  const openViolations = ctx.violations.filter((v: any) => !isClosedViolationStatus(v.status)).length;
+  const closedViolations = ctx.violations.filter((v: any) => isClosedViolationStatus(v.status)).length;
   const warnings = [
-    { id: 1, label: "Khiếu nại chờ xử lý", count: ctx.complaints.filter((c: any) => c.status === "new" || c.status === "processing").length, severity: "high" as const, hint: "Cần xử lý trong 24h" },
-    { id: 2, label: "Vi phạm đang mở", count: ctx.violations.filter((v: any) => v.status !== "RESOLVED").length, severity: "high" as const, hint: `${ctx.violations.length} báo cáo` },
-    { id: 3, label: "Xác thực chờ duyệt", count: pendingVerifications, severity: "low" as const, hint: "Sinh viên chờ xác thực" },
-  ];
-  const warnTone: Record<string, "error" | "warning" | "neutral"> = {
+    { id: 1, label: "Vi phạm đang mở", count: openViolations, severity: openViolations > 0 ? "high" as const : "low" as const, hint: "Cần xử lý" },
+    { id: 2, label: "Vi phạm đã đóng", count: closedViolations, severity: "low" as const, hint: "Đã xử lý xong" },
+  ];  const warnTone: Record<string, "error" | "warning" | "neutral"> = {
     high: "error",
     medium: "warning",
     low: "neutral",
@@ -873,7 +1043,7 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
             Quản trị viên
           </span>
           <Select value={reportPreset} onValueChange={(value) => setReportPreset(value as AdminReportPreset)}>
-            <SelectTrigger className="h-9 w-[180px] rounded-full">
+            <SelectTrigger className="h-9 w-[210px] rounded-full">
               <CalendarClock className="mr-2 size-4" />
               <SelectValue />
             </SelectTrigger>
@@ -1135,8 +1305,25 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
 // =============================================================================
 function UniversitiesScreen({ ctx }: { ctx: Ctx }) {
   const [adding, setAdding] = useState(false);
+  const [deletingUniversityId, setDeletingUniversityId] = useState<number | null>(null);
   const universities = useAdminUniversities();
   const rows = universities.raw || [];
+
+  const deleteUniversity = async (university: UniversityView) => {
+    if (!window.confirm(`Xóa trường ${university.name}? Các cấu hình như cơ sở, domain, admin trường và tuyến được gán sẽ bị xóa theo.`)) return;
+    setDeletingUniversityId(university.universityId);
+    try {
+      await adminApi.deleteUniversity(university.universityId);
+      toast.success("Đã xóa trường");
+      await universities.reload();
+      await ctx.reload();
+    } catch (e) {
+      toast.error(adminDeleteErrorMessage(e, "Không thể xóa trường"));
+    } finally {
+      setDeletingUniversityId(null);
+    }
+  };
+
   return (
     <PageTransition className="space-y-6 min-w-0">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -1157,41 +1344,70 @@ function UniversitiesScreen({ ctx }: { ctx: Ctx }) {
       {rows.length === 0 && !universities.loading ? (
         <EmptyState icon={<School className="size-7" />} title="Chưa có trường" />
       ) : (
-        <StaggerGroup className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 min-w-0">
+        <StaggerGroup className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 min-w-0">
           {rows.map((u) => (
             <StaggerItem key={u.universityId}>
-              <ExpressiveCard variant="elevated" className="group h-full min-w-0 overflow-hidden border border-outline-variant/40 bg-white p-4 transition-all hover:-translate-y-0.5 hover:shadow-md">
-                <div className="flex items-start gap-4 min-w-0">
-                  <div className="size-14 shrink-0 rounded-[14px] bg-[#beff50] text-[#14140f] flex items-center justify-center text-xl font-black shadow-sm">
-                    {(u.shortName || u.name || "U").slice(0, 2).toUpperCase()}
+              <ExpressiveCard variant="elevated" className="group flex h-full min-h-[218px] min-w-0 flex-col overflow-hidden border border-outline-variant/50 bg-white p-4 transition-all hover:-translate-y-0.5 hover:border-[#beff50]/70 hover:shadow-md">
+                <div className="flex items-start gap-3 min-w-0">
+                  <div className="flex size-14 shrink-0 items-center justify-center rounded-[16px] bg-[#beff50] text-xl font-black text-[#14140f] shadow-sm ring-1 ring-black/5">
+                    {(u.shortName || u.code || u.name || "U").slice(0, 2).toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="font-bold leading-snug truncate">{u.name}</p>
-                        <p className="mt-0.5 text-xs text-on-surface-variant truncate">{u.shortName || u.code}</p>
+                        <p className="text-[17px] font-black leading-tight text-on-surface">{u.name}</p>
+                        <p className="mt-1 text-sm font-medium text-on-surface-variant">{u.shortName || u.code}</p>
                       </div>
-                      <M3StatusPill label={u.status} tone={u.status === "ACTIVE" ? "success" : "neutral"} />
-                    </div>
-                    <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                      <div className="rounded-xl bg-surface-container-low px-2 py-2">
-                        <p className="text-[10px] font-semibold uppercase text-on-surface-variant">Cơ sở</p>
-                        <p className="text-sm font-black">{u.campusCount}</p>
+                      <div className="shrink-0">
+                        <M3StatusPill label={u.status} tone={u.status === "ACTIVE" ? "success" : "neutral"} />
                       </div>
-                      <div className="rounded-xl bg-surface-container-low px-2 py-2">
-                        <p className="text-[10px] font-semibold uppercase text-on-surface-variant">Domain</p>
-                        <p className="text-sm font-black">{u.domainCount}</p>
-                      </div>
-                      <div className="rounded-xl bg-surface-container-low px-2 py-2">
-                        <p className="text-[10px] font-semibold uppercase text-on-surface-variant">SV</p>
-                        <p className="text-sm font-black">{u.rosterCount}</p>
-                      </div>
-                    </div>
-                    <div className="mt-3 flex items-center justify-between gap-2">
-                      <Badge variant="outline" className="text-[10px]">{u.code}</Badge>
-                      {u.contactEmail && <span className="min-w-0 truncate text-xs text-on-surface-variant">{u.contactEmail}</span>}
                     </div>
                   </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-3 gap-2">
+                  <div className="rounded-[14px] border border-outline-variant/50 bg-surface-container-low px-3 py-2">
+                    <div className="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase text-on-surface-variant">
+                      <Building2 className="size-3.5" />
+                      Cơ sở
+                    </div>
+                    <p className="text-xl font-black leading-none text-on-surface">{u.campusCount}</p>
+                  </div>
+                  <div className="rounded-[14px] border border-outline-variant/50 bg-surface-container-low px-3 py-2">
+                    <div className="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase text-on-surface-variant">
+                      <Globe className="size-3.5" />
+                      Domain
+                    </div>
+                    <p className="text-xl font-black leading-none text-on-surface">{u.domainCount}</p>
+                  </div>
+                  <div className="rounded-[14px] border border-outline-variant/50 bg-surface-container-low px-3 py-2">
+                    <div className="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase text-on-surface-variant">
+                      <Users className="size-3.5" />
+                      SV
+                    </div>
+                    <p className="text-xl font-black leading-none text-on-surface">{u.rosterCount}</p>
+                  </div>
+                </div>
+
+                <div className="mt-auto flex items-end justify-between gap-3 pt-4">
+                  <div className="min-w-0">
+                    <Badge variant="outline" className="mb-1.5 max-w-full rounded-full px-2.5 py-0.5 text-[11px] font-bold">
+                      {u.code}
+                    </Badge>
+                    {u.contactEmail && (
+                      <p className="max-w-[220px] truncate text-xs text-on-surface-variant">{u.contactEmail}</p>
+                    )}
+                  </div>
+                  <ExpressiveButton
+                    variant="tonal"
+                    size="sm"
+                    className="shrink-0"
+                    onClick={() => deleteUniversity(u)}
+                    disabled={deletingUniversityId === u.universityId}
+                  >
+                    {deletingUniversityId === u.universityId ? <RefreshCw className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+                    Xóa
+                  </ExpressiveButton>
                 </div>
               </ExpressiveCard>
             </StaggerItem>
@@ -1276,7 +1492,22 @@ function UniversityAddDialog({ onClose, onAdded }: { onClose: () => void; onAdde
 function UniAdminsScreen({ ctx }: { ctx: Ctx }) {
   const admins = useAdminUniAdmins();
   const [adding, setAdding] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const rows = admins.raw || [];
+  const deleteAdmin = async (admin: UniversityAdminView) => {
+    if (!window.confirm(`Xóa admin trường ${admin.fullName}? Tài khoản này sẽ bị xóa khỏi hệ thống nếu không còn liên kết khác.`)) return;
+    setDeletingId(admin.universityAdminId);
+    try {
+      await adminApi.deleteUniversityAdmin(admin.universityAdminId);
+      toast.success("Đã xóa admin trường");
+      await admins.reload();
+      await ctx.reload();
+    } catch (e) {
+      toast.error(adminDeleteErrorMessage(e, "Không thể xóa admin trường"));
+    } finally {
+      setDeletingId(null);
+    }
+  };
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
@@ -1304,7 +1535,18 @@ function UniAdminsScreen({ ctx }: { ctx: Ctx }) {
                     <p className="text-xs text-on-surface-variant truncate">{u.email}</p>
                     <p className="text-xs text-on-surface-variant truncate">{u.universityName}</p>
                   </div>
-                  <M3StatusPill label={u.status} tone={u.status === "ACTIVE" ? "success" : "neutral"} />
+                  <div className="flex shrink-0 items-center gap-2">
+                    <M3StatusPill label={u.status} tone={u.status === "ACTIVE" ? "success" : "neutral"} />
+                    <ExpressiveButton
+                      variant="tonal"
+                      size="sm"
+                      onClick={() => deleteAdmin(u)}
+                      disabled={deletingId === u.universityAdminId}
+                    >
+                      {deletingId === u.universityAdminId ? <RefreshCw className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+                      Xóa
+                    </ExpressiveButton>
+                  </div>
                 </div>
               </ExpressiveCard>
             </StaggerItem>
@@ -1436,6 +1678,8 @@ function RouteUniScreen({ ctx }: { ctx: Ctx }) {
   const [universityId, setUniversityId] = useState("");
   const [routeIds, setRouteIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [deletingRouteUniversityId, setDeletingRouteUniversityId] = useState<number | null>(null);
+  const [deletingUniversityRoutes, setDeletingUniversityRoutes] = useState(false);
   const rows = useMemo(() => routeLinks.raw || [], [routeLinks.raw]);
   const parsedUniversityId = Number(universityId);
   const activeRouteIdsForUniversity = useMemo(
@@ -1447,6 +1691,10 @@ function RouteUniScreen({ ctx }: { ctx: Ctx }) {
   const availableRoutes = useMemo(
     () => routes.filter((route) => !activeRouteIdsForUniversity.has(route.routeId)),
     [routes, activeRouteIdsForUniversity]
+  );
+  const selectedUniversityRouteCount = useMemo(
+    () => rows.filter((item) => item.universityId === parsedUniversityId).length,
+    [rows, parsedUniversityId]
   );
 
   useEffect(() => {
@@ -1503,6 +1751,38 @@ function RouteUniScreen({ ctx }: { ctx: Ctx }) {
     }
   };
 
+  const deleteRouteUniversity = async (link: RouteUniversityView) => {
+    if (!window.confirm(`Xóa tuyến "${link.routeName}" khỏi trường ${link.universityName}?`)) return;
+    setDeletingRouteUniversityId(link.routeUniversityId);
+    try {
+      await adminApi.deleteRouteUniversity(link.routeUniversityId);
+      toast.success("Đã xóa liên kết tuyến-trường");
+      await routeLinks.reload();
+      await ctx.reload();
+    } catch (e) {
+      toast.error(adminDeleteErrorMessage(e, "Không thể xóa liên kết tuyến-trường"));
+    } finally {
+      setDeletingRouteUniversityId(null);
+    }
+  };
+
+  const deleteSelectedUniversityRoutes = async () => {
+    if (!parsedUniversityId || selectedUniversityRouteCount === 0) return;
+    const selectedUniversityName = (universities.raw || []).find((u) => u.universityId === parsedUniversityId)?.name || "trường đã chọn";
+    if (!window.confirm(`Xóa toàn bộ ${selectedUniversityRouteCount} tuyến được gán khỏi ${selectedUniversityName}?`)) return;
+    setDeletingUniversityRoutes(true);
+    try {
+      await adminApi.deleteRouteUniversitiesForUniversity(parsedUniversityId);
+      toast.success("Đã xóa toàn bộ tuyến được gán khỏi trường");
+      await routeLinks.reload();
+      await ctx.reload();
+    } catch (e) {
+      toast.error(adminDeleteErrorMessage(e, "Không thể xóa các tuyến được gán"));
+    } finally {
+      setDeletingUniversityRoutes(false);
+    }
+  };
+
   return (
     <PageTransition className="space-y-6 min-w-0">
       <div className="flex items-center gap-3 min-w-0">
@@ -1515,7 +1795,7 @@ function RouteUniScreen({ ctx }: { ctx: Ctx }) {
         </div>
       </div>
       <ExpressiveCard variant="elevated" className="border border-outline-variant/40 bg-white p-4 min-w-0">
-        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto] md:items-end">
           <div>
             <Label className="text-xs font-bold">Trường</Label>
             <Select value={universityId} onValueChange={(value) => {
@@ -1564,6 +1844,14 @@ function RouteUniScreen({ ctx }: { ctx: Ctx }) {
             {saving ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
             Lưu
           </ExpressiveButton>
+          <ExpressiveButton
+            variant="tonal"
+            onClick={deleteSelectedUniversityRoutes}
+            disabled={deletingUniversityRoutes || !parsedUniversityId || selectedUniversityRouteCount === 0}
+          >
+            {deletingUniversityRoutes ? <RefreshCw className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+            Xóa tuyến của trường
+          </ExpressiveButton>
         </div>
         {(routeLinks.error || universities.error) && (
           <p className="mt-3 text-sm font-semibold text-error">{routeLinks.error || universities.error}</p>
@@ -1581,6 +1869,7 @@ function RouteUniScreen({ ctx }: { ctx: Ctx }) {
                 <TableHead>Cơ sở</TableHead>
                 <TableHead>Hiệu lực</TableHead>
                 <TableHead>Trạng thái</TableHead>
+                <TableHead className="text-right">Thao tác</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1598,6 +1887,17 @@ function RouteUniScreen({ ctx }: { ctx: Ctx }) {
                   <TableCell className="truncate text-on-surface-variant">{ru.campusName || "—"}</TableCell>
                   <TableCell className="text-xs text-on-surface-variant">{formatDate(ru.activeFrom)} → {formatDate(ru.activeUntil)}</TableCell>
                   <TableCell><M3StatusPill label={ru.status} tone={ru.status === "ACTIVE" ? "success" : "neutral"} /></TableCell>
+                  <TableCell className="text-right">
+                    <ExpressiveButton
+                      variant="text"
+                      size="sm"
+                      onClick={() => deleteRouteUniversity(ru)}
+                      disabled={deletingRouteUniversityId === ru.routeUniversityId}
+                    >
+                      {deletingRouteUniversityId === ru.routeUniversityId ? <RefreshCw className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+                      Xóa
+                    </ExpressiveButton>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -1618,9 +1918,15 @@ function AuditScreen({ ctx }: { ctx: Ctx }) {
   const [resultFilter, setResultFilter] = useState("all");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const auditUsers = useAdminUsers({ page: 0, size: 500 });
+  const auditUserRoleById = useMemo(() => {
+    const map = new Map<number, string>();
+    (auditUsers.raw || []).forEach((user) => map.set(user.userId, user.role));
+    return map;
+  }, [auditUsers.raw]);
   const visibleAudits = useMemo(
-    () => ctx.audits.filter((audit) => isVisibleAdminAudit(audit.action)),
-    [ctx.audits]
+    () => ctx.audits.filter((audit) => isSystemAdminAudit(audit, auditUserRoleById) && isVisibleAdminAudit(audit.action)),
+    [auditUserRoleById, ctx.audits]
   );
 
   const universityOptions = useMemo(() => {
@@ -1672,8 +1978,8 @@ function AuditScreen({ ctx }: { ctx: Ctx }) {
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
-        title="Nhật ký hoạt động"
-        description={`${filteredAudits.length}/${visibleAudits.length} hoạt động được ghi nhận`}
+        title="Nhật ký Admin hệ thống"
+        description={`${filteredAudits.length} hoạt động của admin hệ thống`}
         icon={<ScrollText className="size-7" />}
       />
       <ExpressiveCard variant="filled" className="p-4 min-w-0">
@@ -1777,12 +2083,18 @@ function UsersScreen({ ctx }: { ctx: Ctx }) {
   const [lockReason, setLockReason] = useState("");
   const [working, setWorking] = useState(false);
   const [adding, setAdding] = useState(false);
-  const users = useAdminUsers();
+  const users = useAdminUsers({
+    role: roleFilter === "all" ? undefined : roleFilter,
+    search: search.trim() || undefined,
+    page: 0,
+    size: 500,
+  });
   const rows = users.raw || [];
+  const totalUserCount = users.raw?.totalElements ?? rows.length;
 
   const filtered = rows.filter((u) => {
     if (roleFilter !== "all" && u.role !== roleFilter) return false;
-    if (search && !`${u.fullName} ${u.email}`.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !`${u.fullName} ${u.email} ${u.staffCode || ""} ${u.licenseNumber || ""}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
@@ -1807,7 +2119,7 @@ function UsersScreen({ ctx }: { ctx: Ctx }) {
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Người dùng"
-        description={`${rows.length} người dùng`}
+        description={`${totalUserCount} người dùng`}
         icon={<Users className="size-7" />}
         actions={<ExpressiveButton variant="filled" onClick={() => setAdding(true)}><Plus className="size-4" /> Thêm nhân viên</ExpressiveButton>}
       />
@@ -2182,22 +2494,6 @@ function VerificationsScreen({ ctx }: { ctx: Ctx }) {
                         <ReviewField label="Trường" submitted={item.university} ocr={item.ocrUniversity} />
                       </div>
 
-                      {(item.ocrRawText || item.ocrConfidenceScore != null) && (
-                        <details className="rounded-2xl border border-outline-variant/50 bg-surface-container-lowest p-3">
-                          <summary className="cursor-pointer text-xs font-bold text-on-surface">Xem chi tiết OCR</summary>
-                          <div className="mt-2 space-y-2 text-xs text-on-surface-variant">
-                            {item.ocrConfidenceScore != null && (
-                              <p>Độ tin cậy OCR: <span className="font-bold text-on-surface">{formatAdminConfidence(item.ocrConfidenceScore)}</span></p>
-                            )}
-                            {item.ocrRawText && (
-                              <p className="max-h-32 overflow-y-auto whitespace-pre-wrap scrollbar-soft">
-                                {item.ocrRawText}
-                              </p>
-                            )}
-                          </div>
-                        </details>
-                      )}
-
                       {item.rejectionReason && (
                         <div className="rounded-2xl border border-error/25 bg-error-container/40 p-3 text-sm">
                           <p className="font-bold text-error">Lý do hiện tại</p>
@@ -2499,19 +2795,71 @@ function ComplaintsScreen({ ctx }: { ctx: Ctx }) {
 // Screen 8: Violations
 // =============================================================================
 function ViolationsScreen({ ctx }: { ctx: Ctx }) {
+  const violationsResource = useAdminViolations();
+  const [statusFilter, setStatusFilter] = useState<"open" | "closed">("open");
+  const [closingId, setClosingId] = useState<number | null>(null);
+  const rows = violationsResource.raw || ctx.violations;
+  const openRows = rows.filter((v: any) => !isClosedViolationStatus(v.status));
+  const closedRows = rows.filter((v: any) => isClosedViolationStatus(v.status));
+  const visibleRows = statusFilter === "open" ? openRows : closedRows;
+
+  const closeViolation = async (violationId: number) => {
+    setClosingId(violationId);
+    try {
+      try {
+        await experienceApi.reviewViolation(violationId, {
+          status: "CLOSED",
+          actionTaken: "Admin đã xử lý và đóng báo cáo vi phạm.",
+        });
+      } catch (closedError) {
+        console.warn("Backend does not accept CLOSED yet, falling back to RESOLVED", closedError);
+        await experienceApi.reviewViolation(violationId, {
+          status: "RESOLVED",
+          actionTaken: "Admin đã xử lý và đóng báo cáo vi phạm.",
+        });
+      }
+      toast.success("Đã đóng báo cáo vi phạm");
+      violationsResource.reload();
+      ctx.reload();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể đóng vi phạm");
+    } finally {
+      setClosingId(null);
+    }
+  };
+
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Vi phạm"
-        description={`${ctx.violations.length} báo cáo vi phạm`}
+        description={`${openRows.length} đang mở · ${closedRows.length} đã đóng`}
         icon={<AlertOctagon className="size-7" />}
       />
-      {ctx.violations.length === 0 ? (
+      <div className="flex flex-wrap gap-2">
+        <ExpressiveButton variant={statusFilter === "open" ? "filled" : "tonal"} onClick={() => setStatusFilter("open")}>
+          <AlertOctagon className="size-4" />
+          Đang mở ({openRows.length})
+        </ExpressiveButton>
+        <ExpressiveButton variant={statusFilter === "closed" ? "filled" : "tonal"} onClick={() => setStatusFilter("closed")}>
+          <CheckCircle2 className="size-4" />
+          Đã đóng ({closedRows.length})
+        </ExpressiveButton>
+      </div>
+      {violationsResource.loading ? (
+        <LoadingScreen label="Đang tải báo cáo vi phạm..." />
+      ) : rows.length === 0 ? (
         <EmptyState icon={<AlertOctagon className="size-7" />} title="Không có vi phạm" />
+      ) : visibleRows.length === 0 ? (
+        <EmptyState
+          icon={statusFilter === "open" ? <AlertOctagon className="size-7" /> : <CheckCircle2 className="size-7" />}
+          title={statusFilter === "open" ? "Không còn vi phạm đang mở" : "Chưa có vi phạm đã đóng"}
+        />
       ) : (
         <StaggerGroup className="space-y-3 min-w-0">
-          {ctx.violations.map((v: any, i: number) => (
-            <StaggerItem key={i}>
+          {visibleRows.map((v: any) => {
+            const closed = isClosedViolationStatus(v.status);
+            return (
+            <StaggerItem key={v.violationReportId}>
               <ExpressiveCard variant="elevated" className="border border-outline-variant/40 bg-white p-4 min-w-0 transition-all hover:-translate-y-0.5 hover:shadow-md">
                 <div className="flex items-start justify-between gap-3 mb-2 min-w-0">
                   <div className="flex items-start gap-3 min-w-0">
@@ -2523,12 +2871,26 @@ function ViolationsScreen({ ctx }: { ctx: Ctx }) {
                       <p className="text-xs text-on-surface-variant">{formatDate(v.submittedAt)}</p>
                     </div>
                   </div>
-                  <M3StatusPill label={v.status} tone={v.status === "RESOLVED" ? "success" : "warning"} />
+                  <div className="flex shrink-0 items-center gap-2">
+                    <M3StatusPill label={violationStatusLabel(v.status)} tone={closed ? "success" : "warning"} />
+                    {!closed && (
+                      <ExpressiveButton
+                        variant="tonal"
+                        size="sm"
+                        onClick={() => closeViolation(v.violationReportId)}
+                        disabled={closingId === v.violationReportId}
+                      >
+                        {closingId === v.violationReportId ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+                        Đóng
+                      </ExpressiveButton>
+                    )}
+                  </div>
                 </div>
                 <p className="text-sm line-clamp-3 text-on-surface-variant">{v.content}</p>
               </ExpressiveCard>
             </StaggerItem>
-          ))}
+            );
+          })}
         </StaggerGroup>
       )}
     </PageTransition>

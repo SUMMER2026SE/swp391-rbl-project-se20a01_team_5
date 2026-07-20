@@ -54,6 +54,7 @@ import {
   LineChart,
   Line,
   Cell,
+  LabelList,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -148,11 +149,14 @@ type UniversityAdminModuleProps = {
 const downloadFile = (download: BlobDownload, fallbackFileName: string, allowedContentTypes: string[]) => {
   const contentType = download.contentType.toLowerCase();
   const validType = allowedContentTypes.some((type) => contentType.includes(type));
-  if (!validType || contentType.includes("application/json")) {
+  if (contentType.includes("application/json")) {
     throw new Error("Invalid file response");
   }
   if (download.blob.size <= 0) {
     throw new Error("Empty file response");
+  }
+  if (!validType && contentType && !contentType.includes("text/csv")) {
+    throw new Error(`Unsupported file response: ${contentType}`);
   }
   const url = URL.createObjectURL(download.blob);
   const anchor = document.createElement("a");
@@ -472,11 +476,12 @@ function ImportPreviewErrorTable({ errors }: { errors?: RosterImportPreviewView[
         <TableBody>
           {errors.map((error) => (
             <TableRow key={`${error.rowNumber}-${error.field}-${error.code}`}>
-              <TableCell className="font-mono font-bold">{error.rowNumber}</TableCell>
+              <TableCell className="font-mono font-bold">{error.rowNumber > 0 ? error.rowNumber : "File"}</TableCell>
               <TableCell className="font-bold">{importFieldLabel(error.field)}</TableCell>
               <TableCell className="max-w-[220px] truncate text-sm">{error.value || "Trống"}</TableCell>
               <TableCell>
                 <p className="font-bold text-error">{importPreviewErrorReason(error)}</p>
+                <p className="text-xs text-on-surface-variant">{error.message || "Dữ liệu không hợp lệ"}</p>
               </TableCell>
               <TableCell className="text-sm text-on-surface-variant">{error.suggestion || "Sửa dữ liệu ở dòng này rồi import lại"}</TableCell>
             </TableRow>
@@ -669,7 +674,7 @@ export function UniversityAdminModule({ activeId, onNavigate }: UniversityAdminM
       screen = <SubsidyScreen ctx={ctx} />;
       break;
     case "uniadm-notify":
-      screen = <NotifyScreen ctx={ctx} />;
+      screen = <DashboardScreen ctx={ctx} onNavigate={onNavigate} />;
       break;
     case "uniadm-recon":
       screen = <TransactionsScreen ctx={ctx} />;
@@ -741,21 +746,34 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
     passes: point.passes,
     fill: DETAIL_ROUTE_COLORS[index % DETAIL_ROUTE_COLORS.length],
   })), [s?.passesByRoute]);
+  const monthlyPassRouteChart = useMemo(() => {
+    const rows = passesByRoute
+      .filter((route) => route.passes > 0)
+      .map((route, index) => ({
+        ...route,
+        tickLabel: route.name.length > 24 ? `${route.name.slice(0, 24)}...` : route.name,
+        fill: DETAIL_ROUTE_COLORS[index % DETAIL_ROUTE_COLORS.length],
+      }));
+    const total = rows.reduce((sum, route) => sum + route.passes, 0);
+    const max = rows.reduce((value, route) => Math.max(value, route.passes), 0);
+    return {
+      rows: rows.map((route) => ({
+        ...route,
+        share: total ? Math.round((route.passes / total) * 100) : 0,
+      })),
+      total,
+      routeCount: rows.length,
+      yMax: max + 1,
+    };
+  }, [passesByRoute]);
   const tripsLast7 = s?.tripsSeries || [];
   const currentSubsidyPolicy = useMemo(
     () => [...ctx.subsidyPolicies].sort((a, b) => b.subsidyPolicyId - a.subsidyPolicyId)[0],
     [ctx.subsidyPolicies],
   );
   const detailRouteSeries = useMemo(() => {
-    // TODO: thay bằng API thật trả lượt dùng xe theo tuyến, group theo tuần và filter theo khoảng thời gian.
     const weekCount = detailRange === "7d" ? 1 : detailRange === "semester" ? 16 : 4;
-    const sourceRoutes = passesByRoute.length
-      ? passesByRoute
-      : [
-          { name: "Tuyến A", passes: 18, fill: DETAIL_ROUTE_COLORS[0] },
-          { name: "Tuyến B", passes: 12, fill: DETAIL_ROUTE_COLORS[1] },
-          { name: "Tuyến C", passes: 8, fill: DETAIL_ROUTE_COLORS[2] },
-        ];
+    const sourceRoutes = passesByRoute;
     const chartRoutes = sourceRoutes.length > 8
       ? [
           ...sourceRoutes.slice(0, 7),
@@ -799,6 +817,21 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
     const strongestRoute = routeRows[0];
     return { routes: visibleRoutes, weeks, routeRows, totalUses, latestWeekTotal, avgPerWeek, strongestRoute };
   }, [detailRange, passesByRoute]);
+
+  const renderMonthlyPassLabel = useCallback((props: any) => {
+    const { x, y, width, value, payload } = props;
+    if (value == null || !payload) return null;
+    return (
+      <text
+        x={Number(x) + Number(width) / 2}
+        y={Number(y) - 10}
+        textAnchor="middle"
+        className="fill-on-surface text-[13px] font-medium"
+      >
+        {value} vé · {payload.share}%
+      </text>
+    );
+  }, []);
 
   return (
     <PageTransition className="space-y-6 sm:space-y-8 min-w-0">
@@ -909,35 +942,58 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
               <div className="min-w-0">
                 <h3 className="text-lg font-semibold text-on-surface">Vé tháng theo tuyến</h3>
                 <p className="text-xs text-on-surface-variant mt-0.5">
-                  Tháng {new Date().getMonth() + 1}/{new Date().getFullYear()} · Tổng {passesByRoute.reduce((s, d) => s + d.passes, 0)} vé
+                  Tháng {new Date().getMonth() + 1}/{new Date().getFullYear()} · Tổng {monthlyPassRouteChart.total} vé · {monthlyPassRouteChart.routeCount} tuyến có phát sinh
                 </p>
               </div>
               <FileBarChart className="size-5 text-on-surface-variant shrink-0" />
             </div>
             <div className="h-56 min-w-0">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={passesByRoute} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-outline-variant)" vertical={false} opacity={0.5} />
-                  <XAxis dataKey="name" stroke="var(--color-on-surface-variant)" fontSize={12} axisLine={false} tickLine={false} />
-                  <YAxis stroke="var(--color-on-surface-variant)" fontSize={12} axisLine={false} tickLine={false} />
-                  <RTooltip
-                    cursor={{ fill: "var(--color-surface-container-highest)" }}
-                    contentStyle={{
-                      background: "#14140f",
-                      border: "1px solid #14140f",
-                      borderRadius: 12,
-                      color: "#beff50",
-                      fontSize: 12,
-                    }}
-                    formatter={(v: any) => [`${v} vé`, "Vé tháng"]}
-                  />
-                  <Bar dataKey="passes" radius={[8, 8, 0, 0]}>
-                    {passesByRoute.map((d, i) => (
-                      <Cell key={i} fill={d.fill} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+              {monthlyPassRouteChart.rows.length === 0 ? (
+                <EmptyState icon={<FileBarChart className="size-7" />} title="Chưa có vé tháng nào trong kỳ này" />
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={monthlyPassRouteChart.rows} margin={{ top: 34, right: 8, left: -16, bottom: 54 }} barCategoryGap="46%">
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-outline-variant)" vertical={false} opacity={0.5} />
+                    <XAxis
+                      dataKey="tickLabel"
+                      stroke="var(--color-on-surface-variant)"
+                      fontSize={11}
+                      axisLine={false}
+                      tickLine={false}
+                      interval={0}
+                      height={58}
+                      angle={-18}
+                      textAnchor="end"
+                    />
+                    <YAxis
+                      stroke="var(--color-on-surface-variant)"
+                      fontSize={12}
+                      axisLine={false}
+                      tickLine={false}
+                      allowDecimals={false}
+                      domain={[0, monthlyPassRouteChart.yMax]}
+                    />
+                    <RTooltip
+                      cursor={{ fill: "var(--color-surface-container-highest)" }}
+                      contentStyle={{
+                        background: "#14140f",
+                        border: "1px solid #14140f",
+                        borderRadius: 12,
+                        color: "#beff50",
+                        fontSize: 12,
+                      }}
+                      formatter={(v: any, _name: any, item: any) => [`${v} vé · ${item?.payload?.share || 0}%`, "Vé tháng"]}
+                      labelFormatter={(_label: any, payload: readonly any[]) => payload?.[0]?.payload?.name || ""}
+                    />
+                    <Bar dataKey="passes" radius={[8, 8, 0, 0]} barSize={50} maxBarSize={56}>
+                      <LabelList dataKey="passes" content={renderMonthlyPassLabel} />
+                      {monthlyPassRouteChart.rows.map((d, i) => (
+                        <Cell key={i} fill={d.fill} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </ExpressiveCard>
         </ScrollReveal>
@@ -1185,6 +1241,69 @@ function InfoScreen({ ctx }: { ctx: Ctx }) {
   const ua = ctx.universityAdmin;
   const campusesResource = useUniAdminCampuses();
   const campuses = campusesResource.raw || ctx.campuses;
+  const [adding, setAdding] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [deletingCampusId, setDeletingCampusId] = useState<number | null>(null);
+  const [campusCode, setCampusCode] = useState("");
+  const [campusName, setCampusName] = useState("");
+  const [campusAddress, setCampusAddress] = useState("");
+  const [campusStatus, setCampusStatus] = useState("ACTIVE");
+
+  const resetCampusForm = () => {
+    setCampusCode("");
+    setCampusName("");
+    setCampusAddress("");
+    setCampusStatus("ACTIVE");
+  };
+
+  const addCampus = async () => {
+    const code = campusCode.trim();
+    const name = campusName.trim();
+    const address = campusAddress.trim();
+
+    if (!code || !name) {
+      toast.error("Vui lòng nhập mã cơ sở và tên cơ sở");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await universityApi.createCampus({
+        code,
+        name,
+        address: address || undefined,
+        status: campusStatus,
+      });
+      toast.success("Đã thêm cơ sở");
+      resetCampusForm();
+      setAdding(false);
+      campusesResource.reload();
+      ctx.reload();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể thêm cơ sở");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteCampus = async (campus: CampusView) => {
+    if (!window.confirm(`Xóa cơ sở ${campus.name}? Tuyến và chính sách đang trỏ tới cơ sở này sẽ được chuyển về không chọn cơ sở.`)) return;
+    setDeletingCampusId(campus.campusId);
+    try {
+      await universityApi.deleteCampus(campus.campusId);
+      toast.success("Đã xóa cơ sở");
+      campusesResource.reload();
+      ctx.reload();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      toast.error(message.toLowerCase().includes("no static resource")
+        ? "Backend đang chạy chưa có API xóa cơ sở. Restart backend rồi thử lại."
+        : message || "Không thể xóa cơ sở");
+    } finally {
+      setDeletingCampusId(null);
+    }
+  };
+
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
@@ -1211,7 +1330,15 @@ function InfoScreen({ ctx }: { ctx: Ctx }) {
       )}
 
       <ScrollReveal delay={0.1}>
-        <Section title={`Cơ sở (${campuses.length})`}>
+        <Section
+          title={`Cơ sở (${campuses.length})`}
+          actions={
+            <ExpressiveButton variant="filled" onClick={() => setAdding(true)}>
+              <Plus className="size-4" />
+              Thêm cơ sở
+            </ExpressiveButton>
+          }
+        >
           {campusesResource.loading ? (
             <LoadingScreen label="Đang tải cơ sở..." />
           ) : campuses.length === 0 ? (
@@ -1231,6 +1358,16 @@ function InfoScreen({ ctx }: { ctx: Ctx }) {
                         {c.address && <p className="text-xs text-on-surface-variant line-clamp-2">{c.address}</p>}
                         <M3StatusPill label={campusStatusLabel(c.status)} tone={campusStatusTone(c.status)} />
                       </div>
+                      <ExpressiveButton
+                        variant="tonal"
+                        size="sm"
+                        className="shrink-0"
+                        onClick={() => deleteCampus(c)}
+                        disabled={deletingCampusId === c.campusId}
+                      >
+                        {deletingCampusId === c.campusId ? <RefreshCw className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+                        Xóa
+                      </ExpressiveButton>
                     </div>
                   </ExpressiveCard>
                 </StaggerItem>
@@ -1239,6 +1376,72 @@ function InfoScreen({ ctx }: { ctx: Ctx }) {
           )}
         </Section>
       </ScrollReveal>
+
+      <Dialog open={adding} onOpenChange={(open) => {
+        setAdding(open);
+        if (!open) resetCampusForm();
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Thêm cơ sở</DialogTitle>
+            <DialogDescription>Thêm cơ sở thuộc trường đang quản lý.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div>
+                <Label className="text-xs font-bold">Mã cơ sở</Label>
+                <Input
+                  className="mt-1.5"
+                  value={campusCode}
+                  onChange={(e) => setCampusCode(e.target.value)}
+                  placeholder="VD: DTU_MAIN"
+                />
+              </div>
+              <div>
+                <Label className="text-xs font-bold">Trạng thái</Label>
+                <Select value={campusStatus} onValueChange={setCampusStatus}>
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ACTIVE">Đang hoạt động</SelectItem>
+                    <SelectItem value="INACTIVE">Ngưng hoạt động</SelectItem>
+                    <SelectItem value="SUSPENDED">Tạm khóa</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs font-bold">Tên cơ sở</Label>
+              <Input
+                className="mt-1.5"
+                value={campusName}
+                onChange={(e) => setCampusName(e.target.value)}
+                placeholder="VD: Cơ sở Nguyễn Văn Linh"
+              />
+            </div>
+            <div>
+              <Label className="text-xs font-bold">Địa chỉ</Label>
+              <Textarea
+                className="mt-1.5"
+                value={campusAddress}
+                onChange={(e) => setCampusAddress(e.target.value)}
+                placeholder="VD: 254 Nguyễn Văn Linh, Thanh Khê, Đà Nẵng"
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <ExpressiveButton variant="text" onClick={() => setAdding(false)} disabled={saving}>
+              Hủy
+            </ExpressiveButton>
+            <ExpressiveButton variant="filled" onClick={addCampus} disabled={saving}>
+              {saving ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
+              Lưu cơ sở
+            </ExpressiveButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageTransition>
   );
 }
@@ -1252,6 +1455,7 @@ function DomainsScreen({ ctx }: { ctx: Ctx }) {
   const [adding, setAdding] = useState(false);
   const [domain, setDomain] = useState("");
   const [saving, setSaving] = useState(false);
+  const [deletingDomainId, setDeletingDomainId] = useState<number | null>(null);
 
   const add = async () => {
     const validation = validateDomainInput(domain);
@@ -1272,6 +1476,24 @@ function DomainsScreen({ ctx }: { ctx: Ctx }) {
       toast.error(/duplicate|unique|exists|already/i.test(message) ? "Domain này đã tồn tại" : message || "Không thể thêm domain");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const deleteDomain = async (item: DomainView) => {
+    if (!window.confirm(`Xóa domain @${item.domain}? Sinh viên dùng domain này sẽ không còn được tự liên kết mới.`)) return;
+    setDeletingDomainId(item.domainId);
+    try {
+      await universityApi.deleteDomain(item.domainId);
+      toast.success("Đã xóa domain");
+      domainsResource.reload();
+      ctx.reload();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      toast.error(message.toLowerCase().includes("no static resource")
+        ? "Backend đang chạy chưa có API xóa domain. Restart backend rồi thử lại."
+        : message || "Không thể xóa domain");
+    } finally {
+      setDeletingDomainId(null);
     }
   };
 
@@ -1301,6 +1523,16 @@ function DomainsScreen({ ctx }: { ctx: Ctx }) {
                     <p className="text-xs text-on-surface-variant">Thêm: {formatDate(d.createdAt)}</p>
                   </div>
                   <M3StatusPill label={domainStatusLabel(d.status)} tone={domainStatusTone(d.status)} />
+                  <ExpressiveButton
+                    variant="tonal"
+                    size="sm"
+                    className="shrink-0"
+                    onClick={() => deleteDomain(d)}
+                    disabled={deletingDomainId === d.domainId}
+                  >
+                    {deletingDomainId === d.domainId ? <RefreshCw className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+                    Xóa
+                  </ExpressiveButton>
                 </div>
               </ExpressiveCard>
             </StaggerItem>
@@ -1368,18 +1600,15 @@ function StudentsScreen({
   const [loadingDetailBatch, setLoadingDetailBatch] = useState(false);
   const [downloadingReportId, setDownloadingReportId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
   const fileRef = useRef<HTMLInputElement>(null);
   const importBatchesResource = useUniAdminImportBatches();
   const importBatches = importBatchesResource.raw || ctx.importBatches;
   const rosterResource = useUniAdminRoster({
     keyword: search || undefined,
-    status: statusFilter === "all" ? undefined : statusFilter,
     importBatchId,
   });
   const roster = rosterResource.raw || (importBatchId ? [] : ctx.roster);
   const filtered = roster.filter((r) => {
-    if (statusFilter !== "all" && r.status !== statusFilter) return false;
     if (search && !`${r.fullName} ${r.email} ${r.studentCode || ""}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
@@ -1442,7 +1671,10 @@ function StudentsScreen({
     setDownloadingReportId(batchId);
     try {
       const file = await universityApi.importBatchReport(batchId);
-      downloadFile(file, `bao-cao-import-sinh-vien-${batchId}.csv`, ["text/csv", "application/octet-stream"]);
+      downloadFile(file, `bao-cao-import-sinh-vien-${batchId}.xlsx`, [
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/octet-stream",
+      ]);
       toast.success("Đã tải báo cáo lỗi import.");
     } catch (error) {
       console.error("Failed to download roster import report", error);
@@ -1535,6 +1767,9 @@ function StudentsScreen({
   };
 
   const rosterCount = rosterResource.raw?.length ?? ctx.roster.length;
+  const latestPreviewErrors = latestPreview
+    ? [...(latestPreview.structuralErrors || []), ...(latestPreview.errors || [])]
+    : [];
 
   return (
     <PageTransition className="space-y-6 min-w-0">
@@ -1641,18 +1876,26 @@ function StudentsScreen({
                   {latestPlan.warnings.map((warning) => <p key={warning}>{warning}</p>)}
                 </div>
               )}
-              {(latestPreview.errors.length > 0 || latestPreview.previewRows.length > 0) && (
-                <div className="mt-5 space-y-3">
-                  {latestPreview.errors.length > 0 && (
-                    <div>
-                      <p className="font-bold">Chi tiết dòng lỗi</p>
-                      <p className="text-xs text-on-surface-variant">Các dòng này sẽ không được đưa vào danh sách sinh viên.</p>
-                    </div>
-                  )}
-                  <ImportPreviewErrorTable errors={latestPreview.errors} />
-                  <ImportPreviewRowsTable preview={latestPreview} />
+              <div className="mt-5 space-y-3">
+                <div>
+                  <p className="font-bold">Chi tiết dòng lỗi</p>
+                  <p className="text-xs text-on-surface-variant">
+                    {latestPreviewErrors.length > 0
+                      ? "Các dòng này sẽ không được đưa vào danh sách sinh viên."
+                      : "Không có dòng lỗi trong file này."}
+                  </p>
                 </div>
-              )}
+                <ImportPreviewErrorTable errors={latestPreviewErrors} />
+                {latestPreview.previewRows.length > 0 && (
+                  <>
+                    <div className="pt-2">
+                      <p className="font-bold">Danh sách dòng kiểm tra</p>
+                      <p className="text-xs text-on-surface-variant">Các dòng hợp lệ, bị lỗi hoặc bị bỏ qua trong file vừa tải lên.</p>
+                    </div>
+                  <ImportPreviewRowsTable preview={latestPreview} />
+                  </>
+                )}
+              </div>
             </ExpressiveCard>
           </Section>
         )}
@@ -1683,22 +1926,34 @@ function StudentsScreen({
                   <div className="rounded-xl border border-outline-variant bg-surface-container-low p-3"><p className="text-xs text-on-surface-variant">Có thể import</p><p className="mt-1 text-xl font-black">{latestPlan.importableRows}</p></div>
                 </div>
               )}
-              {latestBatch.errorRows > 0 && (
-                <div className="mt-5 space-y-3">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="font-bold">Chi tiết dòng lỗi</p>
-                      <p className="text-xs text-on-surface-variant">Các dòng này không được đưa vào danh sách sinh viên.</p>
-                    </div>
+              <div className="mt-5 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="font-bold">Chi tiết dòng lỗi</p>
+                    <p className="text-xs text-on-surface-variant">
+                      {latestBatch.errorRows > 0
+                        ? "Các dòng này không được đưa vào danh sách sinh viên."
+                        : "Không có dòng lỗi trong lượt import này."}
+                    </p>
+                  </div>
+                  {latestBatch.errorRows > 0 && (
                     <ExpressiveButton variant="tonal" onClick={() => downloadImportReport(latestBatch.importBatchId)} disabled={downloadingReportId === latestBatch.importBatchId}>
                       {downloadingReportId === latestBatch.importBatchId ? <RefreshCw className="size-4 animate-spin" /> : <Download className="size-4" />}
                       Tải báo cáo lỗi
                     </ExpressiveButton>
-                  </div>
-                  <ImportErrorTable errors={latestBatch.errors} />
-                  <ImportPreviewRowsTable preview={latestPreview} />
+                  )}
                 </div>
-              )}
+                <ImportErrorTable errors={latestBatch.errors} />
+                {latestPreview?.previewRows?.length ? (
+                  <>
+                    <div className="pt-2">
+                      <p className="font-bold">Danh sách dòng kiểm tra</p>
+                      <p className="text-xs text-on-surface-variant">Tổng hợp trạng thái từng dòng trong file import.</p>
+                    </div>
+                  <ImportPreviewRowsTable preview={latestPreview} />
+                  </>
+                ) : null}
+              </div>
             </ExpressiveCard>
           </Section>
         )}
@@ -1763,13 +2018,6 @@ function StudentsScreen({
             <Filter className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-on-surface-variant" />
             <Input className="pl-9" placeholder="Tìm theo tên, email, mã SV..." value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-full sm:w-40"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tất cả trạng thái</SelectItem>
-              <SelectItem value="ACTIVE">Đang học</SelectItem>
-            </SelectContent>
-          </Select>
         </div>
         {rosterResource.loading ? (
           <LoadingScreen label="Đang tải danh sách sinh viên..." />

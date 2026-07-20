@@ -122,7 +122,7 @@ export const NAV_CONFIG: Record<Role, NavItem[]> = {
     { id: "adm-finance", label: "Giao dịch & hóa đơn", icon: Receipt, group: "Tài chính" },
     { id: "adm-pricing", label: "Giá vé", icon: Tag, group: "Tài chính" },
     { id: "adm-risk", label: "Vi phạm", icon: ShieldAlert, group: "Vận hành rủi ro" },
-    { id: "adm-audit", label: "Nhật ký hoạt động", icon: ScrollText, group: "Hệ thống" },
+    { id: "adm-audit", label: "Nhật ký Admin", icon: ScrollText, group: "Hệ thống" },
   ],
   university_admin: [
     { id: "uniadm-dashboard", label: "Tổng quan trường", icon: LayoutDashboard, group: "Tổng quan" },

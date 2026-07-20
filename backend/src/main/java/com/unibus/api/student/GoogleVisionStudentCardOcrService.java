@@ -49,17 +49,20 @@ public class GoogleVisionStudentCardOcrService implements StudentCardOcrService 
     private final UniversityCatalog universityCatalog;
     private final RestClient restClient;
     private final boolean enabled;
+    private final boolean failOpenOnError;
     private final String credentialsPath;
 
     public GoogleVisionStudentCardOcrService(
             ObjectMapper objectMapper,
             UniversityCatalog universityCatalog,
             @Value("${app.ocr.enabled:false}") boolean enabled,
+            @Value("${app.ocr.fail-open-on-error:true}") boolean failOpenOnError,
             @Value("${app.google.vision.credentials-path:}") String credentialsPath) {
         this.objectMapper = objectMapper;
         this.universityCatalog = universityCatalog;
         this.restClient = RestClient.create();
         this.enabled = enabled;
+        this.failOpenOnError = failOpenOnError;
         this.credentialsPath = credentialsPath == null ? "" : credentialsPath.trim();
     }
 
@@ -73,6 +76,10 @@ public class GoogleVisionStudentCardOcrService implements StudentCardOcrService 
             return fallback(expectedFullName, expectedStudentCode, expectedUniversity, "OCR is disabled for this environment.");
         }
         if (credentialsPath.isBlank()) {
+            if (failOpenOnError) {
+                return fallback(expectedFullName, expectedStudentCode, expectedUniversity,
+                        "Google Vision OCR credentials are not configured.");
+            }
             throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "Google Vision OCR credentials are not configured");
         }
 
@@ -91,16 +98,31 @@ public class GoogleVisionStudentCardOcrService implements StudentCardOcrService 
                     rawText,
                     averageConfidence(response));
         } catch (ApiException exception) {
+            if (failOpenOnError && exception.getStatus().is5xxServerError()) {
+                return fallback(expectedFullName, expectedStudentCode, expectedUniversity, exception.getMessage());
+            }
             throw exception;
         } catch (IOException exception) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Unable to read the uploaded student card image");
         } catch (RestClientResponseException exception) {
+            if (failOpenOnError) {
+                return fallback(expectedFullName, expectedStudentCode, expectedUniversity,
+                        extractGoogleErrorMessage(exception.getResponseBodyAsString()));
+            }
             throw new ApiException(
                     HttpStatus.SERVICE_UNAVAILABLE,
                     extractGoogleErrorMessage(exception.getResponseBodyAsString()));
         } catch (RestClientException exception) {
+            if (failOpenOnError) {
+                return fallback(expectedFullName, expectedStudentCode, expectedUniversity,
+                        "Google Vision OCR request failed");
+            }
             throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "Google Vision OCR request failed");
         } catch (Exception exception) {
+            if (failOpenOnError) {
+                return fallback(expectedFullName, expectedStudentCode, expectedUniversity,
+                        "Google Vision OCR is unavailable");
+            }
             throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "Google Vision OCR is unavailable");
         }
     }

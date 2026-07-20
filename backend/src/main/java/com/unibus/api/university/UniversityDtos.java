@@ -211,6 +211,7 @@ public final class UniversityDtos {
             Long auditLogId,
             Integer performedByUserId,
             String performerName,
+            String performerRole,
             Integer universityId,
             String universityName,
             String action,

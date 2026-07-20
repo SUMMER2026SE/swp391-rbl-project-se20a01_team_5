@@ -115,6 +115,27 @@ public class UniversityManagementRepository {
         return findUniversity(universityId).orElseThrow();
     }
 
+    public void deleteUniversityWithConfiguration(Integer universityId) {
+        List<Integer> adminUserIds = jdbcTemplate.queryForList("""
+                SELECT user_id
+                FROM university_admins
+                WHERE university_id = ?
+                """, Integer.class, universityId);
+        jdbcTemplate.update("DELETE FROM route_universities WHERE university_id = ?", universityId);
+        jdbcTemplate.update("DELETE FROM subsidy_policies WHERE university_id = ?", universityId);
+        jdbcTemplate.update("DELETE FROM notification_campaigns WHERE university_id = ?", universityId);
+        jdbcTemplate.update("DELETE FROM university_domains WHERE university_id = ?", universityId);
+        jdbcTemplate.update("DELETE FROM university_student_rosters WHERE university_id = ?", universityId);
+        jdbcTemplate.update("DELETE FROM university_import_batches WHERE university_id = ?", universityId);
+        jdbcTemplate.update("UPDATE audit_logs SET university_id = NULL WHERE university_id = ?", universityId);
+        jdbcTemplate.update("DELETE FROM university_admins WHERE university_id = ?", universityId);
+        for (Integer userId : adminUserIds) {
+            deleteUniversityAdminUserIfOrphan(userId);
+        }
+        jdbcTemplate.update("DELETE FROM campuses WHERE university_id = ?", universityId);
+        jdbcTemplate.update("DELETE FROM universities WHERE university_id = ?", universityId);
+    }
+
     public List<CampusView> findCampuses(Integer universityId) {
         return jdbcTemplate.query("""
                 SELECT campus_id, university_id, code, name, address, latitude, longitude, status
@@ -140,6 +161,26 @@ public class UniversityManagementRepository {
                 WHERE campus_id = ?
                 """, (rs, rowNum) -> mapCampus(rs), campusId);
         return rows.stream().findFirst();
+    }
+
+    public int deleteCampus(Integer campusId, Integer universityId) {
+        jdbcTemplate.update("""
+                UPDATE route_universities
+                SET campus_id = NULL
+                WHERE campus_id = ?
+                  AND university_id = ?
+                """, campusId, universityId);
+        jdbcTemplate.update("""
+                UPDATE subsidy_policies
+                SET campus_id = NULL
+                WHERE campus_id = ?
+                  AND university_id = ?
+                """, campusId, universityId);
+        return jdbcTemplate.update("""
+                DELETE FROM campuses
+                WHERE campus_id = ?
+                  AND university_id = ?
+                """, campusId, universityId);
     }
 
     public List<DomainView> findDomains(Integer universityId) {
@@ -177,6 +218,14 @@ public class UniversityManagementRepository {
                 WHERE university_domain_id = ?
                 """, (rs, rowNum) -> mapDomain(rs), domainId);
         return rows.stream().findFirst();
+    }
+
+    public int deleteDomain(Integer domainId, Integer universityId) {
+        return jdbcTemplate.update("""
+                DELETE FROM university_domains
+                WHERE university_domain_id = ?
+                  AND university_id = ?
+                """, domainId, universityId);
     }
 
     public Optional<DomainMatch> findActiveDomainMatch(String emailDomain) {
@@ -676,6 +725,26 @@ public class UniversityManagementRepository {
         return rows.stream().findFirst();
     }
 
+    public int deleteUniversityAdmin(Integer universityAdminId) {
+        return jdbcTemplate.update("""
+                DELETE FROM university_admins
+                WHERE university_admin_id = ?
+                """, universityAdminId);
+    }
+
+    public int deleteUniversityAdminUserIfOrphan(Integer userId) {
+        return jdbcTemplate.update("""
+                DELETE FROM users
+                WHERE user_id = ?
+                  AND role = 'UNIVERSITY_ADMIN'
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM university_admins ua
+                      WHERE ua.user_id = users.user_id
+                  )
+                """, userId);
+    }
+
     public List<RouteUniversityView> findRouteUniversities(Integer universityId) {
         List<Object> params = new ArrayList<>();
         String where = "";
@@ -790,6 +859,20 @@ public class UniversityManagementRepository {
                 WHERE ru.route_university_id = ?
                 """, (rs, rowNum) -> mapRouteUniversity(rs), routeUniversityId);
         return rows.stream().findFirst();
+    }
+
+    public int deleteRouteUniversity(Integer routeUniversityId) {
+        return jdbcTemplate.update("""
+                DELETE FROM route_universities
+                WHERE route_university_id = ?
+                """, routeUniversityId);
+    }
+
+    public int deleteRouteUniversitiesForUniversity(Integer universityId) {
+        return jdbcTemplate.update("""
+                DELETE FROM route_universities
+                WHERE university_id = ?
+                """, universityId);
     }
 
     public Optional<RouteUniversityView> findRouteUniversityForUniversity(Integer routeUniversityId, Integer universityId) {
@@ -1177,7 +1260,9 @@ public class UniversityManagementRepository {
 
     public List<AuditLogView> findAuditLogs(Integer universityId, String action) {
         List<Object> params = new ArrayList<>();
-        StringBuilder where = new StringBuilder("WHERE 1 = 1\n");
+        StringBuilder where = new StringBuilder("""
+                WHERE performer.role = 'ADMIN'
+                """);
         if (universityId != null) {
             where.append("AND al.university_id = ?\n");
             params.add(universityId);
@@ -1188,6 +1273,7 @@ public class UniversityManagementRepository {
         }
         return jdbcTemplate.query("""
                 SELECT al.audit_log_id, al.performed_by_user_id, performer.full_name AS performer_name,
+                       performer.role AS performer_role,
                        al.university_id, u.name AS university_name, al.action, al.affected_table,
                        al.affected_record_id, al.result, al.request_id, al.notes, al.performed_at
                 FROM audit_logs al
@@ -1358,6 +1444,7 @@ public class UniversityManagementRepository {
                 rs.getLong("audit_log_id"),
                 rs.getInt("performed_by_user_id"),
                 rs.getString("performer_name"),
+                rs.getString("performer_role"),
                 (Integer) rs.getObject("university_id"),
                 rs.getString("university_name"),
                 rs.getString("action"),

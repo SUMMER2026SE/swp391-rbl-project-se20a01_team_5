@@ -22,6 +22,9 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.CellType;
@@ -44,6 +47,7 @@ import org.apache.poi.ss.util.CellRangeAddressList;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.http.HttpStatus;
 import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -112,6 +116,7 @@ public class UniversityManagementService {
     private static final String CSV_MIME = "text/csv";
     private static final int PREVIEW_LIMIT = 20;
     private static final long PREVIEW_TTL_MINUTES = 30L;
+    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
     private final Map<String, PreviewSession> rosterPreviewSessions = new ConcurrentHashMap<>();
 
     private static final Map<String, KnownUniversityDomain> KNOWN_UNIVERSITY_DOMAINS = Map.ofEntries(
@@ -164,6 +169,18 @@ public class UniversityManagementService {
         return updated;
     }
 
+    @Transactional
+    public void deleteUniversity(CurrentUser actor, Integer universityId) {
+        UniversityView existing = requireUniversity(universityId);
+        try {
+            repository.deleteUniversityWithConfiguration(universityId);
+        } catch (DataIntegrityViolationException ex) {
+            throw new ApiException(HttpStatus.CONFLICT,
+                    "Cannot delete this university because it is referenced by students, verifications, payments, or other records");
+        }
+        audit(actor, null, "UNIVERSITY_DELETE", "universities", universityId, "SUCCESS", existing.name());
+    }
+
     @Transactional(readOnly = true)
     public List<CampusView> listCampuses(Integer universityId) {
         requireUniversity(universityId);
@@ -183,6 +200,21 @@ public class UniversityManagementService {
                 defaultStatus(request.status()));
         audit(actor, universityId, "CAMPUS_CREATE", "campuses", created.campusId(), "SUCCESS", created.name());
         return created;
+    }
+
+    @Transactional
+    public void deleteCampus(CurrentUser actor, Integer universityId, Integer campusId) {
+        requireUniversity(universityId);
+        CampusView existing = repository.findCampus(campusId)
+                .filter(campus -> campus.universityId().equals(universityId))
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Campus not found"));
+        try {
+            repository.deleteCampus(campusId, universityId);
+        } catch (DataIntegrityViolationException ex) {
+            throw new ApiException(HttpStatus.CONFLICT,
+                    "Cannot delete this campus because it is referenced by existing records");
+        }
+        audit(actor, universityId, "CAMPUS_DELETE", "campuses", campusId, "SUCCESS", existing.name());
     }
 
     @Transactional(readOnly = true)
@@ -208,6 +240,15 @@ public class UniversityManagementService {
         DomainView updated = repository.updateDomainStatus(domainId, status);
         audit(actor, universityId, "DOMAIN_STATUS_UPDATE", "university_domains", domainId, "SUCCESS", status);
         return updated;
+    }
+
+    @Transactional
+    public void deleteDomain(CurrentUser actor, Integer universityId, Integer domainId) {
+        DomainView existing = repository.findDomain(domainId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Domain not found"));
+        requireSameUniversity(universityId, existing.universityId());
+        repository.deleteDomain(domainId, universityId);
+        audit(actor, universityId, "DOMAIN_DELETE", "university_domains", domainId, "SUCCESS", existing.domain());
     }
 
     @Transactional
@@ -242,6 +283,21 @@ public class UniversityManagementService {
     }
 
     @Transactional
+    public void deleteUniversityAdmin(CurrentUser actor, Integer universityAdminId) {
+        UniversityAdminView existing = repository.findUniversityAdmin(universityAdminId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "University admin not found"));
+        try {
+            repository.deleteUniversityAdmin(universityAdminId);
+            repository.deleteUniversityAdminUserIfOrphan(existing.userId());
+        } catch (DataIntegrityViolationException ex) {
+            throw new ApiException(HttpStatus.CONFLICT,
+                    "Cannot delete this university admin because the account is referenced by existing records");
+        }
+        audit(actor, existing.universityId(), "UNIVERSITY_ADMIN_DELETE", "university_admins",
+                universityAdminId, "SUCCESS", existing.email());
+    }
+
+    @Transactional
     public RouteUniversityView createRouteUniversity(CurrentUser actor, CreateRouteUniversityRequest request) {
         requireUniversity(request.universityId());
         requireRoute(request.routeId());
@@ -266,6 +322,23 @@ public class UniversityManagementService {
     @Transactional(readOnly = true)
     public List<RouteUniversityView> listRouteUniversities(Integer universityId) {
         return repository.findRouteUniversities(universityId);
+    }
+
+    @Transactional
+    public void deleteRouteUniversity(CurrentUser actor, Integer routeUniversityId) {
+        RouteUniversityView existing = repository.findRouteUniversity(routeUniversityId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Route-university link not found"));
+        repository.deleteRouteUniversity(routeUniversityId);
+        audit(actor, existing.universityId(), "ROUTE_UNIVERSITY_DELETE", "route_universities",
+                routeUniversityId, "SUCCESS", existing.routeName());
+    }
+
+    @Transactional
+    public void deleteRouteUniversitiesForUniversity(CurrentUser actor, Integer universityId) {
+        requireUniversity(universityId);
+        int deleted = repository.deleteRouteUniversitiesForUniversity(universityId);
+        audit(actor, universityId, "ROUTE_UNIVERSITY_DELETE_ALL", "route_universities",
+                universityId, "SUCCESS", deleted + " route links removed");
     }
 
     @Transactional(readOnly = true)
@@ -555,31 +628,31 @@ public class UniversityManagementService {
         for (RosterRow row : rows) {
             RowValidation validation = validateRosterRow(row);
             if (validation.errorMessage() != null) {
-                repository.addImportError(batchId, row.rowNumber(), validation.fieldName(), validation.rawValue(), validation.errorMessage());
+                repository.addImportError(batchId, row.rowNumber(), validation.fieldName(), rosterRowSnapshot(row), validation.errorMessage());
                 errors++;
                 continue;
             }
             String studentCode = normalizeStudentCode(row.studentCode());
             String studentCodeKey = studentCode.toUpperCase(Locale.ROOT);
             if (!seenStudentCodes.add(studentCodeKey)) {
-                repository.addImportError(batchId, row.rowNumber(), "studentCode", row.studentCode(), "MSSV is duplicated in this import file");
+                repository.addImportError(batchId, row.rowNumber(), "studentCode", rosterRowSnapshot(row), "MSSV is duplicated in this import file");
                 errors++;
                 continue;
             }
             String email = normalizeEmail(row.email());
             if (!seenEmails.add(email)) {
-                repository.addImportError(batchId, row.rowNumber(), "email", row.email(), "Email is duplicated in this import file");
+                repository.addImportError(batchId, row.rowNumber(), "email", rosterRowSnapshot(row), "Email is duplicated in this import file");
                 errors++;
                 continue;
             }
             String domain = emailDomain(email);
             if (domain == null || !repository.activeDomainBelongsToUniversity(universityId, domain)) {
-                repository.addImportError(batchId, row.rowNumber(), "email", row.email(), "Email domain does not belong to this university");
+                repository.addImportError(batchId, row.rowNumber(), "email", rosterRowSnapshot(row), "Email domain does not belong to this university");
                 errors++;
                 continue;
             }
             if (repository.rosterStudentCodeExistsForDifferentEmail(universityId, studentCode, email)) {
-                repository.addImportError(batchId, row.rowNumber(), "studentCode", row.studentCode(), "MSSV already exists for another student in this university");
+                repository.addImportError(batchId, row.rowNumber(), "studentCode", rosterRowSnapshot(row), "MSSV already exists for another student in this university");
                 errors++;
                 continue;
             }
@@ -742,53 +815,118 @@ public class UniversityManagementService {
     public ImportReportFile importBatchReport(Integer universityId, Long importBatchId) {
         ImportBatchView batch = requireImportBatch(universityId, importBatchId);
         List<RosterStudentView> createdRows = repository.findRoster(universityId, null, null, importBatchId);
-        StringBuilder csv = new StringBuilder("\uFEFF");
-        appendCsvRow(csv, List.of(
-                "rowNumber",
-                "studentCode",
-                "fullName",
-                "email",
-                "faculty",
-                "academicYear",
-                "status",
-                "importResult",
-                "errorCode",
-                "errorField",
-                "errorMessage",
-                "suggestion"));
-        int rowNumber = 2;
-        for (RosterStudentView student : createdRows) {
-            appendCsvRow(csv, List.of(
-                    String.valueOf(rowNumber++),
-                    excelText(student.studentCode()),
-                    nullToEmpty(student.fullName()),
-                    nullToEmpty(student.email()),
-                    nullToEmpty(student.faculty()),
-                    student.academicYear() == null ? "" : String.valueOf(student.academicYear()),
-                    nullToEmpty(student.status()),
-                    "CREATED",
-                    "",
-                    "",
-                    "",
-                    ""));
+        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            CellStyle headerStyle = workbook.createCellStyle();
+            Font headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            headerFont.setColor(IndexedColors.WHITE.getIndex());
+            headerStyle.setFont(headerFont);
+            headerStyle.setFillForegroundColor(IndexedColors.DARK_BLUE.getIndex());
+            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+            CellStyle textStyle = workbook.createCellStyle();
+            textStyle.setDataFormat(workbook.getCreationHelper().createDataFormat().getFormat("@"));
+
+            CellStyle createdStyle = workbook.createCellStyle();
+            Font createdFont = workbook.createFont();
+            createdFont.setBold(true);
+            createdFont.setColor(IndexedColors.GREEN.getIndex());
+            createdStyle.setFont(createdFont);
+
+            CellStyle errorStyle = workbook.createCellStyle();
+            Font errorFont = workbook.createFont();
+            errorFont.setBold(true);
+            errorFont.setColor(IndexedColors.RED.getIndex());
+            errorStyle.setFont(errorFont);
+
+            Sheet detailSheet = workbook.createSheet("Bao cao import");
+            List<String> headers = List.of(
+                    "rowNumber",
+                    "studentCode",
+                    "fullName",
+                    "email",
+                    "faculty",
+                    "academicYear",
+                    "status",
+                    "importResult",
+                    "errorCode",
+                    "errorField",
+                    "errorMessage",
+                    "suggestion");
+            Row headerRow = detailSheet.createRow(0);
+            for (int i = 0; i < headers.size(); i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(headers.get(i));
+                cell.setCellStyle(headerStyle);
+            }
+            int[] widths = { 3200, 5200, 7800, 9500, 6500, 4200, 4200, 4800, 7000, 5200, 12000, 12000 };
+            for (int i = 0; i < widths.length; i++) {
+                detailSheet.setColumnWidth(i, widths[i]);
+            }
+            detailSheet.setDefaultColumnStyle(1, textStyle);
+            detailSheet.createFreezePane(0, 1);
+
+            int rowIndex = 1;
+            int createdRowNumber = 2;
+            for (RosterStudentView student : createdRows) {
+                Row row = detailSheet.createRow(rowIndex++);
+                row.createCell(0).setCellValue(createdRowNumber++);
+                Cell studentCodeCell = row.createCell(1);
+                studentCodeCell.setCellValue(nullToEmpty(student.studentCode()));
+                studentCodeCell.setCellStyle(textStyle);
+                row.createCell(2).setCellValue(nullToEmpty(student.fullName()));
+                row.createCell(3).setCellValue(nullToEmpty(student.email()));
+                row.createCell(4).setCellValue(nullToEmpty(student.faculty()));
+                row.createCell(5).setCellValue(student.academicYear() == null ? "" : String.valueOf(student.academicYear()));
+                row.createCell(6).setCellValue(nullToEmpty(student.status()));
+                Cell resultCell = row.createCell(7);
+                resultCell.setCellValue("CREATED");
+                resultCell.setCellStyle(createdStyle);
+                row.createCell(8).setCellValue("-");
+                row.createCell(9).setCellValue("-");
+                row.createCell(10).setCellValue("-");
+                row.createCell(11).setCellValue("-");
+            }
+            for (ImportErrorView error : batch.errors()) {
+                Map<String, String> rawRow = importErrorRawRow(error);
+                Row row = detailSheet.createRow(rowIndex++);
+                row.createCell(0).setCellValue(error.rowNumber());
+                Cell studentCodeCell = row.createCell(1);
+                studentCodeCell.setCellValue(rawRowValue(rawRow, error, "studentCode"));
+                studentCodeCell.setCellStyle(textStyle);
+                row.createCell(2).setCellValue(rawRowValue(rawRow, error, "fullName"));
+                row.createCell(3).setCellValue(rawRowValue(rawRow, error, "email"));
+                row.createCell(4).setCellValue(rawRowValue(rawRow, error, "faculty"));
+                row.createCell(5).setCellValue(rawRowValue(rawRow, error, "academicYear"));
+                row.createCell(6).setCellValue(rawRowValue(rawRow, error, "status"));
+                Cell resultCell = row.createCell(7);
+                resultCell.setCellValue("ERROR");
+                resultCell.setCellStyle(errorStyle);
+                row.createCell(8).setCellValue(importErrorCode(error.errorMessage()));
+                row.createCell(9).setCellValue(nullToEmpty(error.fieldName()));
+                row.createCell(10).setCellValue(shortImportError(error.errorMessage(), error.fieldName()));
+                row.createCell(11).setCellValue(importErrorSuggestion(error.fieldName(), error.rowNumber()));
+            }
+            detailSheet.setAutoFilter(new CellRangeAddress(0, Math.max(1, rowIndex - 1), 0, headers.size() - 1));
+
+            Sheet summarySheet = workbook.createSheet("Tong quan");
+            writeSummaryRow(summarySheet, headerStyle, 0, "File", nullToEmpty(batch.fileName()));
+            writeSummaryRow(summarySheet, headerStyle, 1, "Trang thai", importStatusLabel(batch.status()));
+            writeSummaryRow(summarySheet, headerStyle, 2, "Tong so dong", String.valueOf(batch.totalRows()));
+            writeSummaryRow(summarySheet, headerStyle, 3, "Thanh cong", String.valueOf(batch.successRows()));
+            writeSummaryRow(summarySheet, headerStyle, 4, "Loi", String.valueOf(batch.errorRows()));
+            writeSummaryRow(summarySheet, headerStyle, 5, "Bo qua", String.valueOf(batch.skippedRows()));
+            writeSummaryRow(summarySheet, headerStyle, 6, "Hoan tat", batch.completedAt() == null ? "" : formatDateTime(batch.completedAt()));
+            summarySheet.setColumnWidth(0, 4800);
+            summarySheet.setColumnWidth(1, 11000);
+            workbook.setActiveSheet(0);
+
+            workbook.write(output);
+            String fileName = "bao-cao-import-sinh-vien_" + importBatchId + "_" + LocalDate.now() + ".xlsx";
+            return new ImportReportFile(fileName, output.toByteArray());
+        } catch (IOException exception) {
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Khong the tao bao cao import");
         }
-        for (ImportErrorView error : batch.errors()) {
-            appendCsvRow(csv, List.of(
-                    String.valueOf(error.rowNumber()),
-                    excelText(error.rawValue()),
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    "ERROR",
-                    nullToEmpty(error.errorMessage()),
-                    nullToEmpty(error.fieldName()),
-                    nullToEmpty(error.errorMessage()),
-                    "Kiểm tra lại dòng " + error.rowNumber() + " rồi import lại"));
-        }
-        String fileName = "bao-cao-import-sinh-vien_" + importBatchId + "_" + LocalDate.now() + ".csv";
-        return new ImportReportFile(fileName, csv.toString().getBytes(StandardCharsets.UTF_8));
     }
 
     @Transactional(readOnly = true)
@@ -1014,6 +1152,115 @@ public class UniversityManagementService {
             String result, String notes) {
         repository.audit(actor.userId(), universityId, action, table,
                 recordId == null ? null : String.valueOf(recordId), result, null, notes);
+    }
+
+    private void writeSummaryRow(Sheet sheet, CellStyle headerStyle, int rowIndex, String label, String value) {
+        Row row = sheet.createRow(rowIndex);
+        Cell labelCell = row.createCell(0);
+        labelCell.setCellValue(label);
+        labelCell.setCellStyle(headerStyle);
+        row.createCell(1).setCellValue(value == null ? "" : value);
+    }
+
+    private String importStatusLabel(String status) {
+        if (status == null || status.isBlank()) return "";
+        return switch (status.trim().toUpperCase(Locale.ROOT)) {
+            case "COMPLETED" -> "Hoan tat";
+            case "COMPLETED_WITH_ERRORS" -> "Hoan tat co loi";
+            case "FAILED" -> "That bai";
+            default -> status;
+        };
+    }
+
+    private String importFieldLabel(String fieldName) {
+        if (fieldName == null || fieldName.isBlank()) return "";
+        return switch (fieldName.trim()) {
+            case "studentCode" -> "MSSV";
+            case "fullName" -> "Ho ten";
+            case "email" -> "Email";
+            case "faculty" -> "Khoa";
+            case "academicYear" -> "Nam hoc";
+            case "status" -> "Trang thai";
+            default -> fieldName;
+        };
+    }
+
+    private boolean fieldLooksLikeStudentCode(String fieldName) {
+        return "studentCode".equals(fieldName);
+    }
+
+    private boolean fieldLooksLikeEmail(String fieldName) {
+        return "email".equals(fieldName);
+    }
+
+    private String rosterRowSnapshot(RosterRow row) {
+        try {
+            return JSON_MAPPER.writeValueAsString(row.raw());
+        } catch (JsonProcessingException exception) {
+            return row.raw().toString();
+        }
+    }
+
+    private Map<String, String> importErrorRawRow(ImportErrorView error) {
+        String rawValue = error.rawValue();
+        if (rawValue == null || rawValue.isBlank() || !rawValue.trim().startsWith("{")) {
+            return Map.of();
+        }
+        try {
+            Map<String, String> raw = JSON_MAPPER.readValue(rawValue, new TypeReference<>() {});
+            return raw == null ? Map.of() : raw;
+        } catch (IOException exception) {
+            return Map.of();
+        }
+    }
+
+    private String rawRowValue(Map<String, String> rawRow, ImportErrorView error, String fieldName) {
+        String value = rawRow.get(fieldName);
+        if (value != null && !value.isBlank()) {
+            return value;
+        }
+        if (fieldName.equals(error.fieldName()) && (error.rawValue() == null || !error.rawValue().trim().startsWith("{"))) {
+            String legacyValue = nullToEmpty(error.rawValue());
+            return legacyValue.isBlank() ? "-" : legacyValue;
+        }
+        return "-";
+    }
+
+    private String importErrorCode(String errorMessage) {
+        if (errorMessage == null || errorMessage.isBlank()) {
+            return "";
+        }
+        int colon = errorMessage.indexOf(':');
+        String code = colon >= 0 ? errorMessage.substring(0, colon) : errorMessage;
+        return code.trim();
+    }
+
+    private String shortImportError(String errorMessage, String fieldName) {
+        String field = importFieldLabel(fieldName);
+        if (field != null && !field.isBlank()) {
+            return field;
+        }
+        if (errorMessage == null || errorMessage.isBlank()) {
+            return "Loi du lieu";
+        }
+        int colon = errorMessage.indexOf(':');
+        String message = colon >= 0 ? errorMessage.substring(colon + 1) : errorMessage;
+        return message.trim();
+    }
+
+    private String importErrorSuggestion(String fieldName, int rowNumber) {
+        return switch (fieldName == null ? "" : fieldName) {
+            case "studentCode" -> "Kiem tra MSSV, khong de trong va khong trung";
+            case "email" -> "Kiem tra lai email va domain cua truong";
+            case "fullName" -> "Nhap ho ten sinh vien";
+            case "academicYear" -> "Nhap nam hoc dung dinh dang";
+            case "status" -> "Dung trang thai ACTIVE, INACTIVE, GRADUATED hoac SUSPENDED";
+            default -> "Kiem tra lai dong " + rowNumber + " roi import lai";
+        };
+    }
+
+    private String formatDateTime(OffsetDateTime value) {
+        return value == null ? "" : value.format(DateTimeFormatter.ofPattern("HH:mm dd/MM/yyyy"));
     }
 
     private void appendCsvRow(StringBuilder csv, List<String> values) {
@@ -1583,7 +1830,7 @@ public class UniversityManagementService {
             List<RosterImportPreviewErrorView> rowErrors = validateRosterPreviewRow(row, universityId, seenStudentCodes, seenEmails);
             if (!rowErrors.isEmpty()) {
                 for (RosterImportPreviewErrorView error : rowErrors) {
-                    repository.addImportError(batchId, row.rowNumber(), error.field(), error.value(), error.code() + ": " + error.message());
+                    repository.addImportError(batchId, row.rowNumber(), error.field(), rosterRowSnapshot(row), error.code() + ": " + error.message());
                 }
                 errors++;
                 continue;
@@ -1593,7 +1840,7 @@ public class UniversityManagementService {
                         batchId,
                         row.rowNumber(),
                         "studentCode",
-                        row.studentCode(),
+                        rosterRowSnapshot(row),
                         "SKIPPED_EXISTING: MSSV đã tồn tại nên được bỏ qua trong chế độ ADD_NEW_ONLY");
                 errors++;
             }
