@@ -174,6 +174,21 @@ class AiCopilotServiceTests {
     }
 
     @Test
+    void affirmativeRouteFollowUpReusesPreviousUserRequest() {
+        String previousRequest = "Tôi muốn đi từ Trung tâm đến Cổng trường";
+        ChatResponse response = chatbotService.respond(1, new ChatRequest(
+                "có",
+                Map.of("conversationHistory", java.util.List.of(
+                        Map.of("role", "user", "content", previousRequest),
+                        Map.of("role", "assistant", "content", "Bạn có muốn mình tra tuyến này không?"),
+                        Map.of("role", "user", "content", "có")))));
+
+        assertThat(response.advisoryType()).isEqualTo("ROUTE_SUGGESTION");
+        assertThat(response.mode()).isEqualTo("TOOL_ASSISTED");
+        assertThat(response.routeSuggestions()).extracting("routeId").containsExactly(300);
+    }
+
+    @Test
     void chatUsesLlmResponseAndPersistsBothTurns() {
         ChatResponse response = chatbotService.respond(1, new ChatRequest(
                 "Sáng nay tôi muốn tới trường, hãy phân tích vì sao tuyến này tối ưu, rẻ và phù hợp nhất.",

@@ -113,17 +113,20 @@ public class ChatbotService {
 
     private ChatResponse runConversation(Integer userId, ChatRequest request, StreamSink sink) {
         String userMessage = request.message() == null ? "" : request.message().trim();
-        AiIntent detectedType = intentRouter.detect(userMessage);
+        String routeMessage = contextualRouteMessage(userMessage, request.context());
+        boolean reusedRouteRequest = !routeMessage.equals(userMessage);
+        ChatRequest effectiveRequest = reusedRouteRequest ? new ChatRequest(routeMessage, request.context()) : request;
+        AiIntent detectedType = intentRouter.detect(routeMessage);
         AiIntent advisoryType = detectedType == AiIntent.OTHER && hasStopPair(request.context())
                 ? AiIntent.ROUTE_SUGGESTION
                 : detectedType;
-        RouteEndpoints parsedEndpoints = advisoryType == AiIntent.ROUTE_SUGGESTION ? routeEndpoints(userMessage) : null;
+        RouteEndpoints parsedEndpoints = advisoryType == AiIntent.ROUTE_SUGGESTION ? routeEndpoints(routeMessage) : null;
         if (parsedEndpoints != null && needsCampusClarification(parsedEndpoints)) {
             return quickResponse(sink, advisoryType,
                     "Bạn muốn đến Duy Tân 254 Nguyễn Văn Linh hay cơ sở khác?");
         }
         List<RouteSuggestionCard> journeyRoutes = advisoryType == AiIntent.ROUTE_SUGGESTION
-                ? journeyRouteSuggestions(userId, userMessage, request, parsedEndpoints)
+                ? journeyRouteSuggestions(userId, routeMessage, effectiveRequest, parsedEndpoints)
                 : List.of();
         sink.emit("assistant.started", streamEvent("assistant.started", null, null, null,
                 advisoryType, List.of(), List.of(), List.of(), List.of(), null, null));
@@ -151,9 +154,9 @@ public class ChatbotService {
         }
 
         RouteSuggestionRequest routeRequest = journeyRoutes.isEmpty()
-                ? routeRequestFromChat(userId, request, advisoryType)
-                : new RouteSuggestionRequest(null, null, null, preferences(request), userMessage, null);
-        if (journeyRoutes.isEmpty() && shouldClarifyRouteRequest(advisoryType, routeRequest, userMessage)) {
+                ? routeRequestFromChat(userId, effectiveRequest, advisoryType)
+                : new RouteSuggestionRequest(null, null, null, preferences(effectiveRequest), routeMessage, null);
+        if (journeyRoutes.isEmpty() && shouldClarifyRouteRequest(advisoryType, routeRequest, routeMessage)) {
             String message = routeClarificationMessage(routeRequest);
             String sessionId = UUID.randomUUID().toString();
             sink.emit("fast_reply", streamEvent("fast_reply", message, null,
@@ -187,7 +190,7 @@ public class ChatbotService {
         } else if (advisoryType == AiIntent.FARE_LOOKUP || advisoryType == AiIntent.SCHEDULE_LOOKUP) {
             routeSuggestions = routeSuggestionService.findByReference(userId,
                     intValue(request.context() == null ? null : request.context().get("routeId")), userMessage).stream().toList();
-        } else if (shouldLoadRoutes(advisoryType, routeRequest, userMessage)) {
+        } else if (shouldLoadRoutes(advisoryType, routeRequest, routeMessage)) {
             ToolTimer routeTimer = toolStarted(sink, traceEvents, "route_suggestions", "Tuyến, trạm và lịch chạy", "Tìm tuyến phù hợp từ dữ liệu UniBus");
             routeSuggestions = routeSuggestionService.suggest(userId, routeRequest).stream().limit(3).toList();
             toolCompleted(sink, traceEvents, routeTimer, routeSuggestions.size() + " tuyến phù hợp");
@@ -201,7 +204,8 @@ public class ChatbotService {
         context.put("sources", sources);
         context.put("clientContext", request.context());
 
-        boolean toolAssistedAnswer = shouldUseToolAssistedAnswer(userMessage, advisoryType, registration, activeTicket, routeSuggestions);
+        boolean toolAssistedAnswer = reusedRouteRequest
+                || shouldUseToolAssistedAnswer(routeMessage, advisoryType, registration, activeTicket, routeSuggestions);
         String mode;
         LlmMessage llmMessage;
         AiProviderStatus providerStatus = null;
@@ -297,6 +301,30 @@ public class ChatbotService {
             log.debug("Unable to resolve chatbot journey route", exception);
         }
         return List.of();
+    }
+
+    private String contextualRouteMessage(String userMessage, Map<String, Object> context) {
+        if (!isAffirmative(userMessage) || context == null || !(context.get("conversationHistory") instanceof List<?> history)) {
+            return userMessage;
+        }
+        for (int index = history.size() - 1; index >= 0; index--) {
+            if (!(history.get(index) instanceof Map<?, ?> turn)
+                    || !"user".equalsIgnoreCase(String.valueOf(turn.get("role")))) {
+                continue;
+            }
+            String content = stringValue(turn.get("content"));
+            if (content == null || isAffirmative(content)) {
+                continue;
+            }
+            if (intentRouter.detect(content) == AiIntent.ROUTE_SUGGESTION && routeEndpoints(content) != null) {
+                return content.trim();
+            }
+        }
+        return userMessage;
+    }
+
+    private boolean isAffirmative(String message) {
+        return List.of("co", "duoc", "dong y", "ok", "oke", "yes").contains(normalizeSearchText(message));
     }
 
     private RouteEndpoints routeEndpoints(String message) {
