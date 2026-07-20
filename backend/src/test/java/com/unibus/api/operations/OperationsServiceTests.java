@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
@@ -157,12 +158,13 @@ class OperationsServiceTests {
     }
 
     private TripRouteInfo openTrip(Integer routeId) {
+        LocalDateTime scheduledStart = LocalDateTime.now(BUSINESS_ZONE).minusMinutes(5);
         return new TripRouteInfo(
                 TRIP_ID,
                 routeId,
-                LocalDate.now(BUSINESS_ZONE),
-                LocalTime.now(BUSINESS_ZONE).minusMinutes(5),
-                OffsetDateTime.now(ZoneOffset.UTC).minusMinutes(5),
+                scheduledStart.toLocalDate(),
+                scheduledStart.toLocalTime(),
+                scheduledStart.atZone(BUSINESS_ZONE).toOffsetDateTime(),
                 null,
                 "RUNNING");
     }

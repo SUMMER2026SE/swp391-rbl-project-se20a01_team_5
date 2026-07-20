@@ -189,6 +189,27 @@ Fix lỗi Next.js 16 khi build trang `/student/payment/result` do page dùng
 
 ---
 
+# Changelog: Ổn định test quét vé phụ xe khi chạy CI UTC
+
+## Tóm tắt
+- Giữ nguyên luồng quét vé của phụ xe và sửa test bị phụ thuộc thời điểm chạy gần nửa đêm theo múi giờ nghiệp vụ.
+
+## Nguyên nhân
+- Helper test tạo `serviceDate` bằng ngày hiện tại nhưng tạo `departureTime` bằng giờ hiện tại trừ 5 phút.
+- Trong 5 phút đầu ngày, giờ lùi về `23:xx` của ngày trước trong khi ngày vẫn là ngày mới.
+- CI hiểu chuyến còn gần 24 giờ mới khởi hành và trả `Chưa đến thời gian quét vé` trước khi chạy các assertion vé tháng/vé lượt.
+
+## Thay đổi
+- Tạo một `LocalDateTime` duy nhất trong `Asia/Ho_Chi_Minh`, lùi 5 phút rồi lấy cả ngày và giờ từ cùng giá trị.
+- Tạo `departedAt` từ chính thời điểm nghiệp vụ đó để dữ liệu test nhất quán giữa máy local và GitHub Actions UTC.
+- Dọn import thời gian bị trùng sau khi merge.
+
+## Kiểm tra
+- `OperationsServiceTests` với JVM timezone UTC: 5/5 tests đạt.
+- Backend full test với JVM timezone UTC: 125/125 tests đạt.
+
+---
+
 # Changelog: Luồng mua vé sinh viên theo tuyến và hành trình
 
 ## Tóm tắt
