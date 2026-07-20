@@ -5068,7 +5068,6 @@ function HistoryScreen({ ctx }: { ctx: Ctx }) {
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Lịch sử chuyến đi"
-        description="Chọn một chuyến để đánh giá hoặc báo mất đồ."
         icon={<History className="size-7" />}
       />
 
