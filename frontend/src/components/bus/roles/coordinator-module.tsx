@@ -4,7 +4,7 @@
 // Coordinator Module — UniBus (M3 Expressive, aligned to UIPrototype v1.1)
 // 10 role-specific screens:
 //   crd-dashboard, crd-live-map, crd-schedule, crd-assign-driver, crd-assign-bus,
-//   crd-routes, crd-stops, crd-by-university, crd-feedback, crd-notify
+//   crd-routes, crd-by-university, crd-feedback, crd-notify
 // Visual: keeps prototype v1.1 (hero perk card, live fleet map, weekly schedule
 // grid, route edit dialog, feedback queue, broadcast notify).
 // Data: real backend via /coordinator/* and /operations/* endpoints.
@@ -15,7 +15,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard,
   MapPin,
-  MapPinned,
   Navigation,
   Calendar,
   CalendarClock,
@@ -201,7 +200,7 @@ export function CoordinatorModule({ activeId, onNavigate }: CoordinatorModulePro
       case "crd-routes":
         return <RoutesScreen ctx={ctx} />;
       case "crd-stops":
-        return <StopsScreen ctx={ctx} />;
+        return <RoutesScreen ctx={ctx} />;
       case "crd-by-university":
         return <ByUniversityScreen onNavigate={onNavigate} />;
       case "crd-feedback":
@@ -455,14 +454,6 @@ function DashboardScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: strin
       icon: RouteIcon,
       color: "border-amber-500/20 bg-amber-500/5 hover:border-amber-500/40 hover:bg-amber-500/10 text-amber-700 dark:text-amber-400",
       buttonText: "Danh sách tuyến",
-    },
-    {
-      id: "crd-stops",
-      title: "Hệ thống trạm dừng",
-      description: "Quản lý vị trí các trạm đón trả khách trên bản đồ, nhà chờ và kết nối trạm vào các tuyến đường.",
-      icon: MapPinned,
-      color: "border-cyan-500/20 bg-cyan-500/5 hover:border-cyan-500/40 hover:bg-cyan-500/10 text-cyan-700 dark:text-cyan-400",
-      buttonText: "Quản lý trạm",
     },
     {
       id: "crd-by-university",
@@ -1854,25 +1845,6 @@ function NewShiftCard({
 // =============================================================================
 // Screen 6: Routes management (CRUD)
 // =============================================================================
-function routeOperationalDetails(route: RouteListItem, lookup?: any) {
-  const description = route.description || '';
-  const operationTime = description.match(/operationTime=([^|]+)/i)?.[1]?.trim();
-  const outbound = description.match(/outBound=([^|]+)/i)?.[1]?.trim();
-  const inbound = description.match(/inBound=([^|]+)/i)?.[1]?.trim();
-  const firstTrip = lookup?.firstTrip;
-  const lastTrip = lookup?.lastTrip;
-  const estimatedMinutes = Number(route.estimatedMinutes || lookup?.estimatedMinutes);
-
-  return {
-    serviceTime: firstTrip && lastTrip ? firstTrip + ' – ' + lastTrip : operationTime,
-    frequency: Number(lookup?.frequencyMin) > 0 ? Number(lookup.frequencyMin) + ' phút/chuyến' : undefined,
-    stopCount: Number(lookup?.stopCount) > 0 ? Number(lookup.stopCount) : undefined,
-    estimatedMinutes: estimatedMinutes > 0 ? estimatedMinutes : undefined,
-    direction: outbound || inbound || 'Lộ trình hai chiều đang cập nhật',
-    routeCode: lookup?.routeCode,
-  };
-}
-
 function RoutesScreen({ ctx }: { ctx: Ctx }) {
   const [routes, setRoutes] = useState<RouteListItem[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1883,10 +1855,9 @@ function RoutesScreen({ ctx }: { ctx: Ctx }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await coordinatorRoutesApi.getRoutes();
-      setRoutes(r);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Không tải được tuyến");
+      setRoutes(await coordinatorRoutesApi.getRoutes());
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không tải được tuyến");
     } finally {
       setLoading(false);
     }
@@ -1900,8 +1871,8 @@ function RoutesScreen({ ctx }: { ctx: Ctx }) {
       toast.success("Đã xóa tuyến");
       setDeleting(null);
       load();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Không thể xóa");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể xóa tuyến");
     }
   };
 
@@ -1909,40 +1880,28 @@ function RoutesScreen({ ctx }: { ctx: Ctx }) {
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
         title="Tuyến xe"
-        description="Quản lý tuyến đường."
+        description="Quản lý thông tin tuyến và các trạm dừng trên tuyến."
         icon={<RouteIcon className="size-7" />}
         actions={<ExpressiveButton variant="filled" onClick={() => setAdding(true)}><Plus className="size-4" /> Thêm tuyến</ExpressiveButton>}
       />
-      {loading ? (
-        <LoadingScreen />
-      ) : !routes || routes.length === 0 ? (
-        <EmptyState icon={<RouteIcon className="size-7" />} title="Chưa có tuyến" />
+      {loading ? <LoadingScreen /> : !routes?.length ? (
+        <EmptyState icon={<RouteIcon className="size-7" />} title="Chưa có tuyến" action={<ExpressiveButton variant="filled" onClick={() => setAdding(true)}><Plus className="size-4" /> Thêm tuyến</ExpressiveButton>} />
       ) : (
         <StaggerGroup className="space-y-3 min-w-0">
-          {routes.map((r) => {
-            const lookup = (ctx.routes || []).find((item: any) => Number(item.routeId || item.id) === r.id || item.routeName === r.routeName);
-            const details = routeOperationalDetails(r, lookup);
+          {routes.map((route) => {
+            const lookup = (ctx.routes || []).find((item: any) => Number(item.routeId || item.id) === route.id || item.routeName === route.routeName);
+            const frequencyMinutes = Number(lookup?.frequencyMin) || Number(route.estimatedMinutes) || 0;
             return (
-              <StaggerItem key={r.id}>
+              <StaggerItem key={route.id}>
                 <ExpressiveCard variant="elevated" className="p-4 min-w-0">
-                  <div className="flex items-start justify-between gap-3 min-w-0">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        {details.routeCode && <span className="rounded-full bg-primary-container px-2 py-0.5 text-[11px] font-bold text-on-primary-container">Tuyến {details.routeCode}</span>}
-                        <p className="font-bold text-on-surface truncate">{r.routeName}</p>
-                      </div>
-                      <p className="mt-1 text-xs text-on-surface-variant line-clamp-1">Lượt đi: {details.direction}</p>
-                      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-on-surface-variant">
-                        {details.serviceTime && <span className="flex items-center gap-1"><Clock className="size-3" /> Hoạt động {details.serviceTime}</span>}
-                        {details.frequency && <span className="flex items-center gap-1"><RefreshCw className="size-3" /> Mỗi {details.frequency}</span>}
-                        {details.stopCount && <span className="flex items-center gap-1"><MapPin className="size-3" /> {details.stopCount} trạm</span>}
-                        {details.estimatedMinutes && <span className="flex items-center gap-1"><Gauge className="size-3" /> Khoảng {details.estimatedMinutes} phút/chuyến</span>}
-                        <M3StatusPill label={r.status === "ACTIVE" ? "Đang hoạt động" : r.status} tone={r.status === "ACTIVE" ? "success" : "neutral"} />
-                      </div>
+                  <div className="flex items-center justify-between gap-3 min-w-0">
+                    <div className="min-w-0">
+                      <p className="font-bold text-on-surface truncate">{route.routeName}</p>
+                      <p className="mt-1 text-sm text-primary font-semibold">{frequencyMinutes > 0 ? `Mỗi ${frequencyMinutes} phút/chuyến` : "Tần suất đang cập nhật"}</p>
                     </div>
                     <div className="flex gap-1 shrink-0">
-                      <ExpressiveButton variant="text" size="icon-sm" onClick={() => setEditing(r)}><Edit className="size-4" /></ExpressiveButton>
-                      <ExpressiveButton variant="text" size="icon-sm" onClick={() => setDeleting(r.id)}><Trash2 className="size-4 text-error" /></ExpressiveButton>
+                      <ExpressiveButton variant="text" size="icon-sm" onClick={() => setEditing(route)} aria-label={`Chỉnh sửa ${route.routeName}`}><Edit className="size-4" /></ExpressiveButton>
+                      <ExpressiveButton variant="text" size="icon-sm" onClick={() => setDeleting(route.id)} aria-label={`Xóa ${route.routeName}`}><Trash2 className="size-4 text-error" /></ExpressiveButton>
                     </div>
                   </div>
                 </ExpressiveCard>
@@ -1952,25 +1911,24 @@ function RoutesScreen({ ctx }: { ctx: Ctx }) {
         </StaggerGroup>
       )}
 
-      <Dialog open={adding || !!editing} onOpenChange={(o) => { if (!o) { setAdding(false); setEditing(null); } }}>
+      <Dialog open={adding || !!editing} onOpenChange={(open) => { if (!open) { setAdding(false); setEditing(null); } }}>
         <RouteEditDialog
+          key={editing?.id ?? "new"}
           route={editing}
           onClose={() => { setAdding(false); setEditing(null); }}
           onSaved={() => { setAdding(false); setEditing(null); load(); }}
         />
       </Dialog>
 
-      <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
+      <AlertDialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Xóa tuyến?</AlertDialogTitle>
-            <AlertDialogDescription>Hành động này không thể hoàn tác. Tất cả trạm trên tuyến cũng sẽ bị xóa.</AlertDialogDescription>
+            <AlertDialogDescription>Hành động này không thể hoàn tác. Các trạm thuộc tuyến cũng sẽ bị xóa.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Hủy</AlertDialogCancel>
-            <AlertDialogAction onClick={() => deleting && remove(deleting)} className="bg-error text-on-error hover:bg-error/90">
-              Xóa
-            </AlertDialogAction>
+            <AlertDialogAction onClick={() => deleting && remove(deleting)} className="bg-error text-on-error hover:bg-error/90">Xóa</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1978,290 +1936,177 @@ function RoutesScreen({ ctx }: { ctx: Ctx }) {
   );
 }
 
+type RouteStopDraft = {
+  key: string;
+  id?: number;
+  stopId?: number;
+  stopOrder?: number;
+  originalStopName?: string;
+  originalMinutesFromPreviousStop?: number;
+  stopName: string;
+  minutesFromPreviousStop: string;
+};
+
+const createRouteStopDraft = (stopOrder?: number): RouteStopDraft => ({
+  key: `new-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  stopOrder,
+  stopName: "",
+  minutesFromPreviousStop: "0",
+});
+
 function RouteEditDialog({ route, onClose, onSaved }: { route: RouteListItem | null; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState(route?.routeName || "");
   const [description, setDescription] = useState(route?.description || "");
   const [minutes, setMinutes] = useState(String(route?.estimatedMinutes || 30));
+  const [stops, setStops] = useState<RouteStopDraft[]>([]);
+  const [removedStopIds, setRemovedStopIds] = useState<number[]>([]);
+  const [loadingStops, setLoadingStops] = useState(Boolean(route));
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!route) return;
+    let active = true;
+    coordinatorRoutesApi.getRouteStops(route.id)
+      .then((result) => {
+        if (!active) return;
+        setStops(result
+          .sort((left, right) => left.stopOrder - right.stopOrder)
+          .map((stop) => ({
+            key: `saved-${stop.id}`,
+            id: stop.id,
+            stopId: stop.stopId,
+            stopOrder: stop.stopOrder,
+            originalStopName: stop.stopName,
+            originalMinutesFromPreviousStop: stop.minutesFromPreviousStop || 0,
+            stopName: stop.stopName,
+            minutesFromPreviousStop: String(stop.minutesFromPreviousStop || 0),
+          })));
+      })
+      .catch((error) => toast.error(error instanceof Error ? error.message : "Không tải được trạm của tuyến"))
+      .finally(() => { if (active) setLoadingStops(false); });
+    return () => { active = false; };
+  }, [route]);
+
+  const updateStop = (key: string, patch: Partial<RouteStopDraft>) => {
+    setStops((current) => current.map((stop) => stop.key === key ? { ...stop, ...patch } : stop));
+  };
+
+  const removeStop = (stop: RouteStopDraft) => {
+    if (stop.id) setRemovedStopIds((current) => [...current, stop.id!]);
+    setStops((current) => current.filter((item) => item.key !== stop.key));
+  };
 
   const save = async () => {
     if (!name.trim()) {
       toast.error("Vui lòng nhập tên tuyến");
       return;
     }
+    if (stops.some((stop) => !stop.stopName.trim())) {
+      toast.error("Vui lòng nhập tên cho mọi trạm dừng");
+      return;
+    }
+
     setSaving(true);
     try {
-      if (route) {
-        await coordinatorRoutesApi.updateRoute(route.id, {
-          routeName: name.trim(),
-          description: description.trim(),
-          estimatedMinutes: Number(minutes) || 30,
-        });
-      } else {
-        await coordinatorRoutesApi.createRoute({
-          routeName: name.trim(),
-          description: description.trim(),
-          estimatedMinutes: Number(minutes) || 30,
-        });
+      const routeData = {
+        routeName: name.trim(),
+        description: description.trim(),
+        estimatedMinutes: Number(minutes) || 30,
+      };
+      const savedRoute = route
+        ? await coordinatorRoutesApi.updateRoute(route.id, routeData)
+        : await coordinatorRoutesApi.createRoute(routeData);
+
+      for (const stopId of removedStopIds) {
+        await coordinatorRoutesApi.deleteStop(savedRoute.id, stopId);
       }
-      toast.success(route ? "Đã cập nhật" : "Đã thêm tuyến");
-      onSaved();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Không thể lưu");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <DialogContent>
-      <DialogHeader>
-        <DialogTitle>{route ? "Sửa tuyến" : "Thêm tuyến mới"}</DialogTitle>
-        <DialogDescription>Nhập thông tin tuyến.</DialogDescription>
-      </DialogHeader>
-      <div className="space-y-3 py-2">
-        <div>
-          <Label className="text-xs font-bold">Tên tuyến</Label>
-          <Input className="mt-1.5" value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Tuyến xanh Duy Tân" />
-        </div>
-        <div>
-          <Label className="text-xs font-bold">Mô tả</Label>
-          <Textarea className="mt-1.5" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
-        </div>
-        <div>
-          <Label className="text-xs font-bold">Thời gian dự kiến (phút)</Label>
-          <Input className="mt-1.5" type="number" value={minutes} onChange={(e) => setMinutes(e.target.value)} />
-        </div>
-      </div>
-      <DialogFooter>
-        <ExpressiveButton variant="text" onClick={onClose} disabled={saving}>Hủy</ExpressiveButton>
-        <ExpressiveButton variant="filled" onClick={save} disabled={saving}>
-          {saving ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
-          Lưu
-        </ExpressiveButton>
-      </DialogFooter>
-    </DialogContent>
-  );
-}
-
-// =============================================================================
-// Screen 7: Stops management
-// =============================================================================
-function StopsScreen({ ctx }: { ctx: Ctx }) {
-  const [routes, setRoutes] = useState<RouteListItem[]>([]);
-  const [selectedRouteId, setSelectedRouteId] = useState<number | null>(null);
-  const [stops, setStops] = useState<RouteStopDto[] | null>(null);
-  const [loadingRoutes, setLoadingRoutes] = useState(true);
-  const [routeError, setRouteError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [adding, setAdding] = useState(false);
-  const [deleting, setDeleting] = useState<number | null>(null);
-
-  const loadRoutes = useCallback(async () => {
-    setLoadingRoutes(true);
-    setRouteError(null);
-    try {
-      const r = await coordinatorRoutesApi.getRoutes();
-      setRoutes(r);
-    } catch (e) {
-      setRoutes([]);
-      setRouteError(e instanceof Error ? e.message : "Không thể tải danh sách tuyến");
-    } finally {
-      setLoadingRoutes(false);
-    }
-  }, []);
-
-  useEffect(() => { loadRoutes(); }, [loadRoutes]);
-
-  useEffect(() => {
-    if (!selectedRouteId && routes.length > 0) setSelectedRouteId(routes[0].id);
-  }, [routes, selectedRouteId]);
-
-  const load = useCallback(async () => {
-    if (!selectedRouteId) {
-      setStops([]);
-      return;
-    }
-    setLoading(true);
-    try {
-      const s = await coordinatorRoutesApi.getRouteStops(selectedRouteId);
-      setStops(s);
-    } catch {
-      setStops([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedRouteId]);
-
-  useEffect(() => { load(); }, [load]);
-
-  const remove = async (stopId: number) => {
-    if (!selectedRouteId) return;
-    try {
-      await coordinatorRoutesApi.deleteStop(selectedRouteId, stopId);
-      toast.success("Đã xóa trạm");
-      setDeleting(null);
-      load();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Không thể xóa");
-    }
-  };
-
-  return (
-    <PageTransition className="space-y-6 min-w-0">
-      <PageHeader
-        title="Trạm dừng"
-        description="Quản lý trạm trên từng tuyến."
-        icon={<MapPin className="size-7" />}
-        actions={
-          <div className="flex items-center gap-2">
-            <Select
-              value={selectedRouteId ? String(selectedRouteId) : ""}
-              onValueChange={(v) => setSelectedRouteId(Number(v))}
-              disabled={loadingRoutes || routes.length === 0}
-            >
-              <SelectTrigger className="w-full sm:w-72">
-                <SelectValue placeholder={loadingRoutes ? "Đang tải tuyến..." : "Chọn tuyến"} />
-              </SelectTrigger>
-              <SelectContent>
-                {routes.map((r) => (
-                  <SelectItem key={r.id} value={String(r.id)}>
-                    {r.routeName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {routeError && (
-              <ExpressiveButton variant="tonal" size="sm" onClick={loadRoutes}>
-                <RefreshCw className="size-4" /> Tải lại
-              </ExpressiveButton>
-            )}
-          </div>
+      const nextStopOrder = Math.max(0, ...stops.map((stop) => stop.stopOrder || 0)) + 1;
+      for (const [index, stop] of stops.entries()) {
+        const minutesFromPreviousStop = index === 0 ? 0 : Number(stop.minutesFromPreviousStop) || 0;
+        const stopData = {
+          stopName: stop.stopName.trim(),
+          stopOrder: stop.stopOrder || nextStopOrder,
+          minutesFromPreviousStop,
+        };
+        if (stop.id) {
+          const unchanged = stop.originalStopName === stopData.stopName
+            && stop.originalMinutesFromPreviousStop === minutesFromPreviousStop;
+          if (!unchanged) {
+            await coordinatorRoutesApi.updateStop(savedRoute.id, stop.id, { id: stop.id, stopId: stop.stopId, ...stopData });
+          }
+        } else {
+          await coordinatorRoutesApi.addStop(savedRoute.id, stopData);
         }
-      />
-      {routes.length === 0 && !loadingRoutes ? (
-        <EmptyState
-          icon={<RouteIcon className="size-7" />}
-          title="Chưa có tuyến"
-          description="Cần tạo tuyến trước khi thêm trạm dừng."
-          action={<ExpressiveButton variant="filled" onClick={() => toast.info("Vào mục Quản lý tuyến đường để tạo tuyến trước")}>Tạo tuyến ở mục tuyến đường</ExpressiveButton>}
-        />
-      ) : loading ? (
-        <LoadingScreen />
-      ) : !stops || stops.length === 0 ? (
-        <EmptyState
-          icon={<MapPin className="size-7" />}
-          title="Chưa có trạm"
-          description="Tuyến này chưa có trạm nào."
-          action={<ExpressiveButton variant="filled" disabled={!selectedRouteId} onClick={() => setAdding(true)}><Plus className="size-4" /> Thêm trạm</ExpressiveButton>}
-        />
-      ) : (
-        <>
-          <div className="flex justify-end">
-            <ExpressiveButton variant="filled" onClick={() => setAdding(true)}><Plus className="size-4" /> Thêm trạm</ExpressiveButton>
-          </div>
-          <StaggerGroup className="space-y-3 min-w-0">
-            {stops.map((s) => (
-              <StaggerItem key={s.id}>
-                <ExpressiveCard variant="elevated" className="p-4 min-w-0">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="size-8 shrink-0 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center font-bold text-sm">
-                      {s.stopOrder}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold truncate">{s.stopName}</p>
-                      <p className="text-xs text-on-surface-variant">+{s.minutesFromPreviousStop} phút từ trạm trước</p>
-                    </div>
-                    <ExpressiveButton variant="text" size="icon-sm" onClick={() => setDeleting(s.id)}>
-                      <Trash2 className="size-4 text-error" />
-                    </ExpressiveButton>
-                  </div>
-                </ExpressiveCard>
-              </StaggerItem>
-            ))}
-          </StaggerGroup>
-        </>
-      )}
-
-      <Dialog open={adding} onOpenChange={setAdding}>
-        <StopAddDialog
-          routeId={selectedRouteId!}
-          onClose={() => setAdding(false)}
-          onAdded={() => { setAdding(false); load(); }}
-        />
-      </Dialog>
-
-      <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Xóa trạm?</AlertDialogTitle>
-            <AlertDialogDescription>Trạm sẽ bị xóa khỏi tuyến.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Hủy</AlertDialogCancel>
-            <AlertDialogAction onClick={() => deleting && remove(deleting)} className="bg-error text-on-error hover:bg-error/90">
-              Xóa
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </PageTransition>
-  );
-}
-
-function StopAddDialog({ routeId, onClose, onAdded }: { routeId: number; onClose: () => void; onAdded: () => void }) {
-  const [stopName, setStopName] = useState("");
-  const [stopOrder, setStopOrder] = useState("1");
-  const [minutes, setMinutes] = useState("0");
-  const [saving, setSaving] = useState(false);
-
-  const save = async () => {
-    if (!stopName.trim()) {
-      toast.error("Vui lòng nhập tên trạm");
-      return;
-    }
-    setSaving(true);
-    try {
-      await coordinatorRoutesApi.addStop(routeId, {
-        stopName: stopName.trim(),
-        stopOrder: Number(stopOrder) || 1,
-        minutesFromPreviousStop: Number(minutes) || 0,
-      });
-      toast.success("Đã thêm trạm");
-      onAdded();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Không thể thêm");
+      }
+      toast.success(route ? "Đã cập nhật tuyến" : "Đã thêm tuyến");
+      onSaved();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể lưu tuyến");
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <DialogContent>
+    <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
       <DialogHeader>
-        <DialogTitle>Thêm trạm dừng</DialogTitle>
+        <DialogTitle>{route ? "Chỉnh sửa tuyến" : "Thêm tuyến mới"}</DialogTitle>
+        <DialogDescription>{route ? "Cập nhật thông tin và các trạm có sẵn trên tuyến." : "Nhập thông tin tuyến, sau đó thêm các trạm theo thứ tự di chuyển."}</DialogDescription>
       </DialogHeader>
-      <div className="space-y-3 py-2">
-        <div>
-          <Label className="text-xs font-bold">Tên trạm</Label>
-          <Input className="mt-1.5" value={stopName} onChange={(e) => setStopName(e.target.value)} />
+      <div className="space-y-5 py-2">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <Label className="text-xs font-bold">Tên tuyến</Label>
+            <Input className="mt-1.5" value={name} onChange={(event) => setName(event.target.value)} placeholder="VD: Kim Liên – Đại học Việt Hàn" />
+          </div>
+          <div>
+            <Label className="text-xs font-bold">Tần suất (phút/chuyến)</Label>
+            <Input className="mt-1.5" type="number" min="1" value={minutes} onChange={(event) => setMinutes(event.target.value)} />
+          </div>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label className="text-xs font-bold">Thứ tự</Label>
-            <Input className="mt-1.5" type="number" value={stopOrder} onChange={(e) => setStopOrder(e.target.value)} />
+        <div>
+          <Label className="text-xs font-bold">Ghi chú tuyến</Label>
+          <Textarea className="mt-1.5" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Ví dụ: Tuyến phục vụ giờ cao điểm, điểm đón chính..." rows={3} />
+        </div>
+        <div className="space-y-3 rounded-2xl border border-outline-variant/60 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="font-bold text-sm">Trạm dừng trên tuyến</p>
+              <p className="text-xs text-on-surface-variant">Sắp xếp theo chiều xe chạy. Thời gian là từ trạm ngay trước đó.</p>
+            </div>
+            <ExpressiveButton variant="tonal" size="sm" onClick={() => setStops((current) => [...current, createRouteStopDraft(Math.max(0, ...current.map((stop) => stop.stopOrder || 0)) + 1)])} disabled={loadingStops || saving}>
+              <Plus className="size-4" /> Thêm trạm
+            </ExpressiveButton>
           </div>
-          <div>
-            <Label className="text-xs font-bold">Phút từ trạm trước</Label>
-            <Input className="mt-1.5" type="number" value={minutes} onChange={(e) => setMinutes(e.target.value)} />
-          </div>
+          {loadingStops ? <div className="py-5 text-center text-sm text-on-surface-variant">Đang tải trạm dừng...</div> : stops.length === 0 ? (
+            <div className="rounded-xl bg-surface-container px-3 py-4 text-sm text-on-surface-variant">Chưa có trạm. Bấm “Thêm trạm” để tạo lộ trình.</div>
+          ) : (
+            <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
+              {stops.map((stop, index) => (
+                <div key={stop.key} className="grid grid-cols-[2rem_minmax(0,1fr)_8rem_2rem] items-end gap-2 rounded-xl bg-surface-container p-2">
+                  <span className="mb-2 flex size-8 items-center justify-center rounded-full bg-primary-container text-sm font-bold text-on-primary-container">{index + 1}</span>
+                  <div>
+                    <Label className="text-[11px] font-bold">Tên trạm</Label>
+                    <Input className="mt-1" value={stop.stopName} onChange={(event) => updateStop(stop.key, { stopName: event.target.value })} placeholder="Nhập tên trạm" />
+                  </div>
+                  <div>
+                    <Label className="text-[11px] font-bold">Phút từ trạm trước</Label>
+                    <Input className="mt-1" type="number" min="0" value={index === 0 ? "0" : stop.minutesFromPreviousStop} disabled={index === 0} onChange={(event) => updateStop(stop.key, { minutesFromPreviousStop: event.target.value })} />
+                  </div>
+                  <ExpressiveButton variant="text" size="icon-sm" onClick={() => removeStop(stop)} disabled={saving} aria-label={`Xóa trạm ${stop.stopName || index + 1}`}>
+                    <Trash2 className="size-4 text-error" />
+                  </ExpressiveButton>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
       <DialogFooter>
         <ExpressiveButton variant="text" onClick={onClose} disabled={saving}>Hủy</ExpressiveButton>
-        <ExpressiveButton variant="filled" onClick={save} disabled={saving}>
-          {saving ? <RefreshCw className="size-4 animate-spin" /> : <Plus className="size-4" />}
-          Thêm
+        <ExpressiveButton variant="filled" onClick={save} disabled={saving || loadingStops}>
+          {saving ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
+          Lưu tuyến
         </ExpressiveButton>
       </DialogFooter>
     </DialogContent>
