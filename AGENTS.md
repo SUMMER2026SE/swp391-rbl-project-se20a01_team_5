@@ -123,6 +123,72 @@ Fix lỗi Next.js 16 khi build trang `/student/payment/result` do page dùng
 
 ---
 
+# Changelog: Tự động kết thúc chuyến mô phỏng tại điểm đích
+
+## Tóm tắt
+- Thêm tác vụ nền tự động chuyển trip `RUNNING` sang `COMPLETED` sau khi xe mô phỏng đã đến đích và chờ đủ 2 phút.
+- Thời điểm đến đích được tính từ giờ khởi hành thực tế và tổng thời lượng lịch trình, bao gồm chuyến chạy qua nửa đêm.
+
+## Thay đổi
+- Bật scheduling cho backend và thêm `TripAutoCompletionService`.
+- Repository chỉ hoàn tất chuyến có lịch, đang `RUNNING`, đã có `departed_at` và đã vượt thời điểm đến đích cộng grace period.
+- Thêm cấu hình bật/tắt, chu kỳ quét và grace period để test không chạy scheduler ngoài ý muốn.
+- Thêm test cho truy vấn hoàn tất chuyến và service tự động hoàn tất.
+
+---
+
+# Changelog: Popup xác nhận bắt đầu chuyến của tài xế
+
+## Tóm tắt
+- Thay popup `window.confirm` của trình duyệt bằng `AlertDialog` đồng bộ với giao diện web.
+
+## Thay đổi
+- Popup hiển thị tuyến, giờ khởi hành và biển số trước khi xác nhận.
+- Khóa thao tác đóng/xác nhận trong lúc request bắt đầu chuyến đang chạy.
+- Giữ nguyên API và điều kiện nghiệp vụ bắt đầu chuyến hiện có.
+
+---
+
+# Changelog: Đồng bộ tin nhắn đã gửi phía phụ xe
+
+## Tóm tắt
+- Tin nhắn phụ xe vừa gửi được thêm ngay vào hội thoại thay vì phải chờ lần tải dữ liệu tiếp theo.
+
+## Thay đổi
+- Merge tin nhắn optimistic với dữ liệu poll theo `messageId` để không mất hoặc hiển thị trùng tin.
+- Đồng bộ người nhận điều phối viên với điều phối viên active mà danh bạ chuyến trả về.
+- Giữ poll định kỳ để nhận tin nhắn mới từ tài xế và điều phối viên.
+
+---
+
+# Changelog: Hiển thị đúng dữ liệu vé tháng phía phụ xe
+
+## Tóm tắt
+- Màn `Vé tháng` lấy dữ liệu chi tiết từ API vé theo chuyến đang chạy thay vì danh sách rút gọn của dashboard.
+
+## Thay đổi
+- Chỉ hiển thị vé `MONTHLY` và `JOURNEY_MONTHLY` thuộc chuyến đang chạy.
+- Hiển thị đúng tên/mã sinh viên, tuyến, ngày bắt đầu và ngày hết hạn từ database.
+- Thêm trạng thái loading trong lúc tải danh sách vé.
+- Database chỉ được đối chiếu bằng transaction read-only; không sửa dữ liệu.
+
+## Kiểm tra dữ liệu
+- Tuyến được đối chiếu có đúng 3 vé `ACTIVE`.
+- Hai vé có hiệu lực `01/07/2026 - 01/09/2026`.
+- Một vé có hiệu lực `01/07/2026 - 31/07/2026`.
+
+---
+
+# Changelog: Kiểm tra UTF-8 và cảnh báo Node.js
+
+## Kết quả
+- Toàn bộ file text được Git theo dõi và file code mới đều giải mã hợp lệ bằng UTF-8 strict.
+- Không phát hiện mojibake thật trong source; hiện tượng ký tự sai khi dùng `Get-Content` là do code page PowerShell với file UTF-8 không BOM.
+- Cảnh báo `DEP0205 module.register()` đến từ `@tailwindcss/node@4.3.0` khi chạy Node.js 26, không phải code dự án.
+- CI chính thức dùng Node.js 22 nên không cần sửa `node_modules`; build trên Node.js 26 vẫn hoàn thành thành công dù có cảnh báo.
+
+---
+
 # Changelog: Luồng mua vé sinh viên theo tuyến và hành trình
 
 ## Tóm tắt

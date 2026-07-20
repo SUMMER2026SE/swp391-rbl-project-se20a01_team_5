@@ -72,6 +72,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 // M3 Expressive + motion
 import {
@@ -1142,6 +1152,8 @@ function DriverActiveTrip({
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState<number | null>(null);
   const [ending, setEnding] = useState<number | null>(null);
+  const [startConfirmationTrip, setStartConfirmationTrip] =
+    useState<DriverTripView | null>(null);
   const [trackingSnapshot, setTrackingSnapshot] =
     useState<JourneyTrackingSnapshotDTO | null>(null);
 
@@ -1241,12 +1253,11 @@ function DriverActiveTrip({
 
   const startTrip = async (tripId: number) => {
     if (starting || ending) return;
-    if (typeof window !== "undefined" && !window.confirm("Bắt đầu chuyến này?"))
-      return;
     setStarting(tripId);
     try {
       await operationsApi.startTrip(tripId);
       toast.success("Đã bắt đầu chuyến");
+      setStartConfirmationTrip(null);
       await load();
       await ctx.reload();
     } catch (error) {
@@ -1447,7 +1458,7 @@ function DriverActiveTrip({
                   <ExpressiveButton
                     variant="filled"
                     className="h-11 justify-center rounded-full"
-                    onClick={() => startTrip(nextTrip.tripId)}
+                    onClick={() => setStartConfirmationTrip(nextTrip)}
                     disabled={starting === nextTrip.tripId || !canStartDriverTrip(nextTrip)}
                   >
                     <PlayCircle className="size-4" />
@@ -1522,7 +1533,7 @@ function DriverActiveTrip({
                         variant="filled"
                         size="sm"
                         className="h-10 flex-1 justify-center rounded-full lg:flex-none"
-                        onClick={() => startTrip(trip.tripId)}
+                        onClick={() => setStartConfirmationTrip(trip)}
                         disabled={starting === trip.tripId || !!runningTrip}
                       >
                         <PlayCircle className="size-4" />
@@ -1548,6 +1559,50 @@ function DriverActiveTrip({
           })}
         </div>
       </Section>
+
+      <AlertDialog
+        open={startConfirmationTrip != null}
+        onOpenChange={(open) => {
+          if (!open && starting == null) setStartConfirmationTrip(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Bắt đầu chuyến xe?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  Xác nhận khởi hành chuyến này. Sau khi bắt đầu, xe sẽ chuyển sang trạng thái đang chạy và xuất hiện trên bản đồ theo dõi.
+                </p>
+                <div className="rounded-xl bg-surface-container-low p-3 text-sm text-on-surface">
+                  <p className="font-bold">
+                    {startConfirmationTrip?.routeName || `Tuyến ${startConfirmationTrip?.routeId ?? "—"}`}
+                  </p>
+                  <p className="mt-1 text-on-surface-variant">
+                    {startConfirmationTrip?.departureTime || "Chưa có giờ"} · {startConfirmationTrip?.licensePlate || "Chưa gán xe"}
+                  </p>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={starting != null}>Hủy</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={starting != null || startConfirmationTrip?.tripId == null}
+              onClick={(event) => {
+                event.preventDefault();
+                if (startConfirmationTrip?.tripId != null) {
+                  void startTrip(startConfirmationTrip.tripId);
+                }
+              }}
+              className="bg-primary text-on-primary hover:bg-primary/90"
+            >
+              {starting != null ? <RefreshCw className="size-4 animate-spin" /> : <PlayCircle className="size-4" />}
+              Xác nhận bắt đầu
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </PageTransition>
   );
 }

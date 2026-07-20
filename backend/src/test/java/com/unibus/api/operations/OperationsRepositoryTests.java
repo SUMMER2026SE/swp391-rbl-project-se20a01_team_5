@@ -16,6 +16,7 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.annotation.DirtiesContext.ClassMode;
 
 import com.unibus.api.operations.OperationsDtos.ConductorTripView;
+import com.unibus.api.operations.OperationsDtos.ContactPersonView;
 
 @SpringBootTest
 @DirtiesContext(classMode = ClassMode.AFTER_CLASS)
@@ -74,6 +75,23 @@ class OperationsRepositoryTests {
         assertThat(trips.get(0).tripId()).isEqualTo(400);
         assertThat(trips.get(0).routeName()).isEqualTo("Campus Loop");
         assertThat(trips.get(0).status()).isEqualTo("RUNNING");
+    }
+
+    @Test
+    void findConductorContactsReturnsTheSameDispatcherUsedForSendingMessages() {
+        jdbcTemplate.update("""
+                INSERT INTO users(user_id, email, password_hash, full_name, role, status, student_verification_status, created_at)
+                VALUES
+                    (30, 'dispatcher.z@example.com', 'unused', 'A Dispatcher By Name', 'DISPATCHER', 'ACTIVE', 'NOT_SUBMITTED', CURRENT_TIMESTAMP),
+                    (20, 'dispatcher.a@example.com', 'unused', 'Z Dispatcher By Name', 'DISPATCHER', 'ACTIVE', 'NOT_SUBMITTED', CURRENT_TIMESTAMP)
+                """);
+
+        List<ContactPersonView> contacts = operationsRepository.findConductorContacts(null);
+
+        assertThat(contacts).singleElement().satisfies(contact -> {
+            assertThat(contact.userId()).isEqualTo(20);
+            assertThat(contact.role()).isEqualTo("DISPATCHER");
+        });
     }
 
     private void createTables() {

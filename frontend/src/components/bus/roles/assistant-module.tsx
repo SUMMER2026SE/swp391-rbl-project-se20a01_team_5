@@ -883,6 +883,36 @@ function AssistantScan({ ctx }: { ctx: Ctx }) {
 // Screen 3: Monthly — list of monthly pass holders on this trip
 // =============================================================================
 function AssistantMonthly({ ctx }: { ctx: Ctx }) {
+  const [tickets, setTickets] = useState<ConductorTicketView[] | null>(null);
+  const tripId = Number(
+    ctx.activeTrip?.tripId
+      ?? ctx.conductorTrips.find((trip) => isRunningTrip(trip))?.tripId
+      ?? 0,
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!tripId) {
+      setTickets([]);
+      return () => { cancelled = true; };
+    }
+
+    setTickets(null);
+    operationsApi.conductorTickets(tripId)
+      .then((rows) => {
+        if (cancelled) return;
+        setTickets(rows.filter((ticket) => {
+          const kind = String(ticket.ticketKind || "").toUpperCase();
+          return kind === "MONTHLY" || kind === "JOURNEY_MONTHLY";
+        }));
+      })
+      .catch(() => {
+        if (!cancelled) setTickets([]);
+      });
+
+    return () => { cancelled = true; };
+  }, [tripId]);
+
   return (
     <PageTransition className="space-y-6 min-w-0">
       <PageHeader
@@ -890,7 +920,11 @@ function AssistantMonthly({ ctx }: { ctx: Ctx }) {
         description="Danh sách vé tháng có hiệu lực trên chuyến."
         icon={<TicketCheck className="size-7" />}
       />
-      {ctx.tickets.length === 0 ? (
+      {tickets === null ? (
+        <div className="flex min-h-40 items-center justify-center">
+          <RefreshCw className="size-6 animate-spin text-primary" />
+        </div>
+      ) : tickets.length === 0 ? (
         <EmptyState
           icon={<TicketCheck className="size-7" />}
           title="Không có vé tháng"
@@ -898,7 +932,7 @@ function AssistantMonthly({ ctx }: { ctx: Ctx }) {
         />
       ) : (
         <StaggerGroup className="space-y-3 min-w-0">
-          {ctx.tickets.map((t) => (
+          {tickets.map((t) => (
             <StaggerItem key={t.ticketId}>
               <ExpressiveCard variant="elevated" className="p-4 min-w-0">
                 <div className="flex items-center gap-3 min-w-0">
@@ -1160,7 +1194,14 @@ function AssistantContact({ ctx }: { ctx: Ctx }) {
   const loadContact = useCallback(async () => {
     try {
       const data = await conductorApi.contact();
-      setContact(data);
+      setContact((current) => {
+        if (!current || current.activeTripId !== data.activeTripId) return data;
+        const messagesById = new Map(
+          current.messages.map((item) => [item.messageId, item]),
+        );
+        data.messages.forEach((item) => messagesById.set(item.messageId, item));
+        return { ...data, messages: [...messagesById.values()] };
+      });
     } catch (err: any) {
       toast.error(err.message || "Không tải được liên hệ phụ xe");
     } finally {
@@ -1190,10 +1231,18 @@ function AssistantContact({ ctx }: { ctx: Ctx }) {
     if (!message.trim() || sending || !selectedRecipient) return;
     try {
       setSending(true);
-      await conductorApi.sendMessage({
+      const sentMessage = await conductorApi.sendMessage({
         tripId: contact?.activeTripId,
         recipientType,
         content: message.trim(),
+      });
+      setContact((current) => {
+        if (!current) return current;
+        const messagesById = new Map(
+          current.messages.map((item) => [item.messageId, item]),
+        );
+        messagesById.set(sentMessage.messageId, sentMessage);
+        return { ...current, messages: [...messagesById.values()] };
       });
       setMessage("");
       await loadContact();
