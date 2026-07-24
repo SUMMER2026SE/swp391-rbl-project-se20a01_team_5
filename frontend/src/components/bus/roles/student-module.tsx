@@ -5530,9 +5530,6 @@ function AIScreen({ ctx, onNavigate }: { ctx: Ctx; onNavigate: (id: string) => v
 // Screen 10: Chatbot
 // =============================================================================
 const CHATBOT_SUGGESTIONS: Array<{ message: string; context?: Record<string, unknown> }> = [
-  {
-    message: "Từ FPT Đà Nẵng đến Đại học Duy Tân 254 Nguyễn Văn Linh, ưu tiên tuyến được trợ giá",
-  },
   { message: "So sánh vé lượt và vé tháng sau trợ giá" },
   { message: "Cho biết chuyến gần nhất và các trạm chính" },
   { message: "Hướng dẫn đăng ký tuyến và thanh toán SePay" },
