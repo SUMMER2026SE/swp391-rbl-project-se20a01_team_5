@@ -11,7 +11,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -324,9 +323,8 @@ public class SePayService {
     }
 
     private List<OrderLine> quoteLines(CurrentUser currentUser, String studentCode, PaymentRequest request) {
-        LocalDate serviceDate = request.serviceDate() == null ? LocalDate.now() : request.serviceDate();
-        int year = serviceDate.getYear();
-        int month = serviceDate.getMonthValue();
+        LocalDate serviceDate = request.serviceDate() == null ? LocalDate.now(BUSINESS_ZONE) : request.serviceDate();
+        LocalDate purchaseDate = LocalDate.now(BUSINESS_ZONE);
         List<OrderLine> lines = new ArrayList<>();
         Set<Integer> seenRoutes = new HashSet<>();
         for (PaymentLeg leg : request.legs()) {
@@ -360,7 +358,7 @@ public class SePayService {
             MonthlyPassQuote quote = subsidyService.quoteFor(currentUser, leg.routeId(), routeName, baseFare, serviceDate);
             if (monthly) ensureStudentCanBuy(quote);
             boolean active = monthly
-                    && ticketingRepository.activeMonthlyPass(studentCode, leg.routeId(), year, month).isPresent();
+                    && ticketingRepository.activeMonthlyPass(studentCode, leg.routeId(), purchaseDate).isPresent();
             lines.add(new OrderLine(
                     leg.routeId(),
                     routeName,
@@ -735,12 +733,12 @@ public class SePayService {
             return;
         }
         if ("monthly".equalsIgnoreCase(ticketType)) {
-            LocalDate now = LocalDate.now();
+            LocalDate now = LocalDate.now(BUSINESS_ZONE);
             int year = now.getYear();
             int month = now.getMonthValue();
             
-            LocalDate validFrom = now.withDayOfMonth(1);
-            LocalDate expiresOn = now.plusMonths(1).withDayOfMonth(1).minusDays(1);
+            LocalDate validFrom = now;
+            LocalDate expiresOn = now.plusMonths(1);
             String qrCode = "UB-MONTHLY-" + UUID.randomUUID();
 
             // Find route registration details
@@ -888,14 +886,14 @@ public class SePayService {
     private void provisionOrderItems(String studentCode, String ticketPeriod, String mode, Map<String, Object> order,
             List<Map<String, Object>> items, String transactionCode) {
         if ("month".equals(ticketPeriod)) {
-            LocalDate now = LocalDate.now();
+            LocalDate now = LocalDate.now(BUSINESS_ZONE);
             int year = now.getYear();
             int month = now.getMonthValue();
             List<ProvisionedMonthlyLine> provisioned = new ArrayList<>();
             for (Map<String, Object> item : items) {
                 Integer routeId = intValue(item.get("routeId"));
                 if (routeId == null) continue;
-                Integer existing = activeMonthlyPassId(studentCode, routeId, year, month);
+                Integer existing = activeMonthlyPassId(studentCode, routeId, now);
                 Integer monthlyPassId = existing != null ? existing : createMonthlyPassFromOrder(studentCode, item, year, month);
                 if (existing == null) {
                     createPaidPaymentForMonthly(monthlyPassId, decimalValue(item.get("finalAmount")), transactionCode);
@@ -935,23 +933,24 @@ public class SePayService {
         }
     }
 
-    private Integer activeMonthlyPassId(String studentCode, Integer routeId, int year, int month) {
+    private Integer activeMonthlyPassId(String studentCode, Integer routeId, LocalDate onDate) {
         List<Integer> ids = jdbcTemplate.queryForList(
                 """
                 SELECT monthly_pass_id
                 FROM monthly_passes
-                WHERE student_code = ? AND route_id = ? AND effective_year = ? AND effective_month = ? AND status = 'ACTIVE'
+                WHERE student_code = ? AND route_id = ?
+                  AND valid_from <= ? AND expires_on >= ? AND status = 'ACTIVE'
                 ORDER BY purchased_at DESC
                 LIMIT 1
                 """,
-                Integer.class, studentCode, routeId, year, month);
+                Integer.class, studentCode, routeId, onDate, onDate);
         return ids.isEmpty() ? null : ids.get(0);
     }
 
     private Integer createMonthlyPassFromOrder(String studentCode, Map<String, Object> item, int year, int month) {
-        LocalDate now = LocalDate.now();
-        LocalDate validFrom = now.withDayOfMonth(1);
-        LocalDate expiresOn = now.plusMonths(1).withDayOfMonth(1).minusDays(1);
+        LocalDate now = LocalDate.now(BUSINESS_ZONE);
+        LocalDate validFrom = now;
+        LocalDate expiresOn = now.plusMonths(1);
         String qrCode = "UB-MONTHLY-" + UUID.randomUUID();
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update(connection -> {
