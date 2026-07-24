@@ -122,7 +122,6 @@ export function ProfileScreen() {
                         : "Tài khoản Google chưa có mật khẩu riêng. Tạo mật khẩu để có thể đăng nhập bằng email."}
                     </p>
                   </div>
-                  <StatusPill status={data?.hasPassword ? "?? C? M?T KH?U" : "GOOGLE"} />
                 </div>
                 <div className={data?.hasPassword ? "grid gap-4 sm:grid-cols-3" : "grid gap-4 sm:grid-cols-2"}>
                   {data?.hasPassword && (
