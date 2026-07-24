@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -141,7 +142,7 @@ class TicketingAndRoutePassServiceTests {
     }
 
     @Test
-    void purchaseMonthlyPassCreatesPassPaymentInvoiceAndIsIdempotentForMonth() {
+    void purchaseMonthlyPassCreatesRollingPassAndIsIdempotentWhileActive() {
         TicketView ticket = ticketingService.purchaseMonthlyPass(currentUser,
                 new PurchaseMonthlyPassRequest(null, "BANK_TRANSFER", null, null));
 
@@ -153,6 +154,11 @@ class TicketingAndRoutePassServiceTests {
         assertThat(ticket.finalFareAmount()).isEqualByComparingTo(new BigDecimal("120000"));
         assertThat(ticket.subsidyStatus()).isEqualTo("NOT_CONFIGURED");
         assertThat(ticket.qrCode()).startsWith("UB-MONTHLY-");
+        LocalDate purchaseDate = LocalDate.now(ZoneId.of("Asia/Ho_Chi_Minh"));
+        assertThat(jdbcTemplate.queryForObject("SELECT valid_from FROM monthly_passes", java.sql.Date.class).toLocalDate())
+                .isEqualTo(purchaseDate);
+        assertThat(jdbcTemplate.queryForObject("SELECT expires_on FROM monthly_passes", java.sql.Date.class).toLocalDate())
+                .isEqualTo(purchaseDate.plusMonths(1));
         assertTableCount("monthly_passes", 1);
         assertTableCount("payments", 1);
         assertTableCount("invoices", 1);
@@ -164,6 +170,29 @@ class TicketingAndRoutePassServiceTests {
         assertTableCount("monthly_passes", 1);
         assertTableCount("payments", 1);
         assertTableCount("invoices", 1);
+    }
+
+    @Test
+    void activeRollingPassFromPreviousCalendarMonthIsReused() {
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Ho_Chi_Minh"));
+        LocalDate previousMonth = today.withDayOfMonth(1).minusDays(1);
+        jdbcTemplate.update("""
+                INSERT INTO monthly_passes(student_code, route_id, effective_month, effective_year,
+                    valid_from, expires_on, fare_amount, original_fare_amount, subsidy_amount,
+                    final_fare_amount, qr_code, status)
+                VALUES (?, ?, ?, ?, ?, ?, 120000, 120000, 0, 120000, 'QR-ROLLING', 'ACTIVE')
+                """, "SE-TICKET-001", routeA.getId(), previousMonth.getMonthValue(), previousMonth.getYear(),
+                today.minusDays(7), today.plusDays(7));
+        Integer existingId = jdbcTemplate.queryForObject(
+                "SELECT monthly_pass_id FROM monthly_passes WHERE qr_code = 'QR-ROLLING'", Integer.class);
+
+        TicketView ticket = ticketingService.purchaseMonthlyPass(currentUser,
+                new PurchaseMonthlyPassRequest(null, "BANK_TRANSFER", null, null));
+
+        assertThat(ticket.ticketId()).isEqualTo(existingId);
+        assertTableCount("monthly_passes", 1);
+        assertTableCount("payments", 0);
+        assertTableCount("invoices", 0);
     }
 
     @Test

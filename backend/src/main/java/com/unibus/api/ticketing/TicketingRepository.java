@@ -67,16 +67,16 @@ public class TicketingRepository {
         return rows.stream().findFirst();
     }
 
-    public Optional<TicketView> activeMonthlyPass(String studentCode, Integer routeId, int year, int month) {
+    public Optional<TicketView> activeMonthlyPass(String studentCode, Integer routeId, LocalDate onDate) {
         List<TicketView> rows = jdbcTemplate.query(ticketQuery("""
                 WHERE mp.student_code = ?
                   AND mp.route_id = ?
-                  AND mp.effective_year = ?
-                  AND mp.effective_month = ?
+                  AND mp.valid_from <= ?
+                  AND mp.expires_on >= ?
                   AND mp.status = 'ACTIVE'
                 ORDER BY mp.purchased_at DESC
                 LIMIT 1
-                """), (rs, rowNum) -> mapTicket(rs), studentCode, routeId, year, month);
+                """), (rs, rowNum) -> mapTicket(rs), studentCode, routeId, onDate, onDate);
         return rows.stream().findFirst();
     }
 

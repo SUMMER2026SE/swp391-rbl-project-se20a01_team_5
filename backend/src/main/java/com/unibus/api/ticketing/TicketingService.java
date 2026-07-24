@@ -4,7 +4,6 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -83,13 +82,13 @@ public class TicketingService {
         Integer routeId = request == null ? null : request.routeId();
         ApprovedRegistration registration = ticketingRepository.approvedRegistration(studentCode, routeId)
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Student must have an approved route registration"));
-        LocalDate now = LocalDate.now();
+        LocalDate now = LocalDate.now(BUSINESS_ZONE);
         int year = now.getYear();
         int month = now.getMonthValue();
-        return ticketingRepository.activeMonthlyPass(studentCode, registration.routeId(), year, month)
+        return ticketingRepository.activeMonthlyPass(studentCode, registration.routeId(), now)
                 .orElseGet(() -> {
-                    OffsetDateTime validFrom = now.withDayOfMonth(1).atStartOfDay().atOffset(ZoneOffset.UTC);
-                    OffsetDateTime expiresAt = now.plusMonths(1).withDayOfMonth(1).atStartOfDay().atOffset(ZoneOffset.UTC);
+                    OffsetDateTime validFrom = now.atStartOfDay(BUSINESS_ZONE).toOffsetDateTime();
+                    OffsetDateTime expiresAt = now.plusMonths(1).atStartOfDay(BUSINESS_ZONE).toOffsetDateTime();
                     BigDecimal amount = ticketingRepository.monthlyFare(registration.routeId());
                     MonthlyPassQuote quote = subsidyService.quoteFor(currentUser, registration.routeId(), registration.routeName(), amount, now);
                     ensurePurchasableQuote(quote);
@@ -105,11 +104,11 @@ public class TicketingService {
         if (request == null || request.legs() == null || request.legs().isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Journey legs are required");
         }
-        LocalDate now = LocalDate.now();
+        LocalDate now = LocalDate.now(BUSINESS_ZONE);
         int year = now.getYear();
         int month = now.getMonthValue();
-        OffsetDateTime validFrom = now.withDayOfMonth(1).atStartOfDay().atOffset(ZoneOffset.UTC);
-        OffsetDateTime expiresAt = now.plusMonths(1).withDayOfMonth(1).atStartOfDay().atOffset(ZoneOffset.UTC);
+        OffsetDateTime validFrom = now.atStartOfDay(BUSINESS_ZONE).toOffsetDateTime();
+        OffsetDateTime expiresAt = now.plusMonths(1).atStartOfDay(BUSINESS_ZONE).toOffsetDateTime();
 
         List<JourneyOrderLine> lines = new java.util.ArrayList<>();
         java.util.Set<Integer> routeIds = new java.util.HashSet<>();
@@ -120,7 +119,7 @@ public class TicketingService {
             ApprovedRegistration registration = ticketingRepository.approvedRegistration(studentCode, leg.routeId())
                     .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST,
                             "Student must register every route before buying a journey pass"));
-            TicketView ticket = ticketingRepository.activeMonthlyPass(studentCode, registration.routeId(), year, month)
+            TicketView ticket = ticketingRepository.activeMonthlyPass(studentCode, registration.routeId(), now)
                     .orElseGet(() -> {
                         BigDecimal amount = ticketingRepository.monthlyFare(registration.routeId());
                         MonthlyPassQuote quote = subsidyService.quoteFor(currentUser, registration.routeId(),
