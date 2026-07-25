@@ -1,6 +1,5 @@
 package com.unibus.api.student;
 
-import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -108,13 +107,7 @@ public class StudentVerificationService {
         verification.setUniversityId(subsidyService.universityIdForName(allowedUniversity));
         verification.setStudentCode(normalizedStudentCode);
         verification.setCardImageUrl(storeCardImage(user.getId(), cardImage));
-        verification.setOcrFullName(blankToNull(ocrResult.fullName()));
-        verification.setOcrStudentCode(blankToNull(ocrResult.studentCode()));
-        verification.setOcrUniversity(blankToNull(ocrResult.university()));
-        verification.setOcrRawText(blankToNull(ocrResult.rawText()));
-        verification.setOcrConfidenceScore(ocrResult.confidenceScore() == null
-                ? BigDecimal.ZERO
-                : ocrResult.confidenceScore());
+        applyOcrResult(verification, ocrResult, timestamp, 1);
         verification.setStatus(StudentVerificationStatus.PENDING_REVIEW);
         verification.setSubmittedAt(timestamp);
         verification.setCreatedAt(timestamp);
@@ -126,6 +119,35 @@ public class StudentVerificationService {
         userRepository.save(user);
 
         return toView(verification);
+    }
+
+    @Transactional
+    public VerificationView retryOcr(CurrentUser admin, Long verificationId) {
+        requireAdmin(admin.userId());
+        StudentVerification verification = requireVerification(verificationId);
+        requirePending(verification);
+        if (verification.getCardImageUrl() == null || verification.getCardImageUrl().isBlank()) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Student card image not found");
+        }
+
+        StoredFile cardImage = fileStorageService.load(verification.getCardImageUrl());
+        MultipartFile multipartFile = new StoredMultipartFile(cardImage);
+        OffsetDateTime timestamp = now();
+        StudentCardOcrService.Result ocrResult = studentCardOcrService.extract(
+                multipartFile,
+                verification.getUser().getFullName(),
+                verification.getStudentCode(),
+                verification.getUniversity());
+        applyOcrResult(
+                verification,
+                ocrResult,
+                timestamp,
+                verification.getOcrAttemptCount() == null ? 1 : verification.getOcrAttemptCount() + 1);
+        verification.setUpdatedAt(timestamp);
+        VerificationView view = toView(verificationRepository.save(verification));
+        audit(admin.userId(), verification.getUniversityId(), "STUDENT_VERIFICATION_OCR_RETRY",
+                "student_verifications", verification.getId(), "SUCCESS", verification.getUser().getFullName());
+        return view;
     }
 
     @Transactional(readOnly = true)
@@ -307,6 +329,19 @@ public class StudentVerificationService {
                 null,
                 null,
                 null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
                 null);
     }
 
@@ -331,10 +366,48 @@ public class StudentVerificationService {
                 verification.getOcrUniversity(),
                 verification.getOcrRawText(),
                 verification.getOcrConfidenceScore(),
+                verification.getOcrStatus(),
+                verification.getOcrProvider(),
+                verification.getOcrErrorCode(),
+                verification.getOcrErrorMessage(),
+                verification.getOcrProcessedAt(),
+                verification.getOcrLastAttemptAt(),
+                verification.getOcrAttemptCount(),
+                verification.getNameMatchStatus(),
+                verification.getNameSimilarityScore(),
+                verification.getStudentCodeMatchStatus(),
+                verification.getStudentCodeSimilarityScore(),
+                verification.getUniversityMatchStatus(),
+                verification.getUniversitySimilarityScore(),
                 verification.getRejectionReason(),
                 reviewer == null ? null : reviewer.getId(),
                 verification.getSubmittedAt(),
                 verification.getReviewedAt());
+    }
+
+    private void applyOcrResult(
+            StudentVerification verification,
+            StudentCardOcrService.Result ocrResult,
+            OffsetDateTime timestamp,
+            int attemptCount) {
+        verification.setOcrFullName(blankToNull(ocrResult.fullName()));
+        verification.setOcrStudentCode(blankToNull(ocrResult.studentCode()));
+        verification.setOcrUniversity(blankToNull(ocrResult.university()));
+        verification.setOcrRawText(blankToNull(ocrResult.rawText()));
+        verification.setOcrConfidenceScore(ocrResult.confidenceScore());
+        verification.setOcrStatus(ocrResult.status());
+        verification.setOcrProvider(blankToNull(ocrResult.provider()));
+        verification.setOcrErrorCode(blankToNull(ocrResult.errorCode()));
+        verification.setOcrErrorMessage(blankToNull(ocrResult.errorMessage()));
+        verification.setOcrProcessedAt(timestamp);
+        verification.setOcrLastAttemptAt(timestamp);
+        verification.setOcrAttemptCount(attemptCount);
+        verification.setNameMatchStatus(ocrResult.nameMatchStatus());
+        verification.setNameSimilarityScore(ocrResult.nameSimilarityScore());
+        verification.setStudentCodeMatchStatus(ocrResult.studentCodeMatchStatus());
+        verification.setStudentCodeSimilarityScore(ocrResult.studentCodeSimilarityScore());
+        verification.setUniversityMatchStatus(ocrResult.universityMatchStatus());
+        verification.setUniversitySimilarityScore(ocrResult.universitySimilarityScore());
     }
 
     private String storeCardImage(Integer userId, MultipartFile cardImage) {
@@ -370,5 +443,48 @@ public class StudentVerificationService {
 
     private OffsetDateTime now() {
         return OffsetDateTime.now(ZoneOffset.UTC);
+    }
+
+    private record StoredMultipartFile(StoredFile storedFile) implements MultipartFile {
+
+        @Override
+        public String getName() {
+            return "cardImage";
+        }
+
+        @Override
+        public String getOriginalFilename() {
+            return storedFile.fileName();
+        }
+
+        @Override
+        public String getContentType() {
+            return storedFile.contentType();
+        }
+
+        @Override
+        public boolean isEmpty() {
+            return storedFile.content() == null || storedFile.content().length == 0;
+        }
+
+        @Override
+        public long getSize() {
+            return storedFile.content() == null ? 0 : storedFile.content().length;
+        }
+
+        @Override
+        public byte[] getBytes() {
+            return storedFile.content() == null ? new byte[0] : storedFile.content();
+        }
+
+        @Override
+        public java.io.InputStream getInputStream() {
+            return new java.io.ByteArrayInputStream(getBytes());
+        }
+
+        @Override
+        public void transferTo(java.io.File dest) throws java.io.IOException {
+            java.nio.file.Files.write(dest.toPath(), getBytes());
+        }
     }
 }

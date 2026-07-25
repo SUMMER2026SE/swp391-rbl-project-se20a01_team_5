@@ -81,6 +81,20 @@ class UniversityManagementServiceTests {
                 VALUES (?, 'unitest.edu.vn', 'ACTIVE', CURRENT_TIMESTAMP)
                 """, universityId);
         universityAdmin = userRepository.save(user("admin@unitest.edu.vn", "University Admin", UserRole.UNIVERSITY_ADMIN));
+        createStudentAccounts(
+                "#not-a-comment@unitest.edu.vn",
+                "bad@unitest.edu.vn",
+                "badstatus@unitest.edu.vn",
+                "badyear@unitest.edu.vn",
+                "duplicate@unitest.edu.vn",
+                "existing@unitest.edu.vn",
+                "existing-other@unitest.edu.vn",
+                "missing-columns@unitest.edu.vn",
+                "new.one@unitest.edu.vn",
+                "new.two@unitest.edu.vn",
+                "new@unitest.edu.vn",
+                "student.one@unitest.edu.vn",
+                "student.two@unitest.edu.vn");
     }
 
     @Test
@@ -347,7 +361,7 @@ class UniversityManagementServiceTests {
                 .extracting(error -> error.code())
                 .contains(
                         "DUPLICATE_STUDENT_CODE_IN_FILE",
-                        "INVALID_EMAIL_DOMAIN",
+                        "STUDENT_ACCOUNT_NOT_FOUND",
                         "EMAIL_ALREADY_EXISTS",
                         "INVALID_ACADEMIC_YEAR",
                         "INVALID_STATUS");
@@ -655,7 +669,7 @@ class UniversityManagementServiceTests {
 
     @Test
     void applyGoogleUniversityLinkCreatesVerifiedStudentFromActiveRoster() {
-        User studentUser = userRepository.save(user("student.one@unitest.edu.vn", "student.one@unitest.edu.vn", UserRole.STUDENT));
+        User studentUser = userRepository.findByEmailIgnoreCase("student.one@unitest.edu.vn").orElseThrow();
         repository.upsertRoster(
                 universityId,
                 "student.one@unitest.edu.vn",
@@ -685,8 +699,79 @@ class UniversityManagementServiceTests {
         assertThat(matchedUserId).isEqualTo(studentUser.getId());
     }
 
+    @Test
+    void importRosterMatchesExistingStudentAccountsAndReportsBusinessErrors() {
+        User domainStudent = createStudentAccount("domain.import@unitest.edu.vn");
+        User gmailLinked = createStudentAccount("linked.student@gmail.com");
+        linkStudent(gmailLinked, "GM001", universityId, "UniBus Test University");
+        createStudentAccount("unlinked.student@gmail.com");
+
+        Integer otherUniversityId = insertUniversity("UNI-OTHER", "Other University");
+        jdbcTemplate.update("""
+                INSERT INTO university_domains(university_id, domain, status, verified_at)
+                VALUES (?, 'other.edu.vn', 'ACTIVE', CURRENT_TIMESTAMP)
+                """, otherUniversityId);
+        User otherLinked = createStudentAccount("other.linked@gmail.com");
+        linkStudent(otherLinked, "OT001", otherUniversityId, "Other University");
+        createStudentAccount("domain.other@other.edu.vn");
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "roster.csv",
+                "text/csv",
+                """
+                email,studentCode,fullName,faculty,academicYear,status
+                domain.import@unitest.edu.vn,DM001,Domain Student,Software,2024,ACTIVE
+                linked.student@gmail.com,GM001,Gmail Linked,Software,2024,ACTIVE
+                unlinked.student@gmail.com,GM002,Gmail Unlinked,Software,2024,ACTIVE
+                other.linked@gmail.com,OT001,Other Linked,Software,2024,ACTIVE
+                domain.other@other.edu.vn,DO001,Other Domain,Software,2024,ACTIVE
+                missing.account@gmail.com,MS001,Missing Account,Software,2024,ACTIVE
+                """.getBytes(StandardCharsets.UTF_8));
+
+        ImportBatchView batch = service.importRoster(currentUser(), universityId, file);
+
+        assertThat(batch.totalRows()).isEqualTo(6);
+        assertThat(batch.successRows()).isEqualTo(2);
+        assertThat(batch.errorRows()).isEqualTo(4);
+        assertThat(batch.errors().stream().map(error -> error.errorMessage()).toList())
+                .anyMatch(message -> message.contains("STUDENT_NOT_LINKED_TO_UNIVERSITY"))
+                .anyMatch(message -> message.contains("STUDENT_LINKED_TO_ANOTHER_UNIVERSITY"))
+                .anyMatch(message -> message.contains("EMAIL_DOMAIN_BELONGS_TO_ANOTHER_UNIVERSITY"))
+                .anyMatch(message -> message.contains("STUDENT_ACCOUNT_NOT_FOUND"));
+
+        assertThat(service.listRoster(universityId, null, null))
+                .extracting(RosterStudentView::email)
+                .contains("domain.import@unitest.edu.vn", "linked.student@gmail.com")
+                .doesNotContain("unlinked.student@gmail.com", "other.linked@gmail.com", "domain.other@other.edu.vn");
+        Student linkedByDomain = studentRepository.findByUserId(domainStudent.getId()).orElseThrow();
+        assertThat(linkedByDomain.getUniversityId()).isEqualTo(universityId);
+        assertThat(linkedByDomain.getStudentCode()).isEqualTo("DM001");
+    }
+
     private CurrentUser currentUser() {
         return new CurrentUser(universityAdmin.getId(), universityAdmin.getEmail(), universityAdmin.getRole(), 1L);
+    }
+
+    private void createStudentAccounts(String... emails) {
+        for (String email : emails) {
+            userRepository.save(user(email, email, UserRole.STUDENT));
+        }
+    }
+
+    private User createStudentAccount(String email) {
+        return userRepository.save(user(email, email, UserRole.STUDENT));
+    }
+
+    private void linkStudent(User account, String studentCode, Integer linkedUniversityId, String universityName) {
+        Student student = new Student();
+        student.setUser(account);
+        student.setStudentCode(studentCode);
+        student.setUniversityId(linkedUniversityId);
+        student.setUniversity(universityName);
+        studentRepository.save(student);
+        account.setStudentVerificationStatus(StudentVerificationStatus.VERIFIED);
+        userRepository.save(account);
     }
 
     private void assertImportRejected(String csv, String code) {

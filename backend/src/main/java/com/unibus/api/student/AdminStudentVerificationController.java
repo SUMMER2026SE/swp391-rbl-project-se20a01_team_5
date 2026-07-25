@@ -71,4 +71,13 @@ public class AdminStudentVerificationController {
                         verificationId,
                         request == null ? null : request.reason()));
     }
+
+    @PostMapping("/{verificationId}/ocr/retry")
+    ApiResponse<VerificationView> retryOcr(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @PathVariable Long verificationId) {
+        return ApiResponse.ok(
+                "Student verification OCR retried",
+                studentVerificationService.retryOcr(currentUser, verificationId));
+    }
 }

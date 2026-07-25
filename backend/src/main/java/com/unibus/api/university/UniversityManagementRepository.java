@@ -244,6 +244,34 @@ public class UniversityManagementRepository {
         return rows.stream().findFirst();
     }
 
+    public Optional<StudentAccountMatch> findStudentAccountByEmail(String email) {
+        List<StudentAccountMatch> rows = jdbcTemplate.query("""
+                SELECT usr.user_id, usr.email, usr.full_name, usr.role, usr.status,
+                       s.student_code, s.university_id, u.name AS university_name
+                FROM users usr
+                LEFT JOIN students s ON s.user_id = usr.user_id
+                LEFT JOIN universities u ON u.university_id = s.university_id
+                WHERE usr.role = 'STUDENT'
+                  AND LOWER(usr.email) = LOWER(?)
+                LIMIT 1
+                """, (rs, rowNum) -> mapStudentAccount(rs), email);
+        return rows.stream().findFirst();
+    }
+
+    public Optional<StudentAccountMatch> findStudentAccountByStudentCode(String studentCode) {
+        List<StudentAccountMatch> rows = jdbcTemplate.query("""
+                SELECT usr.user_id, usr.email, usr.full_name, usr.role, usr.status,
+                       s.student_code, s.university_id, u.name AS university_name
+                FROM students s
+                JOIN users usr ON usr.user_id = s.user_id
+                LEFT JOIN universities u ON u.university_id = s.university_id
+                WHERE usr.role = 'STUDENT'
+                  AND LOWER(s.student_code) = LOWER(?)
+                LIMIT 1
+                """, (rs, rowNum) -> mapStudentAccount(rs), studentCode);
+        return rows.stream().findFirst();
+    }
+
     public Optional<DomainMatch> ensureActiveDomainMatch(String code, String universityName, String shortName, String domain) {
         jdbcTemplate.update("""
                 INSERT INTO universities(code, name, short_name, status)
@@ -506,8 +534,44 @@ public class UniversityManagementRepository {
                 """, "import_batch_id", universityId, fileName, importedByUserId);
     }
 
+    public void ensureStudentLinkedToUniversity(Integer userId, String studentCode, String universityName,
+            Integer universityId, String faculty, Integer academicYear) {
+        List<String> existingStudentCodes = jdbcTemplate.queryForList("""
+                SELECT student_code
+                FROM students
+                WHERE user_id = ?
+                """, String.class, userId);
+        if (existingStudentCodes.isEmpty()) {
+            jdbcTemplate.update("""
+                    INSERT INTO students(student_code, user_id, university, university_id, faculty, academic_year)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """, studentCode, userId, universityName, universityId, faculty, academicYear);
+        } else {
+            jdbcTemplate.update("""
+                    UPDATE students
+                    SET student_code = ?,
+                        university = ?,
+                        university_id = ?,
+                        faculty = COALESCE(?, faculty),
+                        academic_year = COALESCE(?, academic_year)
+                    WHERE user_id = ?
+                    """, studentCode, universityName, universityId, faculty, academicYear, userId);
+        }
+        jdbcTemplate.update("""
+                UPDATE users
+                SET student_verification_status = 'VERIFIED',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = ?
+                """, userId);
+    }
+
     public void upsertRoster(Integer universityId, String email, String studentCode, String fullName, String faculty,
             Integer academicYear, String status, Long batchId) {
+        upsertRoster(universityId, email, studentCode, fullName, faculty, academicYear, status, batchId, null);
+    }
+
+    public void upsertRoster(Integer universityId, String email, String studentCode, String fullName, String faculty,
+            Integer academicYear, String status, Long batchId, Integer matchedUserId) {
         Integer count = jdbcTemplate.queryForObject("""
                 SELECT COUNT(*)
                 FROM university_student_rosters
@@ -522,17 +586,18 @@ public class UniversityManagementRepository {
                         faculty = ?,
                         academic_year = ?,
                         status = ?,
+                        matched_user_id = ?,
                         imported_batch_id = ?,
                         updated_at = CURRENT_TIMESTAMP
                     WHERE university_id = ?
                       AND LOWER(email) = LOWER(?)
-                    """, studentCode, fullName, faculty, academicYear, status, batchId, universityId, email);
+                    """, studentCode, fullName, faculty, academicYear, status, matchedUserId, batchId, universityId, email);
             return;
         }
         jdbcTemplate.update("""
-                INSERT INTO university_student_rosters(university_id, email, student_code, full_name, faculty, academic_year, status, imported_batch_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, universityId, email, studentCode, fullName, faculty, academicYear, status, batchId);
+                INSERT INTO university_student_rosters(university_id, email, student_code, full_name, faculty, academic_year, status, matched_user_id, imported_batch_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, universityId, email, studentCode, fullName, faculty, academicYear, status, matchedUserId, batchId);
     }
 
     public void insertRosterBatch(List<RosterInsertRow> rows) {
@@ -540,8 +605,8 @@ public class UniversityManagementRepository {
             return;
         }
         jdbcTemplate.batchUpdate("""
-                INSERT INTO university_student_rosters(university_id, email, student_code, full_name, faculty, academic_year, status, imported_batch_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO university_student_rosters(university_id, email, student_code, full_name, faculty, academic_year, status, matched_user_id, imported_batch_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, new BatchPreparedStatementSetter() {
                     @Override
                     public void setValues(PreparedStatement ps, int i) throws SQLException {
@@ -557,7 +622,12 @@ public class UniversityManagementRepository {
                             ps.setInt(6, row.academicYear());
                         }
                         ps.setString(7, row.status());
-                        ps.setLong(8, row.batchId());
+                        if (row.matchedUserId() == null) {
+                            ps.setObject(8, null);
+                        } else {
+                            ps.setInt(8, row.matchedUserId());
+                        }
+                        ps.setLong(9, row.batchId());
                     }
 
                     @Override
@@ -669,6 +739,7 @@ public class UniversityManagementRepository {
                         rs.getInt("row_number"),
                         rs.getString("field_name"),
                         rs.getString("raw_value"),
+                        importErrorCode(rs.getString("error_message")),
                         rs.getString("error_message")), batchId);
     }
 
@@ -1371,6 +1442,18 @@ public class UniversityManagementRepository {
                 toOffset(rs.getTimestamp("updated_at")));
     }
 
+    private StudentAccountMatch mapStudentAccount(ResultSet rs) throws SQLException {
+        return new StudentAccountMatch(
+                rs.getInt("user_id"),
+                rs.getString("email"),
+                rs.getString("full_name"),
+                rs.getString("role"),
+                rs.getString("status"),
+                rs.getString("student_code"),
+                (Integer) rs.getObject("university_id"),
+                rs.getString("university_name"));
+    }
+
     private ImportBatchView mapImportBatch(ResultSet rs, List<ImportErrorView> errors) throws SQLException {
         return new ImportBatchView(
                 rs.getLong("import_batch_id"),
@@ -1500,6 +1583,18 @@ public class UniversityManagementRepository {
         return value == null || value.isBlank();
     }
 
+    private String importErrorCode(String message) {
+        if (message == null) {
+            return null;
+        }
+        int separator = message.indexOf(':');
+        if (separator <= 0) {
+            return null;
+        }
+        String code = message.substring(0, separator).trim();
+        return code.matches("[A-Z0-9_]+") ? code : null;
+    }
+
     public record DomainMatch(Integer universityId, String universityName, String domain) {
     }
 
@@ -1523,6 +1618,18 @@ public class UniversityManagementRepository {
             String faculty,
             Integer academicYear,
             String status,
+            Integer matchedUserId,
             Long batchId) {
+    }
+
+    public record StudentAccountMatch(
+            Integer userId,
+            String email,
+            String fullName,
+            String role,
+            String status,
+            String studentCode,
+            Integer universityId,
+            String universityName) {
     }
 }

@@ -159,8 +159,8 @@ BEGIN
 END $$;
 
 SELECT
-    count(*) FILTER (WHERE status = 'ACTIVE') AS active_students,
-    count(*) FILTER (WHERE status <> 'ACTIVE') AS inactive_students,
+    count(*) FILTER (WHERE r.status = 'ACTIVE') AS active_students,
+    count(*) FILTER (WHERE r.status <> 'ACTIVE') AS inactive_students,
     count(*) AS total_roster
 FROM university_student_rosters r
 JOIN universities u ON u.university_id = r.university_id

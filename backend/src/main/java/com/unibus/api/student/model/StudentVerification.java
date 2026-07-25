@@ -3,6 +3,8 @@ package com.unibus.api.student.model;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 
+import com.unibus.api.student.OcrMatchStatus;
+import com.unibus.api.student.OcrProcessingStatus;
 import com.unibus.api.user.model.User;
 
 import jakarta.persistence.Column;
@@ -62,6 +64,49 @@ public class StudentVerification {
 
     @Column(name = "ocr_confidence_score", precision = 5, scale = 4)
     private BigDecimal ocrConfidenceScore;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "ocr_status", length = 30)
+    private OcrProcessingStatus ocrStatus;
+
+    @Column(name = "ocr_provider", length = 50)
+    private String ocrProvider;
+
+    @Column(name = "ocr_error_code", length = 100)
+    private String ocrErrorCode;
+
+    @Column(name = "ocr_error_message", length = 500)
+    private String ocrErrorMessage;
+
+    @Column(name = "ocr_processed_at")
+    private OffsetDateTime ocrProcessedAt;
+
+    @Column(name = "ocr_last_attempt_at")
+    private OffsetDateTime ocrLastAttemptAt;
+
+    @Column(name = "ocr_attempt_count")
+    private Integer ocrAttemptCount;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "name_match_status", length = 30)
+    private OcrMatchStatus nameMatchStatus;
+
+    @Column(name = "name_similarity_score", precision = 5, scale = 4)
+    private BigDecimal nameSimilarityScore;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "student_code_match_status", length = 30)
+    private OcrMatchStatus studentCodeMatchStatus;
+
+    @Column(name = "student_code_similarity_score", precision = 5, scale = 4)
+    private BigDecimal studentCodeSimilarityScore;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "university_match_status", length = 30)
+    private OcrMatchStatus universityMatchStatus;
+
+    @Column(name = "university_similarity_score", precision = 5, scale = 4)
+    private BigDecimal universitySimilarityScore;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
