@@ -99,6 +99,7 @@ public final class UniversityDtos {
             int rowNumber,
             String fieldName,
             String rawValue,
+            String errorCode,
             String errorMessage) {
     }
 

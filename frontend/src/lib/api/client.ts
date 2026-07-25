@@ -754,11 +754,24 @@ export interface VerificationView {
   universityId?: number;
   studentCode?: string;
   cardImageUrl?: string;
+  ocrStatus?: string | null;
+  ocrProvider?: string | null;
+  ocrErrorCode?: string | null;
+  ocrErrorMessage?: string | null;
+  ocrProcessedAt?: string | null;
+  ocrLastAttemptAt?: string | null;
+  ocrAttemptCount?: number | null;
   ocrFullName?: string;
   ocrStudentCode?: string;
   ocrUniversity?: string;
   ocrRawText?: string;
   ocrConfidenceScore?: number;
+  nameMatchStatus?: string | null;
+  nameSimilarityScore?: number | null;
+  studentCodeMatchStatus?: string | null;
+  studentCodeSimilarityScore?: number | null;
+  universityMatchStatus?: string | null;
+  universitySimilarityScore?: number | null;
   rejectionReason?: string;
   reviewerUserId?: number;
   submittedAt?: string;
@@ -1646,6 +1659,7 @@ export interface ImportErrorView {
   rowNumber: number;
   fieldName?: string;
   rawValue?: string;
+  errorCode?: string;
   errorMessage: string;
 }
 
@@ -1896,6 +1910,8 @@ export const adminApi = {
     apiFetch.post<VerificationView>(`/admin/student-verifications/${verificationId}/reject`, { reason }),
   requestResubmission: (verificationId: number, reason?: string) =>
     apiFetch.post<VerificationView>(`/admin/student-verifications/${verificationId}/request-resubmission`, { reason }),
+  retryVerificationOcr: (verificationId: number) =>
+    apiFetch.post<VerificationView>(`/admin/student-verifications/${verificationId}/ocr/retry`),
   universities: (params?: { keyword?: string; status?: string }) =>
     apiFetch.get<UniversityView[]>("/admin/universities", params),
   createUniversity: (data: { code: string; name: string; shortName?: string; contactEmail?: string; status?: string }) =>

@@ -10,43 +10,31 @@ import java.security.KeyFactory;
 import java.security.PrivateKey;
 import java.security.Signature;
 import java.security.spec.PKCS8EncodedKeySpec;
-import java.text.Normalizer;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.unibus.api.common.ApiException;
-
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
 @Service
 @ConditionalOnProperty(name = "app.ocr.provider", havingValue = "google", matchIfMissing = true)
-public class GoogleVisionStudentCardOcrService implements StudentCardOcrService {
+public class GoogleVisionStudentCardOcrService implements OcrDocumentProvider {
 
-    private static final Pattern DIACRITICS = Pattern.compile("\\p{M}+");
-    private static final Pattern STUDENT_CODE_PATTERN = Pattern.compile(
-            "(?:MSSV|MÃ\\s*SỐ\\s*SV|MÃ\\s*SINH\\s*VIÊN|STUDENT\\s*ID)\\s*[:\\-]?\\s*([A-Z0-9][A-Z0-9\\-]{4,19})",
-            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
-    private static final Pattern FALLBACK_CODE_PATTERN = Pattern.compile("\\b[A-Z]{1,5}[0-9][A-Z0-9\\-]{4,18}\\b");
+    private static final String PROVIDER = "google";
 
     private final ObjectMapper objectMapper;
-    private final UniversityCatalog universityCatalog;
     private final RestClient restClient;
     private final boolean enabled;
     private final boolean failOpenOnError;
@@ -54,12 +42,10 @@ public class GoogleVisionStudentCardOcrService implements StudentCardOcrService 
 
     public GoogleVisionStudentCardOcrService(
             ObjectMapper objectMapper,
-            UniversityCatalog universityCatalog,
             @Value("${app.ocr.enabled:false}") boolean enabled,
             @Value("${app.ocr.fail-open-on-error:true}") boolean failOpenOnError,
             @Value("${app.google.vision.credentials-path:}") String credentialsPath) {
         this.objectMapper = objectMapper;
-        this.universityCatalog = universityCatalog;
         this.restClient = RestClient.create();
         this.enabled = enabled;
         this.failOpenOnError = failOpenOnError;
@@ -67,20 +53,17 @@ public class GoogleVisionStudentCardOcrService implements StudentCardOcrService 
     }
 
     @Override
-    public Result extract(
-            MultipartFile cardImage,
-            String expectedFullName,
-            String expectedStudentCode,
-            String expectedUniversity) {
+    public String providerName() {
+        return PROVIDER;
+    }
+
+    @Override
+    public OcrDocumentResult extract(MultipartFile cardImage) {
         if (!enabled) {
-            return fallback(expectedFullName, expectedStudentCode, expectedUniversity, "OCR is disabled for this environment.");
+            return fallbackDocument("OCR is disabled for this environment.");
         }
         if (credentialsPath.isBlank()) {
-            if (failOpenOnError) {
-                return fallback(expectedFullName, expectedStudentCode, expectedUniversity,
-                        "Google Vision OCR credentials are not configured.");
-            }
-            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "Google Vision OCR credentials are not configured");
+            return failOrFallback("GOOGLE_CREDENTIALS_MISSING", "Google Vision OCR credentials are not configured", null);
         }
 
         try {
@@ -88,49 +71,30 @@ public class GoogleVisionStudentCardOcrService implements StudentCardOcrService 
             String accessToken = fetchAccessToken(credentials);
             Map<?, ?> response = annotate(cardImage, accessToken);
             String rawText = extractRawText(response);
-            if (rawText.isBlank()) {
-                return fallback(expectedFullName, expectedStudentCode, expectedUniversity, "Google Vision did not detect text.");
-            }
-            return new Result(
-                    detectFullName(rawText, expectedFullName),
-                    detectStudentCode(rawText, expectedStudentCode),
-                    detectUniversity(rawText, expectedUniversity),
-                    rawText,
-                    averageConfidence(response));
-        } catch (ApiException exception) {
-            if (failOpenOnError && exception.getStatus().is5xxServerError()) {
-                return fallback(expectedFullName, expectedStudentCode, expectedUniversity, exception.getMessage());
+            return new OcrDocumentResult(rawText, averageConfidence(response), linesFromRawText(rawText), PROVIDER);
+        } catch (OcrProviderException exception) {
+            if (failOpenOnError) {
+                return fallbackDocument(exception.getMessage());
             }
             throw exception;
         } catch (IOException exception) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Unable to read the uploaded student card image");
+            throw new OcrProviderException("IMAGE_READ_FAILED", "Unable to read the uploaded student card image", exception);
         } catch (RestClientResponseException exception) {
-            if (failOpenOnError) {
-                return fallback(expectedFullName, expectedStudentCode, expectedUniversity,
-                        extractGoogleErrorMessage(exception.getResponseBodyAsString()));
-            }
-            throw new ApiException(
-                    HttpStatus.SERVICE_UNAVAILABLE,
-                    extractGoogleErrorMessage(exception.getResponseBodyAsString()));
+            return failOrFallback(
+                    "GOOGLE_REQUEST_FAILED",
+                    extractGoogleErrorMessage(exception.getResponseBodyAsString()),
+                    exception);
         } catch (RestClientException exception) {
-            if (failOpenOnError) {
-                return fallback(expectedFullName, expectedStudentCode, expectedUniversity,
-                        "Google Vision OCR request failed");
-            }
-            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "Google Vision OCR request failed");
+            return failOrFallback("GOOGLE_REQUEST_FAILED", "Google Vision OCR request failed", exception);
         } catch (Exception exception) {
-            if (failOpenOnError) {
-                return fallback(expectedFullName, expectedStudentCode, expectedUniversity,
-                        "Google Vision OCR is unavailable");
-            }
-            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "Google Vision OCR is unavailable");
+            return failOrFallback("GOOGLE_UNAVAILABLE", "Google Vision OCR is unavailable", exception);
         }
     }
 
     private Map<String, Object> readCredentials() throws IOException {
         Path path = Path.of(credentialsPath);
         if (!Files.exists(path) || Files.isDirectory(path)) {
-            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "Google Vision OCR credential file was not found");
+            throw new OcrProviderException("GOOGLE_CREDENTIAL_FILE_NOT_FOUND", "Google Vision OCR credential file was not found");
         }
         return objectMapper.readValue(Files.readAllBytes(path), new TypeReference<>() { });
     }
@@ -157,7 +121,7 @@ public class GoogleVisionStudentCardOcrService implements StudentCardOcrService 
                 .body(Map.class);
         String accessToken = token == null ? "" : stringValue(token.get("access_token"));
         if (accessToken.isBlank()) {
-            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "Google Vision OCR token request failed");
+            throw new OcrProviderException("GOOGLE_TOKEN_FAILED", "Google Vision OCR token request failed");
         }
         return accessToken;
     }
@@ -214,7 +178,7 @@ public class GoogleVisionStudentCardOcrService implements StudentCardOcrService 
         List<BigDecimal> values = new ArrayList<>();
         collectConfidence(firstResponse(response), values);
         if (values.isEmpty()) {
-            return BigDecimal.ZERO;
+            return null;
         }
         BigDecimal total = values.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
         return total.divide(BigDecimal.valueOf(values.size()), 4, RoundingMode.HALF_UP);
@@ -223,8 +187,8 @@ public class GoogleVisionStudentCardOcrService implements StudentCardOcrService 
     private void collectConfidence(Object value, List<BigDecimal> values) {
         if (value instanceof Map<?, ?> map) {
             Object confidence = map.get("confidence");
-            if (confidence instanceof Number number) {
-                values.add(BigDecimal.valueOf(number.doubleValue()));
+            if (confidence instanceof Number number && hasText(map)) {
+                values.add(normalizeConfidence(BigDecimal.valueOf(number.doubleValue())));
             }
             map.values().forEach(child -> collectConfidence(child, values));
         } else if (value instanceof List<?> list) {
@@ -232,92 +196,96 @@ public class GoogleVisionStudentCardOcrService implements StudentCardOcrService 
         }
     }
 
+    private boolean hasText(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            Object text = map.get("text");
+            Object description = map.get("description");
+            if (!stringValue(text).isBlank() || !stringValue(description).isBlank()) {
+                return true;
+            }
+            return map.values().stream().anyMatch(this::hasText);
+        }
+        if (value instanceof List<?> list) {
+            return list.stream().anyMatch(this::hasText);
+        }
+        return false;
+    }
+
     private Map<?, ?> firstResponse(Map<?, ?> response) {
         Object responses = response.get("responses");
         if (responses instanceof List<?> list && !list.isEmpty() && list.get(0) instanceof Map<?, ?> first) {
             Object error = first.get("error");
             if (error instanceof Map<?, ?> errorMap) {
-                throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, stringValue(errorMap.get("message")));
+                throw new OcrProviderException("GOOGLE_RESPONSE_ERROR", stringValue(errorMap.get("message")));
             }
             return first;
         }
         return Map.of();
     }
 
-    private String detectFullName(String rawText, String expectedFullName) {
-        if (containsNormalized(rawText, expectedFullName)) {
-            return expectedFullName;
+    private List<OcrTextLine> linesFromRawText(String rawText) {
+        List<OcrTextLine> lines = new ArrayList<>();
+        String[] parts = rawText == null ? new String[0] : rawText.split("\\R");
+        for (int i = 0; i < parts.length; i++) {
+            if (!parts[i].isBlank()) {
+                lines.add(new OcrTextLine(parts[i], null, i));
+            }
         }
-        return rawText.lines()
-                .map(String::trim)
-                .filter(line -> line.split("\\s+").length >= 2)
-                .filter(line -> !line.matches(".*\\d.*"))
-                .filter(line -> universityCatalog.detectInText(line).isBlank())
-                .findFirst()
-                .orElse("");
+        return lines;
     }
 
-    private String detectStudentCode(String rawText, String expectedStudentCode) {
-        if (containsNormalized(rawText, expectedStudentCode)) {
-            return expectedStudentCode;
+    private OcrDocumentResult failOrFallback(String errorCode, String message, Throwable cause) {
+        if (failOpenOnError) {
+            return fallbackDocument(message, errorCode);
         }
-        Matcher matcher = STUDENT_CODE_PATTERN.matcher(rawText);
-        if (matcher.find()) {
-            return matcher.group(1).trim();
+        throw new OcrProviderException(errorCode, message, cause);
+    }
+
+    private OcrDocumentResult fallbackDocument(String message) {
+        return fallbackDocument(message, null);
+    }
+
+    private OcrDocumentResult fallbackDocument(String message, String errorCode) {
+        return new OcrDocumentResult(message, null, linesFromRawText(message), PROVIDER,
+                "OCR is disabled for this environment.".equals(message)
+                        ? OcrProcessingStatus.DISABLED
+                        : OcrProcessingStatus.FAILED,
+                errorCode,
+                message);
+    }
+
+    private BigDecimal normalizeConfidence(BigDecimal confidence) {
+        if (confidence == null) {
+            return null;
         }
-        matcher = FALLBACK_CODE_PATTERN.matcher(rawText.toUpperCase(Locale.ROOT));
-        return matcher.find() ? matcher.group().trim() : "";
-    }
-
-    private String detectUniversity(String rawText, String expectedUniversity) {
-        String detected = universityCatalog.detectInText(rawText);
-        if (!detected.isBlank()) {
-            return detected;
+        BigDecimal normalized = confidence.compareTo(BigDecimal.ONE) > 0
+                ? confidence.divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP)
+                : confidence;
+        if (normalized.compareTo(BigDecimal.ZERO) < 0 || normalized.compareTo(BigDecimal.ONE) > 0) {
+            return null;
         }
-        return universityCatalog.textMentions(rawText, expectedUniversity) ? expectedUniversity : "";
+        return normalized.setScale(4, RoundingMode.HALF_UP);
     }
 
-    private Result fallback(String fullName, String studentCode, String university, String message) {
-        return new Result(fullName, studentCode, university, message, BigDecimal.ZERO);
-    }
-
-    private boolean containsNormalized(String haystack, String needle) {
-        String normalizedNeedle = normalize(needle);
-        return !normalizedNeedle.isBlank() && normalize(haystack).contains(normalizedNeedle);
-    }
-
-    private String normalize(String value) {
-        if (value == null) {
-            return "";
-        }
-        return DIACRITICS.matcher(Normalizer.normalize(value, Normalizer.Form.NFD))
-                .replaceAll("")
-                .replace('Đ', 'D')
-                .replace('đ', 'd')
-                .toLowerCase(Locale.ROOT)
-                .replaceAll("[^a-z0-9]+", " ")
-                .trim()
-                .replaceAll("\\s+", " ");
-    }
-
-    private String sign(String input, String privateKeyPem) throws Exception {
-        String pemBody = privateKeyPem
-                .replace("-----BEGIN PRIVATE KEY-----", "")
-                .replace("-----END PRIVATE KEY-----", "")
-                .replaceAll("\\s+", "");
-        PrivateKey privateKey = KeyFactory.getInstance("RSA")
-                .generatePrivate(new PKCS8EncodedKeySpec(Base64.getDecoder().decode(pemBody)));
-        Signature signature = Signature.getInstance("SHA256withRSA");
-        signature.initSign(privateKey);
-        signature.update(input.getBytes(StandardCharsets.UTF_8));
-        return base64Url(signature.sign());
+    private String stringValue(Object value) {
+        return value == null ? "" : String.valueOf(value);
     }
 
     private String base64Url(byte[] value) {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(value);
     }
 
-    private String stringValue(Object value) {
-        return value == null ? "" : value.toString();
+    private String sign(String unsignedJwt, String privateKeyPem) throws Exception {
+        String normalizedKey = privateKeyPem
+                .replace("-----BEGIN PRIVATE KEY-----", "")
+                .replace("-----END PRIVATE KEY-----", "")
+                .replaceAll("\\s", "");
+        byte[] decoded = Base64.getDecoder().decode(normalizedKey);
+        PrivateKey privateKey = KeyFactory.getInstance("RSA")
+                .generatePrivate(new PKCS8EncodedKeySpec(decoded));
+        Signature signature = Signature.getInstance("SHA256withRSA");
+        signature.initSign(privateKey);
+        signature.update(unsignedJwt.getBytes(StandardCharsets.UTF_8));
+        return base64Url(signature.sign());
     }
 }

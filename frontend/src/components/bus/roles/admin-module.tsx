@@ -2342,11 +2342,209 @@ function ReviewField({
   );
 }
 
+const OCR_LOW_CONFIDENCE_THRESHOLD = 0.65;
+
+const ocrStatusCopy: Record<string, { label: string; tone: "neutral" | "primary" | "tertiary" | "success" | "warning" | "error" }> = {
+  NOT_STARTED: { label: "Chưa bắt đầu", tone: "neutral" },
+  PROCESSING: { label: "Đang xử lý", tone: "warning" },
+  COMPLETED: { label: "Hoàn tất", tone: "success" },
+  FAILED: { label: "Lỗi OCR", tone: "error" },
+  DISABLED: { label: "Đã tắt OCR", tone: "neutral" },
+};
+
+const matchStatusCopy: Record<string, { label: string; tone: "neutral" | "primary" | "tertiary" | "success" | "warning" | "error" }> = {
+  MATCHED: { label: "Khớp", tone: "success" },
+  NORMALIZED_MATCH: { label: "Khớp sau chuẩn hóa", tone: "success" },
+  PARTIAL_MATCH: { label: "Khớp một phần", tone: "warning" },
+  NOT_MATCHED: { label: "Không khớp", tone: "error" },
+  NOT_DETECTED: { label: "Không đọc được", tone: "error" },
+  MULTIPLE_CANDIDATES: { label: "Có nhiều kết quả", tone: "warning" },
+};
+
+function formatOcrPercent(value?: number | null) {
+  if (value == null || Number.isNaN(value)) return "—";
+  return `${(value * 100).toFixed(1).replace(/\.0$/, "")}%`;
+}
+
+function formatOcrConfidence(value?: number | null) {
+  if (value == null || Number.isNaN(value)) return "Không có dữ liệu confidence";
+  return formatOcrPercent(value);
+}
+
+function hasAnyOcrData(item: VerificationView) {
+  return Boolean(
+    item.ocrStatus ||
+      item.ocrProvider ||
+      item.ocrFullName ||
+      item.ocrStudentCode ||
+      item.ocrUniversity ||
+      item.ocrRawText ||
+      item.ocrConfidenceScore != null ||
+      item.nameMatchStatus ||
+      item.studentCodeMatchStatus ||
+      item.universityMatchStatus
+  );
+}
+
+function ocrWarnings(item: VerificationView) {
+  const warnings: string[] = [];
+  if (item.ocrStatus === "FAILED") warnings.push("OCR gặp lỗi. Admin vẫn có thể kiểm tra ảnh thẻ và xử lý thủ công.");
+  if (item.ocrStatus === "DISABLED") warnings.push("OCR đang tắt cho hồ sơ này hoặc môi trường hiện tại.");
+  if (item.ocrStatus === "PROCESSING") warnings.push("Đang xử lý OCR...");
+  if (item.ocrConfidenceScore != null && item.ocrConfidenceScore < OCR_LOW_CONFIDENCE_THRESHOLD) {
+    warnings.push("Độ tin cậy OCR thấp, cần đối chiếu kỹ với ảnh thẻ.");
+  }
+  if (item.studentCodeMatchStatus === "NOT_DETECTED") warnings.push("OCR không đọc được MSSV.");
+  if (
+    item.nameMatchStatus === "MULTIPLE_CANDIDATES" ||
+    item.studentCodeMatchStatus === "MULTIPLE_CANDIDATES" ||
+    item.universityMatchStatus === "MULTIPLE_CANDIDATES"
+  ) {
+    warnings.push("OCR có nhiều kết quả ứng viên, cần kiểm tra thủ công.");
+  }
+  if (item.nameMatchStatus === "NOT_MATCHED") warnings.push("Họ tên OCR không khớp với thông tin khai báo.");
+  if (item.universityMatchStatus === "NOT_MATCHED") warnings.push("Tên trường OCR không khớp với thông tin khai báo.");
+  if (hasAnyOcrData(item) && (!item.nameMatchStatus || !item.studentCodeMatchStatus || !item.universityMatchStatus)) {
+    warnings.push("Chưa có kết quả OCR đầy đủ cho hồ sơ này.");
+  }
+  if (warnings.length === 0 && !hasAnyOcrData(item)) {
+    warnings.push("Chưa có kết quả OCR đầy đủ cho hồ sơ này.");
+  }
+  return warnings;
+}
+
+function OcrMatchBadge({ status }: { status?: string | null }) {
+  if (!status) return <M3StatusPill label="Chưa có dữ liệu" tone="neutral" />;
+  const meta = matchStatusCopy[status] || { label: status, tone: "neutral" as const };
+  return <M3StatusPill label={meta.label} tone={meta.tone} />;
+}
+
+function OcrComparisonTable({ item }: { item: VerificationView }) {
+  const rows = [
+    { label: "Họ tên", submitted: item.fullName, ocr: item.ocrFullName, status: item.nameMatchStatus, score: item.nameSimilarityScore },
+    { label: "MSSV", submitted: item.studentCode, ocr: item.ocrStudentCode, status: item.studentCodeMatchStatus, score: item.studentCodeSimilarityScore },
+    { label: "Trường", submitted: item.university, ocr: item.ocrUniversity, status: item.universityMatchStatus, score: item.universitySimilarityScore },
+  ];
+
+  return (
+    <div className="overflow-x-auto rounded-2xl border border-outline-variant/60">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Trường</TableHead>
+            <TableHead>Sinh viên khai báo</TableHead>
+            <TableHead>OCR đọc được</TableHead>
+            <TableHead>Trạng thái</TableHead>
+            <TableHead>Điểm</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={row.label}>
+              <TableCell className="font-bold">{row.label}</TableCell>
+              <TableCell className="max-w-[220px] whitespace-normal">{row.submitted || "—"}</TableCell>
+              <TableCell className="max-w-[220px] whitespace-normal">{row.ocr || "—"}</TableCell>
+              <TableCell><OcrMatchBadge status={row.status} /></TableCell>
+              <TableCell>{formatOcrPercent(row.score)}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+function OcrRawTextPanel({ rawText }: { rawText?: string | null }) {
+  return (
+    <details className="rounded-2xl border border-outline-variant/60 bg-surface-container-low p-3">
+      <summary className="cursor-pointer text-sm font-black text-on-surface">Raw text OCR</summary>
+      <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-surface-container p-3 text-xs text-on-surface-variant">
+        {rawText?.trim() || "Không có raw text"}
+      </pre>
+    </details>
+  );
+}
+
+function StudentVerificationOcrPanel({
+  item,
+  onRetry,
+  retrying,
+}: {
+  item: VerificationView;
+  onRetry: (item: VerificationView) => void;
+  retrying: boolean;
+}) {
+  const statusMeta = item.ocrStatus
+    ? ocrStatusCopy[item.ocrStatus] || { label: item.ocrStatus, tone: "neutral" as const }
+    : { label: "Chưa có trạng thái OCR", tone: "neutral" as const };
+  const warnings = ocrWarnings(item);
+  const retrySupported = Boolean(item.ocrStatus);
+  const canRetry = retrySupported && item.status === "PENDING_REVIEW" && item.ocrStatus !== "PROCESSING";
+
+  return (
+    <div className="space-y-3 rounded-2xl border border-outline-variant/60 bg-surface-container-lowest p-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h4 className="text-sm font-black text-on-surface">Kết quả OCR</h4>
+            <M3StatusPill label={statusMeta.label} tone={statusMeta.tone} />
+            {item.ocrProvider && <Badge variant="outline" className="rounded-full text-[11px]">{item.ocrProvider}</Badge>}
+          </div>
+          <p className="mt-1 text-xs font-semibold text-on-surface-variant">
+            OCR chỉ là dữ liệu hỗ trợ. Admin cần kiểm tra ảnh thẻ trước khi quyết định.
+          </p>
+        </div>
+        {retrySupported ? (
+          <ExpressiveButton variant="tonal" size="sm" disabled={!canRetry || retrying} onClick={() => onRetry(item)}>
+            <RefreshCw className={cn("size-4", retrying && "animate-spin")} />
+            {item.ocrStatus === "PROCESSING" ? "Đang xử lý OCR..." : "Chạy lại OCR"}
+          </ExpressiveButton>
+        ) : (
+          <span className="rounded-full bg-surface-container px-3 py-1 text-xs font-bold text-on-surface-variant">
+            Backend chưa trả trạng thái retry
+          </span>
+        )}
+      </div>
+
+      {warnings.length > 0 && (
+        <div className="space-y-2 rounded-2xl border border-warning/30 bg-warning-container/40 p-3 text-sm text-on-surface">
+          {warnings.map((warning) => (
+            <div key={warning} className="flex gap-2">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
+              <p>{warning}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+        <ReviewField label="OCR họ tên" submitted={item.ocrFullName} />
+        <ReviewField label="OCR MSSV" submitted={item.ocrStudentCode} />
+        <ReviewField label="OCR trường" submitted={item.ocrUniversity} />
+        <ReviewField label="Confidence" submitted={formatOcrConfidence(item.ocrConfidenceScore)} />
+        <ReviewField label="Số lần OCR" submitted={item.ocrAttemptCount == null ? "—" : String(item.ocrAttemptCount)} />
+        <ReviewField label="Xử lý gần nhất" submitted={formatDateTime(item.ocrLastAttemptAt || item.ocrProcessedAt)} />
+      </div>
+
+      {(item.ocrErrorCode || item.ocrErrorMessage) && (
+        <div className="rounded-2xl border border-error/25 bg-error-container/40 p-3 text-sm">
+          <p className="font-bold text-error">{item.ocrErrorCode || "OCR_ERROR"}</p>
+          <p className="mt-1 text-on-surface-variant">{item.ocrErrorMessage || "OCR không xử lý được hồ sơ này."}</p>
+        </div>
+      )}
+
+      <OcrComparisonTable item={item} />
+      <OcrRawTextPanel rawText={item.ocrRawText} />
+    </div>
+  );
+}
+
 function VerificationsScreen({ ctx }: { ctx: Ctx }) {
   const [statusFilter, setStatusFilter] = useState("PENDING_REVIEW");
   const [review, setReview] = useState<{ item: VerificationView; action: VerificationReviewAction } | null>(null);
   const [reason, setReason] = useState("");
   const [working, setWorking] = useState(false);
+  const [retryingId, setRetryingId] = useState<number | null>(null);
   const resource = useAdminVerifications(statusFilter === "all" ? undefined : statusFilter);
   const items = resource.raw || [];
 
@@ -2382,6 +2580,21 @@ function VerificationsScreen({ ctx }: { ctx: Ctx }) {
       toast.error(e instanceof Error ? e.message : "Không thể cập nhật hồ sơ");
     } finally {
       setWorking(false);
+    }
+  };
+
+  const retryOcr = async (item: VerificationView) => {
+    if (!item.verificationId || item.ocrStatus === "PROCESSING") return;
+    setRetryingId(item.verificationId);
+    try {
+      await adminApi.retryVerificationOcr(item.verificationId);
+      toast.success("Đã chạy lại OCR");
+      resource.reload();
+      ctx.reload();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Không thể chạy lại OCR");
+    } finally {
+      setRetryingId(null);
     }
   };
 
@@ -2461,6 +2674,18 @@ function VerificationsScreen({ ctx }: { ctx: Ctx }) {
                         <ReviewField label="MSSV" submitted={item.studentCode} />
                         <ReviewField label="Trường" submitted={item.university} />
                       </div>
+
+                      <div className="grid gap-2 md:grid-cols-3">
+                        <ReviewField label="Email" submitted={item.email} />
+                        <ReviewField label="Gửi lúc" submitted={formatDateTime(item.submittedAt)} />
+                        <ReviewField label="Trạng thái" submitted={meta.label} />
+                      </div>
+
+                      <StudentVerificationOcrPanel
+                        item={item}
+                        onRetry={retryOcr}
+                        retrying={retryingId === item.verificationId}
+                      />
 
                       {item.rejectionReason && (
                         <div className="rounded-2xl border border-error/25 bg-error-container/40 p-3 text-sm">

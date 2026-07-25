@@ -316,6 +316,19 @@ const importStatusLabel = (status?: string | null) => {
 };
 
 const importErrorMessage = (message?: string | null) => {
+  const code = message?.includes(":") ? message.split(":", 1)[0] : message;
+  switch (code) {
+    case "STUDENT_ACCOUNT_NOT_FOUND":
+      return "Không tìm thấy tài khoản sinh viên đang sử dụng hệ thống";
+    case "STUDENT_NOT_LINKED_TO_UNIVERSITY":
+      return "Sinh viên dùng email cá nhân nhưng chưa liên kết với trường";
+    case "STUDENT_LINKED_TO_ANOTHER_UNIVERSITY":
+      return "Sinh viên đang liên kết với trường khác";
+    case "EMAIL_DOMAIN_BELONGS_TO_ANOTHER_UNIVERSITY":
+      return "Domain email thuộc trường khác";
+    case "STUDENT_ACCOUNT_IDENTIFIER_CONFLICT":
+      return "Email và MSSV đang thuộc hai tài khoản khác nhau";
+  }
   switch (message) {
     case "Email is required":
       return "Email bắt buộc hoặc không đúng định dạng";
@@ -336,6 +349,9 @@ const importErrorMessage = (message?: string | null) => {
   }
 };
 
+const importErrorCode = (error?: ImportErrorView | null) =>
+  error?.errorCode || (error?.errorMessage?.includes(":") ? error.errorMessage.split(":", 1)[0] : undefined);
+
 const importFieldLabel = (field?: string | null) => {
   const normalized = (field || "").replace(/[_\s-]/g, "").toLowerCase();
   if (normalized === "studentcode" || normalized === "mssv") return "MSSV";
@@ -349,6 +365,18 @@ const importFieldLabel = (field?: string | null) => {
 const importPreviewErrorReason = (error: RosterImportPreviewView["errors"][number]) => {
   const fieldLabel = importFieldLabel(error.field);
   const code = (error.code || "").toUpperCase();
+  switch (code) {
+    case "STUDENT_ACCOUNT_NOT_FOUND":
+      return "Chưa có tài khoản sinh viên";
+    case "STUDENT_NOT_LINKED_TO_UNIVERSITY":
+      return "Chưa liên kết trường";
+    case "STUDENT_LINKED_TO_ANOTHER_UNIVERSITY":
+      return "Liên kết trường khác";
+    case "EMAIL_DOMAIN_BELONGS_TO_ANOTHER_UNIVERSITY":
+      return "Domain thuộc trường khác";
+    case "STUDENT_ACCOUNT_IDENTIFIER_CONFLICT":
+      return "Email/MSSV không khớp";
+  }
   if (code.includes("EXISTING") || code.includes("DUPLICATE")) return fieldLabel;
   if (code.includes("INVALID_EMAIL")) return "Email";
   if (code.includes("EMAIL")) return "Email";
@@ -360,6 +388,16 @@ const importPreviewErrorReason = (error: RosterImportPreviewView["errors"][numbe
 
 const importErrorSuggestion = (error?: ImportErrorView | null) => {
   const message = error?.errorMessage || "";
+  const code = importErrorCode(error);
+  if (
+    code === "STUDENT_ACCOUNT_NOT_FOUND" ||
+    code === "STUDENT_NOT_LINKED_TO_UNIVERSITY" ||
+    code === "STUDENT_LINKED_TO_ANOTHER_UNIVERSITY" ||
+    code === "EMAIL_DOMAIN_BELONGS_TO_ANOTHER_UNIVERSITY" ||
+    code === "STUDENT_ACCOUNT_IDENTIFIER_CONFLICT"
+  ) {
+    return "Đối chiếu tài khoản sinh viên, liên kết trường hoặc email/MSSV rồi import lại";
+  }
   const field = (error?.fieldName || "").toLowerCase();
   if (message.includes("duplicated") || message.includes("already exists")) {
     return field === "email" ? "Giữ một email duy nhất hoặc kiểm tra lại sinh viên đã tồn tại" : "Giữ một dòng duy nhất cho MSSV này";

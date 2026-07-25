@@ -90,6 +90,7 @@ import com.unibus.api.university.UniversityDtos.UniversityView;
 import com.unibus.api.university.UniversityManagementRepository.DomainMatch;
 import com.unibus.api.university.UniversityManagementRepository.RosterInsertRow;
 import com.unibus.api.university.UniversityManagementRepository.RosterMatch;
+import com.unibus.api.university.UniversityManagementRepository.StudentAccountMatch;
 import com.unibus.api.user.model.User;
 import com.unibus.api.user.model.UserRole;
 
@@ -626,35 +627,24 @@ public class UniversityManagementService {
         int success = 0;
         int errors = 0;
         for (RosterRow row : rows) {
-            RowValidation validation = validateRosterRow(row);
-            if (validation.errorMessage() != null) {
-                repository.addImportError(batchId, row.rowNumber(), validation.fieldName(), rosterRowSnapshot(row), validation.errorMessage());
+            List<RosterImportPreviewErrorView> rowErrors = validateRosterPreviewRow(row, universityId, seenStudentCodes, seenEmails);
+            if (!rowErrors.isEmpty()) {
+                rowErrors.forEach(error -> repository.addImportError(batchId, row.rowNumber(), error.field(),
+                        rosterRowSnapshot(row), error.code() + ": " + error.message()));
                 errors++;
                 continue;
             }
             String studentCode = normalizeStudentCode(row.studentCode());
-            String studentCodeKey = studentCode.toUpperCase(Locale.ROOT);
-            if (!seenStudentCodes.add(studentCodeKey)) {
-                repository.addImportError(batchId, row.rowNumber(), "studentCode", rosterRowSnapshot(row), "MSSV is duplicated in this import file");
-                errors++;
-                continue;
-            }
             String email = normalizeEmail(row.email());
-            if (!seenEmails.add(email)) {
-                repository.addImportError(batchId, row.rowNumber(), "email", rosterRowSnapshot(row), "Email is duplicated in this import file");
-                errors++;
-                continue;
-            }
-            String domain = emailDomain(email);
-            if (domain == null || !repository.activeDomainBelongsToUniversity(universityId, domain)) {
-                repository.addImportError(batchId, row.rowNumber(), "email", rosterRowSnapshot(row), "Email domain does not belong to this university");
-                errors++;
-                continue;
-            }
-            if (repository.rosterStudentCodeExistsForDifferentEmail(universityId, studentCode, email)) {
-                repository.addImportError(batchId, row.rowNumber(), "studentCode", rosterRowSnapshot(row), "MSSV already exists for another student in this university");
-                errors++;
-                continue;
+            StudentImportDecision decision = decideStudentImport(row, universityId).orElseThrow();
+            if (decision.ensureUniversityLink()) {
+                repository.ensureStudentLinkedToUniversity(
+                        decision.account().userId(),
+                        studentCode,
+                        decision.university().name(),
+                        universityId,
+                        blankToNull(row.faculty()),
+                        parseAcademicYear(row.academicYear()));
             }
             repository.upsertRoster(
                     universityId,
@@ -664,7 +654,8 @@ public class UniversityManagementService {
                     blankToNull(row.faculty()),
                     parseAcademicYear(row.academicYear()),
                     normalizeRosterStatus(row.status()),
-                    batchId);
+                    batchId,
+                    decision.account().userId());
             success++;
         }
         ImportBatchView batch = repository.completeImportBatch(batchId, rows.size(), success, errors);
@@ -1809,6 +1800,16 @@ public class UniversityManagementService {
             if (repository.findRosterByStudentCode(universityId, row.studentCode()).isPresent()) {
                 continue;
             }
+            StudentImportDecision decision = decideStudentImport(row, universityId).orElseThrow();
+            if (decision.ensureUniversityLink()) {
+                repository.ensureStudentLinkedToUniversity(
+                        decision.account().userId(),
+                        normalizeStudentCode(row.studentCode()),
+                        decision.university().name(),
+                        universityId,
+                        blankToNull(row.faculty()),
+                        parseAcademicYearOrNull(row.academicYear()));
+            }
             rowsToInsert.add(new RosterInsertRow(
                     universityId,
                     normalizeEmail(row.email()),
@@ -1817,6 +1818,7 @@ public class UniversityManagementService {
                     blankToNull(row.faculty()),
                     parseAcademicYearOrNull(row.academicYear()),
                     normalizeRosterStatus(row.status()),
+                    decision.account().userId(),
                     batchId));
         }
         return rowsToInsert;
@@ -1963,15 +1965,17 @@ public class UniversityManagementService {
                 errors.add(previewError(row, "email", row.email(), "DUPLICATE_EMAIL_IN_FILE",
                         "Email bị trùng trong file", "Giữ một dòng duy nhất cho email này"));
             }
-            String domain = emailDomain(row.email());
-            if (domain == null || !repository.activeDomainBelongsToUniversity(universityId, domain)) {
-                errors.add(previewError(row, "email", row.email(), "INVALID_EMAIL_DOMAIN",
-                        "Domain email không thuộc trường hoặc chưa hoạt động", "Dùng đúng domain email trong danh mục của trường"));
-            }
             Optional<RosterStudentView> existingByEmail = repository.findRosterByEmail(universityId, row.email());
             if (existingByEmail.isPresent() && !equalsIgnoreCase(existingByEmail.get().studentCode(), row.studentCode())) {
                 errors.add(previewError(row, "email", row.email(), "EMAIL_ALREADY_EXISTS",
-                        "Email đã tồn tại với MSSV khác", "Kiểm tra lại email hoặc MSSV"));
+                        "Email da ton tai voi MSSV khac", "Kiem tra lai email hoac MSSV"));
+            }
+            if (errors.stream().noneMatch(error -> error.rowNumber() == row.rowNumber()
+                    && ("email".equals(error.field()) || "studentCode".equals(error.field())))) {
+                Optional<StudentImportDecision> decision = decideStudentImport(row, universityId);
+                if (decision.isEmpty()) {
+                    errors.add(studentImportError(row, universityId));
+                }
             }
         }
         if (!blank(row.faculty()) && row.faculty().length() > 100) {
@@ -1996,6 +2000,77 @@ public class UniversityManagementService {
                     "Trạng thái không hợp lệ", "Dùng ACTIVE, INACTIVE, GRADUATED hoặc SUSPENDED"));
         }
         return errors;
+    }
+
+    private Optional<StudentImportDecision> decideStudentImport(RosterRow row, Integer universityId) {
+        String email = normalizeEmail(row.email());
+        String studentCode = normalizeStudentCode(row.studentCode());
+        if (blank(email) || blank(studentCode) || !isValidEmailShape(email)) {
+            return Optional.empty();
+        }
+        Optional<StudentAccountMatch> accountByEmail = repository.findStudentAccountByEmail(email);
+        Optional<StudentAccountMatch> accountByCode = repository.findStudentAccountByStudentCode(studentCode);
+        if (accountByEmail.isEmpty() && accountByCode.isEmpty()) {
+            return Optional.empty();
+        }
+        if (accountByEmail.isPresent() && accountByCode.isPresent()
+                && !accountByEmail.get().userId().equals(accountByCode.get().userId())) {
+            return Optional.empty();
+        }
+        StudentAccountMatch account = accountByEmail.orElseGet(accountByCode::orElseThrow);
+        if (account.studentCode() != null && !equalsIgnoreCase(account.studentCode(), studentCode)) {
+            return Optional.empty();
+        }
+        String domain = emailDomain(email);
+        DomainMatch domainMatch = domain == null ? null : repository.findActiveDomainMatch(domain).orElse(null);
+        if (domainMatch != null && !domainMatch.universityId().equals(universityId)) {
+            return Optional.empty();
+        }
+        UniversityView university = requireUniversity(universityId);
+        if (domainMatch != null && domainMatch.universityId().equals(universityId)) {
+            if (account.universityId() != null && !account.universityId().equals(universityId)) {
+                return Optional.empty();
+            }
+            return Optional.of(new StudentImportDecision(account, university, account.universityId() == null));
+        }
+        if (account.universityId() == null || !account.universityId().equals(universityId)) {
+            return Optional.empty();
+        }
+        return Optional.of(new StudentImportDecision(account, university, false));
+    }
+
+    private RosterImportPreviewErrorView studentImportError(RosterRow row, Integer universityId) {
+        String email = normalizeEmail(row.email());
+        String studentCode = normalizeStudentCode(row.studentCode());
+        Optional<StudentAccountMatch> accountByEmail = blank(email) ? Optional.empty() : repository.findStudentAccountByEmail(email);
+        Optional<StudentAccountMatch> accountByCode = blank(studentCode) ? Optional.empty() : repository.findStudentAccountByStudentCode(studentCode);
+        String domain = emailDomain(email);
+        DomainMatch domainMatch = domain == null ? null : repository.findActiveDomainMatch(domain).orElse(null);
+        if (domainMatch != null && !domainMatch.universityId().equals(universityId)) {
+            return previewError(row, "email", row.email(), "EMAIL_DOMAIN_BELONGS_TO_ANOTHER_UNIVERSITY",
+                    "Domain email thuoc mot truong khac", "Dung tai khoan/email dung voi truong dang import");
+        }
+        if (accountByEmail.isEmpty() && accountByCode.isEmpty()) {
+            return previewError(row, "email", row.email(), "STUDENT_ACCOUNT_NOT_FOUND",
+                    "Khong tim thay tai khoan sinh vien dang su dung he thong", "Sinh vien can tao tai khoan truoc khi duoc import");
+        }
+        if (accountByEmail.isPresent() && accountByCode.isPresent()
+                && !accountByEmail.get().userId().equals(accountByCode.get().userId())) {
+            return previewError(row, "studentCode", row.studentCode(), "STUDENT_ACCOUNT_IDENTIFIER_CONFLICT",
+                    "Email va MSSV dang gan voi hai tai khoan khac nhau", "Kiem tra lai email/MSSV trong file import");
+        }
+        StudentAccountMatch account = accountByEmail.orElseGet(accountByCode::orElseThrow);
+        if (account.studentCode() != null && !equalsIgnoreCase(account.studentCode(), studentCode)) {
+            return previewError(row, "studentCode", row.studentCode(), "STUDENT_ACCOUNT_IDENTIFIER_CONFLICT",
+                    "MSSV trong file khong khop voi tai khoan sinh vien", "Kiem tra lai email/MSSV trong file import");
+        }
+        if (account.universityId() == null) {
+            return previewError(row, "email", row.email(), "STUDENT_NOT_LINKED_TO_UNIVERSITY",
+                    "Sinh vien dang su dung email ca nhan nhung chua lien ket voi truong. Sinh vien can hoan tat lien ket voi truong truoc khi duoc them vao danh sach quan ly.",
+                    "Yeu cau sinh vien xac minh/lien ket truong truoc");
+        }
+        return previewError(row, "email", row.email(), "STUDENT_LINKED_TO_ANOTHER_UNIVERSITY",
+                "Sinh vien dang lien ket voi mot truong khac", "Khong tu chuyen truong khi import");
     }
 
     private RosterImportPreviewErrorView previewError(RosterRow row, String field, String value, String code,
@@ -2279,5 +2354,8 @@ public class UniversityManagementService {
     }
 
     private record RowValidation(String fieldName, String rawValue, String errorMessage) {
+    }
+
+    private record StudentImportDecision(StudentAccountMatch account, UniversityView university, boolean ensureUniversityLink) {
     }
 }

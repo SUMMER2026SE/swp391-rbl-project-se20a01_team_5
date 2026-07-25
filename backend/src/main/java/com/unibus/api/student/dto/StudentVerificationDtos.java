@@ -3,6 +3,8 @@ package com.unibus.api.student.dto;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 
+import com.unibus.api.student.OcrMatchStatus;
+import com.unibus.api.student.OcrProcessingStatus;
 import com.unibus.api.student.model.StudentVerificationStatus;
 
 import jakarta.validation.constraints.NotBlank;
@@ -36,6 +38,19 @@ public final class StudentVerificationDtos {
             String ocrUniversity,
             String ocrRawText,
             BigDecimal ocrConfidenceScore,
+            OcrProcessingStatus ocrStatus,
+            String ocrProvider,
+            String ocrErrorCode,
+            String ocrErrorMessage,
+            OffsetDateTime ocrProcessedAt,
+            OffsetDateTime ocrLastAttemptAt,
+            Integer ocrAttemptCount,
+            OcrMatchStatus nameMatchStatus,
+            BigDecimal nameSimilarityScore,
+            OcrMatchStatus studentCodeMatchStatus,
+            BigDecimal studentCodeSimilarityScore,
+            OcrMatchStatus universityMatchStatus,
+            BigDecimal universitySimilarityScore,
             String rejectionReason,
             Integer reviewerUserId,
             OffsetDateTime submittedAt,
