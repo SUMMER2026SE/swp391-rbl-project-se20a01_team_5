@@ -187,7 +187,7 @@ public class JourneyPlannerService {
         }
     }
 
-    private List<JourneyOption> bestDistinctOptions(List<JourneyOption> options, int maxBusLegs) {
+    List<JourneyOption> bestDistinctOptions(List<JourneyOption> options, int maxBusLegs) {
         Map<String, JourneyOption> bestByRouteSequence = new LinkedHashMap<>();
         options.stream()
                 .sorted(journeyComparator())
@@ -197,17 +197,8 @@ public class JourneyPlannerService {
                 .filter(option -> option.summary().transferCount() == null || option.summary().transferCount() == 0)
                 .limit(MAX_OPTIONS)
                 .toList();
-        List<JourneyOption> transfer = distinct.stream()
-                .filter(option -> option.summary().transferCount() != null && option.summary().transferCount() > 0)
-                .limit(MAX_OPTIONS)
-                .toList();
-        if (maxBusLegs >= 2 && !transfer.isEmpty()) {
-            List<JourneyOption> result = new ArrayList<>();
-            direct.stream().limit(2).forEach(result::add);
-            transfer.stream()
-                    .filter(option -> result.stream().noneMatch(existing -> journeySignature(existing).equals(journeySignature(option))))
-                    .forEach(result::add);
-            return result.stream().limit(MAX_OPTIONS).toList();
+        if (maxBusLegs >= 2) {
+            return distinct.stream().limit(MAX_OPTIONS).toList();
         }
         return direct.isEmpty()
                 ? distinct.stream().limit(MAX_OPTIONS).toList()
