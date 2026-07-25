@@ -2366,8 +2366,21 @@ function formatOcrPercent(value?: number | null) {
   return `${(value * 100).toFixed(1).replace(/\.0$/, "")}%`;
 }
 
-function formatOcrConfidence(value?: number | null) {
-  if (value == null || Number.isNaN(value)) return "Không có dữ liệu confidence";
+function aggregateOcrConfidence(item: VerificationView) {
+  const scores = [
+    item.nameSimilarityScore,
+    item.studentCodeSimilarityScore,
+    item.universitySimilarityScore,
+  ].filter((value): value is number => typeof value === "number" && !Number.isNaN(value));
+  if (scores.length > 0) {
+    return scores.reduce((total, value) => total + value, 0) / scores.length;
+  }
+  return item.ocrConfidenceScore ?? null;
+}
+
+function formatOcrConfidence(item: VerificationView) {
+  const value = aggregateOcrConfidence(item);
+  if (value == null || Number.isNaN(value)) return "Không có dữ liệu";
   return formatOcrPercent(value);
 }
 
@@ -2391,7 +2404,8 @@ function ocrWarnings(item: VerificationView) {
   if (item.ocrStatus === "FAILED") warnings.push("OCR gặp lỗi. Admin vẫn có thể kiểm tra ảnh thẻ và xử lý thủ công.");
   if (item.ocrStatus === "DISABLED") warnings.push("OCR đang tắt cho hồ sơ này hoặc môi trường hiện tại.");
   if (item.ocrStatus === "PROCESSING") warnings.push("Đang xử lý OCR...");
-  if (item.ocrConfidenceScore != null && item.ocrConfidenceScore < OCR_LOW_CONFIDENCE_THRESHOLD) {
+  const aggregateConfidence = aggregateOcrConfidence(item);
+  if (aggregateConfidence != null && aggregateConfidence < OCR_LOW_CONFIDENCE_THRESHOLD) {
     warnings.push("Độ tin cậy OCR thấp, cần đối chiếu kỹ với ảnh thẻ.");
   }
   if (item.studentCodeMatchStatus === "NOT_DETECTED") warnings.push("OCR không đọc được MSSV.");
@@ -2521,7 +2535,7 @@ function StudentVerificationOcrPanel({
         <ReviewField label="OCR họ tên" submitted={item.ocrFullName} />
         <ReviewField label="OCR MSSV" submitted={item.ocrStudentCode} />
         <ReviewField label="OCR trường" submitted={item.ocrUniversity} />
-        <ReviewField label="Confidence" submitted={formatOcrConfidence(item.ocrConfidenceScore)} />
+        <ReviewField label="Độ tin cậy" submitted={formatOcrConfidence(item)} />
         <ReviewField label="Số lần OCR" submitted={item.ocrAttemptCount == null ? "—" : String(item.ocrAttemptCount)} />
         <ReviewField label="Xử lý gần nhất" submitted={formatDateTime(item.ocrLastAttemptAt || item.ocrProcessedAt)} />
       </div>
